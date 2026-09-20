@@ -861,6 +861,24 @@
 - 額外寫了一個最小重現案例，確認並隔離出「人生階段邊界那一回合的chronicle條目歸屬」問題：模擬第4回合同時是「學生時期→22-29歲」的轉換點且該回合有chronicle新增，結果條目被錯放進學生時期的`resume_entries`。已排除是這次E8～E14新寫的代碼造成，根因在更早就套用的`newStageAccum()`/`freezeStageTrajectory()`。建議記入QA手冊34.2待處理，修法需要先決定「階段邊界回合的履歷條目該算舊階段還是新階段」這個語意問題，不是單純的程式錯字
 - ⚠️ 大改動提醒（沿用交接文件既有預告，非本次新增）：`life_trajectory`是全新遊戲狀態欄位、`ENDING_DEFINITIONS`已整套移除，**舊存檔會跑不動，需要清空重來**
 
+**〔開發部〕修正結局畫面最後一段永遠空白的bug（四、4.5 b版修正，接續上一則E8～E14筆記）**
+- 對應設計文件：四、4.5新增一條【定案，2026-09-20 b版修正】。完整文字已寫入`life-sim-design/04-角色卡與人生歷史系統.md`，並在`00-總覽.md`全域更新日誌補上一筆。已存快照`snapshots/life-sim-design_2026-09-20f_最後一段凍結時機/`
+- 發現過程：跑上一則筆記提到的400+回合端到端測試時發現，死亡結局畫面**最後一個人生階段（角色實際死亡的那一段）永遠render成空白文字**，且是每一局都會發生、不是邊界情況。根因：`life_summary_material`（送給AI的階段素材，`buildUserMessage()`第1827行／`mockGenerateTurn()`forceEnding分支第2026行）在AI被呼叫**之前**就算好，當時`s.lifeTrajectory`只有已完結的前幾段；`updateLifeTrajectory(s, forceEnding)`（原E11）要等AI回應完、進了`applyResult()`才把角色死亡的那一段凍結進去——AI永遠沒被告知過這一段的存在，自然沒機會為它寫任何文字；`assembleEnding()`事後又拿已經多一段的`life_trajectory`重算一次素材去比對AI回應，兩邊筆數對不上，缺的那段只能落回空字串
+- 修法（使用者貼回claude.ai網頁版討論結論定案）：把「最後一段的邊界凍結」拆出來提前到AI呼叫之前執行，內容（AI寫的文字）仍在AI回應後才補上，兩者不再是分離的兩套資料源：
+  - 把原本`updateLifeTrajectory(s, forceEnding)`裡「段落邊界偵測+凍結上一段」的邏輯抽成`ensureStageTransition(s)`，供一般回合與結局前置凍結共用
+  - 新增`freezeFinalLifeStageForEnding(s)`：呼叫`ensureStageTransition(s)`後直接`freezeStageTrajectory(s)`並清空`stageAccum`，在`takeTurn()`算出`forceEnding`之後、呼叫`mockCallAI()`/`callAI()`之前執行，確保`buildLifeSummaryMaterial()`在AI呼叫前後看到的都是同一份完整段數的`life_trajectory`
+  - `updateLifeTrajectory(s)`拿掉`forceEnding`參數，只保留一般回合的累計邏輯；`applyResult()`裡的呼叫改成`if(!forceEnding) updateLifeTrajectory(s);`，forceEnding時不再重複凍結（避免同一段被凍結兩次）
+  - 已知代價（使用者原文提出、確認可接受）：這一回合本身的數值（這回合AI才要回傳的health/happiness等delta）不算進最後一段的`happiness_avg`／`happiness_peak`／`happiness_low`／管道加總統計，只包含到上一回合為止的累積——對敘事語氣用途的人生總結而言不影響觀感
+- 驗證方式（USE_MOCK=true，只在暫存腳本副本裡改，真正的`index.html`本體`USE_MOCK`維持`false`未動）：
+  - `node --check`語法檢查✅
+  - 重跑前一則筆記寫的全部純函式vm測試（`happinessToneDelta`/`computeHappinessBaseline`/`computeAutonomyRaw`/`applyHappiness`/`buildLifeSummaryMaterial`等）✅全數通過，改名後的`updateLifeTrajectory(s)`與新增的`freezeFinalLifeStageForEnding(s)`皆用實際`index.html`程式碼驗證，8段/6段跨階段模擬正常
+  - 重跑400+回合端到端測試（`takeTurn()`完整路徑，非直接呼叫內部函式）**共4次**，死亡年齡分別落在70/80/87/95歲（對應6/7/8/8段人生階段），**每一次最後一段的`text`欄位都確實有內容、不再是空字串**，render出的HTML也沒有殘留任何`undefined`字樣，全程console無錯誤
+- ⚠️ 大改動提醒：`updateLifeTrajectory()`函式簽章改變（拿掉`forceEnding`參數）、新增`freezeFinalLifeStageForEnding()`/`ensureStageTransition()`兩個函式；`life_trajectory`結構本身欄位不變，不影響前一則筆記已經預告過的舊存檔相容性問題（本來就會跑不動，需要清空重來，這條不是新增的破壞性變更）
+
+**〔測試部〕上述修法的迴歸驗證**
+- 確認「人生階段邊界回合chronicle條目歸屬誤植」（上一則筆記記錄的已知問題）沒有被這次修法意外放大或掩蓋——`freezeFinalLifeStageForEnding()`在AI呼叫前執行，這時候本回合的`chronicle.push()`根本還沒發生（AI都還沒回應），所以最後一段的`resume_entries`天然不會誤收這回合的條目，兩個bug彼此獨立、互不影響
+- 4次端到端測試皆為新的隨機種子（無固定seed），死亡年齡/階段數皆不同，用來確認修法在不同「死亡發生在哪個人生階段」的情境下都成立，不是只在特定情境下碰巧正確
+
 ## 格式範本（之後新增記錄請複製這段）
 
 ```

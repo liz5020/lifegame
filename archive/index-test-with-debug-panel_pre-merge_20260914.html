@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>人生草稿</title>
+<style>
+  :root{
+    --paper:#EDE7D9;
+    --paper-card:#F6F1E4;
+    --paper-dark:#E1D8C3;
+    --ink:#262220;
+    --ink-soft:#6b6156;
+    --line:#c3b79c;
+    --stamp:#9c3b2e;
+    --teal:#3e6b5c;
+    --gold:#93752f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{
+    max-width:520px;
+    margin:0 auto;
+    min-height:100vh;
+    background:var(--paper);
+    display:flex;
+    flex-direction:column;
+  }
+  .cover{
+    padding:22px 20px 14px;
+    border-bottom:3px double var(--ink);
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+  }
+  .cover h1{
+    font-size:22px;
+    margin:0;
+    letter-spacing:2px;
+    font-weight:700;
+  }
+  .cover .sub{
+    font-size:11px;
+    color:var(--ink-soft);
+    letter-spacing:3px;
+    margin-top:2px;
+  }
+  .stamp{
+    border:2px solid var(--stamp);
+    color:var(--stamp);
+    border-radius:50%;
+    width:56px;height:56px;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    transform:rotate(-8deg);
+    font-size:10px;
+    line-height:1.1;
+    text-align:center;
+    flex-shrink:0;
+    opacity:.85;
+  }
+  .stamp b{font-size:16px;display:block;font-family:serif;}
+
+  .ledger{
+    padding:14px 20px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper-card);
+  }
+  .ledger-row{
+    display:flex;align-items:baseline;gap:8px;
+    font-size:14px;
+    padding:3px 0;
+  }
+  .ledger-row .lbl{white-space:nowrap;color:var(--ink-soft);font-size:12.5px;letter-spacing:1px;}
+  .ledger-row .dots{
+    flex:1;border-bottom:1px dotted var(--line);
+    height:10px;
+  }
+  .ledger-row .val{
+    font-variant-numeric:tabular-nums;
+    font-family:"Courier New",monospace;
+    font-size:13.5px;
+    min-width:28px;text-align:right;
+  }
+  .pips{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;}
+  .pip{width:9px;height:9px;border-radius:50%;border:1px solid var(--gold);}
+  .pip.on{background:var(--gold);}
+
+  .journal{
+    flex:1;
+    padding:16px 20px 8px;
+  }
+  .entry{margin-bottom:18px;}
+  .entry .age-tag{
+    font-size:11px;color:var(--stamp);letter-spacing:2px;
+    border-bottom:1px solid var(--stamp);
+    display:inline-block;padding-bottom:2px;margin-bottom:6px;
+  }
+  .entry p{margin:0 0 10px;font-size:15.5px;line-height:1.7;}
+  .entry p:last-child{margin-bottom:0;}
+  .entry.chronicle{
+    font-family:"Noto Sans TC",sans-serif;
+    font-size:12px;color:var(--ink-soft);
+    border-left:2px solid var(--line);
+    padding-left:10px;margin:10px 0;
+  }
+
+  .choices{padding:6px 20px 4px;}
+  .choice-btn{
+    display:block;width:100%;text-align:left;
+    background:none;border:none;border-bottom:1px solid var(--line);
+    padding:10px 4px 10px 22px;position:relative;
+    font-family:"Noto Serif TC",serif;font-size:15px;color:var(--ink);
+    cursor:pointer;
+  }
+  .choice-btn:before{
+    content:"○";position:absolute;left:0;top:10px;color:var(--teal);
+  }
+  .choice-btn:active{background:var(--paper-dark);}
+  .choice-btn:disabled{opacity:.4;}
+
+  .custom-row{
+    display:flex;gap:8px;padding:14px 20px 18px;
+    border-bottom:1px solid var(--line);
+  }
+  .custom-row input{
+    flex:1;border:none;border-bottom:1px solid var(--ink-soft);
+    background:transparent;font-family:"Noto Serif TC",serif;
+    font-size:14.5px;padding:6px 2px;color:var(--ink);
+  }
+  .custom-row input:focus{outline:none;border-bottom:1px solid var(--stamp);}
+  .custom-row button{
+    border:1px solid var(--ink);background:var(--ink);color:var(--paper);
+    font-family:"Noto Serif TC",serif;font-size:13px;
+    padding:6px 14px;cursor:pointer;
+  }
+  .custom-row button:disabled{opacity:.4;}
+  .hint{font-size:11px;color:var(--ink-soft);padding:0 20px 14px;}
+
+  .roster{
+    padding:14px 20px 20px;
+    border-top:1px solid var(--line);
+  }
+  .roster-title{font-size:12px;letter-spacing:2px;color:var(--ink-soft);margin-bottom:8px;}
+  .roster-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;}
+  .rcard{
+    flex:0 0 auto;width:118px;
+    background:var(--paper-card);border:1px solid var(--line);
+    padding:8px 10px;font-size:11.5px;
+  }
+  .rcard.bg{opacity:.45;}
+  .rcard .name{font-size:13px;font-weight:700;margin-bottom:2px;}
+  .rcard .rel{color:var(--ink-soft);margin-bottom:6px;}
+  .rcard .aff-bar{height:4px;background:var(--paper-dark);}
+  .rcard .aff-fill{height:100%;background:var(--stamp);}
+
+  .footer-actions{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 20px 18px;font-size:11px;color:var(--ink-soft);
+  }
+  .footer-actions a{color:var(--ink-soft);text-decoration:underline;cursor:pointer;}
+
+  .center-screen{
+    flex:1;display:flex;flex-direction:column;justify-content:center;
+    padding:30px 24px;text-align:center;
+  }
+  .center-screen h2{font-size:20px;margin-bottom:14px;letter-spacing:1px;}
+  .roll-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0;
+    text-align:left;
+  }
+  .roll-item{border:1px solid var(--line);padding:10px 12px;background:var(--paper-card);}
+  .roll-item .k{font-size:11px;color:var(--ink-soft);letter-spacing:1px;}
+  .roll-item .v{font-size:20px;font-family:"Courier New",monospace;}
+  .primary-btn{
+    background:var(--ink);color:var(--paper);border:none;
+    padding:12px 28px;font-size:15px;letter-spacing:2px;
+    font-family:"Noto Serif TC",serif;cursor:pointer;margin-top:10px;
+  }
+  .ghost-btn{
+    background:none;border:1px solid var(--ink-soft);color:var(--ink);
+    padding:10px 22px;font-size:13px;letter-spacing:1px;
+    font-family:"Noto Serif TC",serif;cursor:pointer;margin-top:10px;
+  }
+  .loading{
+    padding:20px;text-align:center;color:var(--ink-soft);font-size:13px;
+    letter-spacing:1px;
+  }
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(38,34,32,.55);
+    display:flex;align-items:center;justify-content:center;z-index:50;
+    padding:20px;
+  }
+  .modal{
+    background:var(--paper-card);max-width:340px;width:100%;
+    padding:24px 22px;border:2px double var(--ink);
+  }
+  .modal h3{margin-top:0;font-size:17px;}
+  .modal p{font-size:13.5px;color:var(--ink-soft);}
+  .modal .demo-note{font-size:11px;color:var(--stamp);margin-top:10px;}
+  .end-title{font-size:24px;margin:6px 0 4px;color:var(--stamp);}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">開卷中…</div></div>
+
+<script>
+const STORAGE_KEY = "life_sim_save_v1";
+const MODEL = "claude-sonnet-4-6";
+
+const STAGE_LABELS = [
+  [0,14,"孩提"],[15,17,"高中"],[18,22,"大學／技職"],
+  [23,29,"初入社會"],[30,45,"職涯發展"],[46,60,"中年"],[61,200,"老年"]
+];
+function stageLabel(age){
+  for(const [a,b,label] of STAGE_LABELS){ if(age>=a && age<=b) return label; }
+  return "人生";
+}
+function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
+function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function pick(arr){ return arr[rnd(0,arr.length-1)]; }
+
+let state = null;
+
+async function loadGame(){
+  try{
+    const r = await window.storage.get(STORAGE_KEY, false);
+    if(r && r.value){ state = JSON.parse(r.value); render(); return; }
+  }catch(e){ /* no save yet */ }
+  state = null;
+  render();
+}
+async function saveGame(){
+  try{ await window.storage.set(STORAGE_KEY, JSON.stringify(state), false); }
+  catch(e){ console.warn("save failed", e); }
+}
+
+const PARENTING_STYLES = [
+  { label:"威權高壓",
+    parentTrait:"要求嚴格、少誇獎、講求規矩", affinityRange:[35,55] },
+  { label:"民主開放",
+    parentTrait:"願意溝通、給空間、支持你的決定", affinityRange:[60,80] },
+  { label:"放任不管",
+    parentTrait:"忙於自己的事、很少過問，像室友多過像家長", affinityRange:[45,65] },
+  { label:"情感疏忽",
+    parentTrait:"報喜不報憂、情感表達少、常常心不在焉", affinityRange:[25,45] }
+];
+const PARENT_OCCUPATIONS = [
+  { label:"自營業者", trait:"自己做生意，家裡常聊到生意上的事" },
+  { label:"白領上班族", trait:"朝九晚五，偶爾加班，話題常繞著公司" },
+  { label:"勞力/服務業", trait:"工時不固定，體力活，回家常喊累" },
+  { label:"待業中", trait:"目前沒有固定工作，家裡氣氛偶爾緊繃" },
+  { label:"長期不在身邊", trait:"因工作長期在外地或國外，聚少離多" },
+  { label:"自由接案", trait:"收入不穩定，工作時間彈性但常常在忙" },
+  { label:"軍公教警消", trait:"作息規律，重紀律，偶爾提起工作上的責任" },
+  { label:"政治人物", trait:"公眾人物，家裡常有外人不太自然的關注" }
+];
+const SIBLING_RELATIONS = ["哥哥","姊姊","弟弟","妹妹"];
+const SIBLING_TRAITS = ["競爭心強，什麼都要比一下","很罩你，關鍵時刻挺你","各過各的，感情普通但不差","話不多，但需要時找得到人"];
+const SIBLING_NAMES = ["阿翔","小雨","家豪","詩涵","柏勳","佳蓉","彥廷","雨潔"];
+
+function rollAttachmentBaseline(styleLabel){
+  let anxiety = rnd(30,70), avoidance = rnd(30,70);
+  switch(styleLabel){
+    case "威權高壓": anxiety+=rnd(0,15); avoidance+=rnd(0,10); break;
+    case "情感疏忽": anxiety+=rnd(5,20); avoidance+=rnd(5,15); break;
+    case "放任不管": avoidance+=rnd(5,15); break;
+    case "民主開放": anxiety-=rnd(5,15); avoidance-=rnd(5,15); break;
+    case "隔代教養": avoidance+=rnd(0,10); break;
+    case "服刑家長": anxiety+=rnd(5,15); avoidance+=rnd(5,15); break;
+  }
+  return { anxiety: clamp(anxiety,0,100), avoidance: clamp(avoidance,0,100) };
+}
+function rollPeerPosition(){ return rnd(20,100); }
+function peerPositionLabel(v, special){
+  if(special) return special;
+  if(v<=35) return "獨行俠";
+  if(v<=55) return "邊緣觀察者";
+  if(v<=75) return "小圈子黏著者";
+  return "核心人氣圈";
+}
+function rollKeyEvent(familyRuptureApplied){
+  if(Math.random()>=0.30) return null;
+  const pool = ["反覆遷徙","社交創傷","早熟的責任","意外的高光時刻"];
+  if(!familyRuptureApplied) pool.push("家庭斷裂");
+  return pick(pool);
+}
+function applyKeyEvent(type, obj){
+  switch(type){
+    case "家庭斷裂":
+      obj.anxiety = clamp(obj.anxiety+rnd(10,20),0,100);
+      obj.avoidance = clamp(obj.avoidance+rnd(10,20),0,100);
+      break;
+    case "反覆遷徙":
+      obj.peerPosition = clamp(obj.peerPosition-rnd(15,25),0,100);
+      break;
+    case "社交創傷":
+      if(Math.random()<0.5) obj.avoidance = clamp(obj.avoidance+rnd(10,20),0,100);
+      else obj.anxiety = clamp(obj.anxiety+rnd(10,20),0,100);
+      break;
+    case "早熟的責任":
+      obj.peerPositionSpecial = "照顧者型";
+      obj.avoidance = clamp(obj.avoidance+rnd(5,12),0,100);
+      break;
+    case "意外的高光時刻":
+      obj.anxiety = clamp(obj.anxiety-rnd(8,15),0,100);
+      obj.avoidance = clamp(obj.avoidance-rnd(8,15),0,100);
+      break;
+  }
+}
+
+const PERSONALITY_STYLES = ["陽光開朗型","溫柔婉約型","天真爛漫型","高冷神秘型","幹練俐落型","幽默風趣型"];
+function rollEconomicTier(){
+  const r = rnd(1,100);
+  if(r<=30) return { tier:"清寒", network:rnd(15,35), allowance:rnd(300,800), savings:rnd(200,1000) };
+  if(r<=80) return { tier:"小康", network:rnd(30,55), allowance:rnd(1500,3000), savings:rnd(1000,3000) };
+  return { tier:"富裕", network:rnd(50,75), allowance:rnd(5000,9000), savings:rnd(3000,8000) };
+}
+function rollSocialStart(biasStyle, peerPosVal){
+  let base = 50;
+  if(biasStyle==="民主開放") base+=10;
+  if(biasStyle==="情感疏忽") base-=10;
+  if(peerPosVal>=76) base+=8;
+  if(peerPosVal<=35) base-=8;
+  return clamp(base+rnd(-8,8),0,100);
+}
+function computeFinancialHealth(savings, monthlyIncome){
+  const savingsScore = savings<100000 ? (savings/100000)*40 : savings<3000000 ? 40+((savings-100000)/2900000)*35 : 75+Math.min(25,(savings-3000000)/200000);
+  const incomeScore = monthlyIncome<40000 ? (monthlyIncome/40000)*40 : monthlyIncome<100000 ? 40+((monthlyIncome-40000)/60000)*35 : 75+Math.min(25,(monthlyIncome-100000)/20000);
+  return clamp(Math.round(savingsScore*0.5+incomeScore*0.5),0,100);
+}
+
+function newRoll(carry, identity){
+  // 第一步：家庭結構
+  const familyStructure = weightedPick([
+    ["雙親同住",55],["單親－離異",15],["單親－喪親",8],["隔代教養",12],["一方服刑中",10]
+  ]);
+  const familyRuptureApplied = ["單親－離異","單親－喪親","一方服刑中"].includes(familyStructure);
+
+  const turnCount = 0;
+  const characters = [];
+  let isPoliticianChild = false;
+  const presentParentStyles = [];
+
+  function addNormalParent(relationLabel){
+    const occ = pick(PARENT_OCCUPATIONS);
+    if(occ.label==="政治人物") isPoliticianChild = true;
+    const style = pick(PARENTING_STYLES);
+    presentParentStyles.push(style.label);
+    const aff = clamp(rnd(style.affinityRange[0],style.affinityRange[1]) + rnd(-8,8), 0, 100);
+    characters.push({
+      name: relationLabel==="父親" ? "爸爸" : "媽媽",
+      relation: relationLabel,
+      traits: style.parentTrait + "；" + occ.trait,
+      affinity: aff, summary:"", lastTurn:turnCount, active:true, isChild:false
+    });
+  }
+
+  // 第二步：家長職業（在addNormalParent裡一併骰）+ 建立角色卡（依家庭結構決定有誰）
+  if(familyStructure==="雙親同住"){
+    addNormalParent("父親"); addNormalParent("母親");
+  } else if(familyStructure==="單親－離異" || familyStructure==="單親－喪親"){
+    addNormalParent(pick(["父親","母親"]));
+  } else if(familyStructure==="隔代教養"){
+    const gp = pick([["阿公","爺爺"],["阿嬤","奶奶"]]);
+    presentParentStyles.push("隔代教養");
+    characters.push({
+      name: gp[0], relation: gp[1],
+      traits:"疼愛藏在生活提醒裡，用詞偏舊式，很少直接過問交友或行程",
+      affinity: rnd(55,75), summary:"", lastTurn:turnCount, active:true, isChild:false
+    });
+  } else if(familyStructure==="一方服刑中"){
+    const incarcerated = pick(["父親","母親"]);
+    addNormalParent(incarcerated==="父親" ? "母親" : "父親");
+    presentParentStyles.push("服刑家長");
+    characters.push({
+      name: incarcerated==="父親" ? "爸爸" : "媽媽",
+      relation: incarcerated+"（服刑中）",
+      traits:"透過書信或有限探視保持聯繫，內容報喜不報憂，關係停留在某個時間點",
+      affinity: rnd(30,50), summary:"", lastTurn:turnCount, active:true, isChild:false
+    });
+  }
+
+  // 第三步：家境（若鎖定政治世家則跳過獨立骰）—— 財富改真實金額制
+  let economicTier, network, allowance, savings;
+  if(isPoliticianChild){
+    economicTier="富裕"; network=rnd(65,85); allowance=rnd(6000,10000); savings=rnd(4000,9000);
+  } else {
+    const r = rollEconomicTier();
+    economicTier=r.tier; network=r.network; allowance=r.allowance; savings=r.savings;
+  }
+
+  const wisdom = rnd(30,70); // 智慧（原天資，隱藏，終身固定）
+  const logicAbility = clamp(Math.round(wisdom*0.3 + rnd(-10,10)), 0, 100); // 邏輯能力（隱藏，可成長）
+  const talent = clamp(Math.round(wisdom*0.6 + rnd(-5,5)), 0, 100); // 才識（可見，取代原「學識」）
+  const health = rnd(45,90);
+  const looks = rnd(20,90); // 顏值（隱藏子項，純隨機，天花板低）
+  const luckHidden = +(0.85 + Math.random()*0.3).toFixed(2);
+  const lifeExpectancy = rnd(70,88);
+
+  // 第五步：依附風格（兩軸，弱相關於教養風格）
+  const biasStyle = presentParentStyles.length ? pick(presentParentStyles) : null;
+  let { anxiety, avoidance } = rollAttachmentBaseline(biasStyle);
+  if(familyRuptureApplied){
+    anxiety = clamp(anxiety+rnd(10,20),0,100);
+    avoidance = clamp(avoidance+rnd(10,20),0,100);
+  }
+
+  // 第六步：同儕位置
+  let peerPosition = rollPeerPosition();
+  let peerPositionSpecial = null;
+
+  // 第七步：關鍵事件（家庭斷裂若已由結構觸發，事件池排除）
+  const keyEventType = rollKeyEvent(familyRuptureApplied);
+  if(keyEventType){
+    const tmp = { anxiety, avoidance, peerPosition, peerPositionSpecial };
+    applyKeyEvent(keyEventType, tmp);
+    anxiety=tmp.anxiety; avoidance=tmp.avoidance; peerPosition=tmp.peerPosition; peerPositionSpecial=tmp.peerPositionSpecial;
+  }
+
+  const expression = rollSocialStart(biasStyle, peerPosition); // 表達力起點（不跟智慧掛勾）
+  const temperament = rollSocialStart(biasStyle, peerPosition); // 氣質起點（後天為主，會成長）
+  const appearance = clamp(Math.round(looks*0.5+temperament*0.5),0,100);
+  const personalityStyle = pick(PERSONALITY_STYLES);
+  const conscientiousness = { selfDiscipline:50, prudence:50, achievement:50, responsibility:50, teamSolo:50 };
+
+  // 手足（獨立骰，不受以上影響）
+  const sibRoll = rnd(1,100);
+  const sibCount = sibRoll<=40 ? 0 : sibRoll<=80 ? 1 : 2;
+  for(let i=0;i<sibCount;i++){
+    characters.push({
+      name: pick(SIBLING_NAMES), relation: pick(SIBLING_RELATIONS),
+      traits: pick(SIBLING_TRAITS), affinity: rnd(45,75),
+      summary:"", lastTurn:turnCount, active:true, isChild:false
+    });
+  }
+
+  return {
+    version:4, phase:"setup",
+    name: identity?.name || carry?.name || "無名氏",
+    gender: identity?.gender || carry?.gender || "男",
+    age:15, lifeExpectancy, luckHidden,
+    family: economicTier, familyStructure, isPoliticianChild,
+    collegeLocation: null,
+    timeState: { stageMode:"highschool", segmentIndex:0, yearInStage:1, careerYear:1, careerHalf:0 },
+    anxiety, avoidance, peerPosition, peerPositionSpecial,
+    keyEvent: keyEventType ? { type:keyEventType, revealed:false } : null,
+    wisdom, logicAbility, looks, temperament, appearance, personalityStyle, conscientiousness,
+    stats:{ health:clamp(health+(carry?.health||0),0,100),
+            knowledge:clamp(talent+(carry?.knowledge||0),0,100),
+            network:clamp(network+(carry?.network||0),0,100),
+            expression:clamp(expression+(carry?.expression||0),0,100) },
+    savings: savings + (carry?.savingsCarry||0),
+    monthlyIncome: allowance,
+    monthlyExpenses: [],
+    occupationCategory: null,
+    housing: null,
+    fertilityJourney: null,
+    lowHealthStreak: 0,
+    riskyLifestyle: false,
+    deathForeshadowed: false,
+    happiness:50,
+    actionPoints:20, maxActionPoints:20,
+    turnCount,
+    characters,
+    chronicle: carry?.chronicleCarry ? [carry.chronicleCarry] : [],
+    log:[],
+    choices:[],
+    reincarnations: carry?.reincarnations || 0,
+    undosLeft:3,
+    snapshot:null,
+    ending:null
+  };
+}
+
+const SEGMENT_LABELS = ["上學期・開學初","上學期・期中","上學期・期末","寒假","下學期・開學初","下學期・期中","下學期・期末","暑假"];
+function computeTimeLabel(s){
+  const mode = s.timeState.stageMode;
+  if(mode==="highschool"){
+    const yr = ["高一","高二","高三"][clamp(s.timeState.yearInStage,1,3)-1];
+    return yr+"・"+SEGMENT_LABELS[s.timeState.segmentIndex];
+  }
+  if(mode==="college"){
+    const yrIdx = clamp(s.timeState.yearInStage,1,4)-1;
+    const yr = ["大一","大二","大三","大四"][yrIdx];
+    let label = yr+"・"+SEGMENT_LABELS[s.timeState.segmentIndex];
+    if(yrIdx===3 && s.timeState.segmentIndex>=4) label += "（畢業倒數）";
+    return label;
+  }
+  if(mode==="career" && s.age<=29){
+    return `入職第${s.timeState.careerYear}年・${s.timeState.careerHalf===0?"上半年":"下半年"}`;
+  }
+  return `${s.age}歲`;
+}
+function detectTimeSkipIntent(actionText){
+  return /跳過|直接|快轉|之後|畢業後|下學期|寒假|暑假|一段時間後|過了/.test(actionText||"");
+}
+function advanceStructuredTime(actionText){
+  const s = state;
+  const mode = s.timeState.stageMode;
+  const skip = detectTimeSkipIntent(actionText);
+  if(mode==="highschool" || mode==="college"){
+    const fromLabel = computeTimeLabel(s);
+    const jump = skip ? rnd(2,4) : 1;
+    let idx = s.timeState.segmentIndex + jump;
+    let yearsToAdd = 0;
+    while(idx>=8){ idx-=8; yearsToAdd++; }
+    s.timeState.segmentIndex = idx;
+    if(yearsToAdd>0){
+      s.age += yearsToAdd;
+      s.timeState.yearInStage += yearsToAdd;
+      if(mode==="highschool" && s.timeState.yearInStage>3){
+        s.timeState.stageMode="college"; s.timeState.yearInStage=1;
+      } else if(mode==="college" && s.timeState.yearInStage>4){
+        s.timeState.stageMode="career"; s.timeState.careerYear=1; s.timeState.careerHalf=0;
+      }
+    }
+    return { bigJump: jump>1, fromLabel, toLabel: computeTimeLabel(s), monthsCrossed: Math.round(jump*1.5) };
+  }
+  if(mode==="career" && s.age<=29){
+    const fromLabel = computeTimeLabel(s);
+    const jump = skip ? 2 : 1;
+    let half = s.timeState.careerHalf + jump;
+    let yearsToAdd = 0;
+    while(half>=2){ half-=2; yearsToAdd++; }
+    s.timeState.careerHalf = half;
+    if(yearsToAdd>0){ s.age += yearsToAdd; s.timeState.careerYear += yearsToAdd; }
+    return { bigJump: jump>1, fromLabel, toLabel: computeTimeLabel(s), monthsCrossed: jump*6 };
+  }
+  return { bigJump:false, fromLabel:null, toLabel:null, monthsCrossed:0 };
+}
+
+function activeCharacters(){
+  return state.characters.filter(c=>c.active);
+}
+function demoteStaleCharacters(){
+  const THRESHOLD=12;
+  state.characters.forEach(c=>{
+    if(c.active && (state.turnCount - c.lastTurn) > THRESHOLD) c.active=false;
+  });
+}
+
+function buildSystemPrompt(){
+  return `你是「人生草稿」的敘事引擎。這是一款寫實的現代人生模擬文字遊戲，玩家在台灣現代社會中從15歲的高中生一路活到老年。
+
+規則：
+- 第二人稱「你」，日記體語氣，繁體中文，每次敘事約250～350字，篇幅拉長不是單純堆字數，而是多容納一點環境/氛圍的感官細節、內心想法多鋪陳一點、必要時加一句銜接性質的過渡句。
+- 【誰在場原則】：父母的互動應該低頻但情感權重高，不要每回合都出現；日常高頻互動應該交給同儕、老師、老闆、同事這些人負責，父母只在真正合適的時機才登場。
+- 【避免AI感的寫作提醒】：(1) 不要濫用「不是A，是B」這種對比句型，那是講解機制方便理解用的，直接寫進敘事會讓內心話變得像在做心理測驗解說；(2) 不是每一段內心獨白都要收在一個「頓悟」或「發現」上，真實的人常常想到一半就被打斷、或根本沒有結論；(3) 避免把不同情境寫成同一種「畫面→動作→內心一句話」的固定結構，節奏要雜亂不對稱；(4) 適度加入一些「不重要的細節」——真實的內心話會岔題、講廢話、想到不相干的事，不必每一句都在為劇情或性格服務。
+- 數值：健康、才識、表達力、人脈、外表（0-100，可見），存款/月收入/月支出（真實台幣金額，可見），以及隱藏的智慧、邏輯能力、幸福感、人格魅力風格、做事態度光譜（自律/審慎/成就傾向/責任感/團隊vs單打獨鬥，各0-100，開局都是50中性值，純靠選擇累積）。
+- 【財富改真實金額制】：不要用0-100分數描述財富，一律使用 payload 裡的 savings（存款）、monthly_income（月收入）、monthly_expenses（月支出項目列表）、financial_health（財務健康度0-100，內部換算好給你參考機率用，不用讓玩家看到這個數字）。日常小額開銷不用你計算，系統會在回合之間自動結算月收支（滿一個月份邊界才結算，你完全不用管這個算術）。你只需要在下列情況回傳對應欄位：
+  - job_change：玩家獲得/更換正職工作時填寫 {occupation_category:八大類其中之一, monthly_salary:數字}，薪資請落在該類別的合理範圍內（自營業者25000-80000+；白領上班族32000-100000+；勞力/服務業29500-45000；待業中0-25000；長期不在身邊35000-70000；自由接案0-150000+，波動大；軍公教警消32000-70000；政治人物50000-100000+）；沒有變動則整個欄位設為 null
+  - expense_change：房租/貸款這類「會持續每月扣的支出」有變動時，回傳陣列 [{label:"房租"/"學貸"/"房貸"等, monthly_amount:數字, action:"start"或"end"}]；沒有變動則回傳空陣列 []
+  - one_time_transaction：學費、醫療費、大筆消費、意外之財等「一次性」收支，回傳陣列 [{label:"", amount:數字（收入為正、支出為負）}]；沒有則回傳空陣列 []
+  - 大學雙主修學分費約每學分NT$2000-2500；公立大學學雜費一學期約NT$28000-30000，私立約NT$55000-60000（可用助學貸款，屬於一次性收入+expense_change學貸支出）
+  - 醫療/意外/不孕症治療等費用，先在 payload 的 can_afford_medical 裡看低/中/高三級玩家財務健康度能不能負擔（20/50/75門檻），能負擔就直接在 one_time_transaction 扣款，不能負擔就在敘事裡走向借款/分期/放棄/尋求補助等分支，不要讓玩家默默揹債卻沒有劇情反映
+- 【才識成長】：才識(knowledge)的 stat_delta 你只要抓感覺給一個粗略值（-3到+9之間）即可，系統會自動依玩家的智慧/邏輯能力做加成計算，你不用管精確公式
+- 隨機性採「兩層骰」：大方向要合理反映玩家目前的數值（數值高的人成功機率自然較高），但具體情節細節可以有意外驚喜，不必每次都溫吞可預期。
+- 人生里程碑（升學、就業、感情、成家等）到了年紀就自然帶出選項，但玩家永遠可以選擇「跳過／不做」，且要給出跳過後的合理後果，不強迫走傳統路線。
+- 【職涯/感情不設終身鎖死】：30歲以後，玩家隨時可以轉職、創業失敗重來、進入新的感情關係，不要因為玩家選定過某個職業或穩定關係，就假設劇情從此定型不再變化。
+- 角色卡：只有在敘事中真正出現「一個新的、有名字、有互動的人物」時才透過 new_characters 建立新角色卡；提到已存在角色的互動時用 character_updates 更新好感度與一句話補述。不要濫發角色。
+- 【NPC姓名與性別一致性】：生成任何新角色時，姓名必須符合其設定性別（不要給男性角色一個普遍認知是女性的名字，反之亦然），一旦生成就是既定事實，後續回合引用該角色時姓名與性別不可再變動或矛盾。
+- 【時間推進速度，依目前年齡分段，越後面的人生跳得越快】：15～29歲期間，時間已經由系統算好（見下方 current_time_label 說明），age_advance 欄位請一律填0，不要自己推進年齡；30～45歲，age_advance 多為 1～2；46歲以上，age_advance 多為 2～4。除非玩家的自訂行動明確要求「跳過幾年」「時間快轉」，否則不要一次跳超過這個範圍，避免人生一下子就過完。
+- 【current_time_label 與 time_jump（僅15-29歲適用）】：current_time_label 是系統已經算好、這一刻故事所在的確切時間點（例如「高二・上學期・期末」「入職第2年・下半年」），你不需要、也不應該自己推算現在是哪一天/哪個學期，直接參照這個時間點的季節感/氛圍去寫即可，不用在敘事文字裡逐字報出這個標籤本身（畫面會自動幫玩家顯示）。如果 time_jump 不是 null（代表這回合跳過了一段時間，從 time_jump.from 跳到 time_jump.to），這回合的敘事開頭必須先用一兩句話簡短交代這段被跳過的空白時間裡發生了什麼變化，再繼續往下寫這一刻的劇情，不能無縫接軌假裝時間沒有跳躍過去。
+- 【college_location 大學地點選擇】：如果玩家在劇情中實際做出「大學/技職要去哪裡念」的決定（本地／外縣市／出國），透過 college_location_choice 回傳其中一個值；如果這件事還沒發生或已經決定過，一律回傳 null（已決定過的地點會透過 payload 的 college_location 持續告訴你，不用重複詢問或重複設定）。地點會影響親子互動的密度質地：本地就讀的話，跟父母碰面頻率高但多是表面的日常擦身而過（深度對話需要特別情境才觸發，不要因為住在一起就自動假設關係更緊密）；外縣市或出國就讀的話，聯絡頻率低（大約一週一次），但每次聯絡在敘事份量上可以稍微重一點。
+- 【房屋里程碑】：初入社會階段(23-29歲)，或大學選了外縣市/出國分支畢業後，適合自然帶出「租屋/買房/住家裡」的選項。玩家選定後透過 housing_choice 回傳 {type:"rent"/"own"/"parents", monthly_amount:數字}（租屋或房貸才需要monthly_amount，住家裡填0），系統會自動疊加進月支出；買房需要財務健康度或存款達到一定門檻才能觸發，不是按一個選項就完成；買房後如果財務惡化，可以在劇情裡提供「賣房/轉租」的逆向選項。沒有相關決定時 housing_choice 填 null。
+- 【感情關係的收尾】：一段感情走到尾聲時，不用預設哪種收法更好，常見的是三種——分手（適合當作前面關係測試點失敗後的自然結果，不必是狗血事件）、畢業後漸行漸遠（沒有明確攤牌，只是聯絡越來越少，適合留白處理）、或關係持續帶入下一個人生階段（不用在這裡寫完結局，讓角色卡的關係史摘要繼續累積即可）。分手當下，可以依玩家的依附軸呈現不同反應：焦慮軸偏高的容易反覆回想、翻舊訊息；迴避軸偏高的容易把訊息封存、迅速恢復日常表面上的樣子。
+- 【兒女與生育系統】：不需要先結婚，單身也可以選擇生育或領養，只要有穩定關係或經濟條件即可，不限年齡階段，每次觸發都是一次性決定要不要生/領養，可以反覆觸發累積多個小孩。決定生育後用兩層骰邏輯（大方向看健康/年齡/financial_health，細節你自由發揮：一次成功/需要多次嘗試/走向不孕症）。如果走向不孕症，採四階段慢慢展開：①自然嘗試期(平淡帶過，期待與輕微失落交替)→②意識到不對勁決定就醫(先模糊的不對勁，隔一段時間才出現具體導火線去看醫生)→③治療嘗試多回合(依附兩軸呈現伴侶雙方不同反應；用one_time_transaction扣治療費，費用等級用「高費用」對照can_afford_medical判斷)→④岔路點(繼續嘗試/轉向領養/決定不再嘗試，三者happiness地位平等，不預設哪個正確，也不要無止盡重複讓玩家陷入負面循環，嘗試幾次後就該給出明確岔路)。小孩透過 new_characters 建立角色卡，relation 填「兒子」或「女兒」，並額外加一個欄位 is_child:true。領養的小孩跟親生地位完全對等。
+- 【意外死亡機制（取代原本「只有forceEnding才能結束」的規則）】：死亡結局現在有兩種觸發方式——forceEnding:true（壽命到達，原規則不變）或意外死亡。意外死亡機率由 payload 裡的 accident_risk_hint 參考（已經內部合成健康數值風險+高風險職業/行為加成），你依這個機率自行判斷這回合要不要真的觸發意外死亡：(1) 未滿19歲的階段絕對不能觸發意外死亡（國高中15-18歲階段完全豁免）；(2) 觸發前必須已經有過前兆——如果 payload 裡 death_foreshadowed 是 false，這回合最多只能寫一個前兆暗示（疲勞感、差點發生意外的驚險場面、健康檢查結果不佳），並把 foreshadow_death 設為 true，不能直接死亡；只有 death_foreshadowed 已經是 true 的情況下，才能真的觸發意外死亡並把 is_ending 設為true；(3) 這個機制務必節制使用，accident_risk_hint 低的時候幾乎不該觸發，只有在健康長期低落或玩家自己選擇了高風險職業/行為的情況下才適合真的發生，不要為了戲劇性隨便殺死玩家。
+- 【世代傳承（死亡結局時，如果玩家有小孩）】：如果 payload 的 has_children 是 true 且這回合觸發死亡結局（無論哪種死法），在 ending_summary 之外，額外透過 succession_available 設為 true 告知系統可以提供轉生選項；不用你自己處理繼承細節，那是系統的事。如果沒有小孩，succession_available 設為 false。
+- 【段落切分】：narrative 內容不要寫成單一區塊，要依「畫面轉換」或「心理轉折」切成2-3個小段落，段落之間用一個換行符號分隔（在JSON字串裡就是 \\n\\n）。參考結構：第一段場景/動作 → 第二段內心想法 → 第三段（如果有）對話或選項前導。
+- 【九條敘事技巧】：(1) 同一段落內長短句要不對稱，至少有一句5字以內的極短句，避免每句話都工整等長；(2) 內心自問可以連續發問、不必收斂成一個結論，情緒本身在滾動比"想清楚"更真實（尤其焦慮軸偏高時）；(3) 呈現角色反差或對比時，用一句平述帶過就好，不用解釋成因；(4) 角色有所隱瞞、迴避、內心波動時，優先用沉默或岔開話題呈現，不要讓角色直接說出感受或動機——但如果情境是單純辯論、抬槓、交換意見（沒有隱瞞成分），要用直球對話，每句話精確回應上一句，不要閃躲；(5) 同一天內瑣碎的場景切換可以不用過渡句直接跳接（這條跟「強制過渡回合」不衝突，那條只管跨里程碑的明顯時間跳躍）；(6) 具體、甚至外人聽起來略顯瑣碎的道具/品牌/暱稱細節，比形容詞更能建立真實感；(7) 角色的動作可以用「（動作）台詞」的格式直接嵌在對話裡，不用另外拆一句旁白動作描述；(8) 角色說話可以中途自我修正、改口，這種不完美的痕跡才真實；角色可以有專屬的說話癖好，不用旁白解釋；(9) 俚語、流行語、口頭禪要依角色的年齡/性格/背景個別設計，不能所有角色共用同一套。
+- 【防壓抑機制】：(1) 兩層骰的細節層不能只服務負面驚喜——玩家數值明顯偏低時，仍要保留機率給正向意外（陌生人的善意、意外的機會、被低估的能力被看見），不要每次都往更慘的方向發揮；(2) 玩家某次選擇明顯違反自己的依附軸底色時（例如迴避軸很高的人主動求助、焦慮軸很高的人罕見地表現得從容），這是「性格破格時刻」，值得用比平常更長、更聚焦情緒的一段敘事給予份量，最好能連動到某個角色卡的好感度變化，不要讓依附軸變成貫穿一生的宿命感；(3) 旁白可以在連續兩三個負面事件之後，或人生階段轉場時，保留一點點抽離、自嘲的語氣調劑，不用每次都很沉重；(4) 玩家選擇跳過傳統路線（不成家、不追求事業高峰）時，happiness_delta 不能暗中被懲罰，要確保跳過傳統路線的玩家一樣能透過其他管道（友情、自我實現、興趣）累積正向的 happiness_delta，不能有「不跳過才是正確人生」的隱藏傾向。
+- 【背景資訊要暗示，不要宣告】：像家境、外貌、天資這類設定資訊，禁止用旁白直接點名等級（例如「你家境富裕」「你天資聰穎」這種講法），一律透過場景細節、物品、他人的反應與對話去間接透露，讓玩家自己感受到，而不是被告知一個標籤。
+- 【依附風格 attachment_axes：焦慮軸 anxiety、迴避軸 avoidance，各0-100】：這是貫穿全程的敘事語氣濾鏡，不是某個時間點要「揭露」的資訊——玩家每一句內心話、每一次反應的預設方式都被這兩軸底色染過，但永遠不要用「焦慮」「迴避」「依附」這類詞彙直接講給玩家聽，只能透過語氣、選擇的猶豫程度、對親密/衝突情境的反應方式去呈現。數值越低代表這個軸越健康／越不明顯。
+- 【同儕位置 peer_position：獨行俠／邊緣觀察者／小圈子黏著者／核心人氣圈／照顧者型】：這條適合在遊戲很早期（turn數很小、還在高中階段）透過「進教室」「分組」這類社交情境自然帶出，之後才視情況再提；一樣不要直接講出分類名稱本身，要用行為描寫（誰主動找誰說話、你習慣坐哪裡、下課都在做什麼）去呈現。
+- 【人格魅力風格 personality_style】：這是玩家的人設風格標籤（陽光開朗/溫柔婉約/天真爛漫/高冷神秘/幹練俐落/幽默風趣），與性別脫鉤，任何性別都可以是任何風格，用行為/說話方式自然呈現，不要直接說出標籤名稱。
+- 【做事態度光譜 conscientiousness：自律/審慎/成就傾向/責任感/團隊vs單打獨鬥，各0-100】：這是行為模式的慣性，不是情緒濾鏡，主要影響選項的傾向性描述，不強求每次都伴隨強烈情緒；開局都是中性50分，完全靠學生時期起的具體選擇（準時交作業、多想想再決定、力求更好、對承諾的實踐、找人合作或自己扛）慢慢累積偏向。可以透過 conscientiousness_shift 回傳小幅位移（-3到+3，多數回合是0）。責任感、團隊vs單打獨鬥這兩條已經由系統自動換算成人脈/才識成長的倍率，你不用管；但下面兩條需要你在敘事判斷時實際套用：
+  - detail_variance_multiplier：面對重大抉擇的結果時，這個倍率越接近0.5代表這個人「審慎」，結果應該更集中在數值本來就該有的水準附近，不要给太意外的結果；越接近1.5代表「衝動」，可以讓細節層結果出現更極端的好或壞（呼應防壓抑機制，極端結果不等於只能往壞的方向）
+  - achievement_probability_modifier_pp：遇到創業/升遷這類機會時，把這個百分點數加到你原本評估的基礎成功機率上再決定結果（例如基礎機率70%，這個值是+9，代表大方向落點應該當作79%在判斷，不是71%或其他算法）
+  - achievement_health_cost_multiplier：玩家選擇積極衝刺事業/創業時，健康代價（health的負向delta）建議乘上這個倍率再輸出
+- 【家庭結構 family_structure】：決定了通訊錄裡實際有誰（雙親／單親／隔代／服刑一方），active_characters 裡每個家人角色卡的 relation 跟 traits 已經反映了這個結構，你只需要順著這些角色卡的設定去寫互動，語氣要符合各自的關係質地（例如服刑家長的互動應該透過書信/有限探視，不是日常對話；隔代教養的語氣要有世代感）。
+- 【關鍵事件 key_event】：如果 key_event 不是 null 且 already_revealed 是 false，找一個貼合當下情境（例如社交場合、壓力情境、感情衝突）的時機，透過一段簡短插敘/回憶帶出這個事件的「一角」，不解釋完整前因後果，讓玩家自己拼湊；一旦你在某回合這樣帶出過，把 revealed_key_event 設為 true（之後不用每次強調，偶爾呼應即可）。如果 key_event 是 null，完全不用管這件事。
+- 【政治世家隱藏設定 is_politician_child_hidden_flag】：如果為 true，可以偶爾（不用每次，稀疏一點）讓某個配角對玩家的姓氏或背景表現出一閃而過的反常反應（愣一下、換話題、態度突然過度客氣），完全不要說出原因，讓玩家自己拼湊；如果為 false，完全不要做這件事。
+- 【attachment_shift 與 peer_position_shift】：請根據玩家這回合行動/選擇的性質，回傳小幅度的位移（-5到+5之間，多數回合應該是0或很小的個位數，只有真正戲劇性的情節才給較大位移）。這是長期累積才會讓人真正改變的機制，不要每回合都給非零數值，也不要暴衝。
+- 使用 player_name 稱呼玩家本人（旁白內文可直接用「你」，但其他角色對話中應該會叫玩家的名字），並依 gender 使用正確的代名詞。
+- major_event_summary：只有在發生「值得長期記住的重大事件」時才填寫（10-20字精簡摘要），否則設為 null。這會被存進「人生大事記」長期提供給你當背景記憶，所以要精簡扼要。
+- choices：給3到4個簡短（不超過12個字）、彼此方向不同的具體行動選項。
+
+只回傳一個 JSON 物件，不要任何 markdown code fence、不要任何額外文字說明。JSON 結構如下：
+{
+ "narrative": "string",
+ "age_advance": 0,
+ "stat_deltas": {"health":0,"knowledge":0,"network":0,"expression":0},
+ "happiness_delta": 0,
+ "job_change": null,
+ "expense_change": [],
+ "one_time_transaction": [],
+ "housing_choice": null,
+ "attachment_shift": {"anxiety":0, "avoidance":0},
+ "peer_position_shift": 0,
+ "conscientiousness_shift": {"selfDiscipline":0,"prudence":0,"achievement":0,"responsibility":0,"teamSolo":0},
+ "revealed_key_event": false,
+ "college_location_choice": null,
+ "foreshadow_death": false,
+ "new_characters": [{"name":"","relation":"","traits":"","initial_affinity":50,"is_child":false}],
+ "character_updates": [{"name":"","affinity_delta":0,"summary_add":""}],
+ "major_event_summary": null,
+ "choices": ["",""],
+ "is_ending": false,
+ "ending_title": null,
+ "ending_summary": null,
+ "succession_available": false
+}`;
+}
+
+function computeAccidentRiskHint(s){
+  if(s.age<19) return "未滿19歲，規則上絕對不會觸發";
+  let risk = 0;
+  if(s.stats.health<30) risk+=2; else if(s.stats.health<50) risk+=1;
+  if(s.riskyLifestyle) risk+=2;
+  if(risk>=3) return "高";
+  if(risk>=1) return "低到中";
+  return "極低";
+}
+function buildUserMessage(actionText, forceEnding, timeCtx){
+  const s = state;
+  const roster = activeCharacters().map(c=>({
+    name:c.name, relation:c.relation, traits:c.traits,
+    affinity:c.affinity, summary:c.summary, is_child:!!c.isChild
+  }));
+  const financialHealth = computeFinancialHealth(s.savings, s.monthlyIncome);
+  const payload = {
+    player_name: s.name, gender: s.gender,
+    age:s.age, stage:stageLabel(s.age), turn:s.turnCount,
+    current_time_label: timeCtx?.structured ? timeCtx.label : null,
+    time_jump: (timeCtx?.structured && timeCtx.jump) ? timeCtx.jump : null,
+    college_location: s.collegeLocation,
+    stats:s.stats, happiness:s.happiness,
+    appearance: s.appearance, personality_style: s.personalityStyle,
+    conscientiousness: s.conscientiousness,
+    detail_variance_multiplier: clamp(1-(s.conscientiousness.prudence-50)*0.01, 0.5, 1.5),
+    achievement_probability_modifier_pp: +((s.conscientiousness.achievement-50)*0.3).toFixed(1),
+    achievement_health_cost_multiplier: clamp(1+(s.conscientiousness.achievement-50)*0.01, 0.5, 1.5),
+    savings: s.savings, monthly_income: s.monthlyIncome, monthly_expenses: s.monthlyExpenses,
+    financial_health: financialHealth,
+    can_afford_medical: { 低: financialHealth>=20, 中: financialHealth>=50, 高: financialHealth>=75 },
+    occupation_category: s.occupationCategory, housing: s.housing,
+    family_structure: s.familyStructure,
+    family_background: s.family,
+    attachment_axes: { anxiety: s.anxiety, avoidance: s.avoidance },
+    peer_position: peerPositionLabel(s.peerPosition, s.peerPositionSpecial),
+    is_politician_child_hidden_flag: s.isPoliticianChild,
+    key_event: s.keyEvent ? { type:s.keyEvent.type, already_revealed:s.keyEvent.revealed } : null,
+    accident_risk_hint: computeAccidentRiskHint(s),
+    death_foreshadowed: s.deathForeshadowed,
+    low_health_streak: s.lowHealthStreak,
+    has_children: s.characters.some(c=>c.isChild),
+    fertility_journey: s.fertilityJourney,
+    active_characters: roster,
+    chronicle_recent: s.chronicle.slice(-6),
+    recent_log: s.log.slice(-2).map(e=>e.text),
+    player_action: actionText,
+    forceEnding: !!forceEnding
+  };
+  return JSON.stringify(payload);
+}
+
+const WORKER_URL = "https://life-game.smile80275.workers.dev/";
+
+async function callAI(actionText, forceEnding, timeCtx){
+  let res;
+  try{
+    res = await fetch(WORKER_URL, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 1400,
+        system: buildSystemPrompt(),
+        messages: [{ role:"user", content: buildUserMessage(actionText, forceEnding, timeCtx) }]
+      })
+    });
+  }catch(networkErr){
+    throw new Error("網路請求失敗："+networkErr.message);
+  }
+
+  let text;
+  try{ text = await res.text(); }
+  catch(readErr){ throw new Error("讀取回應內容失敗："+readErr.message); }
+
+  if(!text || text.trim().length===0){
+    const ct = res.headers.get("content-type");
+    throw new Error("收到空白回應（HTTP "+res.status+" "+res.statusText+"，content-type: "+ct+"，長度: "+text.length+"）");
+  }
+
+  let data;
+  try{ data = JSON.parse(text); }
+  catch(parseErr){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）內容前200字：「"+text.slice(0,200)+"」"); }
+
+  if(!res.ok){
+    throw new Error("API錯誤 "+res.status+"："+(data?.error?.message||JSON.stringify(data)));
+  }
+  if(data.error){
+    throw new Error("API錯誤："+data.error.message);
+  }
+  const textBlock = (data.content||[]).find(b=>b.type==="text");
+  if(!textBlock){
+    throw new Error("回應裡沒有文字內容："+JSON.stringify(data).slice(0,200));
+  }
+  let raw = textBlock.text.trim();
+  raw = raw.replace(/^```json\s*/i,"").replace(/^```\s*/,"").replace(/```\s*$/,"");
+  try{
+    return JSON.parse(raw);
+  }catch(jsonErr){
+    throw new Error("JSON解析失敗："+jsonErr.message+" ｜ 原始內容前200字："+raw.slice(0,200));
+  }
+}
+
+// ---------- 離線模擬旁白（不呼叫AI，純規則模擬，供沒有API時測試用） ----------
+const USE_MOCK = true; // 測試階段關閉真AI，改用離線規則模擬，不會呼叫Worker/API，不花錢
+
+function weightedPick(pairs){
+  const total = pairs.reduce((s,p)=>s+p[1],0);
+  let r = Math.random()*total;
+  for(const [val,w] of pairs){ if(r<w) return val; r-=w; }
+  return pairs[0][0];
+}
+function pickAgeAdvance(age){
+  if(age<=18) return weightedPick([[0,7],[1,3]]);
+  if(age<=29) return weightedPick([[0,4],[1,6]]);
+  if(age<=45) return weightedPick([[1,5],[2,5]]);
+  return weightedPick([[2,5],[3,3],[4,2]]);
+}
+function guessFocus(actionText){
+  const t = actionText;
+  if(/讀|念|書|學|考|研究|課/.test(t)) return "knowledge";
+  if(/錢|打工|工作|存|賺|花|投資|創業/.test(t)) return "wealth";
+  if(/朋友|社團|認識|約|聚|人脈|交際/.test(t)) return "network";
+  if(/累|病|睡|健康|運動|休息|養生/.test(t)) return "health";
+  return null;
+}
+const MOCK_TEMPLATES = {
+  teen:[
+    "{name}翻了翻手邊的課本，窗外的蟬聲比什麼都吵，這個下午最後還是花在了別的事情上。",
+    "放學後，{name}在校門口站了一會兒，看著同學三三兩兩走遠，才慢慢往家的方向走。",
+    "段考成績單發下來那天，{name}把它折了兩折，塞進書包最底層，晚餐桌上沒有人特別提起。",
+    "假日的下午家裡很安靜，{name}一個人窩在房間，時間過得比想像中快。",
+    "教室後排傳來一陣笑聲，{name}抬頭看了一眼，又低下頭繼續原本在做的事。"
+  ],
+  young:[
+    "宿舍熄燈前，{name}盯著手機螢幕又看了一遍剛剛的訊息，還是沒回。",
+    "第一次領到薪水那天，{name}在提款機前站了幾秒，才把錢領出來。",
+    "系上的聚餐辦到一半，{name}找了個理由先離開，走在夜裡的街上，風有點大。",
+    "面試結束走出大樓，{name}回頭看了一眼那棟建築，說不上是什麼心情。",
+    "深夜的圖書館快關門了，{name}才收拾東西，路上的店家大多已經拉下鐵門。"
+  ],
+  adult:[
+    "會議開到一半，{name}看了眼手錶，心裡想著等下還有別的事要處理。",
+    "週末難得的休假，{name}卻還是在滑著工作訊息，家裡的人已經先睡了。",
+    "銀行對帳單寄到的那天，{name}翻了翻，沒說什麼，隨手放進抽屜。",
+    "巷口那家常去的店換了老闆，{name}站在門口猶豫了一下，還是走了進去。",
+    "電話那頭傳來熟悉的聲音，{name}一時不知道該先說哪一句。"
+  ],
+  midlife:[
+    "體檢報告拿到手上，{name}看了很久，最後把它收進了公事包。",
+    "家裡的餐桌比從前安靜了一些，{name}夾了菜，沒特別說話。",
+    "老同學傳來的訊息裡附了張合照，{name}看了很久，才想起已經過了那麼多年。",
+    "深夜加班回家，社區已經暗了大半，{name}在樓下站了一會兒才上樓。",
+    "整理舊物的時候，{name}翻出一張早就忘了的照片，愣了一下。"
+  ],
+  elder:[
+    "陽台上的植物又抽了新芽，{name}坐在藤椅上看了好一會兒。",
+    "老朋友的電話比以前少了，{name}倒也習慣了這樣的安靜。",
+    "孫輩來訪的那個下午，屋子裡難得熱鬧，{name}笑得比平常多。",
+    "醫院回診的路上，{name}望著窗外熟悉又陌生的街景。",
+    "翻著舊相簿，{name}一張一張慢慢看，時間彷彿也跟著慢了下來。"
+  ]
+};
+const MOCK_CHOICES_POOL = {
+  knowledge:["把時間投入念書/進修","報名一門新課程","找資料自學"],
+  wealth:["接一份能賺錢的工作","精打細算過日子","嘗試一筆投資"],
+  network:["主動聯絡一位朋友","參加一場聚會","認識新的人"],
+  health:["早點休息調整作息","去運動流點汗","去做個健康檢查"],
+  general:["先觀望，什麼都不做","照原本的計畫走","做點完全不一樣的事"]
+};
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){ const j=rnd(0,i); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+function pickChoices(){
+  const cats = shuffle(["knowledge","wealth","network","health"]).slice(0,3);
+  const choices = cats.map(cat=>pick(MOCK_CHOICES_POOL[cat]));
+  choices.push(pick(MOCK_CHOICES_POOL.general));
+  return shuffle(choices);
+}
+let lastTemplateText = null;
+function mockStage(age){
+  if(age<=18) return "teen";
+  if(age<=29) return "young";
+  if(age<=45) return "adult";
+  if(age<=60) return "midlife";
+  return "elder";
+}
+function mockGenerateTurn(actionText, forceEnding, timeCtx){
+  const s = state;
+  if(forceEnding){
+    const title = computeEndingTitle(s);
+    return {
+      narrative:`很多年後的一個尋常午後，${s.name}闔上了眼睛。屋子裡有人輕聲說話，陽光照進來，像每一個平凡的下午一樣。`,
+      age_advance:0, stat_deltas:{wealth:0,health:0,knowledge:0,network:0}, happiness_delta:0,
+      attachment_shift:{anxiety:0,avoidance:0}, peer_position_shift:0, revealed_key_event:false,
+      college_location_choice:null,
+      new_characters:[], character_updates:[], major_event_summary:null,
+      choices:[], is_ending:true, ending_title:title,
+      ending_summary:`這一生，${s.name}活成了「${title}」的樣子——不完美，但確實走完了。`
+    };
+  }
+  const stageKey = mockStage(s.age);
+  let template;
+  const pool = MOCK_TEMPLATES[stageKey];
+  do{ template = pick(pool); }while(pool.length>1 && template===lastTemplateText);
+  lastTemplateText = template;
+  const narrative = template.replace(/\{name\}/g, s.name);
+  const focus = guessFocus(actionText);
+  const deltas = {wealth:rnd(-3,3),health:rnd(-3,3),knowledge:rnd(-2,3),network:rnd(-2,3)};
+  if(focus) deltas[focus] += rnd(4,9);
+  const happiness_delta = rnd(-2,3);
+
+  let major_event_summary = null;
+  if(Math.random()<0.15){
+    major_event_summary = `（模擬事件）${s.age}歲時的一件小事`;
+  }
+  const new_characters = [];
+  if(Math.random()<0.12){
+    new_characters.push({
+      name: pick(["小林","阿哲","惠雯","子晴","阿凱","詩婷"]),
+      relation: pick(["同學","同事","鄰居","網友"]),
+      traits: pick(["直率","話少但可靠","愛開玩笑","有點神秘"]),
+      initial_affinity: rnd(40,65)
+    });
+  }
+  const character_updates = [];
+  const actives = activeCharacters();
+  if(actives.length && Math.random()<0.3){
+    const c = pick(actives);
+    character_updates.push({ name:c.name, affinity_delta: rnd(-4,6), summary_add:"（模擬互動）又聊了一下近況" });
+  }
+
+  const choices = pickChoices();
+  const attachment_shift = { anxiety: rnd(-2,2), avoidance: rnd(-2,2) };
+  const peer_position_shift = rnd(-2,2);
+  const structured = timeCtx?.structured;
+
+  return {
+    narrative, age_advance: structured ? 0 : pickAgeAdvance(s.age),
+    stat_deltas: deltas, happiness_delta,
+    attachment_shift, peer_position_shift, revealed_key_event:false,
+    college_location_choice:null,
+    new_characters, character_updates, major_event_summary,
+    choices, is_ending:false, ending_title:null, ending_summary:null
+  };
+}
+function computeEndingTitle(s){
+  const { health,knowledge,network } = s.stats;
+  const financialHealth = computeFinancialHealth(s.savings, s.monthlyIncome);
+  const h = s.happiness;
+  if(h>=70 && network>=60) return "家庭圓滿";
+  if(financialHealth>=75 && knowledge>=60) return "事業巔峰";
+  if(h<20) return "壯志未酬";
+  if(financialHealth<25 && h>=50) return "浪子回頭";
+  if(health<25) return "體衰力竭";
+  return "平凡知足";
+}
+async function mockCallAI(actionText, forceEnding, timeCtx){
+  await new Promise(r=>setTimeout(r, 450));
+  return mockGenerateTurn(actionText, forceEnding, timeCtx);
+}
+
+function snapshotForUndo(){
+  state.snapshot = JSON.parse(JSON.stringify({
+    age:state.age, stats:state.stats, happiness:state.happiness,
+    actionPoints:state.actionPoints, turnCount:state.turnCount,
+    characters:state.characters, chronicle:state.chronicle,
+    log:state.log, choices:state.choices,
+    anxiety:state.anxiety, avoidance:state.avoidance,
+    peerPosition:state.peerPosition, peerPositionSpecial:state.peerPositionSpecial,
+    keyEvent:state.keyEvent, timeState:state.timeState, collegeLocation:state.collegeLocation,
+    savings:state.savings, monthlyIncome:state.monthlyIncome, monthlyExpenses:state.monthlyExpenses,
+    occupationCategory:state.occupationCategory, housing:state.housing,
+    temperament:state.temperament, appearance:state.appearance,
+    conscientiousness:state.conscientiousness, lowHealthStreak:state.lowHealthStreak,
+    riskyLifestyle:state.riskyLifestyle, deathForeshadowed:state.deathForeshadowed,
+    fertilityJourney:state.fertilityJourney, lastSettlement:state.lastSettlement
+  }));
+}
+function applySnapshot(){
+  if(!state.snapshot) return;
+  Object.assign(state, JSON.parse(JSON.stringify(state.snapshot)));
+}
+function restoreUndo(){
+  if(!state.snapshot) return;
+  applySnapshot();
+  state.undosLeft -= 1;
+  state.snapshot = null;
+  saveGame(); render();
+}
+
+async function takeTurn(actionText, cost){
+  if(state.phase!=="playing") return;
+  if(state.actionPoints < cost){ renderPaywall(); return; }
+  snapshotForUndo();
+  state.actionPoints -= cost;
+  state.turnCount += 1;
+
+  const turnStartAge = state.age;
+  let timeCtx = { structured:false, label:null, jump:null, monthsCrossed:0 };
+  if(turnStartAge <= 29){
+    const adv = advanceStructuredTime(actionText);
+    timeCtx = { structured:true, label: adv.toLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0 };
+  }
+  render(true);
+
+  const forceEnding = state.age >= state.lifeExpectancy;
+  try{
+    const result = USE_MOCK ? await mockCallAI(actionText, forceEnding, timeCtx) : await callAI(actionText, forceEnding, timeCtx);
+    applyResult(result, timeCtx, forceEnding);
+  }catch(e){
+    console.error(e);
+    applySnapshot();
+    state.log.push({age:state.age, timeLabel:null, text:"（旁白剛剛恍神了一下，這回合沒講清楚——原因："+e.message+"）"});
+  }
+  saveGame();
+  render();
+}
+
+function applyResult(r, timeCtx, forceEnding){
+  const s = state;
+  const structured = !!(timeCtx && timeCtx.structured);
+  const ageAtEvent = s.age; // 非結構化時間下的年齡（尚未套用 age_advance 之前）
+  if(!structured){
+    s.age = clamp(s.age + (r.age_advance||0), s.age, 130);
+  }
+  // structured=true 時，s.age 在呼叫AI之前就已經由 advanceStructuredTime() 算好了，這裡不再套用 r.age_advance
+  const d = r.stat_deltas||{};
+  s.stats.health = clamp(s.stats.health + (d.health||0), 0, 100);
+
+  // 3.7.3 做事態度光譜——精確公式版：團隊vs單打獨鬥影響才識/邏輯 vs 人脈的此消彼長效率
+  const teamKnowledgeMult = clamp(1+(50-s.conscientiousness.teamSolo)*0.01, 0.5, 1.5);
+  const wisdomMult = 0.5 + (s.wisdom/200);
+  const logicBonus = 1 + (s.logicAbility/400);
+  const knowledgeDelta = (d.knowledge||0) * wisdomMult * logicBonus * teamKnowledgeMult;
+  s.stats.knowledge = clamp(s.stats.knowledge + knowledgeDelta, 0, 100);
+
+  // 責任感→人脈加分/扣分幅度；團隊vs單打獨鬥→人脈成長效率，兩者疊乘
+  const teamNetworkMult = clamp(1+(s.conscientiousness.teamSolo-50)*0.01, 0.5, 1.5);
+  const respMult = (d.network||0)>=0
+    ? clamp(1+(s.conscientiousness.responsibility-50)*0.01, 0.5, 1.5)
+    : clamp(1+(50-s.conscientiousness.responsibility)*0.01, 0.5, 1.5);
+  const networkDelta = (d.network||0) * respMult * teamNetworkMult;
+  s.stats.network = clamp(s.stats.network + networkDelta, 0, 100);
+  s.stats.expression = clamp(s.stats.expression + (d.expression||0), 0, 100);
+  s.happiness += (r.happiness_delta||0);
+
+  // 氣質被動成長（呼應才識/表達力提升、財務狀況、隨時間累積），外表=顏值+氣質
+  let tempGrowth = 0;
+  if(knowledgeDelta>3) tempGrowth+=1;
+  if((d.expression||0)>3) tempGrowth+=1;
+  s.temperament = clamp(s.temperament+tempGrowth,0,100);
+  s.appearance = clamp(Math.round(s.looks*0.5+s.temperament*0.5),0,100);
+
+  // 健康連續偏低追蹤（呼應3.5.1過勞/憂鬱觸發門檻，僅供AI參考，不強制觸發）
+  s.lowHealthStreak = s.stats.health<30 ? s.lowHealthStreak+1 : 0;
+
+  const as = r.attachment_shift||{};
+  s.anxiety = clamp(s.anxiety + (as.anxiety||0), 0, 100);
+  s.avoidance = clamp(s.avoidance + (as.avoidance||0), 0, 100);
+  s.peerPosition = clamp(s.peerPosition + (r.peer_position_shift||0), 0, 100);
+
+  const cs = r.conscientiousness_shift||{};
+  ["selfDiscipline","prudence","achievement","responsibility","teamSolo"].forEach(k=>{
+    s.conscientiousness[k] = clamp(s.conscientiousness[k]+(cs[k]||0),0,100);
+  });
+
+  if(r.revealed_key_event && s.keyEvent) s.keyEvent.revealed = true;
+  if(r.college_location_choice && !s.collegeLocation) s.collegeLocation = r.college_location_choice;
+  if(r.foreshadow_death) s.deathForeshadowed = true;
+
+  // 財富真實金額制：先用「跨過的月份數」結算舊的月收支，再套用這回合新的職業/支出/一次性交易
+  const monthsCrossed = structured ? (timeCtx.monthsCrossed||0) : Math.round((r.age_advance||0)*12);
+  if(monthsCrossed>0){
+    const totalExpenses = s.monthlyExpenses.reduce((sum,e)=>sum+e.amount,0);
+    // 3.4.8 零用錢與學生時期基本生活開銷：還沒有正職工作時，零用錢裡自動扣一筆基本開銷比例，不讓存款無感膨脹
+    const livingCost = s.occupationCategory ? 0 : Math.round(s.monthlyIncome*0.675);
+    const net = Math.round((s.monthlyIncome - totalExpenses - livingCost) * monthsCrossed);
+    s.savings += net;
+    s.lastSettlement = { months: monthsCrossed, net, income:s.monthlyIncome, expenses:totalExpenses+livingCost };
+  } else {
+    s.lastSettlement = null;
+  }
+
+  if(r.job_change && r.job_change.occupation_category){
+    s.occupationCategory = r.job_change.occupation_category;
+    if(typeof r.job_change.monthly_salary === "number") s.monthlyIncome = r.job_change.monthly_salary;
+    const riskyCats = ["勞力/服務業","長期不在身邊","軍公教警消","自由接案"];
+    s.riskyLifestyle = riskyCats.includes(s.occupationCategory);
+  }
+  (r.expense_change||[]).forEach(ec=>{
+    if(!ec.label) return;
+    if(ec.action==="end"){
+      s.monthlyExpenses = s.monthlyExpenses.filter(e=>e.label!==ec.label);
+    } else {
+      const existing = s.monthlyExpenses.find(e=>e.label===ec.label);
+      if(existing) existing.amount = ec.monthly_amount ?? existing.amount;
+      else s.monthlyExpenses.push({ label:ec.label, amount: ec.monthly_amount||0 });
+    }
+  });
+  (r.one_time_transaction||[]).forEach(tx=>{
+    if(typeof tx.amount === "number") s.savings += tx.amount;
+  });
+  if(r.housing_choice && r.housing_choice.type){
+    s.housing = { type:r.housing_choice.type, monthlyCost:r.housing_choice.monthly_amount||0 };
+    s.monthlyExpenses = s.monthlyExpenses.filter(e=>e.label!=="房租" && e.label!=="房貸");
+    if(r.housing_choice.monthly_amount>0){
+      s.monthlyExpenses.push({ label: r.housing_choice.type==="own" ? "房貸" : "房租", amount:r.housing_choice.monthly_amount });
+    }
+  }
+
+  (r.new_characters||[]).forEach(nc=>{
+    if(!nc.name) return;
+    const exists = s.characters.find(c=>c.name===nc.name);
+    if(exists){ exists.active=true; exists.lastTurn=s.turnCount; return; }
+    s.characters.push({
+      name:nc.name, relation:nc.relation||"", traits:nc.traits||"",
+      affinity: clamp(nc.initial_affinity ?? 50,0,100),
+      summary:"", lastTurn:s.turnCount, active:true, isChild:!!nc.is_child
+    });
+  });
+  (r.character_updates||[]).forEach(cu=>{
+    const c = s.characters.find(x=>x.name===cu.name);
+    if(!c) return;
+    c.affinity = clamp(c.affinity + (cu.affinity_delta||0),0,100);
+    if(cu.summary_add){ c.summary = (c.summary? c.summary+"；":"") + cu.summary_add; }
+    c.lastTurn = s.turnCount; c.active = true;
+  });
+  demoteStaleCharacters();
+
+  const tagAge = structured ? s.age : ageAtEvent;
+  const tagLabel = structured ? timeCtx.label : null;
+
+  if(r.major_event_summary){
+    s.chronicle.push(`（${tagLabel || (tagAge+"歲")}）${r.major_event_summary}`);
+    if(s.chronicle.length>10) s.chronicle.shift();
+  }
+
+  s.log.push({age:tagAge, timeLabel:tagLabel, text:r.narrative, settlement:s.lastSettlement});
+  if(s.log.length>60) s.log.shift();
+
+  s.choices = r.choices || [];
+
+  if(r.is_ending){
+    // 防呆：意外死亡必須滿足「19歲以上」+「已有前兆」，不然一律不接受，避免AI疏忽誤殺
+    const accidentalDeathValid = !forceEnding ? (s.age>=19 && s.deathForeshadowed) : true;
+    if(accidentalDeathValid){
+      s.phase = "ending";
+      s.ending = { title:r.ending_title||"平凡一生", summary:r.ending_summary||"", successionAvailable: !!r.succession_available };
+    }
+  }
+}
+
+function startLife(){
+  state.phase = "playing";
+  render(true);
+  takeTurn("（人生正式開始：15歲的你，站在高中入學前的暑假尾聲。）", 0);
+}
+
+function reincarnate(){
+  const bonusStat = pick(["health","knowledge","network","expression","savings"]);
+  const carry = { reincarnations:(state.reincarnations||0)+1,
+    chronicleCarry: `前世為「${state.ending?.title||"一生"}」，帶著一絲餘蔭轉生。`,
+    name: state.name, gender: state.gender };
+  if(bonusStat==="savings") carry.savingsCarry = 5000; else carry[bonusStat] = 8;
+  state = newRoll(carry, null);
+  saveGame();
+  render();
+}
+
+function economicTierForSavingsAmount(savings){
+  if(savings<200000) return "清寒";
+  if(savings<3000000) return "小康";
+  return "富裕";
+}
+function rollEconomicTierForced(tier){
+  if(tier==="清寒") return { tier, network:rnd(15,35), allowance:rnd(300,800), savings:rnd(200,1000) };
+  if(tier==="小康") return { tier, network:rnd(30,55), allowance:rnd(1500,3000), savings:rnd(1000,3000) };
+  return { tier:"富裕", network:rnd(50,75), allowance:rnd(5000,9000), savings:rnd(3000,8000) };
+}
+function deriveParentTraitFromAffinity(aff, summary){
+  let tone;
+  if(aff>=70) tone = "跟你感情很好，願意溝通、給空間、支持你的決定";
+  else if(aff>=45) tone = "感情普通，日常互動平淡但不算疏離";
+  else tone = "感情有些疏遠，報喜不報憂、情感表達少";
+  return summary ? tone+"；過去點滴："+summary : tone;
+}
+function eligibleChildren(){
+  return state.characters.filter(c=>c.isChild);
+}
+function succeedAsChild(childName){
+  const prev = state;
+  const child = prev.characters.find(c=>c.name===childName && c.isChild);
+  if(!child) return;
+  const spouse = prev.characters.find(c=>/配偶|伴侶|先生|太太|老公|老婆/.test(c.relation||""));
+  const otherKids = prev.characters.filter(c=>c.isChild && c.name!==childName);
+
+  const deceasedRelation = prev.gender==="男" ? "父親" : "母親";
+  const characters = [];
+  characters.push({
+    name: prev.name, relation: deceasedRelation,
+    traits: deriveParentTraitFromAffinity(child.affinity, child.summary),
+    affinity: child.affinity, summary: child.summary||"", lastTurn:0, active:true, isChild:false
+  });
+  let familyStructure;
+  if(spouse){
+    characters.push({
+      name: spouse.name, relation: deceasedRelation==="父親" ? "母親" : "父親",
+      traits: spouse.traits||"忙碌但關心家裡", affinity: spouse.affinity, summary: spouse.summary||"",
+      lastTurn:0, active:true, isChild:false
+    });
+    familyStructure = "雙親同住";
+  } else {
+    familyStructure = "單親－喪親";
+  }
+  otherKids.forEach(k=>{
+    characters.push({
+      name:k.name, relation: pick(SIBLING_RELATIONS),
+      traits: (k.traits||"")+"（同樣是上一代留下的孩子）", affinity: clamp(k.affinity+rnd(-10,10),0,100),
+      summary:k.summary||"", lastTurn:0, active:true, isChild:false
+    });
+  });
+
+  const econ = rollEconomicTierForced(economicTierForSavingsAmount(prev.savings));
+  const wisdom = rnd(30,70);
+  const logicAbility = clamp(Math.round(wisdom*0.3+rnd(-10,10)),0,100);
+  const talent = clamp(Math.round(wisdom*0.6+rnd(-5,5)),0,100);
+  const health = rnd(45,90);
+  const looks = rnd(20,90);
+  const luckHidden = +(0.85+Math.random()*0.3).toFixed(2);
+  const lifeExpectancy = rnd(70,88);
+  const attach = rollAttachmentBaseline(null);
+  const peerPosition = rollPeerPosition();
+  const expression = rollSocialStart(null, peerPosition);
+  const temperament = rollSocialStart(null, peerPosition);
+  const appearance = clamp(Math.round(looks*0.5+temperament*0.5),0,100);
+  const personalityStyle = pick(PERSONALITY_STYLES);
+  const childGender = child.relation==="女兒" ? "女" : child.relation==="兒子" ? "男" : pick(["男","女"]);
+
+  state = {
+    version:4, phase:"setup",
+    name: child.name, gender: childGender,
+    age:15, lifeExpectancy, luckHidden,
+    family: econ.tier, familyStructure, isPoliticianChild:false,
+    collegeLocation:null,
+    timeState:{ stageMode:"highschool", segmentIndex:0, yearInStage:1, careerYear:1, careerHalf:0 },
+    anxiety:attach.anxiety, avoidance:attach.avoidance, peerPosition, peerPositionSpecial:null,
+    keyEvent:null,
+    wisdom, logicAbility, looks, temperament, appearance, personalityStyle,
+    conscientiousness:{ selfDiscipline:50, prudence:50, achievement:50, responsibility:50, teamSolo:50 },
+    stats:{ health, knowledge:talent, network:econ.network, expression },
+    savings: econ.savings, monthlyIncome: econ.allowance, monthlyExpenses:[],
+    occupationCategory:null, housing:null, fertilityJourney:null,
+    lowHealthStreak:0, riskyLifestyle:false, deathForeshadowed:false,
+    happiness:50, actionPoints:20, maxActionPoints:20, turnCount:0,
+    characters,
+    chronicle: [`（傳承）延續上一世「${prev.ending?.title||"一生"}」的血脈，成為${prev.name}的${child.relation}。`],
+    log:[], choices:[], reincarnations:(prev.reincarnations||0)+1,
+    undosLeft:3, snapshot:null, ending:null
+  };
+  saveGame();
+  render();
+}
+
+function refillDemo(){
+  state.actionPoints = state.maxActionPoints;
+  document.getElementById("paywall-modal")?.remove();
+  saveGame(); render();
+}
+
+function hardReset(){
+  state = null;
+  window.storage.delete(STORAGE_KEY, false).catch(()=>{});
+  render();
+}
+
+// ---------- RENDER ----------
+function render(loadingTurn){
+  const app = document.getElementById("app");
+  if(!state){ app.innerHTML = renderSetupIntro(); bindSetupIntro(); ensureDebugUI(); return; }
+  if(state.phase==="identity"){ app.innerHTML = renderIdentityForm(); bindIdentityForm(); ensureDebugUI(); return; }
+  if(state.phase==="setup"){ app.innerHTML = renderSetupRoll(); bindSetupRoll(); ensureDebugUI(); return; }
+  if(state.phase==="ending"){ app.innerHTML = renderEnding(); bindEnding(); ensureDebugUI(); return; }
+  app.innerHTML = renderPlaying(loadingTurn);
+  bindPlaying();
+  const j = document.querySelector(".journal");
+  if(j) j.scrollTop = j.scrollHeight;
+  ensureDebugUI();
+}
+
+function renderSetupIntro(){
+  return `
+  <div class="center-screen">
+    <div class="stamp" style="margin:0 auto 18px;"><b>人生</b>草稿</div>
+    <h2>人生草稿</h2>
+    <p style="color:var(--ink-soft);font-size:13.5px;">這一次，換你決定要活成什麼樣子。<br>每一次選擇，都會被寫進去，取不回也改不掉。</p>
+    <button class="primary-btn" id="btn-new">開始寫下這一生</button>
+  </div>`;
+}
+function bindSetupIntro(){
+  document.getElementById("btn-new").onclick = ()=>{ state = { phase:"identity", name:"", gender:"男" }; render(); };
+}
+
+function renderIdentityForm(){
+  const s = state;
+  return `
+  <div class="center-screen">
+    <h2>你是誰？</h2>
+    <p style="color:var(--ink-soft);font-size:13px;">在天資降臨之前，先寫下你的名字。</p>
+    <div style="text-align:left;margin:18px 0 6px;">
+      <div class="roll-item" style="margin-bottom:14px;">
+        <div class="k">姓名</div>
+        <input id="name-input" type="text" maxlength="12" value="${escapeHtml(s.name||"")}"
+          placeholder="想被怎麼稱呼？"
+          style="width:100%;border:none;background:transparent;font-family:'Noto Serif TC',serif;font-size:17px;padding:4px 0;border-bottom:1px solid var(--ink-soft);">
+      </div>
+      <div class="roll-item">
+        <div class="k">性別</div>
+        <div style="display:flex;gap:10px;margin-top:6px;">
+          <button class="ghost-btn gender-btn" data-g="男" style="margin:0;flex:1;${s.gender==='男'?'background:var(--ink);color:var(--paper);':''}">男</button>
+          <button class="ghost-btn gender-btn" data-g="女" style="margin:0;flex:1;${s.gender==='女'?'background:var(--ink);color:var(--paper);':''}">女</button>
+        </div>
+      </div>
+    </div>
+    <button class="primary-btn" id="btn-roll">擲骰決定我的出身</button>
+  </div>`;
+}
+function bindIdentityForm(){
+  const nameInput = document.getElementById("name-input");
+  nameInput.oninput = ()=>{ state.name = nameInput.value; };
+  document.querySelectorAll(".gender-btn").forEach(btn=>{
+    btn.onclick = ()=>{ state.gender = btn.dataset.g; render(); };
+  });
+  document.getElementById("btn-roll").onclick = ()=>{
+    const identity = { name: (state.name||"").trim() || "無名氏", gender: state.gender };
+    state = newRoll(null, identity);
+    saveGame(); render();
+  };
+}
+
+function renderSetupRoll(){
+  const s = state;
+  const family = s.characters;
+  return `
+  <div class="center-screen">
+    <h2>${escapeHtml(s.name)}的天資已定</h2>
+    <p style="color:var(--ink-soft);font-size:13px;">出身無法重骰，這是你這一生的底牌。</p>
+    <div class="roll-grid">
+      <div class="roll-item"><div class="k">家境</div><div class="v" style="font-size:15px;">${s.family}</div></div>
+      <div class="roll-item"><div class="k">每月零用錢</div><div class="v" style="font-size:15px;">NT$${s.monthlyIncome.toLocaleString()}</div></div>
+      <div class="roll-item"><div class="k">體質</div><div class="v">${s.stats.health}</div></div>
+      <div class="roll-item"><div class="k">才識起點</div><div class="v">${s.stats.knowledge}</div></div>
+      <div class="roll-item"><div class="k">人脈起點</div><div class="v">${s.stats.network}</div></div>
+      <div class="roll-item"><div class="k">福緣</div><div class="v">？</div></div>
+    </div>
+    <div class="roll-item" style="text-align:left;margin-bottom:14px;">
+      <div class="k">家庭：${escapeHtml(s.familyStructure)}</div>
+      ${family.map(c=>`<p style="font-size:12.5px;margin:4px 0;"><b>${escapeHtml(c.name)}</b>（${escapeHtml(c.relation)}）</p>`).join("")}
+    </div>
+    <p style="font-size:12px;color:var(--ink-soft);margin-top:2px;">你的性格、人際樣貌與過去，會在故事裡慢慢浮現，不會現在就告訴你。</p>
+    <button class="primary-btn" id="btn-start">睜開眼睛</button>
+  </div>`;
+}
+function bindSetupRoll(){
+  document.getElementById("btn-start").onclick = startLife;
+}
+
+function renderPlaying(loadingTurn){
+  const s = state;
+  const active = activeCharacters();
+  const bg = s.characters.filter(c=>!c.active);
+  return `
+  <div class="cover">
+    <div><h1>人生草稿</h1><div class="sub">${escapeHtml(s.name)} · 第 ${s.reincarnations+1} 世 · 第 ${s.turnCount} 頁</div>
+    ${USE_MOCK?`<div class="sub" style="color:var(--stamp);margin-top:2px;">⚠ 示範模式：目前用規則模擬旁白，非真AI生成</div>`:``}</div>
+    <div class="stamp"><b>${s.age}</b>歲・${stageLabel(s.age)}</div>
+  </div>
+  <div class="ledger">
+    <div class="ledger-row"><span class="lbl">存款</span><span class="dots"></span><span class="val">NT$${s.savings.toLocaleString()}</span></div>
+    ${ledgerRow("健康", s.stats.health)}
+    ${ledgerRow("才識", s.stats.knowledge)}
+    ${ledgerRow("表達力", s.stats.expression)}
+    ${ledgerRow("外表", s.appearance)}
+    ${ledgerRow("人脈", s.stats.network)}
+    <div class="pips">${Array.from({length:s.maxActionPoints}).map((_,i)=>`<span class="pip ${i<s.actionPoints?'on':''}"></span>`).join("")}</div>
+  </div>
+  <div class="journal">
+    ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${e.timeLabel ? escapeHtml(e.timeLabel) : (e.age+'歲・'+stageLabel(e.age))}</div>${renderParagraphs(e.text)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} NT$${Math.abs(e.settlement.net).toLocaleString()}；目前存款 NT$${s.savings.toLocaleString()}</p>` : ``}</div>`).join("")}
+    ${loadingTurn ? `<div class="loading">旁白正在幫你寫下這一頁…</div>` : ""}
+  </div>
+  ${!loadingTurn ? `
+  <div class="choices">
+    ${(s.choices||[]).map((c,i)=>`<button class="choice-btn" data-choice="${i}">${escapeHtml(c)}</button>`).join("")}
+    ${(s.snapshot && s.undosLeft>0) ? `<button class="choice-btn" id="btn-undo" style="color:var(--stamp);">↺ 反悔上一步（剩 ${s.undosLeft} 次）</button>` : ""}
+  </div>
+  <div class="custom-row">
+    <input id="custom-input" maxlength="40" placeholder="或者，自己寫下你想做的事…（消耗2點）">
+    <button id="btn-custom">行動</button>
+  </div>
+  <div class="hint">選項消耗 1 點行動點；自訂行動消耗 2 點</div>
+  ` : ""}
+  <div class="roster">
+    <div class="roster-title">通訊錄・羈絆（${active.length} 位在場${bg.length? ` · ${bg.length} 位漸行漸遠`:""}）</div>
+    <div class="roster-scroll">
+      ${active.map(c=>rosterCard(c,false)).join("")}
+      ${bg.map(c=>rosterCard(c,true)).join("")}
+      ${active.length+bg.length===0 ? `<div style="font-size:12px;color:var(--ink-soft);">目前故事裡還沒有其他重要的人。</div>` : ""}
+    </div>
+  </div>
+  <div class="footer-actions">
+    <span>行動點不足時可示範儲值</span>
+    <a id="link-reset">清空存檔重來</a>
+  </div>`;
+}
+function ledgerRow(label,val){
+  return `<div class="ledger-row"><span class="lbl">${label}</span><span class="dots"></span><span class="val">${val}</span></div>`;
+}
+function rosterCard(c,isBg){
+  return `<div class="rcard ${isBg?'bg':''}">
+    <div class="name">${escapeHtml(c.name)}</div>
+    <div class="rel">${escapeHtml(c.relation)}</div>
+    <div class="aff-bar"><div class="aff-fill" style="width:${c.affinity}%"></div></div>
+  </div>`;
+}
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+function renderParagraphs(text){
+  return String(text).split(/\n{1,}/).map(p=>p.trim()).filter(Boolean)
+    .map(p=>`<p>${escapeHtml(p)}</p>`).join("");
+}
+function bindPlaying(){
+  document.querySelectorAll(".choice-btn[data-choice]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const idx = +btn.dataset.choice;
+      const text = state.choices[idx];
+      takeTurn(text, 1);
+    };
+  });
+  const undoBtn = document.getElementById("btn-undo");
+  if(undoBtn) undoBtn.onclick = restoreUndo;
+  const customBtn = document.getElementById("btn-custom");
+  const input = document.getElementById("custom-input");
+  if(customBtn){
+    customBtn.onclick = ()=>{
+      const val = input.value.trim();
+      if(!val) return;
+      input.value="";
+      takeTurn(val, 2);
+    };
+  }
+  const resetLink = document.getElementById("link-reset");
+  if(resetLink) resetLink.onclick = renderConfirmReset;
+}
+
+function renderConfirmReset(){
+  const div = document.createElement("div");
+  div.id = "confirm-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>清空存檔重來？</h3>
+      <p>這會刪掉目前這份草稿，重新從取名開始。此動作無法復原。</p>
+      <button class="primary-btn" id="btn-confirm-reset" style="background:var(--stamp);">確定清空</button>
+      <button class="ghost-btn" id="btn-cancel-reset">再想想</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-confirm-reset").onclick = ()=>{ div.remove(); hardReset(); };
+  document.getElementById("btn-cancel-reset").onclick = ()=>{ div.remove(); };
+}
+
+function renderPaywall(){
+  const div = document.createElement("div");
+  div.id = "paywall-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>行動點用盡</h3>
+      <p>今天的因果暫時推演不動了。真正上線的版本這裡會是儲值／訂閱畫面；現在先示範性地幫你補滿，讓你能繼續測試玩法。</p>
+      <button class="primary-btn" id="btn-refill">（示範）補滿行動點</button>
+      <div class="demo-note">＊這是原型階段的假按鈕，尚未串接真實金流</div>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-refill").onclick = refillDemo;
+}
+
+function renderEnding(){
+  const s = state;
+  const kids = eligibleChildren();
+  const canSucceed = s.ending.successionAvailable && kids.length>0;
+  return `
+  <div class="center-screen">
+    <div class="stamp" style="margin:0 auto 14px;"><b>${s.age}</b>歲</div>
+    <div class="end-title">${escapeHtml(s.ending.title)}</div>
+    <p style="font-size:14.5px;">${escapeHtml(s.ending.summary)}</p>
+    <div class="roll-grid">
+      <div class="roll-item"><div class="k">存款</div><div class="v" style="font-size:15px;">NT$${s.savings.toLocaleString()}</div></div>
+      <div class="roll-item"><div class="k">健康</div><div class="v">${s.stats.health}</div></div>
+      <div class="roll-item"><div class="k">才識</div><div class="v">${s.stats.knowledge}</div></div>
+      <div class="roll-item"><div class="k">人脈</div><div class="v">${s.stats.network}</div></div>
+      <div class="roll-item"><div class="k">福緣</div><div class="v">${s.luckHidden}</div></div>
+      <div class="roll-item"><div class="k">羈絆</div><div class="v">${s.characters.length}</div></div>
+    </div>
+    ${canSucceed ? `
+    <div class="roll-item" style="text-align:left;margin-bottom:14px;">
+      <div class="k">延續下一世——選一位孩子接續</div>
+      ${kids.map(k=>`<button class="choice-btn" data-child="${escapeHtml(k.name)}" style="padding-left:8px;">${escapeHtml(k.name)}（${escapeHtml(k.relation)}）</button>`).join("")}
+    </div>` : ``}
+    <button class="primary-btn" id="btn-reincarnate">服下轉世丹，重新投胎</button>
+    <button class="ghost-btn" id="btn-reset-end">就此闔卷</button>
+  </div>`;
+}
+function bindEnding(){
+  document.getElementById("btn-reincarnate").onclick = reincarnate;
+  document.getElementById("btn-reset-end").onclick = hardReset;
+  document.querySelectorAll(".choice-btn[data-child]").forEach(btn=>{
+    btn.onclick = ()=> succeedAsChild(btn.dataset.child);
+  });
+}
+
+// ---------- DEBUG 測試面板（僅 USE_MOCK=true 時出現，正式模式完全不會被建立）----------
+function ensureDebugUI(){
+  if(!USE_MOCK) return;
+  let btn = document.getElementById("debug-toggle-btn");
+  if(!btn){
+    btn = document.createElement("button");
+    btn.id = "debug-toggle-btn";
+    btn.textContent = "🛠";
+    btn.title = "Debug 測試面板";
+    btn.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:300;width:44px;height:44px;border-radius:50%;background:var(--stamp,#9c3b2e);color:#fff;border:none;font-size:18px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);";
+    btn.onclick = toggleDebugPanel;
+    document.body.appendChild(btn);
+  }
+  const panel = document.getElementById("debug-panel");
+  if(panel && panel.dataset.open==="1"){
+    panel.innerHTML = renderDebugPanelContent();
+    bindDebugPanelContent();
+  }
+}
+function toggleDebugPanel(){
+  let panel = document.getElementById("debug-panel");
+  if(!panel){
+    panel = document.createElement("div");
+    panel.id = "debug-panel";
+    panel.style.cssText = "position:fixed;top:0;right:0;bottom:0;width:300px;max-width:88vw;background:#211f1d;color:#eee;z-index:299;overflow-y:auto;padding:16px 14px;font-family:'Courier New',monospace;font-size:12px;box-shadow:-3px 0 14px rgba(0,0,0,.4);";
+    document.body.appendChild(panel);
+  }
+  const isOpen = panel.dataset.open==="1";
+  panel.dataset.open = isOpen ? "0" : "1";
+  panel.style.display = isOpen ? "none" : "block";
+  if(!isOpen){ panel.innerHTML = renderDebugPanelContent(); bindDebugPanelContent(); }
+}
+function debugFieldGroups(){
+  const s = state;
+  return [
+    { title:"時間／基本", fields:[
+      ["年齡","age", s.age],
+    ]},
+    { title:"可見數值", fields:[
+      ["健康","stats.health", s.stats.health],
+      ["才識","stats.knowledge", s.stats.knowledge],
+      ["表達力","stats.expression", s.stats.expression],
+      ["人脈","stats.network", s.stats.network],
+      ["外表","appearance", s.appearance],
+    ]},
+    { title:"隱藏數值", fields:[
+      ["智慧(天資)","wisdom", s.wisdom],
+      ["邏輯能力","logicAbility", s.logicAbility],
+      ["幸福感","happiness", s.happiness],
+      ["福緣","luckHidden", s.luckHidden],
+      ["壽命","lifeExpectancy", s.lifeExpectancy],
+    ]},
+    { title:"財富", fields:[
+      ["存款","savings", s.savings],
+      ["月收入","monthlyIncome", s.monthlyIncome],
+    ]},
+    { title:"依附兩軸", fields:[
+      ["焦慮軸","anxiety", s.anxiety],
+      ["迴避軸","avoidance", s.avoidance],
+    ]},
+    { title:"做事態度光譜", fields:[
+      ["自律","conscientiousness.selfDiscipline", s.conscientiousness.selfDiscipline],
+      ["審慎","conscientiousness.prudence", s.conscientiousness.prudence],
+      ["成就傾向","conscientiousness.achievement", s.conscientiousness.achievement],
+      ["責任感","conscientiousness.responsibility", s.conscientiousness.responsibility],
+      ["團隊vs單打","conscientiousness.teamSolo", s.conscientiousness.teamSolo],
+    ]},
+    { title:"其他", fields:[
+      ["行動點","actionPoints", s.actionPoints],
+      ["反悔卡剩餘","undosLeft", s.undosLeft],
+    ]},
+  ];
+}
+function renderDebugPanelContent(){
+  const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #444;padding-bottom:8px;">
+    <b style="letter-spacing:1px;">🛠 DEBUG 面板</b>
+    <span style="cursor:pointer;color:#aaa;" onclick="toggleDebugPanel()">✕ 關閉</span>
+  </div>`;
+  if(!state || !state.stats){
+    return header + `<p style="color:#999;">尚未開局，先建立角色（跑完開局擲骰）之後再回來調數值。</p>`;
+  }
+  const groups = debugFieldGroups();
+  const body = groups.map(g=>`
+    <div style="margin-bottom:12px;">
+      <div style="color:#e0a15c;margin-bottom:4px;">${g.title}</div>
+      ${g.fields.map(([label,path,val])=>`
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <label style="flex:1;color:#ccc;">${label}</label>
+          <input type="number" step="any" data-path="${path}" value="${val}"
+            style="width:70px;background:#333;color:#fff;border:1px solid #555;padding:3px 5px;font-family:'Courier New',monospace;">
+        </div>`).join("")}
+    </div>`).join("");
+  return header + `
+    <div style="max-height:56vh;overflow-y:auto;padding-right:4px;">${body}</div>
+    <button id="debug-apply" style="width:100%;margin-top:8px;padding:9px;background:var(--teal,#3e6b5c);color:#fff;border:none;cursor:pointer;font-family:inherit;">套用變更並刷新畫面</button>
+    <button id="debug-dump" style="width:100%;margin-top:6px;padding:7px;background:#444;color:#fff;border:none;cursor:pointer;font-family:inherit;">印出完整 state 到 Console</button>
+    <p style="color:#888;font-size:10.5px;margin-top:12px;line-height:1.6;">＊此面板只在 USE_MOCK=true 時出現，正式模式（USE_MOCK=false）完全不會建立這個按鈕。<br>＊目前程式碼還沒有「事件狀態（completed/skipped/locked）」追蹤機制，所以還無法在此指定觸發特定里程碑或查詢事件完成紀錄。<br>＊數值故意不做範圍限制，方便測試極端角色（例如全部設100或全部設0）。</p>
+  `;
+}
+function bindDebugPanelContent(){
+  const applyBtn = document.getElementById("debug-apply");
+  if(applyBtn) applyBtn.onclick = ()=>{
+    document.querySelectorAll("#debug-panel input[data-path]").forEach(inp=>{
+      const path = inp.dataset.path.split(".");
+      let obj = state;
+      for(let i=0;i<path.length-1;i++) obj = obj[path[i]];
+      const num = Number(inp.value);
+      if(!Number.isNaN(num)) obj[path[path.length-1]] = num;
+    });
+    saveGame();
+    render();
+  };
+  const dumpBtn = document.getElementById("debug-dump");
+  if(dumpBtn) dumpBtn.onclick = ()=>{
+    console.log(JSON.parse(JSON.stringify(state)));
+    alert("已印到瀏覽器主控台（F12 → Console 分頁）");
+  };
+}
+
+loadGame();
+</script>
+</body>
+</html>

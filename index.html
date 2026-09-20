@@ -1,0 +1,3662 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>人生草稿</title>
+<style>
+  :root{
+    --paper:#EDE7D9;
+    --paper-card:#F6F1E4;
+    --paper-dark:#E1D8C3;
+    --ink:#262220;
+    --ink-soft:#6b6156;
+    --line:#c3b79c;
+    --stamp:#9c3b2e;
+    --teal:#3e6b5c;
+    --gold:#93752f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{
+    max-width:520px;
+    margin:0 auto;
+    min-height:100vh;
+    background:var(--paper);
+    display:flex;
+    flex-direction:column;
+  }
+  .cover{
+    padding:22px 20px 14px;
+    border-bottom:3px double var(--ink);
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+  }
+  .cover h1{
+    font-size:22px;
+    margin:0;
+    letter-spacing:2px;
+    font-weight:700;
+  }
+  .cover .sub{
+    font-size:11px;
+    color:var(--ink-soft);
+    letter-spacing:3px;
+    margin-top:2px;
+  }
+  .stamp{
+    border:2px solid var(--stamp);
+    color:var(--stamp);
+    border-radius:50%;
+    width:56px;height:56px;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    transform:rotate(-8deg);
+    font-size:10px;
+    line-height:1.1;
+    text-align:center;
+    flex-shrink:0;
+    opacity:.85;
+  }
+  .stamp b{font-size:16px;display:block;font-family:serif;}
+
+  .progress-strip{
+    padding:8px 20px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper-card);
+  }
+  .progress-strip .prow{
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-size:11.5px;color:var(--ink-soft);margin-bottom:4px;
+  }
+  .progress-strip .prow b{color:var(--ink);font-weight:700;}
+  .progress-track{height:4px;background:var(--paper-dark);}
+  .progress-fill{height:100%;background:var(--teal);}
+
+  .ledger{
+    padding:14px 20px;
+    border-bottom:1px solid var(--line);
+    background:var(--paper-card);
+  }
+  .ledger-row{
+    display:flex;align-items:baseline;gap:8px;
+    font-size:14px;
+    padding:3px 0;
+  }
+  .ledger-row .lbl{white-space:nowrap;color:var(--ink-soft);font-size:12.5px;letter-spacing:1px;}
+  .ledger-row .dots{
+    flex:1;border-bottom:1px dotted var(--line);
+    height:10px;
+  }
+  .ledger-row .val{
+    font-variant-numeric:tabular-nums;
+    font-family:"Courier New",monospace;
+    font-size:13.5px;
+    min-width:28px;text-align:right;
+  }
+  .pips{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;}
+  .pip{width:9px;height:9px;border-radius:50%;border:1px solid var(--gold);}
+  .pip.on{background:var(--gold);}
+
+  .journal{
+    flex:1;
+    padding:16px 20px 8px;
+  }
+  .entry{margin-bottom:18px;}
+  .entry .age-tag{
+    font-size:11px;color:var(--stamp);letter-spacing:2px;
+    border-bottom:1px solid var(--stamp);
+    display:inline-block;padding-bottom:2px;margin-bottom:6px;
+  }
+  .entry p{margin:0 0 10px;font-size:15.5px;line-height:1.7;}
+  .entry p:last-child{margin-bottom:0;}
+  .entry.chronicle{
+    font-family:"Noto Sans TC",sans-serif;
+    font-size:12px;color:var(--ink-soft);
+    border-left:2px solid var(--line);
+    padding-left:10px;margin:10px 0;
+  }
+
+  .choices{padding:6px 20px 4px;}
+  .choice-btn{
+    display:block;width:100%;text-align:left;
+    background:none;border:none;border-bottom:1px solid var(--line);
+    padding:10px 4px 10px 22px;position:relative;
+    font-family:"Noto Serif TC",serif;font-size:15px;color:var(--ink);
+    cursor:pointer;
+  }
+  .choice-btn:before{
+    content:"○";position:absolute;left:0;top:10px;color:var(--teal);
+  }
+  .choice-btn:active{background:var(--paper-dark);}
+  .choice-btn:disabled{opacity:.4;}
+
+  .custom-row{
+    display:flex;gap:8px;padding:14px 20px 18px;
+    border-bottom:1px solid var(--line);
+  }
+  .custom-row input{
+    flex:1;border:none;border-bottom:1px solid var(--ink-soft);
+    background:transparent;font-family:"Noto Serif TC",serif;
+    font-size:14.5px;padding:6px 2px;color:var(--ink);
+  }
+  .custom-row input:focus{outline:none;border-bottom:1px solid var(--stamp);}
+  .custom-row button{
+    border:1px solid var(--ink);background:var(--ink);color:var(--paper);
+    font-family:"Noto Serif TC",serif;font-size:13px;
+    padding:6px 14px;cursor:pointer;
+  }
+  .custom-row button:disabled{opacity:.4;}
+  .hint{font-size:11px;color:var(--ink-soft);padding:0 20px 14px;}
+  .input-error{font-size:11px;color:var(--stamp);padding:0 20px 8px;display:none;}
+
+  .roster{
+    padding:14px 20px 20px;
+    border-top:1px solid var(--line);
+  }
+  .roster-title{font-size:12px;letter-spacing:2px;color:var(--ink-soft);margin-bottom:8px;}
+  .roster-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;}
+  .rcard{
+    flex:0 0 auto;width:118px;cursor:pointer;
+    background:var(--paper-card);border:1px solid var(--line);
+    padding:8px 10px;font-size:11.5px;
+  }
+  .rcard.bg{opacity:.45;}
+  .rcard .name{font-size:13px;font-weight:700;margin-bottom:2px;}
+  .rcard .rel{color:var(--ink-soft);margin-bottom:2px;}
+  .rcard .status-text{color:var(--stamp);font-size:11px;}
+
+  .footer-actions{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 20px 18px;font-size:11px;color:var(--ink-soft);
+  }
+  .footer-actions a{color:var(--ink-soft);text-decoration:underline;cursor:pointer;}
+
+  .center-screen{
+    flex:1;display:flex;flex-direction:column;justify-content:center;
+    padding:30px 24px;text-align:center;
+  }
+  .center-screen h2{font-size:20px;margin-bottom:14px;letter-spacing:1px;}
+  .roll-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0;
+    text-align:left;
+  }
+  .roll-item{border:1px solid var(--line);padding:10px 12px;background:var(--paper-card);}
+  .roll-item .k{font-size:11px;color:var(--ink-soft);letter-spacing:1px;}
+  .roll-item .v{font-size:20px;font-family:"Courier New",monospace;}
+  .primary-btn{
+    background:var(--ink);color:var(--paper);border:none;
+    padding:12px 28px;font-size:15px;letter-spacing:2px;
+    font-family:"Noto Serif TC",serif;cursor:pointer;margin-top:10px;
+  }
+  .ghost-btn{
+    background:none;border:1px solid var(--ink-soft);color:var(--ink);
+    padding:10px 22px;font-size:13px;letter-spacing:1px;
+    font-family:"Noto Serif TC",serif;cursor:pointer;margin-top:10px;
+  }
+  .loading{
+    padding:20px;text-align:center;color:var(--ink-soft);font-size:13px;
+    letter-spacing:1px;
+  }
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(38,34,32,.55);
+    display:flex;align-items:center;justify-content:center;z-index:50;
+    padding:20px;
+  }
+  .modal{
+    background:var(--paper-card);max-width:340px;width:100%;
+    padding:24px 22px;border:2px double var(--ink);
+  }
+  .modal h3{margin-top:0;font-size:17px;}
+  .modal p{font-size:13.5px;color:var(--ink-soft);}
+  .modal .demo-note{font-size:11px;color:var(--stamp);margin-top:10px;}
+  .end-title{font-size:24px;margin:6px 0 4px;color:var(--stamp);}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">開卷中…</div></div>
+
+<!-- 人生草稿 測試第一版（Test v1）基準點，2026-09-14。範圍：A2核心數值邊際遞減/人脈閒置衰退、3.4.8基本生活開銷擴大、3.4.9資產模型(現金/房產/房貸)、7.1.4結局計分制。B7結局重新設計仍為測試草案，未併入此版。 -->
+<!-- 人生草稿 測試第二版（Test v2）基準點，2026-09-16。範圍（v1之後新增/改版)：4.3事件狀態機制(10個里程碑)、7.5.3買房頭期款門檻檢查、每回合可見數值變化顯示、學生財富系統改版(遊戲內單位制)+4個bug修正、3.2.2才識成長公式修正(event_type標籤+程式查表，取代AI自由給delta)、3.7.2自律的興趣來源成長(連續3/6次持續投入)、八、興趣系統v1(新章節，候選成立/投入度/自律加成/副業契機)、2.2/2.2.1學期節奏改版(14段/年，取代9/15版本的12段/年)+2.5整體人生階段回合預算(22歲以後加速曲線，取代「30歲以後AI自行判斷」的舊架構)。未併入此版：七、7.1.5死亡機制改版(文件明確要求機率公式定案前不動代碼，仍是舊版19歲門檻+雙因子機率)。⚠️已知未解問題：實測發現全人生總回合數約2000~2100回合，跟設計文件2.5.1「1-2小時一輪」的節奏目標矛盾，記錄在QA手冊34.6 A10，待內容組確認。 -->
+<script>
+const STORAGE_KEY = "life_sim_save_v1";
+// 十、10.1（9/19新增）：封測階段純金鑰模式——復原金鑰對應「一個玩家」，終身不變，底下最多累積3段人生
+const RECOVERY_KEY_STORAGE_NAME = "life_sim_recovery_key"; // 復原金鑰快取在本機，方便同一台裝置不用每次重輸入
+const ACTIVE_SLOT_STORAGE_NAME = "life_sim_active_slot"; // 記住這台裝置上次玩的是第幾段人生(0~2)
+const MAX_LIFE_SLOTS = 3; // 【定案,十、10.1】
+function generateRecoveryKey(){
+  // 用瀏覽器內建crypto產生10 bytes(80 bits)隨機性，格式化成5組4碼英數字方便玩家抄寫核對，例如 A1B2-C3D4-E5F6-7890-1234
+  const bytes = new Uint8Array(10);
+  (window.crypto || crypto).getRandomValues(bytes);
+  const hex = Array.from(bytes).map(b=>b.toString(16).padStart(2,"0")).join("");
+  return hex.match(/.{1,4}/g).join("-").toUpperCase();
+}
+const MODEL = "claude-sonnet-5"; // 2026-09-18：舊版claude-sonnet-4-6疑似帳號無此模型存取權限（403，非404 not_found，見CHANGELOG排查記錄），改用目前最新且更便宜的Sonnet版本
+const CUSTOM_INPUT_MAX_CHARS = 300; // 呼應設計文件1.1.3：至少100字，理想200-300字，取上限值
+
+const STAGE_LABELS = [
+  [0,14,"孩提"],[15,17,"高中"],[18,22,"大學／技職"],
+  [23,29,"初入社會"],[30,45,"職涯發展"],[46,60,"中年"],[61,200,"老年"]
+];
+function stageLabel(age){
+  for(const [a,b,label] of STAGE_LABELS){ if(age>=a && age<=b) return label; }
+  return "人生";
+}
+const VISIBLE_STAT_LABELS = { health:"健康", knowledge:"才識", network:"人脈", expression:"表達力", appearance:"外表" };
+
+// 四、4.3 事件狀態機制（9/15新增）：五種狀態 available/active/completed/skipped/locked
+// auto:true 表示客戶端能從既有結構化資料直接判斷完成，不假手AI；auto:false 才需要AI透過milestone_updates回報
+const MILESTONE_DEFS = [
+  { id:"first_credit_card", label:"第一張信用卡", auto:false, lockedUntil: s=>s.age>=18 },
+  { id:"first_part_time_job", label:"第一次打工", auto:false, lockedUntil: null },
+  { id:"first_romance", label:"第一次戀愛", auto:true, lockedUntil: null }, // 四、4.4（9/16改版）：改由戀愛狀態機在首次進入「交往中」時自動判定，取代AI自由回報
+  { id:"graduation_highschool", label:"高中畢業", auto:true, lockedUntil: null },
+  { id:"graduation_college", label:"大學畢業", auto:true, lockedUntil: null },
+  { id:"first_full_time_job", label:"第一次正職工作", auto:true, lockedUntil: null },
+  { id:"first_startup", label:"第一次創業", auto:false, lockedUntil: null },
+  { id:"moved_out", label:"搬出家裡", auto:true, lockedUntil: null },
+  { id:"home_purchase", label:"買房", auto:true, lockedUntil: null },
+  { id:"marriage_decision", label:"結婚/不婚決定", auto:false, lockedUntil: s=>s.age>=18 },
+  // 四、4.2.2（9/19新增）：4.3.1原文明講清單非封閉，這裡補上履歷判準討論時發現4.2例子有列但4.3.1沒收的三項
+  { id:"first_job_change", label:"第一次轉職", auto:true, lockedUntil: null }, // 有既有job_change結構化訊號，非首次job_change視為轉職
+  { id:"first_child", label:"生育或領養", auto:true, lockedUntil: null }, // 有既有new_characters的is_child結構化訊號
+  { id:"parent_retirement", label:"父母退休", auto:false, lockedUntil: null } // 無結構化訊號，AI回報
+];
+function initMilestones(){
+  const m = {};
+  MILESTONE_DEFS.forEach(def=>{ m[def.id] = def.lockedUntil ? "locked" : "available"; });
+  return m;
+}
+function refreshMilestoneLocks(s){
+  // 每回合檢查locked狀態的里程碑，門檻達成就翻成available（客戶端結構化判斷，不假手AI）
+  MILESTONE_DEFS.forEach(def=>{
+    if(def.lockedUntil && s.milestones[def.id]==="locked" && def.lockedUntil(s)){
+      s.milestones[def.id] = "available";
+    }
+  });
+}
+function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
+function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function pick(arr){ return arr[rnd(0,arr.length-1)]; }
+
+// 3.5.3 核心數值的邊際遞減與人脈閒置衰退（9/14整併QA 60局測試後定案，係數皆為【測試參數】未定案）
+// 可切換開關，方便回歸比較（呼應開發參數規格「十五、開發完成標準」）
+let ENABLE_MARGINAL_DIMINISH = true;
+let ENABLE_NETWORK_IDLE_DECAY = true;
+const NETWORK_IDLE_THRESHOLD = 6; // 連續N回合沒有人脈經營行為才開始衰退（測試參數）
+const NETWORK_IDLE_DECAY_INTERVAL = 3; // 門檻觸發後，每隔幾回合衰退一次（測試參數）
+function applyMarginalDiminish(rawDelta, currentValue){
+  if(!ENABLE_MARGINAL_DIMINISH || rawDelta<=0) return rawDelta; // 只對正向成長量做邊際遞減，扣分不受影響
+  const factor = Math.max(0, 100-currentValue)/100;
+  return rawDelta*factor;
+}
+
+
+// ========== 三、3.8 幸福感系統（9/20新增，取代原七、7.1.4裡的幸福感角色定義）==========
+// 幸福感是系統裡唯一量「過得好不好」而非「做到了什麼」的軸，不產生任何判決。
+// 三層：基準線（長期水準，由五條來源管道決定）＋事件即時波動（AI只給emotional_tone，程式查表）＋朝基準線回歸。
+// 以下數字全部是【測試參數,待驗證】，由模擬校準，不得由代碼自行升格為定案（3.8.3、3.8.4）
+const HAPPINESS_TONE_DELTA = { uplifting:[6,12], warm:[2,5], unsettling:[-5,-2], heavy:[-12,-6] };
+const HAPPINESS_TONE_ENUM = Object.keys(HAPPINESS_TONE_DELTA);
+const HAPPINESS_REGRESSION_INTERVAL = 5;        // 每N回合朝基準線回歸一次
+const HAPPINESS_REGRESSION_RATIO = 0.25;        // 每次移動的比例
+const HAPPINESS_CHANNEL_TOP_WEIGHTS = [1.0, 0.7, 0.4]; // 3.8.2【定案】取前三高加權，第四第五條不計入
+const HAPPINESS_CHANNEL_DIMINISH_SCALE = 55;    // 管道邊際遞減的尺度參數
+const HAPPINESS_LOW_THRESHOLD = 35;             // 4.5 longest_low_streak 的低谷閾值（設計文件標【待補充】，這裡先給第一輪測試值）
+const AUTONOMY_NEUTRAL_DEFAULT = 50;            // 還沒遇到任何可跳過里程碑時的中性值
+// 3.8.4「可跳過的里程碑」在v1的實作範圍：只收「玩家自己這一生要不要走這條路」的選擇。
+// parent_retirement（父母退休）不是玩家的選擇、graduation_*等auto里程碑目前代碼裡不存在skipped路徑，兩者皆不列入。
+// ⚠️落差：first_child(生育/領養)、home_purchase(買房)、moved_out(搬出家裡)在語意上是可跳過的傳統路線，
+// 但現行代碼只有「達成時自動completed」沒有「明確決定不做」的skipped入口，暫時無法計入自主感，已記入QA手冊34.2
+const AUTONOMY_MILESTONES = ["marriage_decision","first_startup","first_credit_card","first_part_time_job"];
+const INTIMATE_RELATION_RE = /配偶|伴侶|先生|太太|老公|老婆|兒子|女兒|父親|母親|爸|媽|哥|姊|姐|弟|妹/;
+
+function happinessChannelDiminish(raw){
+  // 3.8.2【定案】每條管道各自套用3.5.3的邊際遞減。3.5.3的成長式 Δ=原始Δ×(100−x)/100 連續化後
+  // 封閉解為 x(t)=100(1−e^(−t/scale))，這裡直接拿它當「原始投入→管道分數」的靜態轉換：
+  // 高位投入換來的分數越來越少，且永遠逼近但不撞滿100。
+  if(!(raw>0)) return 0;
+  return clamp(100*(1-Math.exp(-raw/HAPPINESS_CHANNEL_DIMINISH_SCALE)), 0, 100);
+}
+function avgAffinity(list){
+  if(!list || !list.length) return 0;
+  return list.reduce((a,c)=>a+(c.affinity||0),0)/list.length;
+}
+function computeAutonomyRaw(s){
+  // 3.8.4【定案】chosen佔「已遇到的可跳過里程碑」的比例。
+  // not_offered（未觸發）與unavailable（條件未達成）都不進分母——設計文件明講「一直沒遇到對象的角色則不加分」，
+  // 不加分不等於扣分，若讓它們稀釋比例就變成扣分，會直接違反六、6.4中立性。
+  const m = s.milestones||{};
+  let chosen=0, encountered=0;
+  AUTONOMY_MILESTONES.forEach(id=>{
+    const st = m[id];
+    if(st==="skipped"){ chosen++; encountered++; }
+    else if(st==="completed" || st==="active"){ encountered++; }
+  });
+  if(!encountered) return AUTONOMY_NEUTRAL_DEFAULT;
+  return (chosen/encountered)*100;
+}
+function milestoneSkipReasonFor(s, id){
+  // 3.8.4【定案】skip_reason三選一。completed/active代表這條路實際走了，不屬於「跳過」，回null不記錄。
+  const st = (s.milestones||{})[id];
+  if(st==="skipped") return "chosen";
+  if(st==="locked") return "unavailable";
+  if(st==="available") return "not_offered";
+  return null;
+}
+function refreshMilestoneSkipReasons(s){
+  s.milestoneSkipReason = s.milestoneSkipReason || {};
+  MILESTONE_DEFS.forEach(def=>{
+    const reason = milestoneSkipReasonFor(s, def.id);
+    if(reason) s.milestoneSkipReason[def.id] = reason;
+    else delete s.milestoneSkipReason[def.id];
+  });
+}
+function computeHappinessChannels(s){
+  // 3.8.2【定案】五條來源管道，各自0-100、各自套用邊際遞減。
+  // ⚠️落差：「社團參與」與「職涯認同」目前沒有對應的結構化欄位，v1先由人脈／才識承擔，已記入QA手冊34.2
+  const chars = s.characters||[];
+  const intimate = chars.filter(c=>INTIMATE_RELATION_RE.test(c.relation||""));
+  const others = chars.filter(c=>!INTIMATE_RELATION_RE.test(c.relation||""));
+  const interests = s.interestCandidates||[];
+  const topInterest = interests.length ? Math.max.apply(null, interests.map(c=>c.investment||0)) : 0;
+  const finHealth = computeFinancialHealthForState(s);
+  const raw = {
+    intimacy: avgAffinity(intimate),
+    belonging: (s.stats.network||0)*0.6 + avgAffinity(others)*0.4,
+    selfActualization: (s.stats.knowledge||0)*0.5 + clamp(topInterest,0,100)*0.5,
+    stability: (s.stats.health||0)*0.5 + finHealth*0.5,
+    autonomy: computeAutonomyRaw(s)
+  };
+  const out = {};
+  Object.keys(raw).forEach(k=>{ out[k] = happinessChannelDiminish(raw[k]); });
+  return out;
+}
+function computeHappinessBaseline(s){
+  // 3.8.2【定案】取前三高加權，正規化0-100。第四、第五條不計入——
+  // 這是六、6.4中立性的機制保證：管道數量不足本身不扣分，三條撐得夠高就跟走傳統路線的人一樣能到滿值。
+  const ch = computeHappinessChannels(s);
+  const sorted = Object.keys(ch).map(k=>ch[k]).sort((a,b)=>b-a).slice(0,3);
+  let num=0, den=0;
+  sorted.forEach((v,i)=>{ num += v*HAPPINESS_CHANNEL_TOP_WEIGHTS[i]; den += HAPPINESS_CHANNEL_TOP_WEIGHTS[i]; });
+  return den ? clamp(num/den, 0, 100) : 50;
+}
+function happinessToneDelta(tone){
+  // 3.8.3【定案】AI回傳enum以外的值，一律視為中性（增減量0），不崩潰也不憑猜測賦值
+  const range = HAPPINESS_TONE_DELTA[tone];
+  if(!range) return 0;
+  return rnd(range[0], range[1]);
+}
+function applyHappiness(s, tone){
+  // 3.8.4【定案,程式層禁令】這裡的輸入只有「事件結果(tone)」與「來源管道的投入回饋(baseline)」兩種，
+  // 不得以「某里程碑是否達成／某狀態是否成立」作為加減條件。QA可直接靜態檢查本函式。
+  s.happiness = clamp(s.happiness + happinessToneDelta(tone), 0, 100);
+  s.happinessBaseline = computeHappinessBaseline(s);
+  s.happinessRegressionCounter = (s.happinessRegressionCounter||0) + 1;
+  if(s.happinessRegressionCounter >= HAPPINESS_REGRESSION_INTERVAL){
+    s.happinessRegressionCounter = 0;
+    s.happiness = clamp(s.happiness + (s.happinessBaseline - s.happiness)*HAPPINESS_REGRESSION_RATIO, 0, 100);
+  }
+}
+
+// ========== 四、4.5 人生軌跡紀錄 life_trajectory（9/20新增）==========
+// 【定案】每個人生階段結束時由客戶端結算一次並凍結，不可回頭修改，AI不參與結算。
+// 階段切法沿用4.2.3既有定義（chronicleLifeStageKey：學生時期＋2.5七個年齡帶，共8段）
+const TRAJECTORY_KEY_NPC_COUNT = 3; // 4.5【定案】關係值最高的2至3位，取上限3
+function spectrumSnapshot(s){
+  // 依附兩軸（5.2.3/12.1.4）＋同儕位置（5.2.4）＋做事態度五條（3.7），共8個值
+  const c = s.conscientiousness||{};
+  return {
+    anxiety: Math.round(s.anxiety||0), avoidance: Math.round(s.avoidance||0),
+    peerPosition: Math.round(s.peerPosition||0),
+    selfDiscipline: Math.round(c.selfDiscipline||0), prudence: Math.round(c.prudence||0),
+    achievement: Math.round(c.achievement||0), responsibility: Math.round(c.responsibility||0),
+    teamSolo: Math.round(c.teamSolo||0)
+  };
+}
+function newStageAccum(s){
+  return { stage: chronicleLifeStageKey(s), ageFrom: s.age, turns:0,
+    happinessSum:0, peak:s.happiness, low:s.happiness,
+    lowStreak:0, longestLowStreak:0, channelSums:{},
+    chronicleStart:(s.chronicle||[]).length, breakthroughEvents:[] };
+}
+function freezeStageTrajectory(s){
+  const a = s.stageAccum;
+  if(!a || !a.turns) return;
+  const chars = (s.characters||[]).slice().sort((x,y)=>(y.affinity||0)-(x.affinity||0));
+  let dominant=null, best=-1;
+  Object.keys(a.channelSums).forEach(k=>{ if(a.channelSums[k]>best){ best=a.channelSums[k]; dominant=k; } });
+  s.lifeTrajectory.push({
+    stage: a.stage, age_from: a.ageFrom, age_to: s.age, turns: a.turns,
+    happiness_avg: +(a.happinessSum/a.turns).toFixed(1),
+    happiness_peak: Math.round(a.peak), happiness_low: Math.round(a.low),
+    dominant_channel: dominant,
+    longest_low_streak: a.longestLowStreak,
+    spectrum_snapshot: spectrumSnapshot(s),
+    resume_entries: (s.chronicle||[]).slice(a.chronicleStart),
+    key_npcs: chars.slice(0,TRAJECTORY_KEY_NPC_COUNT).map(c=>({ name:c.name, relation:c.relation||"", affinity:Math.round(c.affinity||0) })),
+    // ⚠️落差：六、6.2破格里程碑目前只存在於system prompt的敘事指示，沒有結構化觸發訊號可供客戶端記錄，
+    // 這個欄位先保留空陣列，等6.2實作出可判定的光譜位移觸發點再填（已記入QA手冊34.2）
+    breakthrough_events: a.breakthroughEvents.slice()
+  });
+}
+function ensureStageTransition(s){
+  // 四、4.5：段落邊界偵測+把上一段凍結進life_trajectory，抽出來給一般回合累計(updateLifeTrajectory)
+  // 與結局前置凍結(freezeFinalLifeStageForEnding)共用，兩邊都需要「先確認目前是不是進了新階段」這一步
+  s.lifeTrajectory = s.lifeTrajectory || [];
+  if(!s.stageAccum) s.stageAccum = newStageAccum(s);
+  const nowStage = chronicleLifeStageKey(s);
+  if(nowStage !== s.stageAccum.stage){ freezeStageTrajectory(s); s.stageAccum = newStageAccum(s); }
+}
+function updateLifeTrajectory(s){
+  // 四、4.5：一般回合(非結局)的累計，只在applyResult()裡forceEnding為false時呼叫——
+  // forceEnding時的最後一段凍結改由takeTurn()呼叫AI之前的freezeFinalLifeStageForEnding()處理，
+  // applyResult()不再重複凍結，避免同一段被凍結兩次
+  ensureStageTransition(s);
+  const a = s.stageAccum;
+  a.turns++;
+  a.happinessSum += s.happiness;
+  if(s.happiness > a.peak) a.peak = s.happiness;
+  if(s.happiness < a.low) a.low = s.happiness;
+  if(s.happiness < HAPPINESS_LOW_THRESHOLD){
+    a.lowStreak++;
+    if(a.lowStreak > a.longestLowStreak) a.longestLowStreak = a.lowStreak;
+  } else a.lowStreak = 0;
+  const ch = computeHappinessChannels(s);
+  Object.keys(ch).forEach(k=>{ a.channelSums[k] = (a.channelSums[k]||0) + ch[k]; });
+}
+function freezeFinalLifeStageForEnding(s){
+  // 四、4.5（2026-09-20 b版修正）：forceEnding時，最後一段的邊界必須在AI被呼叫之前就確定並放進
+  // s.lifeTrajectory，否則buildLifeSummaryMaterial()送給AI的payload只會看到前面已完結的幾段，
+  // AI永遠沒機會寫到「角色死亡的那一段」，導致結局畫面最後一段永遠是空白——這是2026-09-20跑
+  // 400+回合端到端測試時發現的bug，不是邊界情況，每一局都會發生。
+  // 代價：這一回合本身的數值(這回合AI才要回傳的health/happiness等delta)不算進這一段的統計，
+  // 只包含到上一回合為止的累積——對敘事語氣用途的人生總結而言可以接受。
+  ensureStageTransition(s);
+  freezeStageTrajectory(s);
+  s.stageAccum = null;
+}
+
+// ========== 七、7.1.4 死亡結局的人生總結（9/20整節改版，取代ENDING_DEFINITIONS標籤計分制）==========
+// 【定案】不輸出任何標籤、分數、排名。素材的挑選與排序全由客戶端從life_trajectory完成，AI只負責寫成回顧的語氣。
+const SUMMARY_TONE_BANDS = [ // 7.1.4.2【定案】敘事溫度四級由happiness_avg決定；分界數字為【測試參數】
+  { min:65, tone:"釋然" }, { min:45, tone:"平穩" }, { min:25, tone:"惋惜" }, { min:0, tone:"沉重" }
+];
+const SUMMARY_RESUME_PER_STAGE = 3;  // 7.1.4.2【待補充】每階段挑幾則履歷條目——第一輪測試值
+const SUMMARY_NPC_PER_STAGE = 2;     // 7.1.4.2【待補充】每階段挑幾位角色卡——第一輪測試值
+const SPECTRUM_SHIFT_THRESHOLD = 15; // 7.1.4.2【待補充】L2變化句的位移閾值——第一輪測試值
+const SPECTRUM_LABELS = { anxiety:"焦慮軸", avoidance:"迴避軸", peerPosition:"同儕位置",
+  selfDiscipline:"自律", prudence:"審慎", achievement:"成就傾向", responsibility:"責任感", teamSolo:"團隊vs單打獨鬥" };
+const HAPPINESS_CHANNEL_LABELS = { intimacy:"親密與家庭", belonging:"友情與歸屬",
+  selfActualization:"自我實現", stability:"身心安穩", autonomy:"自主感" };
+function lifeStageLabel(key){
+  if(key==="student") return "學生時期";
+  if(key==="career_other") return "晚年";
+  return key + "歲";
+}
+function summaryToneFor(avg){
+  for(let i=0;i<SUMMARY_TONE_BANDS.length;i++){ if(avg>=SUMMARY_TONE_BANDS[i].min) return SUMMARY_TONE_BANDS[i].tone; }
+  return SUMMARY_TONE_BANDS[SUMMARY_TONE_BANDS.length-1].tone;
+}
+function buildLifeSummaryMaterial(s){
+  const traj = s.lifeTrajectory || [];
+  const segments = traj.map(t=>({
+    stage: t.stage, stage_label: lifeStageLabel(t.stage),
+    age_from: t.age_from, age_to: t.age_to,
+    tone: summaryToneFor(t.happiness_avg),
+    dominant_channel: t.dominant_channel,
+    dominant_channel_label: HAPPINESS_CHANNEL_LABELS[t.dominant_channel] || null,
+    longest_low_streak: t.longest_low_streak,
+    resume_entries: (t.resume_entries||[]).slice(0, SUMMARY_RESUME_PER_STAGE),
+    key_npcs: (t.key_npcs||[]).slice(0, SUMMARY_NPC_PER_STAGE),
+    breakthrough_events: t.breakthrough_events || []
+  }));
+  const transitions = [];
+  for(let i=1;i<traj.length;i++){
+    const a = traj[i-1].spectrum_snapshot || {}, b = traj[i].spectrum_snapshot || {};
+    let axis=null, delta=0;
+    Object.keys(SPECTRUM_LABELS).forEach(k=>{
+      const d = (b[k]||0) - (a[k]||0);
+      if(Math.abs(d) > Math.abs(delta)){ delta = d; axis = k; }
+    });
+    if(axis && Math.abs(delta) >= SPECTRUM_SHIFT_THRESHOLD){
+      transitions.push({ after_stage: traj[i-1].stage,
+        from_stage_label: lifeStageLabel(traj[i-1].stage), to_stage_label: lifeStageLabel(traj[i].stage),
+        axis, axis_label: SPECTRUM_LABELS[axis], from: a[axis]||0, to: b[axis]||0,
+        direction: delta>0 ? "up" : "down" });
+    }
+  }
+  return { segments, transitions };
+}
+function assembleEnding(s, r){
+  // 客戶端先挑好素材，再把AI寫的文字貼回對應的段落；AI沒寫到的段落留空字串，不補猜測內容
+  const material = buildLifeSummaryMaterial(s);
+  const ls = r.life_summary || {};
+  const byStage = {}, byTrans = {};
+  (ls.segments||[]).forEach(x=>{ if(x && x.stage) byStage[x.stage] = x.text || ""; });
+  (ls.transitions||[]).forEach(x=>{ if(x && x.after_stage) byTrans[x.after_stage] = x.text || ""; });
+  return {
+    segments: material.segments.map(m=>({ stage:m.stage, label:m.stage_label, age_from:m.age_from, age_to:m.age_to,
+      tone:m.tone, resume_entries:m.resume_entries, key_npcs:m.key_npcs, text: byStage[m.stage] || "" })),
+    transitions: material.transitions.map(t=>({ after_stage:t.after_stage, text: byTrans[t.after_stage] || "" })),
+    epitaph: ls.epitaph || "",
+    successionAvailable: !!r.succession_available
+  };
+}
+
+// 三、3.2.2（9/16修正）才識成長：AI只給event_type標籤，程式查表決定「事件原始學習值」，取代原本AI直接給的knowledge delta
+// 區間數字為【測試參數,待驗證】，milestone上限1~2次取上限值2（同一人生階段=timeState.stageMode）
+const KNOWLEDGE_EVENT_VALUES = { ordinary:[3,5], intensive:[5,8], milestone:[10,15] };
+const KNOWLEDGE_MILESTONE_CAP_PER_STAGE = 2;
+// 四、4.2.2（9/19新增）：「重大失敗/成就」這類敘事判斷型履歷條目沒有結構化完成狀態可判斷，
+// 呼應3.2.2 milestone精神——不由AI自行判斷次數，程式依人生階段計數擋下超額觸發
+const MAJOR_EVENT_JUDGED_CAP_PER_STAGE = 2;
+// 四、4.2.3（9/19新增）：L3履歷的「人生階段」切法對齊二、2.5的年齡帶定義（學生時期＋七個年齡帶，共8段），
+// 不沿用timeState.stageMode（該欄位只有highschool/college/career三值，career涵蓋22-100+整段不夠細，
+// 會讓「每階段上限2則」在出社會後的六七十年裡只算一次，違背分階段配額的本意）。
+// 學生時期判斷依據呼應3.4.6/9.8改版，統一以studentStatus是否已轉為graduated/withdrawn為準，不看年齡
+function chronicleLifeStageKey(s){
+  if(s.studentStatus!=="graduated" && s.studentStatus!=="withdrawn") return "student";
+  const bucket = LIFE_STAGE_ROUND_BUDGET.find(b=>s.age>=b.minAge && s.age<=b.maxAge);
+  return bucket ? `${bucket.minAge}-${bucket.maxAge}` : "career_other";
+}
+function shouldRecordJudgedMajorEvent(s, majorEventType){
+  if(majorEventType!=="achievement" && majorEventType!=="setback") return true; // 非敘事判斷型（例如既有里程碑類），不受此上限管
+  const stage = chronicleLifeStageKey(s);
+  s.majorEventJudgedCountByStage = s.majorEventJudgedCountByStage||{};
+  s.majorEventJudgedCountByStage[stage] = s.majorEventJudgedCountByStage[stage]||0;
+  if(s.majorEventJudgedCountByStage[stage] >= MAJOR_EVENT_JUDGED_CAP_PER_STAGE) return false;
+  s.majorEventJudgedCountByStage[stage]++;
+  return true;
+}
+function rollKnowledgeRawValue(eventType, eventId, s){
+  if(eventType==="ordinary" || eventType==="intensive"){
+    const [lo,hi] = KNOWLEDGE_EVENT_VALUES[eventType];
+    return rnd(lo,hi);
+  }
+  if(eventType==="milestone"){
+    const stage = s.timeState.stageMode;
+    s.knowledgeMilestoneCountByStage[stage] = s.knowledgeMilestoneCountByStage[stage]||0;
+    const alreadyUsed = eventId && s.knowledgeMilestoneUsedIds.includes(eventId);
+    if(alreadyUsed || s.knowledgeMilestoneCountByStage[stage] >= KNOWLEDGE_MILESTONE_CAP_PER_STAGE){
+      return 0; // 程式擋下：同一event_id重複，或本階段milestone次數已達上限
+    }
+    s.knowledgeMilestoneCountByStage[stage]++;
+    if(eventId) s.knowledgeMilestoneUsedIds.push(eventId);
+    const [lo,hi] = KNOWLEDGE_EVENT_VALUES.milestone;
+    return rnd(lo,hi);
+  }
+  return 0; // 沒有event_type代表這回合沒有才識相關事件
+}
+
+// 八、興趣系統v1（9/16新增）——AI只分類(category/reaction)，候選成立/投入度/降階/下游出口一律由程式計算
+// 以下數字皆為【測試參數,待驗證】，文件本身也明講候選淡出時間、轉正門檻等尚未定案，這裡先給一組內部一致的測試值
+const INTEREST_CATEGORIES = ["藝術創作","手作工藝","知識研究","體能競技","科技邏輯","社交表演","商業交易"];
+const INTEREST_CANDIDATE_TO_ACTIVE_STREAK = 3; // 候選連續正向N次轉正為正式興趣卡【測試參數】
+const INTEREST_CANDIDATE_FADE_TURNS = 6; // 候選興趣連續N回合沒有任何互動就自然淡出消失【測試參數】
+const INTEREST_ACTIVE_DORMANT_TURNS = 10; // 正式興趣卡連續N回合沒有投入就降階為背景興趣【測試參數】
+const INTEREST_SIDE_BUSINESS_THRESHOLD = 40; // 【定案】投入度達40觸發副業契機事件
+const SELF_DISCIPLINE_INTEREST_STREAK_1 = 3; // 【定案,3.7.2】連續3次持續投入
+const SELF_DISCIPLINE_INTEREST_STREAK_2 = 6; // 【定案,3.7.2】連續6次持續投入
+
+function findInterestCard(s, category){
+  return (s.interestCandidates||[]).find(c=>c.category===category);
+}
+function computeInterestCareerWeightBonus(investment){
+  // 8.7【測試值,非正式定案】基礎權重×(1+投入度×0.5%)，純工具函式：目前代碼沒有對應的「職涯分支選擇點」可以接，先備妥公式供未來整合
+  return 1 + investment*0.005;
+}
+// 8.1-8.2 反應三分類：正向累積朝正式興趣卡邁進／中性維持原狀／明確負向暫停或降低(不刪除)
+// 8.7 下游出口：自律(僅持續投入計入)、副業契機(投入度40，三選一，見renderSideBusinessModal)
+// 8.2（9/16-v2.1補充）候選興趣進度(candidateProgress)與自律連續投入計數(positiveStreak)是兩個獨立欄位：
+//   candidateProgress只管candidate→active轉正，positive=+1/neutral=0/negative=-1(下限0)，單次negative不會讓進度整個消失
+//   positiveStreak仍是嚴格「連續」計數，供3.7.2自律判定使用，中斷(negative)一樣重新起算，這條規則v2.1未變動
+function applyInterestEvent(s, interestEvent){
+  if(!interestEvent || !interestEvent.category || !INTEREST_CATEGORIES.includes(interestEvent.category)) return;
+  if(!s.interestCandidates) s.interestCandidates = [];
+  const category = interestEvent.category;
+  const reaction = interestEvent.reaction; // "positive" | "neutral" | "negative"
+  let card = findInterestCard(s, category);
+  if(!card){
+    card = {
+      id: category+"_"+s.turnCount, category, status:"candidate", investment:0, positiveStreak:0, candidateProgress:0,
+      lastTouchTurn: s.turnCount, sideBusinessOffered:false, sideBusinessStatus:null,
+      selfDisciplineAwarded3:false, selfDisciplineAwarded6:false
+    };
+    s.interestCandidates.push(card);
+  }
+  card.lastTouchTurn = s.turnCount; // 任何反應都算「有互動」，重置淡出/降階的閒置計時
+  if(reaction==="positive"){
+    const raw = rnd(4,9); // 8.3【測試參數】原始投入值，量級比照其他成長型數值
+    const grown = applyMarginalDiminish(raw, card.investment); // 8.3：與才識/人脈共用同一套邊際遞減
+    card.investment = clamp(card.investment+grown, 0, 100);
+    card.positiveStreak++;
+    card.candidateProgress = (card.candidateProgress||0) + 1; // 8.2：候選進度+1，不設上限
+    if(card.status==="candidate" && card.candidateProgress>=INTEREST_CANDIDATE_TO_ACTIVE_STREAK) card.status="active";
+    if(card.status==="dormant") card.status="active"; // 8.6：久未投入後重新投入，視為喚醒
+    // 3.7.2（9/16新增）自律成長：僅「持續投入」計入，由程式計數連續正向次數，非AI給值
+    if(!card.selfDisciplineAwarded3 && card.positiveStreak>=SELF_DISCIPLINE_INTEREST_STREAK_1){
+      s.conscientiousness.selfDiscipline = clamp(s.conscientiousness.selfDiscipline+1,0,100);
+      card.selfDisciplineAwarded3 = true;
+    }
+    if(!card.selfDisciplineAwarded6 && card.positiveStreak>=SELF_DISCIPLINE_INTEREST_STREAK_2){
+      s.conscientiousness.selfDiscipline = clamp(s.conscientiousness.selfDiscipline+1,0,100);
+      card.selfDisciplineAwarded6 = true;
+    }
+    if(card.status==="active" && !card.sideBusinessOffered && card.investment>=INTEREST_SIDE_BUSINESS_THRESHOLD){
+      card.sideBusinessOffered = true;
+      s.pendingSideBusinessCardId = card.id; // 8.7：觸發一次副業契機事件，每張卡最多首次觸發一次
+    }
+  } else if(reaction==="negative"){
+    card.positiveStreak = 0; // 連續投入中斷，自律的連續次數獎勵重新起算(3.7.2「連續」語意不變)
+    card.selfDisciplineAwarded3 = false; card.selfDisciplineAwarded6 = false;
+    card.candidateProgress = Math.max(0, (card.candidateProgress||0) - 1); // 8.2（9/16-v2.1）：候選進度-1，下限0，不整個歸零
+    card.investment = clamp(card.investment - rnd(3,8), 0, 100); // 暫停或降低，不整個刪除
+  }
+  // reaction==="neutral"：不增加也不歸零，維持原狀（investment/positiveStreak/candidateProgress皆不變）
+}
+// 8.1/8.6：候選興趣久未互動自然淡出消失；正式興趣卡久未投入降階為背景興趣
+function sweepInterestDecay(s){
+  if(!s.interestCandidates) return;
+  s.interestCandidates = s.interestCandidates.filter(card=>{
+    const idleTurns = s.turnCount - card.lastTouchTurn;
+    if(card.status==="candidate" && idleTurns>=INTEREST_CANDIDATE_FADE_TURNS) return false;
+    if(card.status==="active" && idleTurns>=INTEREST_ACTIVE_DORMANT_TURNS) card.status="dormant";
+    return true;
+  });
+}
+
+let state = null;
+
+// 十、10.1（9/19新增）：封測階段純金鑰模式的啟動流程，取代原本單純讀localStorage的loadGame()
+// 流程：本機沒有金鑰→顯示「開始新旅程／我有復原金鑰」選擇；本機有金鑰→嘗試自動接續上次玩的slot，
+// 失敗（沒記住slot、或該slot讀取失敗）才顯示選擇要繼續哪一段人生的畫面
+async function initApp(){
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(!key){
+    state = { phase:"keyChoice" };
+    render();
+    return;
+  }
+  const activeSlotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  const activeSlot = activeSlotRaw!==null ? Number(activeSlotRaw) : null;
+  if(activeSlot!==null){
+    const loaded = await tryLoadSlot(key, activeSlot, true);
+    if(loaded) return;
+  }
+  await showSlotPicker(key);
+}
+// 讀取指定slot：先試Worker(跨裝置的最新資料)，失敗且allowLocalFallback時退回本機快取（離線容錯，不會直接卡死玩家）
+async function tryLoadSlot(key, slot, allowLocalFallback){
+  try{
+    const res = await fetch(WORKER_URL+"load?key="+encodeURIComponent(key)+"&slot="+slot);
+    const data = await res.json();
+    if(data && data.success){
+      state = data.state;
+      try{ localStorage.setItem(STORAGE_KEY+":"+slot, JSON.stringify(state)); }catch(e){}
+      render();
+      return true;
+    }
+  }catch(e){ console.warn("從雲端讀取存檔失敗，嘗試本機快取", e); }
+  if(allowLocalFallback){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY+":"+slot);
+      if(raw){ state = JSON.parse(raw); render(); return true; }
+    }catch(e){}
+  }
+  return false;
+}
+async function showSlotPicker(key){
+  let slots = [null,null,null];
+  try{
+    const res = await fetch(WORKER_URL+"slots?key="+encodeURIComponent(key));
+    const data = await res.json();
+    if(data && data.success && Array.isArray(data.slots)) slots = data.slots;
+  }catch(e){ console.warn("讀取存檔清單失敗", e); }
+  state = { phase:"slotPicker", slots };
+  render();
+}
+async function saveGame(){
+  const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  const slot = slotRaw!==null ? Number(slotRaw) : null;
+  try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); }
+  catch(e){ console.warn("save failed", e); }
+  // 十、10.1（9/19新增）：本機存完之後，同步存一份到Worker的KV，達成跨裝置存檔。
+  // 只在真正進入遊戲(playing/ending)且有金鑰+slot時才同步，避免setup過程中還沒真的開始的角色也去打API；
+  // 失敗只console.warn，不影響當下遊玩（本機那份已經存好了）
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(key && slot!==null && state && (state.phase==="playing" || state.phase==="ending")){
+    try{
+      await fetch(WORKER_URL+"save", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          key, slot,
+          meta: { name:state.name, age:state.age, stage:stageLabel(state.age), updatedAt:Date.now() },
+          state
+        })
+      });
+    }catch(e){ console.warn("雲端存檔失敗", e); }
+  }
+}
+
+const PARENTING_STYLES = [
+  { label:"威權高壓",
+    parentTrait:"要求嚴格、少誇獎、講求規矩", affinityRange:[35,55] },
+  { label:"民主開放",
+    parentTrait:"願意溝通、給空間、支持你的決定", affinityRange:[60,80] },
+  { label:"放任不管",
+    parentTrait:"忙於自己的事、很少過問，像室友多過像家長", affinityRange:[45,65] },
+  { label:"情感疏忽",
+    parentTrait:"報喜不報憂、情感表達少、常常心不在焉", affinityRange:[25,45] }
+];
+const PARENT_OCCUPATIONS = [
+  { label:"自營業者", trait:"自己做生意，家裡常聊到生意上的事" },
+  { label:"白領上班族", trait:"朝九晚五，偶爾加班，話題常繞著公司" },
+  { label:"勞力/服務業", trait:"工時不固定，體力活，回家常喊累" },
+  { label:"待業中", trait:"目前沒有固定工作，家裡氣氛偶爾緊繃" },
+  { label:"長期不在身邊", trait:"因工作長期在外地或國外，聚少離多" },
+  { label:"自由接案", trait:"收入不穩定，工作時間彈性但常常在忙" },
+  { label:"軍公教警消", trait:"作息規律，重紀律，偶爾提起工作上的責任" },
+  { label:"政治人物", trait:"公眾人物，家裡常有外人不太自然的關注" }
+];
+const SIBLING_TRAITS = ["競爭心強，什麼都要比一下","很罩你，關鍵時刻挺你","各過各的，感情普通但不差","話不多，但需要時找得到人"];
+// bug修正（9/14，人生草稿0914測試.pdf）：原本SIBLING_NAMES混著男女名字、跟SIBLING_RELATIONS各自獨立亂數，
+// 導致「柏勳」這種普遍認知男性的名字配到「姊姊」這種問題，違反1.2.5姓名性別一致性規則。改成先骰性別，
+// 姓名跟稱謂都從對應性別的池子挑，兩者保證一致。
+// 五、5.5 生活方式選擇（9/14新增，玩家開局自選，不是骰定，跟5.4七步驟骰定順序分開處理）
+const SPENDING_HABITS = { "精打細算":0.4, "普通花費":0.6, "隨性大方":0.8 };
+const MEAL_EXPENSE_MULT = { "家裡包辦":0.6, "自己打理":0.85, "外食為主":1.2 };
+// 三餐事件觸發機率倍率，只適用「自己打理」vs「外食為主」，家裡包辦不適用這組（敘事情境本質不同）
+const MEAL_EVENT_MULT = {
+  "自己打理": { socialEncounter:0.7, healthBonusHit:1.2, timeConsumingMilestone:0.85 },
+  "外食為主": { socialEncounter:1.3, healthBonusHit:1.0, timeConsumingMilestone:1.15 }
+};
+function computeMealCareEligible(familyStructure, parentInfos){
+  if(familyStructure==="隔代教養") return true;
+  if(!parentInfos || parentInfos.length===0) return false;
+  for(const p of parentInfos){
+    if(p.style==="放任不管" || p.style==="情感疏忽") return false;
+    if(p.occupation==="長期不在身邊") return false;
+    if(p.occupation==="自營業者" && !(p.style==="民主開放" || p.style==="威權高壓")) return false;
+  }
+  return true;
+}
+const SIBLING_RELATIONS_MALE = ["哥哥","弟弟"];
+const SIBLING_RELATIONS_FEMALE = ["姊姊","妹妹"];
+const SIBLING_NAMES_MALE = ["阿翔","家豪","柏勳","彥廷"];
+const SIBLING_NAMES_FEMALE = ["小雨","詩涵","佳蓉","雨潔"];
+function rollSibling(){
+  const isMale = Math.random()<0.5;
+  return {
+    name: pick(isMale ? SIBLING_NAMES_MALE : SIBLING_NAMES_FEMALE),
+    relation: pick(isMale ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE)
+  };
+}
+
+function rollAttachmentBaseline(styleLabel){
+  let anxiety = rnd(30,70), avoidance = rnd(30,70);
+  switch(styleLabel){
+    case "威權高壓": anxiety+=rnd(0,15); avoidance+=rnd(0,10); break;
+    case "情感疏忽": anxiety+=rnd(5,20); avoidance+=rnd(5,15); break;
+    case "放任不管": avoidance+=rnd(5,15); break;
+    case "民主開放": anxiety-=rnd(5,15); avoidance-=rnd(5,15); break;
+    case "隔代教養": avoidance+=rnd(0,10); break;
+    case "服刑家長": anxiety+=rnd(5,15); avoidance+=rnd(5,15); break;
+  }
+  return { anxiety: clamp(anxiety,0,100), avoidance: clamp(avoidance,0,100) };
+}
+function rollPeerPosition(){ return rnd(20,100); }
+function peerPositionLabel(v, special){
+  if(special) return special;
+  if(v<=35) return "獨行俠";
+  if(v<=55) return "邊緣觀察者";
+  if(v<=75) return "小圈子黏著者";
+  return "核心人氣圈";
+}
+function rollKeyEvent(familyRuptureApplied){
+  if(Math.random()>=0.30) return null;
+  const pool = ["反覆遷徙","社交創傷","早熟的責任","意外的高光時刻"];
+  if(!familyRuptureApplied) pool.push("家庭斷裂");
+  return pick(pool);
+}
+function applyKeyEvent(type, obj){
+  switch(type){
+    case "家庭斷裂":
+      obj.anxiety = clamp(obj.anxiety+rnd(10,20),0,100);
+      obj.avoidance = clamp(obj.avoidance+rnd(10,20),0,100);
+      break;
+    case "反覆遷徙":
+      obj.peerPosition = clamp(obj.peerPosition-rnd(15,25),0,100);
+      break;
+    case "社交創傷":
+      if(Math.random()<0.5) obj.avoidance = clamp(obj.avoidance+rnd(10,20),0,100);
+      else obj.anxiety = clamp(obj.anxiety+rnd(10,20),0,100);
+      break;
+    case "早熟的責任":
+      obj.peerPositionSpecial = "照顧者型";
+      obj.avoidance = clamp(obj.avoidance+rnd(5,12),0,100);
+      break;
+    case "意外的高光時刻":
+      obj.anxiety = clamp(obj.anxiety-rnd(8,15),0,100);
+      obj.avoidance = clamp(obj.avoidance-rnd(8,15),0,100);
+      break;
+  }
+}
+
+const PERSONALITY_STYLES = ["陽光開朗型","溫柔婉約型","天真爛漫型","高冷神秘型","幹練俐落型","幽默風趣型"];
+// 9/14改版：學生時期零用錢改用遊戲內單位制，不對應真實幣值(NT$)，只用來計算相對關係
+const STUDENT_ALLOWANCE_UNITS = { "清寒":30, "小康":60, "富裕":120 };
+// 三、3.4.1家境三級距對照表——家庭月收入/家庭存款皆為遊戲幣單位（9/19改版，÷1000換算自原NT$數字，取代真實NT$；
+// 呼應3.4.6補充定案：學生時期financial_health要餵這組數字，不能餵玩家個人零用錢，兩者原本量級不同，換算後銜接一致）
+const FAMILY_FINANCE_BY_TIER = {
+  "清寒": { monthlyIncome:[30,40], savings:[0,100] },
+  "小康": { monthlyIncome:[60,100], savings:[1000,3000] },
+  "富裕": { monthlyIncome:[180,350], savings:[10000,30000] } // 上限文件未定案（原文「以上」），標記【測試參數】延伸合理範圍
+};
+function rollFamilyFinance(tier){
+  const t = FAMILY_FINANCE_BY_TIER[tier] || FAMILY_FINANCE_BY_TIER["小康"];
+  return { familyMonthlyIncome: rnd(t.monthlyIncome[0], t.monthlyIncome[1]), familySavings: rnd(t.savings[0], t.savings[1]) };
+}
+function rollEconomicTier(){
+  const r = rnd(1,100);
+  if(r<=30) return { tier:"清寒", network:rnd(15,35), allowance:STUDENT_ALLOWANCE_UNITS["清寒"], savings:STUDENT_ALLOWANCE_UNITS["清寒"], ...rollFamilyFinance("清寒") };
+  if(r<=80) return { tier:"小康", network:rnd(30,55), allowance:STUDENT_ALLOWANCE_UNITS["小康"], savings:STUDENT_ALLOWANCE_UNITS["小康"], ...rollFamilyFinance("小康") };
+  return { tier:"富裕", network:rnd(50,75), allowance:STUDENT_ALLOWANCE_UNITS["富裕"], savings:STUDENT_ALLOWANCE_UNITS["富裕"], ...rollFamilyFinance("富裕") };
+}
+function rollSocialStart(biasStyle, peerPosVal){
+  let base = 50;
+  if(biasStyle==="民主開放") base+=10;
+  if(biasStyle==="情感疏忽") base-=10;
+  if(peerPosVal>=76) base+=8;
+  if(peerPosVal<=35) base-=8;
+  return clamp(base+rnd(-8,8),0,100);
+}
+// 9/19改版：斷點常數÷1000換算自原NT$數字，同步3.4.1家庭月收入/存款的遊戲幣單位改版，避免量級對不上恆算出接近0分（見3.4.6補充定案）
+function computeFinancialHealth(savings, monthlyIncome){
+  const savingsScore = savings<100 ? (savings/100)*40 : savings<3000 ? 40+((savings-100)/2900)*35 : 75+Math.min(25,(savings-3000)/200);
+  const incomeScore = monthlyIncome<40 ? (monthlyIncome/40)*40 : monthlyIncome<100 ? 40+((monthlyIncome-40)/60)*35 : 75+Math.min(25,(monthlyIncome-100)/20);
+  return clamp(Math.round(savingsScore*0.5+incomeScore*0.5),0,100);
+}
+// 三、3.4.6（9/16補充定案）：學生時期(尚未出社會)用家庭收支換算財務健康度，不用玩家個人零用錢
+// （零用錢是3.4.1定案的遊戲內單位、故意不對應真實幣值，直接餵進computeFinancialHealth()量級對不上，會恆算出接近0分）
+// 9/19改版：切換依據對齊九、9.8，統一用studentStatus判斷（取代原本is_student/occupationCategory是否已賦值），
+// graduated/withdrawn才算已出社會，其餘（含null=尚未入大學的高中階段、enrolled含休學中）都算在學，用家庭數字；不看年齡
+function computeFinancialHealthForState(s){
+  if(s.studentStatus!=="graduated" && s.studentStatus!=="withdrawn"){
+    return computeFinancialHealth(s.familySavings||0, s.familyMonthlyIncome||0);
+  }
+  return computeFinancialHealth(s.cash, s.monthlyIncome);
+}
+
+// 3.4.8 基本生活開銷（9/14擴大為所有人生階段適用，依居住狀態決定，不再依occupationCategory開關）
+// A4 3×3敏感度分析（9/14內容組指示）：LIVING_COST_MULTIPLIER(1.0/1.5/2.0×) × SALARY_SCALE(0.6/0.8/1.0×)
+// LIVING_COST_BASE 是1.0×基準表，金額本身尚未定案（【待驗證】），9/19隨3.4整章遊戲幣單位改版同步÷1000，
+// 避免正職薪資(已改為個位數~三位數的遊戲幣)對上仍是NT$量級的基本開銷，導致入不敷出
+const LIVING_COST_BASE = { 低:4, 中:8, 高:14 };
+let LIVING_COST_MULTIPLIER = 1.0;
+let SALARY_SCALE = 1.0;
+function livingCostTierForState(s){
+  if(!s.housing || s.housing.type==="parents") return "低";
+  if(s.housing.type==="rent") return "中";
+  if(s.housing.type==="own") return "中";
+  return "低";
+}
+function computeBaseLivingCost(s){
+  // 9/14改版：學生時期(尚無正職)改用5.5生活方式選擇的公式，遊戲內單位，不對應NT$；出社會後維持既有housing分級公式
+  if(!s.occupationCategory){
+    const habitPct = SPENDING_HABITS[s.spendingHabit] ?? SPENDING_HABITS["普通花費"];
+    const mealMult = MEAL_EXPENSE_MULT[s.mealArrangement] ?? MEAL_EXPENSE_MULT["自己打理"];
+    return Math.round(s.monthlyIncome * habitPct * mealMult);
+  }
+  const tier = livingCostTierForState(s);
+  let amount = LIVING_COST_BASE[tier] * LIVING_COST_MULTIPLIER;
+  const hasCohabitingPartner = s.characters.some(c=>c.active && /配偶|伴侶|先生|太太|老公|老婆/.test(c.relation||""));
+  if(hasCohabitingPartner) amount = Math.round(amount*0.75); // 與伴侶共同生活分攤，依家庭結構調整（暫定折減比例，待模擬後校準）
+  return Math.round(amount);
+}
+
+function newRoll(carry, identity){
+  // 第一步：家庭結構
+  const familyStructure = weightedPick([
+    ["雙親同住",55],["單親－離異",15],["單親－喪親",8],["隔代教養",12],["一方服刑中",10]
+  ]);
+  const familyRuptureApplied = ["單親－離異","單親－喪親","一方服刑中"].includes(familyStructure);
+
+  const turnCount = 0;
+  const characters = [];
+  let isPoliticianChild = false;
+  const presentParentStyles = [];
+  const presentParentInfos = []; // 5.5三餐資格判定專用：只收「在場、有能力煮飯」的家長(不含服刑中那位)
+
+  function addNormalParent(relationLabel){
+    const occ = pick(PARENT_OCCUPATIONS);
+    if(occ.label==="政治人物") isPoliticianChild = true;
+    const style = pick(PARENTING_STYLES);
+    presentParentStyles.push(style.label);
+    presentParentInfos.push({ style: style.label, occupation: occ.label });
+    const aff = clamp(rnd(style.affinityRange[0],style.affinityRange[1]) + rnd(-8,8), 0, 100);
+    characters.push({
+      name: relationLabel==="父親" ? "爸爸" : "媽媽",
+      relation: relationLabel,
+      traits: style.parentTrait + "；" + occ.trait,
+      affinity: aff, summary:"", lastTurn:turnCount, active:true, isChild:false,
+      origin: "父母，從出生起" // 四、4.1（9/19新增）：家人是先天既有關係，不是AI敘事中新認識的
+    });
+  }
+
+  // 第二步：家長職業（在addNormalParent裡一併骰）+ 建立角色卡（依家庭結構決定有誰）
+  if(familyStructure==="雙親同住"){
+    addNormalParent("父親"); addNormalParent("母親");
+  } else if(familyStructure==="單親－離異" || familyStructure==="單親－喪親"){
+    addNormalParent(pick(["父親","母親"]));
+  } else if(familyStructure==="隔代教養"){
+    const gp = pick([["阿公","爺爺"],["阿嬤","奶奶"]]);
+    presentParentStyles.push("隔代教養");
+    characters.push({
+      name: gp[0], relation: gp[1],
+      traits:"疼愛藏在生活提醒裡，用詞偏舊式，很少直接過問交友或行程",
+      affinity: rnd(55,75), summary:"", lastTurn:turnCount, active:true, isChild:false,
+      origin: "隔代教養，從出生起"
+    });
+  } else if(familyStructure==="一方服刑中"){
+    const incarcerated = pick(["父親","母親"]);
+    addNormalParent(incarcerated==="父親" ? "母親" : "父親");
+    presentParentStyles.push("服刑家長");
+    characters.push({
+      name: incarcerated==="父親" ? "爸爸" : "媽媽",
+      relation: incarcerated+"（服刑中）",
+      traits:"透過書信或有限探視保持聯繫，內容報喜不報憂，關係停留在某個時間點",
+      affinity: rnd(30,50), summary:"", lastTurn:turnCount, active:true, isChild:false,
+      origin: "父母，從出生起"
+    });
+  }
+
+  // 第三步：家境（若鎖定政治世家則跳過獨立骰）—— 財富改真實金額制
+  let economicTier, network, allowance, savings, familyMonthlyIncome, familySavings;
+  if(isPoliticianChild){
+    economicTier="富裕"; network=rnd(65,85); allowance=150; savings=150; // 政治世家，略高於一般富裕(120)的遊戲內單位
+    ({ familyMonthlyIncome, familySavings } = rollFamilyFinance("富裕"));
+  } else {
+    const r = rollEconomicTier();
+    economicTier=r.tier; network=r.network; allowance=r.allowance; savings=r.savings;
+    familyMonthlyIncome=r.familyMonthlyIncome; familySavings=r.familySavings;
+  }
+
+  const wisdom = rnd(30,70); // 智慧（原天資，隱藏，終身固定）
+  const logicAbility = clamp(Math.round(wisdom*0.3 + rnd(-10,10)), 0, 100); // 邏輯能力（隱藏，可成長）
+  const talent = clamp(Math.round(wisdom*0.6 + rnd(-5,5)), 0, 100); // 才識（可見，取代原「學識」）
+  const health = rnd(45,90);
+  const looks = rnd(20,90); // 顏值（隱藏子項，純隨機，天花板低）
+  const luckHidden = +(0.85 + Math.random()*0.3).toFixed(2);
+  // 七、7.1.5（9/16改版）：不再有固定壽命隨機值，死亡改採逐年機率判定（見rollAnnualDeathCheck）
+
+  // 第五步：依附風格（兩軸，弱相關於教養風格）
+  const biasStyle = presentParentStyles.length ? pick(presentParentStyles) : null;
+  let { anxiety, avoidance } = rollAttachmentBaseline(biasStyle);
+  if(familyRuptureApplied){
+    anxiety = clamp(anxiety+rnd(10,20),0,100);
+    avoidance = clamp(avoidance+rnd(10,20),0,100);
+  }
+
+  // 第六步：同儕位置
+  let peerPosition = rollPeerPosition();
+  let peerPositionSpecial = null;
+
+  // 第七步：關鍵事件（家庭斷裂若已由結構觸發，事件池排除）
+  const keyEventType = rollKeyEvent(familyRuptureApplied);
+  if(keyEventType){
+    const tmp = { anxiety, avoidance, peerPosition, peerPositionSpecial };
+    applyKeyEvent(keyEventType, tmp);
+    anxiety=tmp.anxiety; avoidance=tmp.avoidance; peerPosition=tmp.peerPosition; peerPositionSpecial=tmp.peerPositionSpecial;
+  }
+
+  const expression = rollSocialStart(biasStyle, peerPosition); // 表達力起點（不跟智慧掛勾）
+  const temperament = rollSocialStart(biasStyle, peerPosition); // 氣質起點（後天為主，會成長）
+  const appearance = clamp(Math.round(looks*0.5+temperament*0.5),0,100);
+  const personalityStyle = pick(PERSONALITY_STYLES);
+  const conscientiousness = { selfDiscipline:50, prudence:50, achievement:50, responsibility:50, teamSolo:50 };
+
+  // 手足（獨立骰，不受以上影響）
+  const sibRoll = rnd(1,100);
+  const sibCount = sibRoll<=40 ? 0 : sibRoll<=80 ? 1 : 2;
+  for(let i=0;i<sibCount;i++){
+    const sib = rollSibling();
+    characters.push({
+      name: sib.name, relation: sib.relation,
+      traits: pick(SIBLING_TRAITS), affinity: rnd(45,75),
+      summary:"", lastTurn:turnCount, active:true, isChild:false,
+      origin: "手足，從出生起"
+    });
+  }
+
+  // 5.5生活方式選擇：三餐「家裡包辦」資格判定（政治世家/隔代教養等已在presentParentInfos反映）
+  const mealCareEligibleAtStart = computeMealCareEligible(familyStructure, presentParentInfos);
+
+  return {
+    version:4, phase:"setup",
+    name: identity?.name || carry?.name || "無名氏",
+    gender: identity?.gender || carry?.gender || "男",
+    age:15, luckHidden,
+    family: economicTier, familyMonthlyIncome, familySavings, familyStructure, isPoliticianChild,
+    collegeLocation: null,
+    timeState: { stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0 },
+    studyCountThisTerm: 0,
+    anxiety, avoidance, peerPosition, peerPositionSpecial,
+    keyEvent: keyEventType ? { type:keyEventType, revealed:false } : null,
+    wisdom, logicAbility, looks, temperament, appearance, personalityStyle, conscientiousness,
+    stats:{ health:clamp(health+(carry?.health||0),0,100),
+            knowledge:clamp(talent+(carry?.knowledge||0),0,100),
+            network:clamp(network+(carry?.network||0),0,100),
+            expression:clamp(expression+(carry?.expression||0),0,100) },
+    cash: savings + (carry?.savingsCarry||0),
+    propertyValue: 0,
+    mortgageBalance: 0,
+    monthlyIncome: allowance,
+    monthlyExpenses: [],
+    occupationCategory: null,
+    housing: null,
+    fertilityJourney: null,
+    lowHealthStreak: 0,
+    networkIdleStreak: 0,
+    riskyLifestyle: false,
+    deathForeshadowed: false,
+    happiness:50,
+    // 三、3.8（9/20新增）幸福感三層：基準線／事件即時波動／朝基準線回歸
+    happinessBaseline: 50,
+    happinessRegressionCounter: 0,
+    milestoneSkipReason: {},
+    // 四、4.5（9/20新增）人生軌跡紀錄：每個人生階段結束時結算一次並凍結
+    lifeTrajectory: [],
+    stageAccum: null,
+    actionPoints:20, maxActionPoints:20,
+    turnCount,
+    characters,
+    chronicle: carry?.chronicleCarry ? [carry.chronicleCarry] : [],
+    log:[],
+    choices:[],
+    reincarnations: carry?.reincarnations || 0,
+    undosLeft:3,
+    snapshot:null,
+    ending:null,
+    // 5.5生活方式選擇（9/14新增，玩家開局自選，不是骰定）
+    spendingHabit: null,
+    mealArrangement: null,
+    mealCareEligibleAtStart,
+    mealFullyUnlocked: false,
+    cookingInterestSeed: false,
+    // 四、4.3事件狀態機制（9/15新增）
+    milestones: initMilestones(),
+    // 三、3.2.2（9/16修正）milestone標籤防重複觸發：依event_id去重、依人生階段(stageMode)計數上限
+    knowledgeMilestoneUsedIds: [],
+    knowledgeMilestoneCountByStage: {},
+    // 八、興趣系統v1（9/16新增）
+    interestCandidates: [],
+    pendingSideBusinessCardId: null,
+    // 九、大學科系系統（9/16新增）：出生時尚未進大學，欄位先留空預設，進大學時由選科系流程賦值
+    studentMajorGroup: null,
+    studentIsFiveYearTrack: false,
+    studentStatus: null, // null(尚未入學)/'enrolled'/'graduated'/'withdrawn'
+    leaveStatus: "normal", // 'normal'/'onLeave'
+    transferCooldown: 0,
+    dualMajorStatus: null, // null/'candidate'/'active'/'abandoned'/'completed'
+    examBelowExpectationStreak: 0,
+    lowCashStreak: 0,
+    pendingMajorSelection: false,
+    pendingTransferOffer: false,
+    pendingDualMajorOffer: false,
+    pendingLeaveOffer: null, // null/'financial'/'health'
+    leaveResumeCountdown: 0,
+    universityEventLog: null,
+    lastExamPerformanceLog: null
+  };
+}
+
+// 二、2.2學期內部節奏切分（9/16改版）：期中/期末各自有完整準備期（取代原本「期中後~期末前」單一段落混合準備+收尾的不對稱結構）
+// 一學年14段，每段有回合預算(budget)，期中考/期末考是budget=1的里程碑段，觸發時算考試成績
+const SEMESTER_PHASES = [
+  { key:"開學初", budget:3, isExam:false },
+  { key:"期中準備期", budget:6, isExam:false },
+  { key:"期中考", budget:1, isExam:true, examType:"期中考" },
+  { key:"期中後放鬆", budget:2, isExam:false },
+  { key:"期末準備期", budget:6, isExam:false },
+  { key:"期末考", budget:1, isExam:true, examType:"期末考" },
+  { key:"假期", budget:8, isExam:false }
+];
+const YEAR_SEGMENTS = [
+  ...SEMESTER_PHASES.map(p=>({ ...p, half:"上學期" })),
+  ...SEMESTER_PHASES.map(p=>({ ...p, half:"下學期" }))
+]; // 14段：上學期7段+下學期7段（假期段落分別代表寒假/暑假），一學期預算上限27回合、一學年54回合
+
+// 二、2.5（9/16新增，9/16-v2.1下修數字+年齡帶改左閉右開）：22歲以後加速曲線，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
+// 邊界採10年一段、左閉右開（以生日為界，22-29歲＝22歲起滿30歲生日前），取代v2.1之前22-30/31-40等不對稱分段
+const LIFE_STAGE_ROUND_BUDGET = [
+  { minAge:22, maxAge:29, roundsPerYear:32 }, // 找方向期
+  { minAge:30, maxAge:39, roundsPerYear:28 },
+  { minAge:40, maxAge:49, roundsPerYear:15 },
+  { minAge:50, maxAge:59, roundsPerYear:12 },
+  { minAge:60, maxAge:69, roundsPerYear:10 },
+  { minAge:70, maxAge:79, roundsPerYear:7 },
+  { minAge:80, maxAge:9999, roundsPerYear:5 } // 【待驗證】預設值，實際存活年數依死亡判定結果而定
+];
+function roundsPerYearForAge(age){
+  const bucket = LIFE_STAGE_ROUND_BUDGET.find(b=>age>=b.minAge && age<=b.maxAge);
+  return bucket ? bucket.roundsPerYear : 10;
+}
+// 九、9.4（9/16新增，大學科系系統實作前的鋪墊）：修業年限改為依角色查表，取代原本寫死的「大學4年」
+// s.collegeYearsRequired：科系基礎修業年限，尚未實作科系選擇機制前預設4年（一般科系），未來9.2/9.4科系選擇會把醫/牙/獸科系寫入5
+// s.collegeDelayYearsUsed：已使用的延畢年數，封頂COLLEGE_DELAY_CAP，尚未實作延畢觸發機制前預設0
+const COLLEGE_DELAY_CAP = 2; // 【定案,9.4】延畢封頂兩年
+// 9.5.2（9/16 ChatGPT開發審閱+Claude Code判斷,可覆寫）：雙主修zero-cost，不計入delay_years，
+// 所以雙主修相關代碼（尚未實作）完成後也不該呼叫任何地方去增加collegeDelayYearsUsed
+function collegeTotalYearsRequired(s){
+  const base = s.collegeYearsRequired || 4;
+  const delay = clamp(s.collegeDelayYearsUsed||0, 0, COLLEGE_DELAY_CAP);
+  return base + delay;
+}
+const COLLEGE_GRAD_AGE_CAP = { 4:24, 5:25 }; // 【定案,9.4】其餘科系最晚24歲、醫牙獸最晚25歲畢業
+// 9.4「轉系最後可行年齡」：轉系當下年齡+目標科系修業年限+目前已用延畢年數，不得超過目標科系的畢業年齡上限
+// （已用延畢年數要算進去，因為它代表「已消耗掉多少延畢緩衝額度」，轉系不會重置這個額度，見9.4【待驗證】備註）
+function isTransferFeasible(currentAge, targetYearsRequired, delayYearsUsed){
+  const cap = COLLEGE_GRAD_AGE_CAP[targetYearsRequired] || COLLEGE_GRAD_AGE_CAP[4];
+  const usedDelay = clamp(delayYearsUsed||0, 0, COLLEGE_DELAY_CAP);
+  return (currentAge + targetYearsRequired + usedDelay) <= cap;
+}
+function collegeYearLabel(s){
+  const base = s.collegeYearsRequired || 4;
+  const yearInStage = s.timeState.yearInStage;
+  if(yearInStage<=base){
+    const ordinals = ["大一","大二","大三","大四","大五"];
+    return ordinals[clamp(yearInStage,1,ordinals.length)-1];
+  }
+  return `延畢第${yearInStage-base}年`; // 超過基礎修業年限的部分，用延畢年數標示，不再套用「大X」序數
+}
+
+// ========== 九、大學科系系統（9/16新增）==========
+// 9.2 科系分類（8大類）：isFiveYearEligible=true代表「醫藥/護理類」底下可能出現醫學/牙醫/獸醫這種5年制特例，
+// 具體是不是5年制由玩家在選科系/轉系時的次選擇決定（見9.4：只有醫學系/牙醫學系/獸醫學系三個特定科系是5年，
+// 同類別下的藥學/護理/物理治療等其餘科系仍是4年），不是整個「醫藥/護理類」類別都5年制
+const MAJOR_CATEGORIES = [
+  { key:"理工資訊", label:"理工/資訊類", examples:"資訊工程、資訊管理、電機工程、機械工程、土木工程", isFiveYearEligible:false },
+  { key:"商管財經", label:"商管/財經類", examples:"企業管理、財務金融、會計、行銷、國際貿易", isFiveYearEligible:false },
+  { key:"人文語言傳播", label:"人文/語言/傳播類", examples:"中文、外文、歷史、大眾傳播", isFiveYearEligible:false },
+  { key:"醫藥護理", label:"醫藥/護理類", examples:"醫學、藥學、護理、物理治療", isFiveYearEligible:true },
+  { key:"教育", label:"教育類", examples:"教育學系、師範體系各科、幼教、特教", isFiveYearEligible:false },
+  { key:"藝術設計表演", label:"藝術/設計/表演類", examples:"美術、音樂、舞蹈、戲劇影視、視覺傳達設計", isFiveYearEligible:false },
+  { key:"法律政治", label:"法律/政治類", examples:"法律學系、政治學系、公共行政", isFiveYearEligible:false },
+  { key:"服務社工餐旅", label:"服務/社工/餐旅類", examples:"社會工作學系、餐旅管理、觀光、運動休閒", isFiveYearEligible:false }
+];
+function findMajorCategory(key){ return MAJOR_CATEGORIES.find(m=>m.key===key) || null; }
+
+// 9.3 下游伏筆權重表（高/中/低相對排序，9/16 ChatGPT開發審閱建議改用「共同基準機率×類別倍率」，
+// 具體絕對機率仍是【待補充,測試組】，這裡的BASE/MULTIPLIER都是實作階段自訂的【測試參數】，非正式定案數字）
+const FORESHADOW_LINES = ["創業線","自由接案","海外線","演藝圈線","接手家業"];
+const FORESHADOW_BASE_RATE = 0.08; // 【定案,9/16補充,標記測試參數】封測用第一組數字：共同基準機率8%（乘上類別倍率後才是實際機率）
+const FORESHADOW_WEIGHT_MULTIPLIER = { 高:2.0, 中:1.0, 低:0.4 }; // 【定案,9/16補充,標記測試參數】
+const MAJOR_FORESHADOW_WEIGHT_TABLE = {
+  "理工資訊":       { 創業線:"中", 自由接案:"高", 海外線:"中", 演藝圈線:"低", 接手家業:"低" },
+  "商管財經":       { 創業線:"高", 自由接案:"中", 海外線:"中", 演藝圈線:"低", 接手家業:"中" },
+  "人文語言傳播":   { 創業線:"低", 自由接案:"高", 海外線:"高", 演藝圈線:"中", 接手家業:"低" },
+  "醫藥護理":       { 創業線:"低", 自由接案:"低", 海外線:"中", 演藝圈線:"低", 接手家業:"低" },
+  "教育":           { 創業線:"低", 自由接案:"中", 海外線:"低", 演藝圈線:"低", 接手家業:"低" },
+  "藝術設計表演":   { 創業線:"中", 自由接案:"高", 海外線:"中", 演藝圈線:"高", 接手家業:"低" },
+  "法律政治":       { 創業線:"低", 自由接案:"低", 海外線:"中", 演藝圈線:"低", 接手家業:"低" },
+  "服務社工餐旅":   { 創業線:"中", 自由接案:"中", 海外線:"低", 演藝圈線:"低", 接手家業:"高" }
+};
+// 任何科系都能觸發任何一條伏筆線（9.3【定案】不做獨佔鎖死），這裡只回傳「這回合這條線的觸發機率」讓呼叫端自行擲骰
+function foreshadowTriggerProbability(majorGroup, line){
+  const weight = (MAJOR_FORESHADOW_WEIGHT_TABLE[majorGroup]||{})[line] || "低";
+  return FORESHADOW_BASE_RATE * (FORESHADOW_WEIGHT_MULTIPLIER[weight]||1);
+}
+
+// 9.8 學生主狀態欄位規格：判斷是否已出社會一律用studentStatus，不是單純看年齡（9.8【定案】）
+function assignStudentMajor(s, majorKey, isFiveYear){
+  const cat = findMajorCategory(majorKey);
+  if(!cat) return;
+  s.studentMajorGroup = majorKey;
+  s.studentIsFiveYearTrack = !!(cat.isFiveYearEligible && isFiveYear);
+  s.collegeYearsRequired = s.studentIsFiveYearTrack ? 5 : 4;
+}
+function computeExpectedGraduationAge(s){
+  // 預計畢業年齡：以目前年齡推算，若尚未進大學則用最新collegeYearsRequired/collegeDelayYearsUsed純推算，不受轉系影響殘留
+  const remainingYears = collegeTotalYearsRequired(s) - (s.timeState?.yearInStage||1) + 1;
+  return s.age + Math.max(0, remainingYears);
+}
+// 9.5.1 轉系候選觸發：連續兩次段考成績低於預期區間【測試參數，9.7測試項目2待校準】
+// 「預期區間」用跟2.4考試成績算法同精神、但採client端可重算的proxy（知識值+讀書次數×3），
+// 不依賴AI自由回報的敘事分數，確保這條線完全不受AI輸出內容影響（9.9 AI/程式責任邊界的要求）
+const TRANSFER_EXAM_EXPECTATION_THRESHOLD = 55; // 【測試參數】低於此proxy分數視為「低於預期」
+const TRANSFER_EXAM_STREAK_TRIGGER = 2; // 【定案】連續兩次
+const TRANSFER_COOLDOWN_TURNS = 8; // 【測試參數,9.5.1新增待補】轉系候選冷卻回合數
+function updateTransferCandidateOnExam(s, studyCountAtExam){
+  const proxy = clamp(Math.round(s.stats.knowledge + (studyCountAtExam||0)*3), 0, 100);
+  const belowExpectation = proxy < TRANSFER_EXAM_EXPECTATION_THRESHOLD;
+  s.examBelowExpectationStreak = belowExpectation ? (s.examBelowExpectationStreak||0)+1 : 0;
+  s.lastExamPerformanceLog = { expected: TRANSFER_EXAM_EXPECTATION_THRESHOLD, actual: proxy, streak: s.examBelowExpectationStreak };
+  if(s.studentStatus==="enrolled" && !s.transferCooldown && s.examBelowExpectationStreak>=TRANSFER_EXAM_STREAK_TRIGGER){
+    s.pendingTransferOffer = true;
+  }
+}
+
+// 十一、11.4明牌檢定機制（9/19新增，首版白名單僅「期末考成績公布」一項）：
+// 定案文字只規定呈現格式要有「骰值＋屬性加成換算依據＋門檻對比＋成敗結果」，沒有給具體骰值範圍/及格門檻數字，
+// 以下數字皆為實作階段選定的【測試參數，待驗證】——60分及格門檻沿用台灣常見及格線慣例、骰值範圍呼應
+// system prompt既有「hint±10分左右合理，保留少量機率更意外」的敘事指示，改寫成client端可明牌呈現的擲骰版本
+const EXAM_CHECK_PASS_THRESHOLD = 60; // 【測試參數，待驗證】
+function rollFinalExamCheck(wisdom, studyCount){
+  const base = clamp(Math.round(wisdom + (studyCount||0)*3), 0, 100); // 沿用既有2.4.1大方向層公式
+  const roll = rnd(1,100); // 骰值，明牌呈現給玩家
+  let swing;
+  if(roll<=90){
+    swing = rnd(-10,10); // 一般範圍
+  } else {
+    // 保留少量意外機率，正負對半，不偏向負面（呼應六、6.1正向配額精神）
+    swing = (roll%2===0) ? rnd(11,25) : rnd(-25,-11);
+  }
+  const finalScore = clamp(base+swing, 0, 100);
+  return { wisdom:Math.round(wisdom), studyCount:(studyCount||0), base, roll, swing, finalScore, passThreshold: EXAM_CHECK_PASS_THRESHOLD, passed: finalScore>=EXAM_CHECK_PASS_THRESHOLD };
+}
+// 9.5.2 雙主修候選觸發：才識數值達門檻【測試參數，9.7測試項目3待校準】，或特定科系伏筆權重被觸發
+const DUAL_MAJOR_KNOWLEDGE_THRESHOLD = 70; // 【測試參數】
+function checkDualMajorCandidate(s){
+  if(s.studentStatus!=="enrolled" || s.dualMajorStatus) return; // 已經是candidate/active/abandoned/completed就不重複判定
+  if(s.stats.knowledge>=DUAL_MAJOR_KNOWLEDGE_THRESHOLD){
+    s.dualMajorStatus = "candidate"; s.pendingDualMajorOffer = true; return;
+  }
+  // 「特定科系伏筆權重被觸發」：用商管財經線的創業權重當作雙主修傾向的簡化代表（實作階段自訂映射，非文件明文規定）
+  if(s.studentMajorGroup && Math.random() < foreshadowTriggerProbability(s.studentMajorGroup, "創業線")){
+    s.dualMajorStatus = "candidate"; s.pendingDualMajorOffer = true;
+  }
+}
+// 9.5.2（9/16補充）雙主修中途放棄候選：dual_major_status=active期間，自律或財務健康度連續3回合低於40分成立候選，冷卻4回合
+const DUAL_MAJOR_ABANDON_STRESS_THRESHOLD = 40; // 【定案,9/16補充】自律或財務健康度低於此分視為壓力訊號（呼應3.7.3的50分中性基準，取中性偏下）
+const DUAL_MAJOR_ABANDON_STREAK_TRIGGER = 3; // 【定案,9/16補充】連續3回合
+const DUAL_MAJOR_ABANDON_COOLDOWN_TURNS = 4; // 【定案,9/16補充】冷卻4回合，避免連續跳出同一提案
+function checkDualMajorAbandonCandidate(s){
+  if(s.dualMajorStatus!=="active" || s.pendingDualMajorAbandonOffer) return;
+  if((s.dualMajorAbandonCooldown||0)>0) return;
+  const financialHealth = computeFinancialHealthForState(s); // 9/16修正：雙主修進行中一定是學生，改用家庭財務數字
+  const underStress = s.conscientiousness.selfDiscipline<DUAL_MAJOR_ABANDON_STRESS_THRESHOLD || financialHealth<DUAL_MAJOR_ABANDON_STRESS_THRESHOLD;
+  s.dualMajorAbandonStreak = underStress ? (s.dualMajorAbandonStreak||0)+1 : 0;
+  if(s.dualMajorAbandonStreak>=DUAL_MAJOR_ABANDON_STREAK_TRIGGER){
+    s.pendingDualMajorAbandonOffer = true;
+  }
+}
+// 9.5.3 休學/肄業候選觸發：持續低值（連續N回合），不是單次瞬間跌破（9/16 ChatGPT開發審閱補強）
+// 健康面沿用既有s.lowHealthStreak（health<30才累加，早於本次開發就存在），財務面新增s.lowCashStreak（呼應3.4.10學生現金floor在0的既有保護機制）
+const WITHDRAWAL_STREAK_TRIGGER = 4; // 【測試參數，9.7測試項目4待校準】
+function checkWithdrawalCandidate(s){
+  if(s.studentStatus!=="enrolled" || s.leaveStatus!=="normal" || s.pendingLeaveOffer) return;
+  if((s.lowHealthStreak||0)>=WITHDRAWAL_STREAK_TRIGGER){ s.pendingLeaveOffer = "health"; return; }
+  if((s.lowCashStreak||0)>=WITHDRAWAL_STREAK_TRIGGER){ s.pendingLeaveOffer = "financial"; }
+}
+// 9.8 leave_status復學（9/16補充,取代原本「不真的暫停回合引擎」的簡化說明）：休學期間改用獨立的「休學學期」段落，
+// 回合數比照2.3假期段落份量（6-8回合，測試參數），不套用SEMESTER_PHASES/YEAR_SEGMENTS正常學期結構（見advanceStructuredTime的onLeave分支）；
+// 復學時該學期視為未完成，segmentIndex重置回休學當下那個學期（上/下學期）的開頭重新跑一次，不從中斷點續接
+const LEAVE_OF_ABSENCE_TURNS = 7; // 【測試參數,9/16補充】6-8回合區間，比照2.3假期段落份量
+// 每回合college狀態下都要跑的維護：冷卻倒數、財務floor連續低值streak、休學復學倒數、雙主修/休學候選檢查
+function sweepUniversityState(s){
+  if(s.timeState?.stageMode!=="college" || s.studentStatus!=="enrolled") return;
+  if(s.transferCooldown>0) s.transferCooldown--;
+  if(s.dualMajorAbandonCooldown>0) s.dualMajorAbandonCooldown--; // 9.5.2（9/16補充）雙主修中途放棄候選冷卻
+  s.lowCashStreak = s.cash<=0 ? (s.lowCashStreak||0)+1 : 0;
+  if(s.leaveStatus==="onLeave"){
+    s.leaveResumeCountdown = (s.leaveResumeCountdown||LEAVE_OF_ABSENCE_TURNS)-1;
+    if(s.leaveResumeCountdown<=0){
+      // 9.5.3（9/16補充）復學：leave_status轉正常，segmentIndex重置回休學前那個學期的開頭（不是中斷點），
+      // turnsInSegment/study_count_this_term一併歸零，program_year（yearInStage）維持不變（不前進）
+      s.leaveStatus = "normal"; s.leaveResumeCountdown = 0;
+      s.timeState.segmentIndex = s.leaveSemesterHalfIndex||0;
+      s.timeState.turnsInSegment = 0;
+      s.studyCountThisTerm = 0;
+      s.universityEventLog = { type:"leave_resumed" };
+    }
+    return; // 休學期間不再檢查新的雙主修/休學候選
+  }
+  checkDualMajorCandidate(s);
+  checkDualMajorAbandonCandidate(s); // 9.5.2（9/16補充）雙主修中途放棄候選
+  checkWithdrawalCandidate(s);
+}
+function segmentLabel(seg, isFirstHalf){
+  if(seg.key==="假期") return isFirstHalf ? "寒假" : "暑假";
+  return seg.half+"・"+seg.key;
+}
+function computeTimeLabel(s){
+  const mode = s.timeState.stageMode;
+  if(mode==="college" && s.leaveStatus==="onLeave"){
+    return collegeYearLabel(s)+"・休學中"; // 9.5.3（9/16補充）：學期引擎凍結期間不顯示段落標籤，避免看起來仍在正常推進
+  }
+  if(mode==="highschool" || mode==="college"){
+    const idx = s.timeState.segmentIndex % YEAR_SEGMENTS.length;
+    const seg = YEAR_SEGMENTS[idx];
+    const yr = mode==="highschool"
+      ? ["高一","高二","高三"][clamp(s.timeState.yearInStage,1,3)-1]
+      : collegeYearLabel(s);
+    let label = yr+"・"+segmentLabel(seg, idx<SEMESTER_PHASES.length);
+    if(mode==="college" && s.timeState.yearInStage>=collegeTotalYearsRequired(s) && idx>=SEMESTER_PHASES.length) label += "（畢業倒數）";
+    return label;
+  }
+  if(mode==="career"){
+    if(s.age<=29) return `入職第${s.age-21}年`; // 22歲入職算第1年
+    return `${s.age}歲`; // 呼應一、1.1.2：30歲以後改用年齡本身當時間戳，不再細分上下半年
+  }
+  return `${s.age}歲`;
+}
+// 介面：現階段進度指示（9/16新增）——依目前所在模式，回傳「這個小段落」還剩多少回合的進度資訊，供UI畫進度條
+// 三種模式各自的「一個段落」定義不同：學生時期是目前學期段落(開學初/準備期/考試/假期等)；休學中是休學倒數；出社會是本年度
+function computeStageProgress(s){
+  const mode = s.timeState.stageMode;
+  if(mode==="college" && s.leaveStatus==="onLeave"){
+    const total = LEAVE_OF_ABSENCE_TURNS;
+    const current = clamp(total - (s.leaveResumeCountdown ?? total), 0, total);
+    return { label:"休學進度", current, total };
+  }
+  if(mode==="highschool" || mode==="college"){
+    const idx = s.timeState.segmentIndex % YEAR_SEGMENTS.length;
+    const seg = YEAR_SEGMENTS[idx];
+    return { label:segmentLabel(seg, idx<SEMESTER_PHASES.length)+"進度", current:Math.min(s.timeState.turnsInSegment||0, seg.budget), total:seg.budget };
+  }
+  if(mode==="career"){
+    const total = roundsPerYearForAge(s.age);
+    return { label:"本年度進度", current:Math.min(s.timeState.adultTurnsInYear||0, total), total };
+  }
+  return null;
+}
+function detectTimeSkipIntent(actionText){
+  return /跳過|直接|快轉|之後|畢業後|下學期|寒假|暑假|一段時間後|過了/.test(actionText||"");
+}
+function detectStudyIntent(actionText){
+  return /讀|念|書|學|考|研究|課/.test(actionText||"");
+}
+// 依經過的segment範圍[fromIdx+1, toIdx]（含跳過中間夾帶的），偵測是否跨過期中/期末考，回傳最後一個遇到的考試型別
+function detectExamCrossed(fromIdx, toIdx){
+  let examType = null;
+  for(let i=fromIdx+1;i<=toIdx;i++){
+    const seg = YEAR_SEGMENTS[i%YEAR_SEGMENTS.length];
+    if(seg.isExam) examType = seg.examType;
+  }
+  return examType;
+}
+function advanceStructuredTime(actionText){
+  const s = state;
+  const mode = s.timeState.stageMode;
+  const skip = detectTimeSkipIntent(actionText);
+  // 九、9.5.3（9/16補充）：休學期間學期引擎完全凍結，不套用SEMESTER_PHASES/YEAR_SEGMENTS，
+  // segmentIndex/turnsInSegment/考試判定一律不動；回合預算另外由sweepUniversityState()的leaveResumeCountdown計數
+  if(mode==="college" && s.leaveStatus==="onLeave"){
+    const label = computeTimeLabel(s);
+    return { bigJump:false, fromLabel:label, toLabel:label, monthsCrossed:1, examTriggered:false, examType:null };
+  }
+  if(detectStudyIntent(actionText)) s.studyCountThisTerm = (s.studyCountThisTerm||0)+1;
+  if(mode==="highschool" || mode==="college"){
+    const fromLabel = computeTimeLabel(s);
+    const fromGlobalIdx = (s.timeState.yearInStage-1)*YEAR_SEGMENTS.length + s.timeState.segmentIndex;
+    let examType = null;
+    let monthsCrossed;
+    if(skip){
+      // 跳過語意：直接跳過整個段落（甚至更多），不逐回合累積turnsInSegment
+      const jumpSegs = rnd(2,4);
+      const toGlobalIdx = fromGlobalIdx + jumpSegs;
+      examType = detectExamCrossed(fromGlobalIdx, toGlobalIdx);
+      s.timeState.segmentIndex = toGlobalIdx % YEAR_SEGMENTS.length;
+      s.timeState.turnsInSegment = 0;
+      const yearsToAdd = Math.floor(toGlobalIdx/YEAR_SEGMENTS.length) - Math.floor(fromGlobalIdx/YEAR_SEGMENTS.length);
+      monthsCrossed = Math.round(jumpSegs*1.5);
+      if(yearsToAdd>0) advanceStageYear(s, mode, yearsToAdd);
+    } else {
+      // 一般行動：這個段落的turnsInSegment+1，滿了budget才進下一段
+      s.timeState.turnsInSegment = (s.timeState.turnsInSegment||0)+1;
+      const currentSeg = YEAR_SEGMENTS[s.timeState.segmentIndex%YEAR_SEGMENTS.length];
+      monthsCrossed = 1.5; // 每回合粗估1.5個月，budget結束時的整段時間感由多回合累積出來
+      if(s.timeState.turnsInSegment >= currentSeg.budget){
+        if(currentSeg.isExam) examType = currentSeg.examType;
+        s.timeState.turnsInSegment = 0;
+        const toGlobalIdx = fromGlobalIdx + 1;
+        s.timeState.segmentIndex = toGlobalIdx % YEAR_SEGMENTS.length;
+        const yearsToAdd = Math.floor(toGlobalIdx/YEAR_SEGMENTS.length) - Math.floor(fromGlobalIdx/YEAR_SEGMENTS.length);
+        if(yearsToAdd>0) advanceStageYear(s, mode, yearsToAdd);
+      }
+    }
+    const result = { bigJump: skip, fromLabel, toLabel: computeTimeLabel(s), monthsCrossed, examTriggered: !!examType, examType };
+    if(examType) s.studyCountThisTerm = 0; // 考試結算後歸零，重新累積下一次備考的讀書次數
+    return result;
+  }
+  if(mode==="career"){
+    // 二、2.5（9/16新增）：22歲以後改用「每年回合預算」取代原本半年制，budget依年齡查LIFE_STAGE_ROUND_BUDGET
+    const fromLabel = computeTimeLabel(s);
+    const budget = roundsPerYearForAge(s.age);
+    let yearsToAdd = 0;
+    let monthsCrossed;
+    if(skip){
+      // 跳過語意：直接跳完當年剩餘回合，進入下一年（實作假設：比照學生時期"跳過至少跨一段"的精神，此處對應"至少跨完當年"）
+      s.timeState.adultTurnsInYear = 0;
+      yearsToAdd = 1;
+      monthsCrossed = 12;
+    } else {
+      s.timeState.adultTurnsInYear = (s.timeState.adultTurnsInYear||0) + 1;
+      monthsCrossed = +(12/budget).toFixed(2); // 每回合粗估幾個月，隨年齡區間的budget不同而不同
+      if(s.timeState.adultTurnsInYear >= budget){
+        s.timeState.adultTurnsInYear = 0;
+        yearsToAdd = 1;
+      }
+    }
+    let deathCheck = { justForeshadowed:false, deathTriggered:false };
+    if(yearsToAdd>0){
+      s.age += yearsToAdd;
+      deathCheck = rollAnnualDeathCheck(s); // 七、7.1.5：每滿一年才判定一次，不是每回合都判定
+    }
+    return { bigJump: skip, fromLabel, toLabel: computeTimeLabel(s), monthsCrossed, examTriggered:false, examType:null, deathForeshadowNow: deathCheck.justForeshadowed, deathTriggered: deathCheck.deathTriggered };
+  }
+  return { bigJump:false, fromLabel:null, toLabel:null, monthsCrossed:0, examTriggered:false, examType:null };
+}
+function advanceStageYear(s, mode, yearsToAdd){
+  s.age += yearsToAdd;
+  s.timeState.yearInStage += yearsToAdd;
+  if(mode==="highschool" && s.timeState.yearInStage>3){
+    s.timeState.stageMode="college"; s.timeState.yearInStage=1;
+    s.milestones.graduation_highschool = "completed"; // 4.3事件狀態機制：客戶端結構化判斷，不假手AI
+    s.studentStatus = "enrolled"; s.pendingMajorSelection = true; // 九、9.1：進大學觸發選科系流程
+  } else if(mode==="college" && s.timeState.yearInStage>collegeTotalYearsRequired(s)){
+    s.timeState.stageMode="career"; s.timeState.adultTurnsInYear=0;
+    s.milestones.graduation_college = "completed";
+    s.studentStatus = "graduated"; // 九、9.8：畢業後用studentStatus判斷已出社會，不是只看年齡
+    // 9.5.2：畢業時若雙主修仍在active狀態，直接結算為completed（本輪未實作中途主動放棄的獨立UI，見CHANGELOG）
+    if(s.dualMajorStatus==="active") s.dualMajorStatus = "completed";
+  }
+}
+
+function activeCharacters(){
+  return state.characters.filter(c=>c.active);
+}
+function demoteStaleCharacters(){
+  const THRESHOLD=12;
+  state.characters.forEach(c=>{
+    if(c.active && (state.turnCount - c.lastTurn) > THRESHOLD){
+      c.active=false;
+      // 四、4.4戀愛系統：曖昧中/交往中的對象長期沒互動，沿用既有12回合降級機制視為自然淡出分手（呼應4.4「分手不另建專屬機制」定案）
+      if(c.romanceStatus==="ambiguous" || c.romanceStatus==="dating") c.romanceStatus = "breakup";
+    }
+  });
+}
+
+// ========== 四、4.1.1顯示規則 + 4.4戀愛系統（簡單版，9/16新增） ==========
+// AI只分類romantic_signal（positive/negative），狀態機轉換完全由客戶端判斷，呼應4.3「AI自由判斷會不一致，一律交由客戶端結構化計算」精神
+const ROMANCE_AMBIGUOUS_PROGRESS = 3; // 【測試參數,待驗證】累積正向次數達此值，從null進入「曖昧中」
+const ROMANCE_DATING_PROGRESS = 9; // 【測試參數,待驗證】累積正向次數達此值(=3+6)，從「曖昧中」進入「交往中」
+const ROMANCE_STABLE_STREAK = 6; // 【測試參數,待驗證】「交往中」時連續正向次數達此值，進入「穩定交往」
+const ROMANCE_BREAKUP_STREAK = 3; // 【測試參數,待驗證】「交往中」或「穩定交往」時連續負向次數達此值，判定「分手」
+// 四、4.1（9/19補充,修正既有定案未落實問題）：「重要共同記憶」欄位機制性上限2則,FIFO捨棄最舊一則,
+// 由程式機械判定不交由AI決定——原本是無上限字串累加,違反4.1「1-2句話等級」的既有定案文字
+function appendNpcSharedMemory(c, addition){
+  if(!addition) return;
+  // 相容既有存檔：舊資料只有c.summary字串(可能已經是很長的無上限累加結果)時，整段視為單一則，不嘗試用「；」拆解
+  // （拆解會被內容本身若剛好含「；」字元誤判斷句，不夠穩健，讓它自然在後續幾次更新中被FIFO擠出去即可）
+  c.summaryEntries = c.summaryEntries || (c.summary ? [c.summary] : []);
+  c.summaryEntries.push(addition);
+  while(c.summaryEntries.length>2) c.summaryEntries.shift();
+  c.summary = c.summaryEntries.join("；");
+}
+function relationCategoryLabel(c){
+  // 4.4：關係類別新增「戀愛對象／曖昧對象」，由狀態機決定，不由AI自行填寫
+  if(c.romanceStatus==="ambiguous") return "曖昧對象";
+  if(c.romanceStatus==="dating" || c.romanceStatus==="stable") return "戀愛對象";
+  return c.relation||"";
+}
+function relationshipStatusLabel(c){
+  // 4.1.1「目前關係狀態」文字化呈現。非戀愛關係的級距文字為【測試參數,待驗證】的實作判斷，非文件明文規定的精確級距
+  if(c.romanceStatus==="ambiguous") return "曖昧中";
+  if(c.romanceStatus==="dating") return "交往中";
+  if(c.romanceStatus==="stable") return "穩定交往中";
+  if(c.romanceStatus==="breakup") return "貌合神離";
+  if(!c.active) return "漸行漸遠";
+  if(c.affinity>=80) return "多年好友";
+  if(c.affinity>=60) return "熟悉的朋友";
+  if(c.affinity>=40) return "普通朋友";
+  if(c.affinity>=20) return "認識不深";
+  return "關係生疏";
+}
+function applyRomanceSignal(s, c, signal){
+  if(!signal || !c) return;
+  c.romanceProgress = c.romanceProgress||0;
+  c.romanceStableStreak = c.romanceStableStreak||0;
+  c.romanceNegativeStreak = c.romanceNegativeStreak||0;
+  const prevStatus = c.romanceStatus||null;
+  if(signal==="positive"){
+    c.romanceProgress += 1;
+    c.romanceNegativeStreak = 0;
+    if(!c.romanceStatus && c.romanceProgress>=ROMANCE_AMBIGUOUS_PROGRESS){
+      c.romanceStatus = "ambiguous";
+    } else if(c.romanceStatus==="ambiguous" && c.romanceProgress>=ROMANCE_DATING_PROGRESS){
+      c.romanceStatus = "dating";
+    } else if(c.romanceStatus==="dating"){
+      c.romanceStableStreak += 1;
+      if(c.romanceStableStreak>=ROMANCE_STABLE_STREAK) c.romanceStatus = "stable";
+    }
+  } else if(signal==="negative"){
+    c.romanceProgress = Math.max(0, c.romanceProgress-1);
+    c.romanceStableStreak = 0;
+    if(c.romanceStatus==="dating" || c.romanceStatus==="stable"){
+      c.romanceNegativeStreak += 1;
+      if(c.romanceNegativeStreak>=ROMANCE_BREAKUP_STREAK) c.romanceStatus = "breakup";
+    }
+  }
+  // 4.4定案：first_romance里程碑改由客戶端在第一次進入「交往中」時自動判定，取代AI自由回報（9/16使用者確認）
+  if(prevStatus!=="dating" && c.romanceStatus==="dating" &&
+     s.milestones.first_romance!=="completed" && s.milestones.first_romance!=="skipped"){
+    s.milestones.first_romance = "completed";
+  }
+}
+
+function buildSystemPrompt(){
+  return `你是「人生草稿」的敘事引擎。這是一款寫實的現代人生模擬文字遊戲，玩家在台灣現代社會中從15歲的高中生一路活到老年。
+
+規則：
+- 第二人稱「你」，日記體語氣，繁體中文，每次敘事約250～350字，篇幅拉長不是單純堆字數，而是多容納一點環境/氛圍的感官細節、內心想法多鋪陳一點、必要時加一句銜接性質的過渡句。
+- 【誰在場原則】：父母的互動應該低頻但情感權重高，不要每回合都出現；日常高頻互動應該交給同儕、老師、老闆、同事這些人負責，父母只在真正合適的時機才登場。
+- 【避免AI感的寫作提醒】：(1) 不要濫用「不是A，是B」這種對比句型，那是講解機制方便理解用的，直接寫進敘事會讓內心話變得像在做心理測驗解說；(2) 不是每一段內心獨白都要收在一個「頓悟」或「發現」上，真實的人常常想到一半就被打斷、或根本沒有結論；(3) 避免把不同情境寫成同一種「畫面→動作→內心一句話」的固定結構，節奏要雜亂不對稱；(4) 適度加入一些「不重要的細節」——真實的內心話會岔題、講廢話、想到不相干的事，不必每一句都在為劇情或性格服務。
+- 數值：健康、才識、表達力、人脈、外表（0-100，可見），存款/月收入/月支出（遊戲幣單位金額，可見），以及隱藏的智慧、邏輯能力、幸福感、人格魅力風格、做事態度光譜（自律/審慎/成就傾向/責任感/團隊vs單打獨鬥，各0-100，開局都是50中性值，純靠選擇累積）。
+- 【財富改遊戲幣具體金額制，9/19改版取代原本真實台幣金額制】：不要用0-100分數描述財富，一律使用 payload 裡的 savings（存款）、monthly_income（月收入）、monthly_expenses（月支出項目列表）、financial_health（財務健康度0-100，內部換算好給你參考機率用，不用讓玩家看到這個數字）。**全人生階段(不分學生或出社會)的savings/monthly_income/one_time_transaction等金額欄位，一律是遊戲幣單位，不是新台幣，敘事裡不要講「NT$」「元」這種真實幣值字眼，只講「錢」「存款」這種抽象講法即可，例如「你數了數口袋裡的錢」而不是「你數了數口袋裡的300元」**。日常小額開銷不用你計算，系統會在回合之間自動結算月收支（滿一個月份邊界才結算，你完全不用管這個算術）。你只需要在下列情況回傳對應欄位：
+  - job_change：玩家獲得/更換正職工作時填寫 {occupation_category:八大類其中之一, monthly_salary:數字}，薪資請落在該類別的合理範圍內（遊戲幣單位，9/19改版：自營業者25-80+；白領上班族32-100+；勞力/服務業29.5-45；待業中0-25；長期不在身邊35-70；自由接案0-150+，波動大；軍公教警消32-70；政治人物50-100+）；沒有變動則整個欄位設為 null
+  - expense_change：房租/貸款這類「會持續每月扣的支出」有變動時，回傳陣列 [{label:"房租"/"學貸"/"房貸"等, monthly_amount:數字, action:"start"或"end"}]；沒有變動則回傳空陣列 []
+  - one_time_transaction：醫療費、大筆消費、意外之財等「一次性」收支，回傳陣列 [{label:"", amount:數字（收入為正、支出為負）}]；沒有則回傳空陣列 []
+  - 【學費，9/16改版】學生時期學費（含一般學雜費、雙主修學分費）統一由家長支付，不從玩家個人現金扣款——你不需要也不可以透過one_time_transaction/expense_change回報任何學費相關金額，助學貸款/公私立分流也不用處理。如果要在敘事裡帶到繳學費的情境，純粹當背景細節描寫（例如「這學期學費爸媽已經匯過去了」），不影響任何數值
+  - 醫療/意外/不孕症治療等費用，先在 payload 的 can_afford_medical 裡看低/中/高三級玩家財務健康度能不能負擔（20/50/75門檻），能負擔就直接在 one_time_transaction 扣款，不能負擔就在敘事裡走向借款/分期/放棄/尋求補助等分支，不要讓玩家默默揹債卻沒有劇情反映
+  - 【學生存款下限0，不能變負值】：is_student 為 true 時，玩家提出的消費行為，如果金額會超過目前 savings，這筆消費「不會發生」，系統會自動擋下不真的扣款——你在敘事上要配合寫成「猶豫之後還是沒買」「算了算口袋裡的錢，還是算了」這種打消念頭的語氣，不要寫成「買了但錢變成負的」或忽略這個限制硬寫買成功
+  - 【三餐解決方式 meal_arrangement：家裡包辦/自己打理/外食為主】：payload 會告訴你目前的三餐安排，影響敘事情境的自然選擇——「自己打理」適合帶出下廚、超商微波、宿舍小廚房這類畫面；「外食為主」適合帶出小吃店、便當店、跟同學一起吃飯這類畫面；「家裡包辦」則餐食本身很少入鏡，重點在家人準備飯菜的互動細節。payload 的 meal_event_multipliers 會給你社交偶遇類事件、健康加分命中、打工社團類里程碑這三項的機率倍率參考（只在自己打理/外食為主之間有差異），大方向機率請依這個倍率調整，不要每次都一樣
+- 【才識成長，三、3.2.2，9/16修正】：不要在stat_deltas裡給knowledge數值（這個欄位已經移除），改成透過event_type標籤告訴系統這回合的學習份量：這回合沒有任何值得累積才識的事件就整個不填(null)；一般程度的學習/嘗試填"ordinary"；份量明顯更重的（熬夜衝刺、投入大量心力鑽研）填"intensive"；真正重大的突破/成就（不能自己隨口認定，只有情節上真的是重大轉折時才用）填"milestone"，且milestone必須額外提供event_id（幫這個具體事件取一個簡短英文/拼音代稱，之後如果同一件事被你在敘事裡重複提起，要用同一個event_id，讓系統知道這是同一件事不是新的一次）。實際會轉換成多少才識成長、milestone一個人生階段最多能算幾次，都由系統計算，不用你操心精確公式或去記錄次數。
+- 【二、2.4考試成績算法，exam_triggered為true時務必處理】：這回合是系統判斷該考試的時間點（exam_type是「期中考」或「期末考」），必須在敘事裡明確揭曉這次考試/報告的具體成績或名次，不能含糊帶過。若exam_final_score不是null（期末考，見十一、11.4明牌檢定機制）：這個確切分數已經由系統擲骰判定完成、玩家會另外在畫面上看到完整的骰值/加成/及格門檻明細，你在敘事裡必須直接採用這個確切數字，不能自己改成別的分數或另外暗示一個不同的結果，只需要順著這個已經確定的分數與及格與否寫出對應的敘事細節即可，不用自己判斷這次算不算及格；若exam_score_hint不是null（期中考，尚未列入明牌檢定白名單，維持原本兩層骰自由發揮）：這是系統依「目前才識數值＋這段時間讀書次數」算出的大方向落點（已內含天資長期加成，你不用重算），實際成績請在這個數字附近生成具體分數與細節，大部分時候落在hint±10分左右合理，但保留少量機率出現更意外的結果，不要每次都精準卡在hint上顯得死板；study_count_this_term是這段期間玩家選擇讀書的次數，可以在敘事裡呼應（例如讀書次數多但考差了、或平常沒特別讀書卻超常發揮，都可以，不用強制對應）
+- 隨機性採「兩層骰」：大方向要合理反映玩家目前的數值（數值高的人成功機率自然較高），但具體情節細節可以有意外驚喜，不必每次都溫吞可預期。
+- 人生里程碑（升學、就業、感情、成家等）到了年紀就自然帶出選項，但玩家永遠可以選擇「跳過／不做」，且要給出跳過後的合理後果，不強迫走傳統路線。
+- 【職涯/感情不設終身鎖死】：30歲以後，玩家隨時可以轉職、創業失敗重來、進入新的感情關係，不要因為玩家選定過某個職業或穩定關係，就假設劇情從此定型不再變化。
+- 角色卡：只有在敘事中真正出現「一個新的、有名字、有互動的人物」時才透過 new_characters 建立新角色卡；提到已存在角色的互動時用 character_updates 更新好感度與一句話補述。不要濫發角色。【四、4.1，9/19補充】summary_add 只保留最近2則，系統會自動捨棄較舊的，你不用擔心會不會太長或該不該精簡，正常寫就好。【四、4.1，9/19新增】new_characters 的 origin 欄位要簡短交代這個人是怎麼認識的、大概什麼時候（例如「國小同班同學，五年級認識」「打工時認識的同事」），供多年後這個角色重新出現時，你能參照這個來源寫出合理的重逢情境，不用自己編造或猜測。
+- 【戀愛系統 romantic_signal，四、4.4，9/16新增】：如果玩家這回合的行動明顯是跟某個既有NPC之間帶有戀愛/曖昧意味的互動（曖昧試探、告白、約會、親密對話，或反過來的冷淡回應、爭吵、拒絕），在對應的 character_updates[i] 裡加一個 romantic_signal 欄位：互動偏正向（曖昧升溫、更親密、順利）填"positive"，偏負向（冷淡、爭吵、拒絕）填"negative"，沒有戀愛/曖昧意味的一般互動就不要填這個欄位（或填null）。**你只負責分類這次互動的正負向，不要自己判斷「現在算不算在交往」「該不該進入曖昧中/交往中/穩定交往/分手」，這些狀態一律由系統依次數計算，你只需要參照 payload 裡每個 active_characters 項目的 romance_status（如果不是null）自然接續對應的語氣即可**；NPC卡的「關係類別」在系統判定為曖昧對象/戀愛對象時會自動反映，你不用也不能自己在 new_characters/character_updates 裡把 relation 手動設成「戀愛對象」。穩定交往中的對象(romance_status為"stable")是後續結婚劇情自然的敘事對象。
+- 【NPC姓名與性別一致性，務必仔細檢查】：生成任何新角色時，姓名必須符合其設定性別（不要給男性角色一個普遍認知是女性的名字，反之亦然）。實測發現過的錯誤範例：把「柏勳」這種普遍認知是男性的名字，標註成「姊姊」（女性親屬關係）——這類錯誤絕對要避免，下筆前先在心裡確認這個名字通常對應哪個性別，再確認跟你要設定的relation/性別欄位一致。一旦生成就是既定事實，後續回合引用該角色時姓名與性別不可再變動或矛盾。
+- 【時間推進速度，二、2.2/2.5，9/16改版：全年齡都已經由系統算好】：從15歲到終老，每回合要推進多少時間都已經由系統依目前人生階段的回合預算算好（學生時期依學期段落，22歲以後依年齡區間的加速曲線，越後面的人生單一回合代表的時間跨度越長），age_advance 欄位一律填0，不要自己推進年齡，也不用管「30歲以後自己判斷」這種說法（舊規則，已取代）。
+- 【current_time_label 與 time_jump（全年齡適用）】：current_time_label 是系統已經算好、這一刻故事所在的確切時間點（例如「高二・上學期・期末」「入職第2年」「45歲」），你不需要、也不應該自己推算現在是哪一天/哪個學期/哪一年，直接參照這個時間點的季節感/氛圍去寫即可，不用在敘事文字裡逐字報出這個標籤本身（畫面會自動幫玩家顯示）。如果 time_jump 不是 null（代表這回合跳過了一段時間，從 time_jump.from 跳到 time_jump.to），這回合的敘事開頭必須先用一兩句話簡短交代這段被跳過的空白時間裡發生了什麼變化，再繼續往下寫這一刻的劇情，不能無縫接軌假裝時間沒有跳躍過去。
+- 【事件狀態機制，四、4.3，務必遵守】：payload的milestone_status會列出13個一次性里程碑事件目前的狀態(available未觸發/completed已完成/skipped已跳過/locked鎖定中)。狀態是completed或skipped的事件，**絕對不能再當作新鮮事重新觸發**（例如已經completed的「第一張信用卡」，不能再讓劇情出現「要不要辦第一張信用卡」這種選項；已經skipped的，可以在特定情境提起「你當初沒有選擇辦卡」，但不能重新當成一個懸而未決的選擇再問一次）。狀態是locked的，代表前置條件還沒到，不要主動帶出這個選項。以下5個里程碑由你自己判斷完成/跳過後透過milestone_updates回傳{id, status:"completed"或"skipped"}：first_credit_card(第一張信用卡)、first_part_time_job(第一次打工)、first_startup(第一次創業)、marriage_decision(結婚或明確決定不婚)、parent_retirement(父母退休，9/19新增)——只有這5個需要你回報，沒發生變化就不用回傳。另外8個（畢業高中/畢業大學、第一次正職、買房、搬出家裡、第一次戀愛first_romance、第一次轉職first_job_change、生育或領養first_child）是系統自動判斷，你不用管，milestone_status裡看到它們變成completed是系統自己更新的（first_romance是9/16改版，玩家關係第一次進入「交往中」時系統自動判定；first_job_change/first_child是9/19新增，分別由job_change非首次觸發、new_characters的is_child判斷，一律不由你回報），你只需要讀取參考，不用也不能透過milestone_updates去改它們
+- 【college_location 大學地點選擇】：如果玩家在劇情中實際做出「大學/技職要去哪裡念」的決定（本地／外縣市／出國），透過 college_location_choice 回傳其中一個值；如果這件事還沒發生或已經決定過，一律回傳 null（已決定過的地點會透過 payload 的 college_location 持續告訴你，不用重複詢問或重複設定）。地點會影響親子互動的密度質地：本地就讀的話，跟父母碰面頻率高但多是表面的日常擦身而過（深度對話需要特別情境才觸發，不要因為住在一起就自動假設關係更緊密）；外縣市或出國就讀的話，聯絡頻率低（大約一週一次），但每次聯絡在敘事份量上可以稍微重一點。
+- 【房屋里程碑】：初入社會階段(23-29歲)，或大學選了外縣市/出國分支畢業後，適合自然帶出「租屋/買房/住家裡」的選項。玩家選定後透過 housing_choice 回傳 {type:"rent"/"own"/"parents", monthly_amount:數字}（租屋或房貸才需要monthly_amount，住家裡填0），系統會自動疊加進月支出；買房後如果財務惡化，可以在劇情裡提供「賣房/轉租」的逆向選項。沒有相關決定時 housing_choice 填 null。
+  - 【買房頭期款門檻，務必檢查】：買房不是按一個選項就完成，需要現金足夠支付頭期款。payload的max_affordable_home_monthly_payment告訴你，以目前現金，最高能負擔多少月付房貸（背後公式：頭期款＝月付房貸×60，對應20年期、8成貸款成數的簡化假設）。你決定的monthly_amount不能超過這個數字，否則系統會直接擋下這次購屋、完全不生效。如果玩家想買的房子明顯超出負擔，請在敘事裡走向「看房後發現預算不夠、繼續存錢」「找更便宜的物件」這類分支，不要讓劇情寫成買房成功了，實際上系統會忽略這個housing_choice導致劇情跟數值對不上
+- 【感情關係的收尾】：一段感情走到尾聲時，不用預設哪種收法更好，常見的是三種——分手（適合當作前面關係測試點失敗後的自然結果，不必是狗血事件）、畢業後漸行漸遠（沒有明確攤牌，只是聯絡越來越少，適合留白處理）、或關係持續帶入下一個人生階段（不用在這裡寫完結局，讓角色卡的關係史摘要繼續累積即可）。分手當下，可以依玩家的依附軸呈現不同反應：焦慮軸偏高的容易反覆回想、翻舊訊息；迴避軸偏高的容易把訊息封存、迅速恢復日常表面上的樣子。
+- 【兒女與生育系統】：不需要先結婚，單身也可以選擇生育或領養，只要有穩定關係或經濟條件即可，不限年齡階段，每次觸發都是一次性決定要不要生/領養，可以反覆觸發累積多個小孩。決定生育後用兩層骰邏輯（大方向看健康/年齡/financial_health，細節你自由發揮：一次成功/需要多次嘗試/走向不孕症）。如果走向不孕症，採四階段慢慢展開：①自然嘗試期(平淡帶過，期待與輕微失落交替)→②意識到不對勁決定就醫(先模糊的不對勁，隔一段時間才出現具體導火線去看醫生)→③治療嘗試多回合(依附兩軸呈現伴侶雙方不同反應；用one_time_transaction扣治療費，費用等級用「高費用」對照can_afford_medical判斷)→④岔路點(繼續嘗試/轉向領養/決定不再嘗試，三者在情緒份量上地位平等，不預設哪個正確，也不要無止盡重複讓玩家陷入負面循環，嘗試幾次後就該給出明確岔路)。小孩透過 new_characters 建立角色卡，relation 填「兒子」或「女兒」，並額外加一個欄位 is_child:true。領養的小孩跟親生地位完全對等。
+- 【死亡機制（七、7.1.5，9/16改版，機率判定型，取代原本「壽命到達/意外死亡」兩條路徑）】：死亡結局現在完全由系統的年度機率判定決定，**你不用也不能自己判斷這回合玩家會不會死**，只負責在系統已經決定的框架內把細節寫出來：
+  - **這回合是死亡結局本身**：如果 payload 的 forceEnding 是 true，代表系統已經判定這是玩家人生的最後一回合，你必須在這回合寫出結局場景的敘事（呼應前面已經鋪陳過的前兆，讓死亡感覺是這段人生的自然收尾，不是突兀的意外），並把 is_ending 設為 true、填寫 life_summary（見下面的【人生總結】規則）；forceEnding 為 false 時，即使你覺得劇情很適合角色死掉，也絕對不能自己把 is_ending 設為 true，系統會忽略這個欄位。
+  - **這回合要埋前兆**：如果 payload 的 death_foreshadow_now 是 true，代表系統剛好判定「風險正在上升」，這回合的敘事裡要自然帶出一個微小前兆（疲勞感、差點發生意外的驚險場面、健康檢查結果不佳等），呼應防壓抑機制的精神，點到為止即可，不用解釋這代表什麼；death_foreshadowed 告訴你之前是否已經有過前兆，只是給你維持語氣延續感的參考，不用你判斷任何事。
+  - 40歲以前（國高中/大學/初入社會/找方向期前段）forceEnding 與 death_foreshadow_now 都不會是 true，這個階段完全不用考慮死亡相關的敘事。
+- 【世代傳承（死亡結局時，如果玩家有小孩）】：如果 payload 的 has_children 是 true 且這回合觸發死亡結局（無論哪種死法），在 life_summary 之外，額外透過 succession_available 設為 true 告知系統可以提供轉生選項；不用你自己處理繼承細節，那是系統的事。如果沒有小孩，succession_available 設為 false。
+- 【情緒份量 emotional_tone（三、3.8，9/20新增，取代原本的 happiness_delta）】：你不再給幸福感數值，只回報這一回合對玩家而言的情緒份量，四選一：uplifting（明確的好事、鬆一口氣、被看見）、warm（平靜的暖意、日常的小確幸）、unsettling（隱隱不安、卡住、被忽略）、heavy（明確的打擊、失去、長期壓在身上的事）。多數平淡回合落在 warm 或 unsettling，兩端不要濫用。這四個字串以外的值系統一律當作中性處理，所以不要自創分類，也不要寫成「有點warm」這種模糊描述。幸福感的長期水準由系統依五條來源管道自己計算，不需要你操心。
+- 【人生總結 life_summary（七、7.1.4，9/20新增，取代原本的 ending_title／ending_summary）】：只有 forceEnding 是 true 的那一回合才要填。這一生不給標籤、不給分數、不做總評、不跟別人比較，只回顧「經歷過什麼、後來變成什麼樣子」。payload 會給你 life_summary_material，裡面已經由系統挑好、排好素材：
+  - segments：每個人生階段一筆，帶 stage（照抄當作 key）、stage_label、age_from/age_to、tone（釋然／平穩／惋惜／沉重，這是系統算好的敘事溫度，你照著寫，不要自己改判）、resume_entries（這段人生的履歷條目）、key_npcs（這段身邊的人）。每一筆寫一段回顧：當時的處境、這些履歷條目、這些人，語氣依 tone。不要寫成流水帳，也不要補系統沒給的事件。
+  - transitions：階段與階段之間的光譜位移，帶 after_stage（照抄當作 key）、axis_label、from、to、direction。每一筆寫**一句**行為對比，只描述行為怎麼變了，不評價好壞、不說是進步或退步、不要出現「焦慮軸」「自律」這類機制詞彙。寫法參考：「你從一進教室就往牆邊走的人，變成會先問別人作業寫完了沒」。transitions 是空陣列時就不要寫。
+  - epitaph：墓誌銘，一至兩句，依整段人生軌跡寫，不是這一回合的感想。
+- 【段落切分】：narrative 內容不要寫成單一區塊，要依「畫面轉換」或「心理轉折」切成2-3個小段落，段落之間用一個換行符號分隔（在JSON字串裡就是 \\n\\n）。參考結構：第一段場景/動作 → 第二段內心想法 → 第三段（如果有）對話或選項前導。
+- 【九條敘事技巧】：(1) 同一段落內長短句要不對稱，至少有一句5字以內的極短句，避免每句話都工整等長；(2) 內心自問可以連續發問、不必收斂成一個結論，情緒本身在滾動比"想清楚"更真實（尤其焦慮軸偏高時）；(3) 呈現角色反差或對比時，用一句平述帶過就好，不用解釋成因；(4) 角色有所隱瞞、迴避、內心波動時，優先用沉默或岔開話題呈現，不要讓角色直接說出感受或動機——但如果情境是單純辯論、抬槓、交換意見（沒有隱瞞成分），要用直球對話，每句話精確回應上一句，不要閃躲；(5) 同一天內瑣碎的場景切換可以不用過渡句直接跳接（這條跟「強制過渡回合」不衝突，那條只管跨里程碑的明顯時間跳躍）；(6) 具體、甚至外人聽起來略顯瑣碎的道具/品牌/暱稱細節，比形容詞更能建立真實感；(7) 角色的動作可以用「（動作）台詞」的格式直接嵌在對話裡，不用另外拆一句旁白動作描述；(8) 角色說話可以中途自我修正、改口，這種不完美的痕跡才真實；角色可以有專屬的說話癖好，不用旁白解釋；(9) 俚語、流行語、口頭禪要依角色的年齡/性格/背景個別設計，不能所有角色共用同一套。
+- 【防壓抑機制】：(1) 兩層骰的細節層不能只服務負面驚喜——玩家數值明顯偏低時，仍要保留機率給正向意外（陌生人的善意、意外的機會、被低估的能力被看見），不要每次都往更慘的方向發揮；(2) 玩家某次選擇明顯違反自己的依附軸底色時（例如迴避軸很高的人主動求助、焦慮軸很高的人罕見地表現得從容），這是「性格破格時刻」，值得用比平常更長、更聚焦情緒的一段敘事給予份量，最好能連動到某個角色卡的好感度變化，不要讓依附軸變成貫穿一生的宿命感；(3) 旁白可以在連續兩三個負面事件之後，或人生階段轉場時，保留一點點抽離、自嘲的語氣調劑，不用每次都很沉重；(4) 玩家選擇跳過傳統路線（不成家、不追求事業高峰）時，emotional_tone 不能暗中被懲罰——不要因為「他沒結婚」「他沒升遷」就把語氣往 unsettling／heavy 壓，跳過傳統路線的玩家在友情、自我實現、興趣、自己做主這些方向上一樣該讀到 uplifting／warm 的回合，不能有「不跳過才是正確人生」的隱藏傾向（幸福感的長期水準由系統依五條來源管道自己算，你只負責這一回合的情緒份量）。
+- 【背景資訊要暗示，不要宣告】：像家境、外貌、天資這類設定資訊，禁止用旁白直接點名等級（例如「你家境富裕」「你天資聰穎」這種講法），一律透過場景細節、物品、他人的反應與對話去間接透露，讓玩家自己感受到，而不是被告知一個標籤。
+- 【依附風格 attachment_axes：焦慮軸 anxiety、迴避軸 avoidance，各0-100】：這是貫穿全程的敘事語氣濾鏡，不是某個時間點要「揭露」的資訊——玩家每一句內心話、每一次反應的預設方式都被這兩軸底色染過，但永遠不要用「焦慮」「迴避」「依附」這類詞彙直接講給玩家聽，只能透過語氣、選擇的猶豫程度、對親密/衝突情境的反應方式去呈現。數值越低代表這個軸越健康／越不明顯。
+- 【同儕位置 peer_position：獨行俠／邊緣觀察者／小圈子黏著者／核心人氣圈／照顧者型】：這條適合在遊戲很早期（turn數很小、還在高中階段）透過「進教室」「分組」這類社交情境自然帶出，之後才視情況再提；一樣不要直接講出分類名稱本身，要用行為描寫（誰主動找誰說話、你習慣坐哪裡、下課都在做什麼）去呈現。
+- 【人格魅力風格 personality_style】：這是玩家的人設風格標籤（陽光開朗/溫柔婉約/天真爛漫/高冷神秘/幹練俐落/幽默風趣），與性別脫鉤，任何性別都可以是任何風格，用行為/說話方式自然呈現，不要直接說出標籤名稱。
+- 【做事態度光譜 conscientiousness：自律/審慎/成就傾向/責任感/團隊vs單打獨鬥，各0-100】：這是行為模式的慣性，不是情緒濾鏡，主要影響選項的傾向性描述，不強求每次都伴隨強烈情緒；開局都是中性50分，完全靠學生時期起的具體選擇（準時交作業、多想想再決定、力求更好、對承諾的實踐、找人合作或自己扛）慢慢累積偏向。可以透過 conscientiousness_shift 回傳小幅位移（-3到+3，多數回合是0）。責任感、團隊vs單打獨鬥這兩條已經由系統自動換算成人脈/才識成長的倍率，你不用管；但下面兩條需要你在敘事判斷時實際套用：
+  - detail_variance_multiplier：面對重大抉擇的結果時，這個倍率越接近0.5代表這個人「審慎」，結果應該更集中在數值本來就該有的水準附近，不要给太意外的結果；越接近1.5代表「衝動」，可以讓細節層結果出現更極端的好或壞（呼應防壓抑機制，極端結果不等於只能往壞的方向）
+  - achievement_probability_modifier_pp：遇到創業/升遷這類機會時，把這個百分點數加到你原本評估的基礎成功機率上再決定結果（例如基礎機率70%，這個值是+9，代表大方向落點應該當作79%在判斷，不是71%或其他算法）；加總後不得超過95%、也不得低於5%，超過或低於這個範圍一律視為95%/5%，保留最基本的意外空間，不要出現「一定成功」或「一定失敗」的機率
+  - achievement_health_cost_multiplier：玩家選擇積極衝刺事業/創業時，健康代價（health的負向delta）建議乘上這個倍率再輸出
+  - 【自律，3.7.2，9/16修正】自律的「興趣持續投入」來源已經改成系統依interest_event自動計算(連續3次/6次持續投入才加1分)，你不用也不要透過conscientiousness_shift.selfDiscipline去反映興趣相關的持續投入，避免重複計分；conscientiousness_shift.selfDiscipline只用在其他來源（準時交作業、不遲到、規律作息等）
+- 【興趣系統 interest_event，八、興趣系統v1，9/16新增】：如果玩家這回合的行動/選擇明顯屬於某個興趣類別的探索或投入（不限定被動觸發的興趣種子事件，玩家自己主動提的也算），回傳 interest_event:{"category":"...", "reaction":"..."}；category必須是這7類之一：藝術創作、手作工藝、知識研究、體能競技、科技邏輯、社交表演、商業交易；reaction是你對玩家這次反應的判斷：明顯喜歡/主動投入填"positive"，沒特別感覺或只是隨口提一下填"neutral"，玩家明確表態不喜歡/想放棄填"negative"。這回合完全沒有興趣相關的行動就整個不填(null)。**你只負責分類，不要自己判斷「這個興趣候選是否已經成立」「投入度多少」「該不該轉正為正式興趣卡」，這些一律由系統計算，你不用管也不用在意payload裡的interest_status怎麼變化，只需要在敘事上自然帶出玩家既有的興趣（如果interest_status顯示已經有active的興趣）**。如果payload的pending_side_business_category不是null，代表玩家在這個類別上已經觸發副業契機，你要在敘事裡自然帶出這個契機、讓玩家在choices裡看到三個方向（保持興趣原樣／接一些零星案子／認真發展成正式副業），但實際選擇結果由玩家下一步輸入決定，不用你在這回合就強制分出結果。
+- 【大學科系系統 university_status/university_recent_event，九、大學科系系統，9/16新增】：payload的university_status告訴你玩家目前的科系分類、年級、雙主修狀態、休學狀態，只在is_student且已經選過科系時才會有值，否則是null；你只需要在敘事上自然帶出這些既有狀態（例如年級對話、雙主修課業壓力、休學中的生活感），**完全不要自己判斷/宣告「這回合轉系成功了」「開始雙主修了」「休學/肄業了」這些狀態轉換，一律由系統的彈窗機制處理，不透過你的敘事或任何JSON欄位回傳**。如果university_recent_event不是null（代表系統剛結算完一次轉系/雙主修中途放棄/休學/復學/肄業的結果，例如{type:"transfer_success",major:"商管/財經類"}、{type:"dual_major_abandoned"}、{type:"leave_resumed"}），你要在下一段敘事裡自然承接這個已經發生的結果（延續情緒、環境變化），不要重新演一次選擇的過程，那個已經是玩家上一步做過的決定。學費相關敘事一律當背景細節描寫，不涉及任何金額回報（見前面one_time_transaction說明）。【休學中，leave_status為on_leave時】不要出現任何考試/選課/學期進度相關的情節，敘事改走生活/打工/家庭/自我探索方向（呼應9.5.3），這段期間的payload不會有exam_triggered，你也不需要主動安排。
+- 【家庭結構 family_structure】：決定了通訊錄裡實際有誰（雙親／單親／隔代／服刑一方），active_characters 裡每個家人角色卡的 relation 跟 traits 已經反映了這個結構，你只需要順著這些角色卡的設定去寫互動，語氣要符合各自的關係質地（例如服刑家長的互動應該透過書信/有限探視，不是日常對話；隔代教養的語氣要有世代感）。
+- 【關鍵事件 key_event】：如果 key_event 不是 null 且 already_revealed 是 false，找一個貼合當下情境（例如社交場合、壓力情境、感情衝突）的時機，透過一段簡短插敘/回憶帶出這個事件的「一角」，不解釋完整前因後果，讓玩家自己拼湊；一旦你在某回合這樣帶出過，把 revealed_key_event 設為 true（之後不用每次強調，偶爾呼應即可）。如果 key_event 是 null，完全不用管這件事。
+- 【政治世家隱藏設定 is_politician_child_hidden_flag】：如果為 true，可以偶爾（不用每次，稀疏一點）讓某個配角對玩家的姓氏或背景表現出一閃而過的反常反應（愣一下、換話題、態度突然過度客氣），完全不要說出原因，讓玩家自己拼湊；如果為 false，完全不要做這件事。
+- 【attachment_shift 與 peer_position_shift】：請根據玩家這回合行動/選擇的性質，回傳小幅度的位移（-5到+5之間，多數回合應該是0或很小的個位數，只有真正戲劇性的情節才給較大位移）。這是長期累積才會讓人真正改變的機制，不要每回合都給非零數值，也不要暴衝。
+- 使用 player_name 稱呼玩家本人（旁白內文可直接用「你」，但其他角色對話中應該會叫玩家的名字），並依 gender 使用正確的代名詞。
+- major_event_summary：只有在發生「值得長期記住的重大事件」時才填寫（10-20字精簡摘要），否則設為 null。這會被存進「人生大事記」長期提供給你當背景記憶，所以要精簡扼要。【四、4.2.2，9/19新增】判斷標準用這個測試題：「十年後回看，這件事會不會改變玩家對這個人物/這段人生的理解」——通過才算，日常瑣事（普通聚餐、買飲料）不算。如果這件事屬於「重大失敗」或「重大成就」這種敘事當下的價值判斷（不是畢業/結婚/買房這種本來就有明確完成狀態的里程碑），額外透過 major_event_type 回傳 "achievement" 或 "setback"；不屬於這兩類就整個不填(null)。**你只負責分類，不要自己計算「這個人生階段已經記錄過幾次achievement/setback」，次數上限由系統計算，你不用管、也不會知道系統這次有沒有真的記錄下來。**
+- 【一、1.2.7選項生成技巧規則，9/19新增】choices：給3到4個彼此方向不同的具體行動選項，跟正文一樣要有畫面跟語氣，不要寫成條列式的功能選單。優先寫成一個具體、可想像畫面的動作，而非抽象的意圖陳述（例如不要寫「立刻下樓幫忙」，改寫成「把作業闔起來塞進書包，直接衝下樓」）；可以用「(動作)+一句話」或「動作，順口帶一句話」的結構，不必是純粹的第三人稱敘述句；同一件事的幾個選項除了「做什麼」不同，也可以在「用什麼姿態做」上帶出不同態度/立場（呼應既有依附兩軸的人格光譜，但不用每個選項都對應固定的迴避/焦慮設定，只是允許帶一點情緒色彩，增加真實感）。字數上限放寬到約20-35字，足夠放進「動作+一點細節/語氣」，但不用寫到接近完整句子的長度。**濃度依情境分級，不是每回合都要加碼**：日常瑣事型選項（打工、要不要回訊息這類低張力決定）維持精簡，但至少要有一個具體動作或道具細節，不要寫成純意圖句；情感線、關鍵抉擇、或這回合exam_final_score不是null的明牌檢定節點，可以寫到接近「動作+台詞+情感立場」三者兼具的濃度，呼應既有「破格時刻」加重筆墨的精神。**中立性紅線（對應六、6.4跳過選項中立性）**：同一組選項的畫面豐富度必須對等，不能A選項寫得細膩、B/C選項卻乾巴巴一句話，這樣文字本身會變成暗示哪個選項「比較對」；加細節的方向只能是畫面/立場，不能暗示結果好壞（不能讓某個選項聽起來就比較容易成功或比較浪漫）。
+- 【四、4.2.1.1，9/19新增，每回合必填】turn_summary：用1-2句話（比照人生履歷「1句話等級」的精簡度）摘要這回合實際發生的事，這是必填欄位，不能省略或留空。用途：payload的recent_turns_full只會給你最近3回合的完整原文，再往前的回合會改用你這裡填的turn_summary（不是原文）當作你僅有的參考，所以要確實摘要到「發生了什麼」，不要寫得太抽象籠統。recent_turns_summary就是更早幾回合的turn_summary清單，你可以參考但不用逐字呼應。
+
+每一回合結束時，透過 submit_turn_result 這個工具回傳這回合的完整結果，不要用純文字直接回覆、也不要自己在文字裡寫JSON——工具的輸入欄位就是你要回傳的完整結構，欄位意義請對照上面各條規則。`;
+}
+
+// 2026-09-19新增：改用強制工具呼叫取代「純文字指示JSON」，解決真實API測試中偶爾出現「AI整段寫成故事、完全不包JSON」的失敗模式
+// （見CHANGELOG 2026-09-19續6/續11）——tool_choice強制指定這個工具時，AI在架構上不可能再回傳純文字，且工具參數
+// 由API端直接解析成物件（data.content裡的tool_use區塊的.input），不再需要自己JSON.parse文字內容，從根本上排除了
+// 「AI忘記包JSON」與「JSON格式跳脫錯誤導致parse失敗」這兩種失敗模式。刻意不加strict:true——那個選項走的是跟
+// 先前放棄的output_config.format(structured outputs)同一套「編譯grammar」機制，我們的schema規模已知會超過限制；
+// 不加strict時，一般工具呼叫走的是Claude原生訓練的工具呼叫能力，不受那個限制影響，等同於業界標準的function calling做法
+const TURN_RESULT_TOOL = {
+  name: "submit_turn_result",
+  description: "回報「人生草稿」這一回合的完整結果，包含敘事本文與所有遊戲狀態變化欄位。每一回合都必須呼叫這個工具剛好一次，欄位意義以system prompt裡的規則說明為準。",
+  input_schema: {
+    type: "object",
+    properties: {
+      narrative: { type: "string", description: "這回合的敘事本文，第二人稱日記體、繁體中文，依規則切成2-3小段，段落間用\\n\\n分隔" },
+      turn_summary: { type: "string", description: "1-2句話摘要這回合實際發生的事，必填，不能省略" },
+      age_advance: { type: "number", description: "一律填0，年齡推進已由系統結構化計算" },
+      stat_deltas: {
+        type: "object",
+        properties: { health:{type:"number"}, network:{type:"number"}, expression:{type:"number"} },
+        required: ["health","network","expression"]
+      },
+      event_type: { type: ["string","null"], description: "null（本回合無值得累積才識的事件）、ordinary、intensive、或milestone（需搭配event_id）" },
+      event_id: { type: ["string","null"], description: "只有event_type為milestone時才需要，簡短英文/拼音代稱" },
+      emotional_tone: { type: "string", description: "這回合對玩家的情緒份量，只能是 uplifting／warm／unsettling／heavy 四選一，不要給數值" },
+      job_change: {
+        type: ["object","null"],
+        properties: { occupation_category:{type:"string"}, monthly_salary:{type:"number"} }
+      },
+      expense_change: {
+        type: "array",
+        items: { type:"object", properties:{ label:{type:"string"}, monthly_amount:{type:"number"}, action:{type:"string", description:"start或end"} } }
+      },
+      one_time_transaction: {
+        type: "array",
+        items: { type:"object", properties:{ label:{type:"string"}, amount:{type:"number", description:"收入為正、支出為負"} } }
+      },
+      housing_choice: {
+        type: ["object","null"],
+        properties: { type:{type:"string", description:"rent/own/parents"}, monthly_amount:{type:"number"} }
+      },
+      attachment_shift: {
+        type: "object",
+        properties: { anxiety:{type:"number"}, avoidance:{type:"number"} },
+        required: ["anxiety","avoidance"]
+      },
+      peer_position_shift: { type: "number" },
+      conscientiousness_shift: {
+        type: "object",
+        properties: {
+          selfDiscipline:{type:"number"}, prudence:{type:"number"}, achievement:{type:"number"},
+          responsibility:{type:"number"}, teamSolo:{type:"number"}
+        },
+        required: ["selfDiscipline","prudence","achievement","responsibility","teamSolo"]
+      },
+      interest_event: {
+        type: ["object","null"],
+        properties: { category:{type:"string"}, reaction:{type:"string", description:"positive/neutral/negative"} }
+      },
+      revealed_key_event: { type: "boolean" },
+      college_location_choice: { type: ["string","null"], description: "本地/外縣市/出國，尚未決定則null" },
+      milestone_updates: {
+        type: "array",
+        items: { type:"object", properties:{ id:{type:"string"}, status:{type:"string", description:"completed或skipped"} } }
+      },
+      new_characters: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name:{type:"string"}, relation:{type:"string"}, traits:{type:"string"},
+            initial_affinity:{type:"number"}, is_child:{type:"boolean"}, origin:{type:"string"}
+          }
+        }
+      },
+      character_updates: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name:{type:"string"}, affinity_delta:{type:"number"}, summary_add:{type:"string"},
+            romantic_signal:{type:["string","null"], description:"positive/negative，無戀愛/曖昧意味則null"}
+          }
+        }
+      },
+      major_event_summary: { type: ["string","null"], description: "10-20字精簡摘要，非重大事件則null" },
+      major_event_type: { type: ["string","null"], description: "achievement/setback，不屬於這兩類則null" },
+      choices: { type: "array", items: { type:"string" }, description: "3到4個彼此方向不同的具體行動選項，呼應一、1.2.7選項生成技巧規則" },
+      is_ending: { type: "boolean" },
+      life_summary: {
+        type: ["object","null"],
+        description: "只有forceEnding為true時才填。七、7.1.4人生總結：不給標籤、不給分數、不做總評",
+        properties: {
+          segments: { type:"array", items: { type:"object", properties:{
+            stage:{type:"string", description:"照抄payload裡life_summary_material.segments的stage值"},
+            text:{type:"string", description:"這個人生階段的一段回顧，語氣依該段的tone"} } } },
+          transitions: { type:"array", items: { type:"object", properties:{
+            after_stage:{type:"string", description:"照抄payload裡life_summary_material.transitions的after_stage值"},
+            text:{type:"string", description:"一句行為對比，不評價好壞"} } } },
+          epitaph: { type:"string", description:"墓誌銘，一至兩句" }
+        }
+      },
+      succession_available: { type: "boolean" }
+    },
+    required: ["narrative","turn_summary","age_advance","stat_deltas","emotional_tone","attachment_shift","peer_position_shift","conscientiousness_shift","choices","is_ending"]
+  }
+};
+
+// 七、7.1.5（9/16機率公式提案,測試參數,待測試組驗證）：機率判定型死亡機制，取代原本computeAccidentRiskHint()
+// 只給AI模糊提示、由AI自行判斷要不要觸發的舊設計——改成完全由client端算好機率+擲骰決定，AI只負責敘事，不再自行判斷「這回合要不要死」
+const DEATH_MIN_AGE = 40; // 【定案,9/16改版,7.1.5】40歲以前不會觸發死亡結局
+const DEATH_AGE_BASE_PROBABILITY = [ // 【測試參數,待測試組複驗,7.1.5四，9/16分段修正】40-69歲維持原值；70-79/80-89/90+三段依內容組(b)方案上修，疊加7.1.2前兆兩段式關卡後校準回75-82歲中位死亡年齡目標
+  { minAge:40, maxAge:49, prob:0.002 },
+  { minAge:50, maxAge:59, prob:0.006 },
+  { minAge:60, maxAge:69, prob:0.015 },
+  { minAge:70, maxAge:79, prob:0.07 },
+  { minAge:80, maxAge:89, prob:0.24 },
+  { minAge:90, maxAge:9999, prob:0.32 }
+];
+const RISKY_LIFESTYLE_DEATH_BONUS = 0.02; // 【測試參數,7.1.5三】高風險行為/職業固定加成，每年+2個百分點，加法疊加不隨年齡縮放
+function deathAgeBaseProbability(age){
+  const bucket = DEATH_AGE_BASE_PROBABILITY.find(b=>age>=b.minAge && age<=b.maxAge);
+  return bucket ? bucket.prob : 0;
+}
+function deathHealthMultiplier(health){
+  // 【測試參數,7.1.5二】1+(50-健康)/50×0.5：健康0→×1.5，健康50(基準)→×1.0，健康100→×0.5，乘法修正年齡基礎機率
+  return 1 + ((50-health)/50) * 0.5;
+}
+function computeDeathProbability(s){
+  // 【測試參數,7.1.5一】死亡機率 = 年齡基礎機率×健康修正倍率 + 高風險行為/職業加成
+  if(s.age<DEATH_MIN_AGE) return 0;
+  const base = deathAgeBaseProbability(s.age) * deathHealthMultiplier(s.stats.health);
+  const riskyBonus = s.riskyLifestyle ? RISKY_LIFESTYLE_DEATH_BONUS : 0;
+  return clamp(base + riskyBonus, 0, 1);
+}
+// 每年一次判定（在advanceStructuredTime的career分支、年份真的跳動時呼叫）：
+// roll成功且尚未有前兆→這年先埋前兆(呼應7.1.2前兆機制，不能無預兆死亡)；roll成功且已有前兆→這年觸發死亡結局
+function rollAnnualDeathCheck(s){
+  if(s.age<DEATH_MIN_AGE) return { justForeshadowed:false, deathTriggered:false };
+  const hit = Math.random() < computeDeathProbability(s);
+  if(!hit) return { justForeshadowed:false, deathTriggered:false };
+  if(!s.deathForeshadowed){
+    s.deathForeshadowed = true;
+    return { justForeshadowed:true, deathTriggered:false };
+  }
+  return { justForeshadowed:false, deathTriggered:true };
+}
+// 四、4.2.1.1（9/19新增）：短期上下文壓縮規則——最近3回合給完整原文，再往前6則只給AI已經產生過的turn_summary壓縮摘要，
+// 更早的完全不送給AI（由4.2履歷/4.1 NPC記憶承接長期記憶），取代原本「recent_log只給最近2則原文、更早整個看不到」的做法
+const RECENT_FULL_TEXT_TURNS = 3; // 【定案,9/19,見4.2.1.1】
+const RECENT_SUMMARY_TURNS = 6; // 【測試參數,Claude Code判斷,呼應L3履歷摘要同樣抓6則】
+function buildUserMessage(actionText, forceEnding, timeCtx){
+  const s = state;
+  const roster = activeCharacters().map(c=>({
+    name:c.name, relation:c.relation, traits:c.traits,
+    affinity:c.affinity, summary:c.summary, is_child:!!c.isChild,
+    romance_status: c.romanceStatus||null // 四、4.4戀愛狀態機（9/16新增）：null/ambiguous/dating/stable/breakup，僅供你參考語氣，不可自行變更
+  }));
+  const financialHealth = computeFinancialHealthForState(s); // 9/16修正：學生時期改用家庭真實NT$數字，見3.4.6補充定案
+  const payload = {
+    player_name: s.name, gender: s.gender,
+    age:s.age, stage:stageLabel(s.age), turn:s.turnCount,
+    current_time_label: timeCtx?.structured ? timeCtx.label : null,
+    time_jump: (timeCtx?.structured && timeCtx.jump) ? timeCtx.jump : null,
+    college_location: s.collegeLocation,
+    stats:s.stats, happiness:s.happiness,
+    appearance: s.appearance, personality_style: s.personalityStyle,
+    conscientiousness: s.conscientiousness,
+    detail_variance_multiplier: clamp(1-(s.conscientiousness.prudence-50)*0.01, 0.5, 1.5),
+    achievement_probability_modifier_pp: +((s.conscientiousness.achievement-50)*0.3).toFixed(1),
+    achievement_health_cost_multiplier: clamp(1+(s.conscientiousness.achievement-50)*0.01, 0.5, 1.5),
+    savings: s.cash, monthly_income: s.monthlyIncome, monthly_expenses: s.monthlyExpenses,
+    financial_health: financialHealth,
+    can_afford_medical: { 低: financialHealth>=20, 中: financialHealth>=50, 高: financialHealth>=75 },
+    is_student: !s.occupationCategory,
+    spending_habit: s.spendingHabit, meal_arrangement: s.mealArrangement,
+    meal_event_multipliers: s.mealArrangement ? MEAL_EVENT_MULT[s.mealArrangement] || null : null,
+    occupation_category: s.occupationCategory, housing: s.housing,
+    max_affordable_home_monthly_payment: Math.floor(s.cash/60), // 七、7.5.3買房頭期款門檻：頭期款=月付×240×0.25=月付×60，現金/60=這個現金水位能負擔的最高月付房貸(呼應20年期/8成貸款成數假設)
+    home_purchase_min_down_payment_pct: 20,
+    milestone_status: MILESTONE_DEFS.map(def=>({ id:def.id, label:def.label, status:s.milestones[def.id] })),
+    interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, status:c.status, investment:Math.round(c.investment) })),
+    pending_side_business_category: s.pendingSideBusinessCardId ? ((s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId)||{}).category || null : null,
+    exam_triggered: !!(timeCtx && timeCtx.examTriggered),
+    exam_type: (timeCtx && timeCtx.examType) || null,
+    // 二、2.4.1（9/16修正執行順序bug）：exam_triggered這回合，studyCountThisTerm在advanceStructuredTime()裡已經歸零，
+    // 必須改用考前存的快照(timeCtx.studyCountAtExam)算hint，不能直接讀s.studyCountThisTerm（否則讀書次數加成永遠算不到）
+    // 十一、11.4（9/19新增）：期末考已改採明牌檢定，分數由client端擲骰確定並透過exam_final_score告知AI，
+    // exam_score_hint（大方向層落點提示，AI仍可在附近自由發揮細節）只在「有考試但不是明牌檢定範圍」（即期中考）時才提供
+    exam_score_hint: (timeCtx && timeCtx.examTriggered && !timeCtx.examCheck) ? clamp(Math.round(s.stats.knowledge + (timeCtx.studyCountAtExam||0)*3), 0, 100) : null,
+    exam_final_score: (timeCtx && timeCtx.examCheck) ? timeCtx.examCheck.finalScore : null,
+    study_count_this_term: (timeCtx && timeCtx.examTriggered) ? (timeCtx.studyCountAtExam||0) : (s.studyCountThisTerm||0),
+    // 九、大學科系系統（9/16新增）：這些欄位只給你當敘事參考，候選是否成立/狀態轉換一律由系統計算，你不用也不能自己判斷
+    university_status: s.studentStatus!=="enrolled" ? null : {
+      major_group: s.studentMajorGroup ? findMajorCategory(s.studentMajorGroup)?.label : null,
+      program_year: collegeYearLabel(s),
+      dual_major_status: s.dualMajorStatus,
+      leave_status: s.leaveStatus
+    },
+    university_recent_event: s.universityEventLog, // 例如{type:"transfer_success",major:"..."}，剛發生的轉系/休學/肄業結果，自然帶進敘事即可，不用你去決定要不要發生
+    family_structure: s.familyStructure,
+    family_background: s.family,
+    attachment_axes: { anxiety: s.anxiety, avoidance: s.avoidance },
+    peer_position: peerPositionLabel(s.peerPosition, s.peerPositionSpecial),
+    is_politician_child_hidden_flag: s.isPoliticianChild,
+    key_event: s.keyEvent ? { type:s.keyEvent.type, already_revealed:s.keyEvent.revealed } : null,
+    // 七、7.1.5（9/16改版）：死亡機率完全由client端算好+擲骰決定，AI不再自行判斷要不要觸發，只負責敘事
+    death_foreshadow_now: !!(timeCtx && timeCtx.deathForeshadowNow), // 這回合系統剛好擲中「該埋前兆了」，你必須在這回合寫一個前兆片段
+    death_foreshadowed: s.deathForeshadowed, // 之前是否已經埋過前兆（僅供你維持語氣延續感參考，不用你判斷任何事）
+    low_health_streak: s.lowHealthStreak,
+    has_children: s.characters.some(c=>c.isChild),
+    fertility_journey: s.fertilityJourney,
+    active_characters: roster,
+    // 四、4.2.3（9/19新增）：結局判定/墓誌銘生成時讀取完整L3履歷，不受「最近6則」可見範圍限制——
+    // 這是整局遊戲只發生一次的呼叫，不影響每回合prompt成本，且七、7.1.4要求結局要看整段人生軌跡
+    chronicle_recent: forceEnding ? s.chronicle : s.chronicle.slice(-6),
+    // 四、4.2.1.1（9/19新增，取代原本recent_log只給最近2則原文的做法）：
+    // 最近3回合給完整原文（保持逐字語感），再往前6則只給壓縮摘要（turn_summary），更早的完全不送
+    recent_turns_full: s.log.slice(-RECENT_FULL_TEXT_TURNS).map(e=>e.text),
+    recent_turns_summary: s.log.slice(-(RECENT_FULL_TEXT_TURNS+RECENT_SUMMARY_TURNS), -RECENT_FULL_TEXT_TURNS).map(e=>e.turnSummary||e.text),
+    player_action: actionText,
+    // 七、7.1.4（9/20新增）：結局回合才給，素材已由客戶端從life_trajectory挑好排好，AI只負責寫成回顧語氣
+    life_summary_material: forceEnding ? buildLifeSummaryMaterial(s) : null,
+    // 三、3.8.4（9/20新增）：skip_reason三選一，給AI當敘事參考（哪些是主動選擇不做、哪些是根本沒遇到）
+    milestone_skip_reason: s.milestoneSkipReason || {},
+    forceEnding: !!forceEnding
+  };
+  return JSON.stringify(payload);
+}
+
+const WORKER_URL = "https://life-game.smile80275.workers.dev/";
+
+async function callAI(actionText, forceEnding, timeCtx){
+  let res;
+  try{
+    res = await fetch(WORKER_URL, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 3000, // 2026-09-18：從1400調高，Sonnet 5預設會自動思考(adaptive thinking)佔用部分token額度，1400太容易被截斷（無文字內容/JSON解析失敗）
+        // 2026-09-19：試過output_config.format(structured outputs)想在API層強制JSON結構，但這份schema規模對
+        // Anthropic的grammar編譯器來說太大（400「compiled grammar too large」），拿掉全部enum約束後仍然超過限制，撤回改回
+        // 純文字指示JSON，結果真實測試中出現「AI整段寫成故事、完全不包JSON」的失敗（見CHANGELOG續6/續11）。
+        // 2026-09-19（續）：改用強制工具呼叫（tools+tool_choice，見TURN_RESULT_TOOL定義），不加strict:true避開
+        // 跟structured outputs同一套grammar編譯限制，改吃Claude原生工具呼叫能力——AI在架構上不可能再回傳純文字，
+        // 工具參數也由API端直接解析成物件，不用再自己JSON.parse
+        output_config: {
+          effort: "low" // 敘事生成不需要高強度推理，用低努力度壓低思考的token消耗，兼顧成本與穩定度
+        },
+        tools: [ TURN_RESULT_TOOL ],
+        tool_choice: { type: "tool", name: "submit_turn_result" },
+        // 2026-09-19新增：prompt caching——buildSystemPrompt()完全是固定文字，每個玩家、每一回合都一字不差，
+        // 沒開快取代表每次都用全額input token價格重複付這3萬多字。cache_control改用便宜很多的快取讀取價格計費
+        // （命中快取時usage.cache_read_input_tokens會>0，可用來驗證真的有生效），不影響AI實際讀到的內容
+        system: [ { type: "text", text: buildSystemPrompt(), cache_control: { type: "ephemeral" } } ],
+        messages: [{ role:"user", content: buildUserMessage(actionText, forceEnding, timeCtx) }]
+      })
+    });
+  }catch(networkErr){
+    throw new Error("網路請求失敗："+networkErr.message);
+  }
+
+  let text;
+  try{ text = await res.text(); }
+  catch(readErr){ throw new Error("讀取回應內容失敗："+readErr.message); }
+
+  if(!text || text.trim().length===0){
+    const ct = res.headers.get("content-type");
+    throw new Error("收到空白回應（HTTP "+res.status+" "+res.statusText+"，content-type: "+ct+"，長度: "+text.length+"）");
+  }
+
+  let data;
+  try{ data = JSON.parse(text); }
+  catch(parseErr){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）內容前2000字：「"+text.slice(0,2000)+"」"); }
+
+  if(!res.ok){
+    throw new Error("API錯誤 "+res.status+"："+(data?.error?.message||JSON.stringify(data)));
+  }
+  if(data.error){
+    throw new Error("API錯誤："+data.error.message);
+  }
+  // 2026-09-19（續）：改用強制工具呼叫，直接讀tool_use區塊的.input（API端已經幫忙解析成物件），
+  // 不再需要find文字區塊+手動JSON.parse，見TURN_RESULT_TOOL/tool_choice的說明
+  const toolBlock = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_turn_result");
+  if(!toolBlock){
+    // 診斷用（9/18新增）：stop_reason/usage能直接看出是不是max_tokens被思考吃光，不用再靠截斷的原始內容猜
+    throw new Error("回應裡沒有submit_turn_result工具呼叫｜stop_reason="+data.stop_reason+" ｜usage="+JSON.stringify(data.usage)+" ｜content概要："+JSON.stringify((data.content||[]).map(b=>({type:b.type, len:(b.text||b.thinking||"").length}))));
+  }
+  // 2026-09-19（續2）：實測發現一種新的失敗模式——AI雖然有呼叫submit_turn_result工具（toolBlock存在），
+  // 但把整個回應寫成舊式「prompted tool use」的偽XML文字格式（例如narrative欄位結尾出現</narrative>，
+  // 後面接著整串<parameter name="turn_summary">...</parameter>之類的標籤），而不是老實把值分別填進schema的
+  // 各自獨立欄位。這種情況toolBlock.input存在、不會被上面的!toolBlock擋下，但內容是壞的，之前會被當成
+  // 「成功」悄悄吃下去，玩家看到的敘事會混進一堆標籤碎片。這裡補一道驗證，偵測到就當作失敗觸發既有的重試機制
+  if(isMalformedTurnResult(toolBlock.input)){
+    throw new Error("工具呼叫內容格式異常（疑似AI把整個回應寫成舊式文字標籤格式，沒有正確使用schema欄位）｜stop_reason="+data.stop_reason+" ｜narrative前300字：「"+String(toolBlock.input && toolBlock.input.narrative).slice(0,300)+"」");
+  }
+  return toolBlock.input;
+}
+// 見上方callAI()註解：偵測AI是否把整個工具呼叫錯寫成舊式偽XML文字格式，混進narrative欄位或其他欄位缺漏/型別不對
+// 2026-09-19（續3）：實測發現汙染不一定只出現在narrative欄位結尾——曾出現narrative本身乾淨、但event_type/
+// interest_event/character_updates等其他欄位被塞進<parameter name="...">...</parameter>標籤文字的情況，
+// 原本只檢查narrative欄位完全抓不到，導致這種「半污染」回應被當成功接受，choices欄位因此也連帶空掉或缺漏，
+// 造成畫面上選項整組消失（玩家只剩自訂輸入可用）。改成序列化整個input物件做全欄位掃描，涵蓋任何欄位藏汙染的情況
+function isMalformedTurnResult(input){
+  if(!input || typeof input!=="object") return true;
+  if(typeof input.narrative!=="string" || !input.narrative.trim()) return true;
+  if(typeof input.turn_summary!=="string" || !input.turn_summary.trim()) return true;
+  if(!Array.isArray(input.choices)) return true;
+  if(!input.is_ending && input.choices.length===0) return true; // 非結局回合choices不該是空陣列，呼應一、1.2.7「給3到4個選項」定案
+  try{
+    if(/<\/narrative>|<parameter\s+name=/.test(JSON.stringify(input))) return true;
+  }catch(e){ return true; }
+  return false;
+}
+
+// ---------- 離線模擬旁白（不呼叫AI，純規則模擬，供沒有API時測試用） ----------
+const USE_MOCK = false; // 2026-09-16 使用者明確授權，改用真實API測試敘事品質（mock模式旁白重複、無法反映真實效果），會產生實際費用
+
+function weightedPick(pairs){
+  const total = pairs.reduce((s,p)=>s+p[1],0);
+  let r = Math.random()*total;
+  for(const [val,w] of pairs){ if(r<w) return val; r-=w; }
+  return pairs[0][0];
+}
+function pickAgeAdvance(age){
+  if(age<=18) return weightedPick([[0,7],[1,3]]);
+  if(age<=29) return weightedPick([[0,4],[1,6]]);
+  if(age<=45) return weightedPick([[1,5],[2,5]]);
+  return weightedPick([[2,5],[3,3],[4,2]]);
+}
+function guessFocus(actionText){
+  const t = actionText;
+  if(/讀|念|書|學|考|研究|課/.test(t)) return "knowledge";
+  if(/錢|打工|工作|存|賺|花|投資|創業/.test(t)) return "wealth";
+  if(/朋友|社團|認識|約|聚|人脈|交際/.test(t)) return "network";
+  if(/累|病|睡|健康|運動|休息|養生/.test(t)) return "health";
+  return null;
+}
+// 八、興趣系統v1 mock版：關鍵字對應8.8的7類興趣，供USE_MOCK測試interest_event管線用
+function guessInterestCategory(actionText){
+  const t = actionText||"";
+  if(/畫畫|音樂|寫作|攝影|創作/.test(t)) return "藝術創作";
+  if(/飾品|烘焙|木工|縫紉|手作/.test(t)) return "手作工藝";
+  if(/語言學習|閱讀|歷史研究|心理研究/.test(t)) return "知識研究";
+  if(/運動|舞蹈|健身/.test(t)) return "體能競技";
+  if(/程式|模型製作|機械修理/.test(t)) return "科技邏輯";
+  if(/直播|主持|社群經營/.test(t)) return "社交表演";
+  if(/代購|轉賣|投資操作/.test(t)) return "商業交易";
+  return null;
+}
+const MOCK_TEMPLATES = {
+  teen:[
+    "{name}翻了翻手邊的課本，窗外的蟬聲比什麼都吵，這個下午最後還是花在了別的事情上。",
+    "放學後，{name}在校門口站了一會兒，看著同學三三兩兩走遠，才慢慢往家的方向走。",
+    "段考成績單發下來那天，{name}把它折了兩折，塞進書包最底層，晚餐桌上沒有人特別提起。",
+    "假日的下午家裡很安靜，{name}一個人窩在房間，時間過得比想像中快。",
+    "教室後排傳來一陣笑聲，{name}抬頭看了一眼，又低下頭繼續原本在做的事。"
+  ],
+  young:[
+    "宿舍熄燈前，{name}盯著手機螢幕又看了一遍剛剛的訊息，還是沒回。",
+    "第一次領到薪水那天，{name}在提款機前站了幾秒，才把錢領出來。",
+    "系上的聚餐辦到一半，{name}找了個理由先離開，走在夜裡的街上，風有點大。",
+    "面試結束走出大樓，{name}回頭看了一眼那棟建築，說不上是什麼心情。",
+    "深夜的圖書館快關門了，{name}才收拾東西，路上的店家大多已經拉下鐵門。"
+  ],
+  adult:[
+    "會議開到一半，{name}看了眼手錶，心裡想著等下還有別的事要處理。",
+    "週末難得的休假，{name}卻還是在滑著工作訊息，家裡的人已經先睡了。",
+    "銀行對帳單寄到的那天，{name}翻了翻，沒說什麼，隨手放進抽屜。",
+    "巷口那家常去的店換了老闆，{name}站在門口猶豫了一下，還是走了進去。",
+    "電話那頭傳來熟悉的聲音，{name}一時不知道該先說哪一句。"
+  ],
+  midlife:[
+    "體檢報告拿到手上，{name}看了很久，最後把它收進了公事包。",
+    "家裡的餐桌比從前安靜了一些，{name}夾了菜，沒特別說話。",
+    "老同學傳來的訊息裡附了張合照，{name}看了很久，才想起已經過了那麼多年。",
+    "深夜加班回家，社區已經暗了大半，{name}在樓下站了一會兒才上樓。",
+    "整理舊物的時候，{name}翻出一張早就忘了的照片，愣了一下。"
+  ],
+  elder:[
+    "陽台上的植物又抽了新芽，{name}坐在藤椅上看了好一會兒。",
+    "老朋友的電話比以前少了，{name}倒也習慣了這樣的安靜。",
+    "孫輩來訪的那個下午，屋子裡難得熱鬧，{name}笑得比平常多。",
+    "醫院回診的路上，{name}望著窗外熟悉又陌生的街景。",
+    "翻著舊相簿，{name}一張一張慢慢看，時間彷彿也跟著慢了下來。"
+  ]
+};
+const MOCK_CHOICES_POOL = {
+  knowledge:["把時間投入念書/進修","報名一門新課程","找資料自學"],
+  wealth:["接一份能賺錢的工作","精打細算過日子","嘗試一筆投資"],
+  network:["主動聯絡一位朋友","參加一場聚會","認識新的人"],
+  health:["早點休息調整作息","去運動流點汗","去做個健康檢查"],
+  general:["先觀望，什麼都不做","照原本的計畫走","做點完全不一樣的事"]
+};
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){ const j=rnd(0,i); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+function pickChoices(){
+  const cats = shuffle(["knowledge","wealth","network","health"]).slice(0,3);
+  const choices = cats.map(cat=>pick(MOCK_CHOICES_POOL[cat]));
+  choices.push(pick(MOCK_CHOICES_POOL.general));
+  return shuffle(choices);
+}
+let lastTemplateText = null;
+function mockStage(age){
+  if(age<=18) return "teen";
+  if(age<=29) return "young";
+  if(age<=45) return "adult";
+  if(age<=60) return "midlife";
+  return "elder";
+}
+function mockGenerateTurn(actionText, forceEnding, timeCtx){
+  const s = state;
+  if(forceEnding){
+    // 七、7.1.4（9/20改版）mock版人生總結：素材照樣走客戶端buildLifeSummaryMaterial，
+    // 這裡只模擬「AI把挑好的素材寫成回顧語氣」這一步，不再有任何標題/標籤
+    const material = buildLifeSummaryMaterial(s);
+    return {
+      narrative:`很多年後的一個尋常午後，${s.name}闔上了眼睛。屋子裡有人輕聲說話，陽光照進來，像每一個平凡的下午一樣。`,
+      turn_summary:`${s.name}離世`,
+      age_advance:0, stat_deltas:{wealth:0,health:0,network:0}, event_type:null, event_id:null, interest_event:null,
+      emotional_tone:"warm",
+      attachment_shift:{anxiety:0,avoidance:0}, peer_position_shift:0, revealed_key_event:false,
+      college_location_choice:null,
+      new_characters:[], character_updates:[], major_event_summary:null, major_event_type:null,
+      choices:[], is_ending:true,
+      life_summary:{
+        segments: material.segments.map(m=>({ stage:m.stage,
+          text:`（模擬${m.tone}）${m.stage_label}那幾年，${s.name}${m.key_npcs.length?("身邊有"+m.key_npcs.map(n=>n.name).join("、")+"，"):""}${m.resume_entries.length?m.resume_entries.join("；"):"日子就這樣一天一天過去"}。` })),
+        transitions: material.transitions.map(t=>({ after_stage:t.after_stage,
+          text:`（模擬變化句）從${t.from_stage_label}到${t.to_stage_label}，做事的樣子跟以前不太一樣了。` })),
+        epitaph:`（模擬墓誌銘）${s.name}，走過${s.age}年，留下一些人記得的事。`
+      }
+    };
+  }
+  const stageKey = mockStage(s.age);
+  let template;
+  const pool = MOCK_TEMPLATES[stageKey];
+  do{ template = pick(pool); }while(pool.length>1 && template===lastTemplateText);
+  lastTemplateText = template;
+  const narrative = template.replace(/\{name\}/g, s.name);
+  const focus = guessFocus(actionText);
+  const deltas = {wealth:rnd(-3,3),health:rnd(-3,3),network:rnd(-2,3)};
+  if(focus && focus!=="knowledge") deltas[focus] += rnd(4,9);
+  // 3.2.2（9/16修正）mock版：才識不再是deltas裡的數值，改用event_type標籤模擬AI的分類行為
+  let event_type = null, event_id = null;
+  if(focus==="knowledge"){
+    event_type = Math.random()<0.15 ? "intensive" : "ordinary";
+    if(Math.random()<0.06){
+      event_type = "milestone";
+      event_id = pick(["big_exam_win","competition_award","research_breakthrough"]); // 小池子讓dedup測試容易觸發重複
+    }
+  }
+  // 八、興趣系統v1 mock版：關鍵字命中就模擬AI回傳分類，reaction多數正向、少數中性/負向
+  let interest_event = null;
+  const interestCategory = guessInterestCategory(actionText);
+  if(interestCategory){
+    interest_event = { category: interestCategory, reaction: weightedPick([["positive",70],["neutral",20],["negative",10]]) };
+  }
+  // A3診斷修正（9/14，僅供mock測試工具用，不影響真實system prompt/AI行為）；9/20隨3.8改版把輸出改成emotional_tone四選一。
+  // 原本happiness_delta固定rnd(-2,3)，60局模擬中整局最低幸福感從未低於35，代表mock負面強度不夠寬，測不出結局系統對真正低谷的反應。
+  // 加入低機率(8%)雙向「重大事件」（一半機率是重大挫折、一半機率是重大驚喜），讓mock覆蓋到足夠深的幸福感低谷"與"高峰，
+  // 期望值刻意抵銷（不偏移原本rnd(-2,3)的平均趨勢），呼應六、6.1「細節層不得只服務負面驚喜」的既有設計精神，純粹是測試工具調整。
+  const emotional_tone = weightedPick([["warm",42],["unsettling",42],["uplifting",8],["heavy",8]]);
+
+  let major_event_summary = null, major_event_type = null;
+  if(Math.random()<0.15){
+    // 四、4.2.2 mock版（9/19新增）：小機率模擬AI分類成achievement/setback，供測試每人生階段2次上限的擋下邏輯
+    major_event_type = Math.random()<0.3 ? pick(["achievement","setback"]) : null;
+    major_event_summary = major_event_type
+      ? `（模擬${major_event_type==="achievement"?"重大成就":"重大失敗"}）${s.age}歲時的一件大事`
+      : `（模擬事件）${s.age}歲時的一件小事`;
+  }
+  const new_characters = [];
+  if(Math.random()<0.12){
+    new_characters.push({
+      name: pick(["小林","阿哲","惠雯","子晴","阿凱","詩婷"]),
+      relation: pick(["同學","同事","鄰居","網友"]),
+      traits: pick(["直率","話少但可靠","愛開玩笑","有點神秘"]),
+      initial_affinity: rnd(40,65),
+      origin: pick(["透過共同朋友介紹認識","同一堂課認識","打工時認識","網路上認識"]) // 四、4.1 mock版（9/19新增）
+    });
+  }
+  const character_updates = [];
+  const actives = activeCharacters();
+  if(actives.length && Math.random()<0.3){
+    const c = pick(actives);
+    // 四、4.4戀愛系統mock（9/16新增）：25%機率附帶romantic_signal，方便測試狀態機推進（正向70%/負向30%，非文件規定純測試用比例）
+    const romantic_signal = Math.random()<0.25 ? (Math.random()<0.7 ? "positive" : "negative") : null;
+    character_updates.push({ name:c.name, affinity_delta: rnd(-4,6), summary_add:"（模擬互動）又聊了一下近況", romantic_signal });
+  }
+
+  const choices = pickChoices();
+  const attachment_shift = { anxiety: rnd(-2,2), avoidance: rnd(-2,2) };
+  const peer_position_shift = rnd(-2,2);
+  const structured = timeCtx?.structured;
+
+  const turn_summary = narrative.length>20 ? narrative.slice(0,20)+"…" : narrative; // 四、4.2.1.1 mock版（9/19新增），純測試用簡易摘要
+  return {
+    narrative, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
+    stat_deltas: deltas, event_type, event_id, interest_event, emotional_tone,
+    attachment_shift, peer_position_shift, revealed_key_event:false,
+    college_location_choice:null,
+    new_characters, character_updates, major_event_summary, major_event_type,
+    choices, is_ending:false
+  };
+}
+// 7.1.4（9/20整節改版）：原本的ENDING_DEFINITIONS標籤計分制與computeEndingTitle()已整套移除，
+// 不再有「結局標籤」這個東西。改為buildLifeSummaryMaterial()/assembleEnding()的人生總結，見上方7.1.4區塊。
+async function mockCallAI(actionText, forceEnding, timeCtx){
+  await new Promise(r=>setTimeout(r, 450));
+  return mockGenerateTurn(actionText, forceEnding, timeCtx);
+}
+
+function snapshotForUndo(){
+  state.snapshot = JSON.parse(JSON.stringify({
+    age:state.age, stats:state.stats, happiness:state.happiness,
+    actionPoints:state.actionPoints, turnCount:state.turnCount,
+    characters:state.characters, chronicle:state.chronicle,
+    log:state.log, choices:state.choices,
+    anxiety:state.anxiety, avoidance:state.avoidance,
+    peerPosition:state.peerPosition, peerPositionSpecial:state.peerPositionSpecial,
+    keyEvent:state.keyEvent, timeState:state.timeState, collegeLocation:state.collegeLocation,
+    cash:state.cash, propertyValue:state.propertyValue, mortgageBalance:state.mortgageBalance,
+    monthlyIncome:state.monthlyIncome, monthlyExpenses:state.monthlyExpenses,
+    occupationCategory:state.occupationCategory, housing:state.housing,
+    temperament:state.temperament, appearance:state.appearance,
+    conscientiousness:state.conscientiousness, lowHealthStreak:state.lowHealthStreak,
+    riskyLifestyle:state.riskyLifestyle, deathForeshadowed:state.deathForeshadowed,
+    fertilityJourney:state.fertilityJourney, lastSettlement:state.lastSettlement,
+    // 三、3.8／四、4.5（9/20新增）：回上一步時這些也要一起還原，否則undo後幸福感基準線與軌跡累計會對不上
+    happinessBaseline:state.happinessBaseline, happinessRegressionCounter:state.happinessRegressionCounter,
+    milestoneSkipReason:state.milestoneSkipReason,
+    lifeTrajectory:state.lifeTrajectory, stageAccum:state.stageAccum
+  }));
+}
+function applySnapshot(){
+  if(!state.snapshot) return;
+  Object.assign(state, JSON.parse(JSON.stringify(state.snapshot)));
+}
+function restoreUndo(){
+  if(!state.snapshot) return;
+  applySnapshot();
+  state.undosLeft -= 1;
+  state.snapshot = null;
+  saveGame(); render();
+}
+
+async function takeTurn(actionText, cost){
+  if(state.phase!=="playing") return;
+  if(state.actionPoints < cost){ renderPaywall(); return; }
+  snapshotForUndo();
+  state.actionPoints -= cost;
+  state.turnCount += 1;
+
+  // 九、9.5.1轉系候選判定需要「考前實際累積的讀書次數」，必須在advanceStructuredTime把studyCountThisTerm歸零之前先存一份快照，
+  // 否則applyResult()拿到的會是考試結算後已經歸零的值。這份快照(studyCountAtExam)同時也用來修正buildUserMessage()的
+  // exam_score_hint/study_count_this_term計算順序bug（9/16修正，見2.4.1）
+  const studyCountBeforeAdvance = state.studyCountThisTerm||0;
+  // 二、2.5（9/16新增）：22歲以後改採加速曲線回合預算，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
+  // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
+  const adv = advanceStructuredTime(actionText);
+  // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
+  // （呼應7.1.5死亡機制精神，不讓AI自由裁量這個數字），期中考不受影響、維持原本hint範圍由AI自由發揮
+  const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance) : null;
+  let timeCtx = { structured:true, label: adv.toLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow };
+  render(true);
+
+  // 七、7.1.5（9/16改版,測試參數）：取代原本state.age>=state.lifeExpectancy的固定壽命值判定，
+  // 死亡結局現在完全由client端的年度機率roll決定（見rollAnnualDeathCheck），不再有AI自行判斷的空間
+  const forceEnding = !!adv.deathTriggered;
+  // 四、4.5（2026-09-20 b版修正）：forceEnding時，最後一段的邊界要在呼叫AI之前先確定好，
+  // 這樣buildUserMessage()/mockGenerateTurn()算出的life_summary_material才會是完整8段，AI才有機會
+  // 寫到角色死亡的那一段（取代原本邊界只在applyResult()事後才凍結、AI永遠看不到最後一段的舊流程）
+  if(forceEnding) freezeFinalLifeStageForEnding(state);
+  // bug修正（9/14，人生草稿0914測試.pdf）：技術錯誤/破碎原始文字絕對不能外洩給玩家；
+  // 失敗先重試一次，重試仍失敗才顯示中性容錯敘事，不附帶任何e.message或原始內容
+  try{
+    let result;
+    try{
+      result = USE_MOCK ? await mockCallAI(actionText, forceEnding, timeCtx) : await callAI(actionText, forceEnding, timeCtx);
+    }catch(firstErr){
+      console.error("第一次呼叫失敗，重試一次：", firstErr);
+      result = USE_MOCK ? await mockCallAI(actionText, forceEnding, timeCtx) : await callAI(actionText, forceEnding, timeCtx);
+    }
+    applyResult(result, timeCtx, forceEnding);
+  }catch(e){
+    console.error("重試後仍失敗：", e);
+    applySnapshot();
+    state.log.push({age:state.age, timeLabel:null, text:"（旁白剛剛恍神了一下，這回合沒講清楚，稍後再試一次看看。）"});
+  }
+  saveGame();
+  render();
+  if(examCheck){ renderExamCheckModal(examCheck); }
+  if(state.mealJustUnlocked){ state.mealJustUnlocked = false; renderMealUnlockModal(); }
+  if(state.pendingSideBusinessCardId){ const cid = state.pendingSideBusinessCardId; state.pendingSideBusinessCardId = null; renderSideBusinessModal(cid); }
+  // 九、大學科系系統：四個彈窗互斥，一次只處理一個，優先序為選科系＞轉系＞雙主修＞休學肄業
+  // （選科系優先是因為其他三個狀態機都要有科系才有意義；後三者用if/else if避免同一回合疊兩個彈窗互相蓋掉）
+  if(state.pendingMajorSelection){ state.pendingMajorSelection = false; renderMajorSelectionModal(); }
+  else if(state.pendingTransferOffer){ state.pendingTransferOffer = false; renderTransferOfferModal(); }
+  else if(state.pendingDualMajorOffer){ state.pendingDualMajorOffer = false; renderDualMajorOfferModal(); }
+  else if(state.pendingDualMajorAbandonOffer){ state.pendingDualMajorAbandonOffer = false; renderDualMajorAbandonModal(); }
+  else if(state.pendingLeaveOffer){ const reason = state.pendingLeaveOffer; state.pendingLeaveOffer = null; renderWithdrawalOfferModal(reason); }
+}
+
+function applyResult(r, timeCtx, forceEnding){
+  const s = state;
+  // 九、大學科系系統：university_recent_event只給AI看這一回合，用過就清掉，不然會被下一回合重複讀到
+  s.universityEventLog = null;
+  // 可見數值變化顯示（9/15新增）：先記錄這回合開始前的可見數值，最後跟結算一起顯示變化量
+  const beforeVisibleStats = { health:s.stats.health, knowledge:s.stats.knowledge, network:s.stats.network, expression:s.stats.expression, appearance:s.appearance };
+  const structured = !!(timeCtx && timeCtx.structured);
+  const ageAtEvent = s.age; // 非結構化時間下的年齡（尚未套用 age_advance 之前）
+  if(!structured){
+    s.age = clamp(s.age + (r.age_advance||0), s.age, 130);
+  }
+  // structured=true 時，s.age 在呼叫AI之前就已經由 advanceStructuredTime() 算好了，這裡不再套用 r.age_advance
+  const d = r.stat_deltas||{};
+  s.stats.health = clamp(s.stats.health + (d.health||0), 0, 100);
+
+  // 3.7.3 做事態度光譜——精確公式版：團隊vs單打獨鬥影響才識/邏輯 vs 人脈的此消彼長效率
+  const teamKnowledgeMult = clamp(1+(50-s.conscientiousness.teamSolo)*0.01, 0.5, 1.5);
+  const wisdomMult = 0.5 + (s.wisdom/200);
+  const logicBonus = 1 + (s.logicAbility/400);
+  const knowledgeRawValue = rollKnowledgeRawValue(r.event_type, r.event_id, s); // 3.2.2（9/16修正）：AI只給標籤，程式查表+計數把關
+  let knowledgeDelta = knowledgeRawValue * wisdomMult * logicBonus * teamKnowledgeMult;
+  knowledgeDelta = applyMarginalDiminish(knowledgeDelta, s.stats.knowledge); // 3.5.3邊際遞減
+  s.stats.knowledge = clamp(s.stats.knowledge + knowledgeDelta, 0, 100);
+
+  // 九、9.5.1（9/16新增）：考試結算時更新轉系候選的「連續低於預期」計數，完全不依賴AI敘事內容
+  if(structured && timeCtx.examTriggered) updateTransferCandidateOnExam(s, timeCtx.studyCountAtExam);
+
+  // 責任感→人脈加分/扣分幅度；團隊vs單打獨鬥→人脈成長效率，兩者疊乘
+  const teamNetworkMult = clamp(1+(s.conscientiousness.teamSolo-50)*0.01, 0.5, 1.5);
+  const respMult = (d.network||0)>=0
+    ? clamp(1+(s.conscientiousness.responsibility-50)*0.01, 0.5, 1.5)
+    : clamp(1+(50-s.conscientiousness.responsibility)*0.01, 0.5, 1.5);
+  let networkDelta = (d.network||0) * respMult * teamNetworkMult;
+  networkDelta = applyMarginalDiminish(networkDelta, s.stats.network); // 3.5.3邊際遞減
+  s.stats.network = clamp(s.stats.network + networkDelta, 0, 100);
+
+  // 3.5.3 人脈閒置衰退：連續N回合沒有人脈經營行為（AI/mock這回合完全沒給正向人脈delta）才啟動輕微衰退
+  s.networkIdleStreak = (d.network||0)>0 ? 0 : (s.networkIdleStreak||0)+1;
+  if(ENABLE_NETWORK_IDLE_DECAY && s.networkIdleStreak>=NETWORK_IDLE_THRESHOLD &&
+     (s.networkIdleStreak-NETWORK_IDLE_THRESHOLD)%NETWORK_IDLE_DECAY_INTERVAL===0){
+    s.stats.network = clamp(s.stats.network - rnd(1,3), 0, 100);
+  }
+  s.stats.expression = clamp(s.stats.expression + (d.expression||0), 0, 100);
+  // 三、3.8（9/20改版，取代原本 s.happiness += r.happiness_delta 的直接加減）：
+  // AI只給emotional_tone四選一，程式查表決定增減量，再依回歸週期朝基準線移動
+  applyHappiness(s, r.emotional_tone);
+  refreshMilestoneSkipReasons(s); // 3.8.4：skip_reason三選一，供自主感管道與QA查核用
+
+  // 氣質被動成長（呼應才識/表達力提升、財務狀況、隨時間累積），外表=顏值+氣質
+  let tempGrowth = 0;
+  if(knowledgeDelta>3) tempGrowth+=1;
+  if((d.expression||0)>3) tempGrowth+=1;
+  s.temperament = clamp(s.temperament+tempGrowth,0,100);
+  s.appearance = clamp(Math.round(s.looks*0.5+s.temperament*0.5),0,100);
+
+  // 健康連續偏低追蹤（呼應3.5.1過勞/憂鬱觸發門檻，僅供AI參考，不強制觸發）
+  s.lowHealthStreak = s.stats.health<30 ? s.lowHealthStreak+1 : 0;
+
+  const as = r.attachment_shift||{};
+  s.anxiety = clamp(s.anxiety + (as.anxiety||0), 0, 100);
+  s.avoidance = clamp(s.avoidance + (as.avoidance||0), 0, 100);
+  s.peerPosition = clamp(s.peerPosition + (r.peer_position_shift||0), 0, 100);
+
+  const cs = r.conscientiousness_shift||{};
+  ["selfDiscipline","prudence","achievement","responsibility","teamSolo"].forEach(k=>{
+    s.conscientiousness[k] = clamp(s.conscientiousness[k]+(cs[k]||0),0,100);
+  });
+
+  // 八、興趣系統v1（9/16新增）：AI只分類，候選成立/投入度/自律加成/副業契機一律由程式計算
+  applyInterestEvent(s, r.interest_event);
+  sweepInterestDecay(s);
+
+  if(r.revealed_key_event && s.keyEvent) s.keyEvent.revealed = true;
+  if(r.college_location_choice && !s.collegeLocation){
+    s.collegeLocation = r.college_location_choice;
+    // 5.5解鎖時機：大學選外縣市/出國，自動解鎖三餐全部三個選項
+    if(!s.mealFullyUnlocked && (s.collegeLocation==="外縣市" || s.collegeLocation==="出國")){
+      s.mealFullyUnlocked = true; s.mealJustUnlocked = true;
+    }
+  }
+  // 七、7.1.5（9/16改版）：deathForeshadowed現在由rollAnnualDeathCheck()在advanceStructuredTime裡直接設定，
+  // 不再讀AI回傳的foreshadow_death（AI不再自行判斷要不要埋前兆，這個欄位已從schema移除）
+
+  // 財富真實金額制：先用「跨過的月份數」結算舊的月收支，再套用這回合新的職業/支出/一次性交易
+  const monthsCrossed = structured ? (timeCtx.monthsCrossed||0) : Math.round((r.age_advance||0)*12);
+  if(monthsCrossed>0){
+    const totalExpenses = s.monthlyExpenses.reduce((sum,e)=>sum+e.amount,0);
+    // 3.4.8 基本生活開銷：所有人生階段皆適用，依居住狀態決定，不再以occupationCategory為開關
+    const livingCost = computeBaseLivingCost(s);
+    let net = Math.round((s.monthlyIncome - totalExpenses - livingCost) * monthsCrossed);
+    // 5.5存款下限保護（9/14新增）：學生時期(尚無正職)存款不能變成負值，修正原本會出現NT$-35,950這種不合理負債的bug
+    if(!s.occupationCategory && s.cash + net < 0) net = -s.cash;
+    s.cash += net;
+    s.lastSettlement = { months: monthsCrossed, net, income:s.monthlyIncome, expenses:totalExpenses+livingCost };
+    // 資產模型（9/14新增）：房貸每月攤還本金（不含利息，簡化模型），還清時自動移除房貸支出項
+    if(s.mortgageBalance>0){
+      const mortgagePayment = s.monthlyExpenses.find(e=>e.label==="房貸")?.amount || 0;
+      s.mortgageBalance = Math.max(0, s.mortgageBalance - mortgagePayment*monthsCrossed);
+      if(s.mortgageBalance===0){
+        s.monthlyExpenses = s.monthlyExpenses.filter(e=>e.label!=="房貸");
+      }
+    }
+  } else {
+    s.lastSettlement = null;
+  }
+
+  if(r.job_change && r.job_change.occupation_category){
+    const isFirstJob = !s.occupationCategory;
+    s.occupationCategory = r.job_change.occupation_category;
+    if(typeof r.job_change.monthly_salary === "number") s.monthlyIncome = Math.round(r.job_change.monthly_salary * SALARY_SCALE); // A4 3×3敏感度分析用
+    const riskyCats = ["勞力/服務業","長期不在身邊","軍公教警消","自由接案"];
+    s.riskyLifestyle = riskyCats.includes(s.occupationCategory);
+    // 5.5解鎖時機：出社會後(有正職)，不論是否仍住家裡，一律解鎖三餐全部三個選項
+    if(isFirstJob && !s.mealFullyUnlocked){ s.mealFullyUnlocked = true; s.mealJustUnlocked = true; }
+    if(isFirstJob) s.milestones.first_full_time_job = "completed"; // 4.3事件狀態機制：客戶端結構化判斷
+    else if(s.milestones.first_job_change!=="completed") s.milestones.first_job_change = "completed"; // 4.2.2（9/19新增）：非首次job_change視為第一次轉職
+  }
+  (r.expense_change||[]).forEach(ec=>{
+    if(!ec.label) return;
+    if(ec.action==="end"){
+      s.monthlyExpenses = s.monthlyExpenses.filter(e=>e.label!==ec.label);
+    } else {
+      const existing = s.monthlyExpenses.find(e=>e.label===ec.label);
+      if(existing) existing.amount = ec.monthly_amount ?? existing.amount;
+      else s.monthlyExpenses.push({ label:ec.label, amount: ec.monthly_amount||0 });
+    }
+  });
+  (r.one_time_transaction||[]).forEach(tx=>{
+    if(typeof tx.amount !== "number") return;
+    // 5.5存款下限保護（9/14新增）：學生時期消費若超過目前存款，這筆消費「不會發生」，不是扣成負值
+    if(!s.occupationCategory && tx.amount<0 && Math.abs(tx.amount) > s.cash) return;
+    s.cash += tx.amount;
+  });
+  if(r.housing_choice && r.housing_choice.type && r.housing_choice.type!==(s.housing?.type)){
+    const wasOwn = s.housing?.type==="own";
+    const nowOwn = r.housing_choice.type==="own";
+    // 七、7.5.3買房頭期款門檻檢查（9/15新增，取代原本無客戶端強制檢查的P2缺口）：
+    // 現金不夠付頭期款，這次買房「不會成立」，整個housing_choice都不處理，狀態維持原樣，不會扣款也不會產生房產/房貸
+    let purchaseBlocked = false;
+    if(nowOwn && !wasOwn){
+      const prospectiveMonthlyPayment = r.housing_choice.monthly_amount||0;
+      const prospectiveMortgage = prospectiveMonthlyPayment*240;
+      const prospectivePropertyValue = Math.round(prospectiveMortgage/0.8);
+      const prospectiveDownPayment = prospectivePropertyValue - prospectiveMortgage;
+      if(s.cash < prospectiveDownPayment) purchaseBlocked = true;
+    }
+    if(!purchaseBlocked){
+      // 4.3事件狀態機制：客戶端結構化判斷「搬出家裡」「買房」，不假手AI
+      if((r.housing_choice.type==="rent" || r.housing_choice.type==="own") && s.milestones.moved_out!=="completed"){
+        s.milestones.moved_out = "completed";
+      }
+      if(nowOwn && s.milestones.home_purchase!=="completed") s.milestones.home_purchase = "completed";
+      // 資產模型（9/14新增）：賣房/轉租時，房產淨值扣掉剩餘房貸後變現為現金；買房時，估算房貸本金與房產市值，頭期款從現金扣除
+      if(wasOwn && !nowOwn){
+        s.cash += (s.propertyValue - s.mortgageBalance); // 賣房變現：市值減掉剩餘房貸，差額入帳
+        s.propertyValue = 0;
+        s.mortgageBalance = 0;
+      }
+      s.housing = { type:r.housing_choice.type, monthlyCost:r.housing_choice.monthly_amount||0 };
+      s.monthlyExpenses = s.monthlyExpenses.filter(e=>e.label!=="房租" && e.label!=="房貸");
+      if(r.housing_choice.monthly_amount>0){
+        s.monthlyExpenses.push({ label: nowOwn ? "房貸" : "房租", amount:r.housing_choice.monthly_amount });
+      }
+      if(nowOwn && !wasOwn){
+        // 簡化假設（測試參數，非設計文件定案）：20年期房貸、不含利息、貸款成數80%(LTV)
+        const monthlyPayment = r.housing_choice.monthly_amount||0;
+        s.mortgageBalance = monthlyPayment*240;
+        s.propertyValue = Math.round(s.mortgageBalance/0.8);
+        const downPayment = s.propertyValue - s.mortgageBalance;
+        s.cash -= downPayment; // 頭期款從現金扣除
+      }
+    }
+  }
+
+  (r.new_characters||[]).forEach(nc=>{
+    if(!nc.name) return;
+    const exists = s.characters.find(c=>c.name===nc.name);
+    if(exists){ exists.active=true; exists.lastTurn=s.turnCount; return; }
+    s.characters.push({
+      name:nc.name, relation:nc.relation||"", traits:nc.traits||"",
+      affinity: clamp(nc.initial_affinity ?? 50,0,100),
+      summary:"", lastTurn:s.turnCount, active:true, isChild:!!nc.is_child,
+      origin: nc.origin||"" // 四、4.1（9/19新增）：認識時間／來源，AI建立新角色卡時提供
+    });
+    // 四、4.2.2（9/19新增）：is_child是既有結構化訊號，生育/領養自動判定完成
+    if(nc.is_child && s.milestones.first_child!=="completed") s.milestones.first_child = "completed";
+  });
+  // 4.1.1顯示規則（9/16新增）：先記錄這回合開始前的關係值/戀愛狀態，跟可見數值變化顯示同一套「先snapshot後diff」邏輯，
+  // 用來算出方向性提示（不精確報數字），見下方relationshipHints
+  const beforeRelationship = new Map(s.characters.map(c=>[c.name, { affinity:c.affinity, romanceStatus:c.romanceStatus||null }]));
+  const relationshipHints = [];
+  (r.character_updates||[]).forEach(cu=>{
+    const c = s.characters.find(x=>x.name===cu.name);
+    if(!c) return;
+    const before = beforeRelationship.get(cu.name) || { affinity:c.affinity, romanceStatus:c.romanceStatus||null };
+    c.affinity = clamp(c.affinity + (cu.affinity_delta||0),0,100);
+    appendNpcSharedMemory(c, cu.summary_add);
+    c.lastTurn = s.turnCount; c.active = true;
+    applyRomanceSignal(s, c, cu.romantic_signal); // 四、4.4：AI只給positive/negative分類，狀態機轉換由客戶端判斷
+    const nowStatus = c.romanceStatus||null;
+    if(nowStatus !== before.romanceStatus){
+      const transitionText = {
+        ambiguous:`你和${c.name}之間，好像開始有點曖昧了`,
+        dating:`你和${c.name}正式開始交往了`,
+        stable:`你和${c.name}的感情穩定了下來`,
+        breakup:`你和${c.name}，分開了`
+      }[nowStatus];
+      if(transitionText) relationshipHints.push(transitionText);
+    } else if(c.affinity > before.affinity){
+      relationshipHints.push(`和${c.name}的關係更近了一些`);
+    } else if(c.affinity < before.affinity){
+      relationshipHints.push(`和${c.name}的關係有點疏遠了`);
+    }
+  });
+  // 四、4.3事件狀態機制：先依這回合最新的age刷新鎖定狀態，AI的回報才不會被「上一輪」的舊locked狀態誤擋
+  refreshMilestoneLocks(s);
+  // AI只能回報非auto的5個里程碑（信用卡/打工/戀愛/創業/結婚），且只能設completed/skipped，
+  // 不能繞過客戶端的locked狀態，也不能動auto:true那5個（那5個完全由客戶端結構化判斷，見上方各處）
+  const AI_REPORTABLE_MILESTONES = MILESTONE_DEFS.filter(d=>!d.auto).map(d=>d.id);
+  (r.milestone_updates||[]).forEach(mu=>{
+    if(!mu || !AI_REPORTABLE_MILESTONES.includes(mu.id)) return;
+    if(mu.status!=="completed" && mu.status!=="skipped") return;
+    if(s.milestones[mu.id]==="locked") return;
+    s.milestones[mu.id] = mu.status;
+  });
+
+  demoteStaleCharacters();
+
+  const tagAge = structured ? s.age : ageAtEvent;
+  const tagLabel = structured ? timeCtx.label : null;
+
+  // 四、4.2.2（9/19新增）：achievement/setback類型受每人生階段2次上限管制，程式擋下超額觸發時整個不記錄，
+  // 避免AI過度觸發把履歷洗成流水帳；其餘類型（既有里程碑等）不受影響，維持原本行為
+  // 四、4.2.3（9/19改版）：不再設全域總量上限、不做FIFO淘汰——總量已由上面的分階段2次上限自然封頂（8階段×2＝16則），
+  // 取代原本「超過10則捨棄最舊」的做法（會優先丟掉童年/學生時期紀錄，讓死亡結局判定讀不到早年人生軌跡）
+  if(r.major_event_summary && shouldRecordJudgedMajorEvent(s, r.major_event_type)){
+    s.chronicle.push(`（${tagLabel || (tagAge+"歲")}）${r.major_event_summary}`);
+  }
+
+  // bug修正（9/14，人生草稿0914測試.pdf）：結算顯示的「目前存款」之前是每次都讀取最新的s.cash，
+  // 導致歷史回合全部顯示同一個（最新的）數字。這裡把「這回合結算完當下」的存款快照存進settlement，
+  // 讓每一則日記顯示自己那個時間點的正確存款，不是被之後回合覆蓋的最新值。
+  if(s.lastSettlement) s.lastSettlement.balanceAfter = s.cash;
+
+  // 九、大學科系系統（9/16新增）：放在財務結算之後，確保lowCashStreak判斷的是這回合結算完的最新現金水位
+  sweepUniversityState(s);
+
+  // 可見數值變化顯示（9/15新增）：算出這回合實際變化量（含所有倍率/邊際遞減/衰退後的最終結果），四捨五入後只保留真的有變化的項目
+  const statChanges = {};
+  Object.keys(VISIBLE_STAT_LABELS).forEach(k=>{
+    const after = k==="appearance" ? s.appearance : s.stats[k];
+    const diff = Math.round(after - beforeVisibleStats[k]);
+    if(diff!==0) statChanges[k] = diff;
+  });
+
+  // 四、4.2.1.1（9/19新增）：AI每回合順便回傳turn_summary（1-2句話），供這則日記日後被擠出「最近3回合」視窗時使用，不用另外呼叫API生成
+  s.log.push({age:tagAge, timeLabel:tagLabel, text:r.narrative, turnSummary:r.turn_summary||"", settlement:s.lastSettlement, statChanges, relationshipHints});
+  // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
+  // 足夠涵蓋單一人生全程(~1200-1400回合)不流失；每世reincarnate/succeedAsChild時log都會重置為[]，不會跨世累積
+  if(s.log.length>2000) s.log.shift();
+
+  s.choices = r.choices || [];
+
+  // 四、4.5（2026-09-20 b版修正）：一般回合才把這回合記進當前人生階段的軌跡累計；forceEnding時
+  // 最後一段已經在takeTurn()呼叫AI之前由freezeFinalLifeStageForEnding()凍結過了，這裡不再重複凍結
+  // （位置在chronicle.push之後，才抓得到這回合新增的履歷條目——但forceEnding的最後一段本來就不含這回合的內容，見上方說明）
+  if(!forceEnding) updateLifeTrajectory(s);
+
+  // 七、7.1.5（9/16改版）：死亡結局現在完全由client端的forceEnding決定，AI不能自行發起結局——
+  // 取代原本「意外死亡需滿足19歲以上+已有前兆」的防呆邏輯，因為AI已經不再有判斷「要不要死」的空間，只剩forceEnding這一道閘門
+  if(r.is_ending && forceEnding){
+    s.phase = "ending";
+    // 七、7.1.4（9/20改版）：不再有title/summary，改為三層結構的人生總結
+    s.ending = assembleEnding(s, r);
+  }
+}
+
+function startLife(){
+  state.phase = "playing";
+  render(true);
+  takeTurn("（人生正式開始：15歲的你，站在高中入學前的暑假尾聲。）", 0);
+}
+
+function reincarnate(){
+  const bonusStat = pick(["health","knowledge","network","expression","savings"]);
+  const carry = { reincarnations:(state.reincarnations||0)+1,
+    chronicleCarry: `前世走完了一生${state.ending?.epitaph ? "，最後留下一句：「"+state.ending.epitaph+"」" : ""}，帶著一絲餘蔭轉生。`,
+    name: state.name, gender: state.gender };
+  if(bonusStat==="savings") carry.savingsCarry = 5; else carry[bonusStat] = 8; // 9/19：5000是9/14學生零用錢改遊戲幣單位制時漏改的殘留NT$量級數字，一併換算(÷1000)避免轉生後現金爆量失真
+  state = newRoll(carry, null);
+  saveGame();
+  render();
+}
+
+function economicTierForSavingsAmount(savings){
+  // 9/19隨3.4整章遊戲幣單位改版同步÷1000
+  if(savings<200) return "清寒";
+  if(savings<3000) return "小康";
+  return "富裕";
+}
+function rollEconomicTierForced(tier){
+  if(tier==="清寒") return { tier, network:rnd(15,35), allowance:STUDENT_ALLOWANCE_UNITS["清寒"], savings:STUDENT_ALLOWANCE_UNITS["清寒"], ...rollFamilyFinance("清寒") };
+  if(tier==="小康") return { tier, network:rnd(30,55), allowance:STUDENT_ALLOWANCE_UNITS["小康"], savings:STUDENT_ALLOWANCE_UNITS["小康"], ...rollFamilyFinance("小康") };
+  return { tier:"富裕", network:rnd(50,75), allowance:STUDENT_ALLOWANCE_UNITS["富裕"], savings:STUDENT_ALLOWANCE_UNITS["富裕"], ...rollFamilyFinance("富裕") };
+}
+function deriveParentTraitFromAffinity(aff, summary){
+  let tone;
+  if(aff>=70) tone = "跟你感情很好，願意溝通、給空間、支持你的決定";
+  else if(aff>=45) tone = "感情普通，日常互動平淡但不算疏離";
+  else tone = "感情有些疏遠，報喜不報憂、情感表達少";
+  return summary ? tone+"；過去點滴："+summary : tone;
+}
+function eligibleChildren(){
+  return state.characters.filter(c=>c.isChild);
+}
+function succeedAsChild(childName){
+  const prev = state;
+  const child = prev.characters.find(c=>c.name===childName && c.isChild);
+  if(!child) return;
+  const spouse = prev.characters.find(c=>/配偶|伴侶|先生|太太|老公|老婆/.test(c.relation||""));
+  const otherKids = prev.characters.filter(c=>c.isChild && c.name!==childName);
+
+  const deceasedRelation = prev.gender==="男" ? "父親" : "母親";
+  const characters = [];
+  characters.push({
+    name: prev.name, relation: deceasedRelation,
+    traits: deriveParentTraitFromAffinity(child.affinity, child.summary),
+    affinity: child.affinity, summary: child.summary||"", lastTurn:0, active:true, isChild:false,
+    origin: "父母，從出生起" // 四、4.1（9/19新增）：世代傳承後從新主角視角重新寫，不沿用上一世「怎麼認識」的舊故事
+  });
+  let familyStructure;
+  if(spouse){
+    characters.push({
+      name: spouse.name, relation: deceasedRelation==="父親" ? "母親" : "父親",
+      traits: spouse.traits||"忙碌但關心家裡", affinity: spouse.affinity, summary: spouse.summary||"",
+      lastTurn:0, active:true, isChild:false, origin: "父母，從出生起"
+    });
+    familyStructure = "雙親同住";
+  } else {
+    familyStructure = "單親－喪親";
+  }
+  otherKids.forEach(k=>{
+    // bug修正（9/14）：手足稱謂要跟這個孩子原本的性別(由k.relation「兒子」/「女兒」推得)一致，不能亂配
+    const kidIsMale = k.relation==="兒子" ? true : k.relation==="女兒" ? false : Math.random()<0.5;
+    characters.push({
+      name:k.name, relation: pick(kidIsMale ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE),
+      traits: (k.traits||"")+"（同樣是上一代留下的孩子）", affinity: clamp(k.affinity+rnd(-10,10),0,100),
+      summary:k.summary||"", lastTurn:0, active:true, isChild:false, origin: "手足，從出生起"
+    });
+  });
+
+  const econ = rollEconomicTierForced(economicTierForSavingsAmount(prev.cash));
+  const wisdom = rnd(30,70);
+  const logicAbility = clamp(Math.round(wisdom*0.3+rnd(-10,10)),0,100);
+  const talent = clamp(Math.round(wisdom*0.6+rnd(-5,5)),0,100);
+  const health = rnd(45,90);
+  const looks = rnd(20,90);
+  const luckHidden = +(0.85+Math.random()*0.3).toFixed(2);
+  const attach = rollAttachmentBaseline(null);
+  const peerPosition = rollPeerPosition();
+  const expression = rollSocialStart(null, peerPosition);
+  const temperament = rollSocialStart(null, peerPosition);
+  const appearance = clamp(Math.round(looks*0.5+temperament*0.5),0,100);
+  const personalityStyle = pick(PERSONALITY_STYLES);
+  const childGender = child.relation==="女兒" ? "女" : child.relation==="兒子" ? "男" : pick(["男","女"]);
+
+  state = {
+    version:4, phase:"setup",
+    name: child.name, gender: childGender,
+    age:15, luckHidden,
+    family: econ.tier, familyMonthlyIncome: econ.familyMonthlyIncome, familySavings: econ.familySavings, familyStructure, isPoliticianChild:false,
+    collegeLocation:null,
+    timeState:{ stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0 },
+    studyCountThisTerm: 0,
+    anxiety:attach.anxiety, avoidance:attach.avoidance, peerPosition, peerPositionSpecial:null,
+    keyEvent:null,
+    wisdom, logicAbility, looks, temperament, appearance, personalityStyle,
+    conscientiousness:{ selfDiscipline:50, prudence:50, achievement:50, responsibility:50, teamSolo:50 },
+    stats:{ health, knowledge:talent, network:econ.network, expression },
+    cash: econ.savings, propertyValue:0, mortgageBalance:0, monthlyIncome: econ.allowance, monthlyExpenses:[],
+    occupationCategory:null, housing:null, fertilityJourney:null,
+    lowHealthStreak:0, networkIdleStreak:0, riskyLifestyle:false, deathForeshadowed:false,
+    happiness:50, happinessBaseline:50, happinessRegressionCounter:0, milestoneSkipReason:{},
+    // 四、4.5：世代傳承視為全新一世，軌跡紀錄不繼承上一世
+    lifeTrajectory: [], stageAccum: null,
+    actionPoints:20, maxActionPoints:20, turnCount:0,
+    characters,
+    chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`],
+    log:[], choices:[], reincarnations:(prev.reincarnations||0)+1,
+    undosLeft:3, snapshot:null, ending:null,
+    // 5.5生活方式選擇：世代傳承沒有結構化的教養風格/職業資料可判斷資格，簡化為預設可選（家族已有一定資源與歷史）
+    spendingHabit: null, mealArrangement: null, mealCareEligibleAtStart: true,
+    mealFullyUnlocked: false, cookingInterestSeed: false,
+    // 四、4.3事件狀態機制：世代傳承視為全新一世，里程碑重新初始化，不繼承上一世的完成紀錄
+    milestones: initMilestones(),
+    // 三、3.2.2（9/16修正）milestone標籤防重複觸發：世代傳承也視為全新一世，重新初始化不繼承
+    knowledgeMilestoneUsedIds: [],
+    knowledgeMilestoneCountByStage: {},
+    // 八、興趣系統v1（9/16新增）：世代傳承視為全新一世，不繼承上一世的興趣卡
+    interestCandidates: [],
+    pendingSideBusinessCardId: null,
+    // 九、大學科系系統（9/16新增）：世代傳承視為全新一世，不繼承上一世的科系/延畢狀態
+    studentMajorGroup: null,
+    studentIsFiveYearTrack: false,
+    studentStatus: null,
+    leaveStatus: "normal",
+    transferCooldown: 0,
+    dualMajorStatus: null,
+    examBelowExpectationStreak: 0,
+    lowCashStreak: 0,
+    pendingMajorSelection: false,
+    pendingTransferOffer: false,
+    pendingDualMajorOffer: false,
+    pendingLeaveOffer: null,
+    leaveResumeCountdown: 0,
+    universityEventLog: null,
+    lastExamPerformanceLog: null
+  };
+  saveGame();
+  render();
+}
+
+function refillDemo(){
+  state.actionPoints = state.maxActionPoints;
+  document.getElementById("paywall-modal")?.remove();
+  saveGame(); render();
+}
+
+function hardReset(){
+  // 十、10.1（9/19補充）：清空存檔重來只清「這個slot」的資料，不動復原金鑰本身——玩家還是同一個人，
+  // 只是這一段人生重來，下次saveGame()存進同一個slot時會自然覆蓋掉Worker上的舊資料，不需要另外呼叫刪除API
+  const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  const slot = slotRaw!==null ? Number(slotRaw) : null;
+  try{ localStorage.removeItem(STORAGE_KEY+(slot!==null?":"+slot:"")); }catch(e){}
+  try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} // 相容改版前沒有slot後綴的殘留資料
+  state = slot!==null ? { phase:"identity", name:"", gender:"男" } : { phase:"keyChoice" };
+  render();
+}
+
+// ---------- RENDER ----------
+function render(loadingTurn){
+  const app = document.getElementById("app");
+  if(!state){ app.innerHTML = `<div class="center-screen"><p style="color:var(--ink-soft);">載入中…</p></div>`; return; }
+  if(state.phase==="keyChoice"){ app.innerHTML = renderKeyChoice(); bindKeyChoice(); ensureDebugUI(); return; }
+  if(state.phase==="keyInput"){ app.innerHTML = renderKeyInput(); bindKeyInput(); ensureDebugUI(); return; }
+  if(state.phase==="keyReveal"){ app.innerHTML = renderKeyReveal(); bindKeyReveal(); ensureDebugUI(); return; }
+  if(state.phase==="slotPicker"){ app.innerHTML = renderSlotPicker(); bindSlotPicker(); ensureDebugUI(); return; }
+  if(state.phase==="identity"){ app.innerHTML = renderIdentityForm(); bindIdentityForm(); ensureDebugUI(); return; }
+  if(state.phase==="setup"){ app.innerHTML = renderSetupRoll(); bindSetupRoll(); ensureDebugUI(); return; }
+  if(state.phase==="lifestyle"){ app.innerHTML = renderLifestyleChoice(); bindLifestyleChoice(); ensureDebugUI(); return; }
+  if(state.phase==="ending"){ app.innerHTML = renderEnding(); bindEnding(); ensureDebugUI(); return; }
+  app.innerHTML = renderPlaying(loadingTurn);
+  bindPlaying();
+  const j = document.querySelector(".journal");
+  if(j) j.scrollTop = j.scrollHeight;
+  ensureDebugUI();
+}
+
+// ========== 十、10.1 封測階段純金鑰模式（9/19新增，四個新畫面）==========
+function renderKeyChoice(){
+  return `
+  <div class="center-screen">
+    <div class="stamp" style="margin:0 auto 18px;"><b>人生</b>草稿</div>
+    <h2>人生草稿</h2>
+    <p style="color:var(--ink-soft);font-size:13.5px;">這一次，換你決定要活成什麼樣子。<br>每一次選擇，都會被寫進去，取不回也改不掉。</p>
+    <button class="primary-btn" id="btn-key-new">開始新旅程</button>
+    <button class="ghost-btn" id="btn-key-existing">我有復原金鑰</button>
+  </div>`;
+}
+function bindKeyChoice(){
+  document.getElementById("btn-key-new").onclick = ()=>{
+    const key = generateRecoveryKey();
+    localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, key);
+    localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, "0");
+    state = { phase:"keyReveal", newKey:key };
+    render();
+  };
+  document.getElementById("btn-key-existing").onclick = ()=>{ state = { phase:"keyInput" }; render(); };
+}
+
+function renderKeyReveal(){
+  const s = state;
+  return `
+  <div class="center-screen">
+    <h2>這是你的復原金鑰</h2>
+    <p style="color:var(--stamp);font-size:13px;">請務必記下，遺失無法救回。</p>
+    <div class="roll-item" style="text-align:center;margin:18px 0;">
+      <div class="v" style="font-size:18px;letter-spacing:2px;">${escapeHtml(s.newKey)}</div>
+    </div>
+    <p style="color:var(--ink-soft);font-size:12.5px;">換裝置時輸入這組金鑰就能接回你的存檔。這組金鑰底下最多可以累積3段人生。</p>
+    <button class="primary-btn" id="btn-key-reveal-confirm">我已經記下了</button>
+  </div>`;
+}
+function bindKeyReveal(){
+  document.getElementById("btn-key-reveal-confirm").onclick = ()=>{
+    state = { phase:"identity", name:"", gender:"男" };
+    render();
+  };
+}
+
+function renderKeyInput(){
+  return `
+  <div class="center-screen">
+    <h2>輸入你的復原金鑰</h2>
+    <p style="color:var(--ink-soft);font-size:12.5px;">格式類似 A1B2-C3D4-E5F6-7890-1234</p>
+    <div style="text-align:left;margin:18px 0 6px;">
+      <div class="roll-item">
+        <input id="key-input-field" type="text" placeholder="貼上你的復原金鑰"
+          style="width:100%;border:none;background:transparent;font-family:'Courier New',monospace;font-size:15px;padding:4px 0;border-bottom:1px solid var(--ink-soft);letter-spacing:1px;">
+      </div>
+    </div>
+    <button class="primary-btn" id="btn-key-input-submit">載入存檔</button>
+    <button class="ghost-btn" id="btn-key-input-back">返回</button>
+  </div>`;
+}
+function bindKeyInput(){
+  document.getElementById("btn-key-input-submit").onclick = async ()=>{
+    const val = document.getElementById("key-input-field").value.trim();
+    if(!val) return;
+    localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, val);
+    await showSlotPicker(val);
+  };
+  document.getElementById("btn-key-input-back").onclick = ()=>{ state = { phase:"keyChoice" }; render(); };
+}
+
+function renderSlotPicker(){
+  const s = state;
+  const cards = s.slots.map((slot, i)=>{
+    if(slot && slot.meta){
+      const m = slot.meta;
+      return `<button class="ghost-btn slot-btn" data-slot="${i}" data-action="load" style="display:block;width:100%;text-align:left;margin:6px 0;">
+        第${i+1}段人生：${escapeHtml(m.name||"")}・${m.age||"?"}歲・${escapeHtml(m.stage||"")}
+      </button>`;
+    }
+    return `<button class="ghost-btn slot-btn" data-slot="${i}" data-action="new" style="display:block;width:100%;text-align:left;margin:6px 0;opacity:.6;">
+      第${i+1}段人生：（空白，點擊開始新的一段人生）
+    </button>`;
+  }).join("");
+  return `
+  <div class="center-screen">
+    <h2>選擇要繼續的人生</h2>
+    <p style="color:var(--ink-soft);font-size:12.5px;">這組金鑰底下最多可以累積3段人生</p>
+    <div style="text-align:left;">${cards}</div>
+  </div>`;
+}
+function bindSlotPicker(){
+  document.querySelectorAll(".slot-btn").forEach(btn=>{
+    btn.onclick = async ()=>{
+      const slot = Number(btn.dataset.slot);
+      const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+      localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, String(slot));
+      if(btn.dataset.action==="load"){
+        const ok = await tryLoadSlot(key, slot, true);
+        if(!ok){ state = { phase:"identity", name:"", gender:"男" }; render(); } // 讀取失敗防呆：至少讓玩家能重新開始，不要卡死
+      } else {
+        state = { phase:"identity", name:"", gender:"男" };
+        render();
+      }
+    };
+  });
+}
+
+function renderIdentityForm(){
+  const s = state;
+  return `
+  <div class="center-screen">
+    <h2>你是誰？</h2>
+    <p style="color:var(--ink-soft);font-size:13px;">在天資降臨之前，先寫下你的名字。</p>
+    <div style="text-align:left;margin:18px 0 6px;">
+      <div class="roll-item" style="margin-bottom:14px;">
+        <div class="k">姓名</div>
+        <input id="name-input" type="text" maxlength="12" value="${escapeHtml(s.name||"")}"
+          placeholder="想被怎麼稱呼？"
+          style="width:100%;border:none;background:transparent;font-family:'Noto Serif TC',serif;font-size:17px;padding:4px 0;border-bottom:1px solid var(--ink-soft);">
+      </div>
+      <div class="roll-item">
+        <div class="k">性別</div>
+        <div style="display:flex;gap:10px;margin-top:6px;">
+          <button class="ghost-btn gender-btn" data-g="男" style="margin:0;flex:1;${s.gender==='男'?'background:var(--ink);color:var(--paper);':''}">男</button>
+          <button class="ghost-btn gender-btn" data-g="女" style="margin:0;flex:1;${s.gender==='女'?'background:var(--ink);color:var(--paper);':''}">女</button>
+        </div>
+      </div>
+    </div>
+    <button class="primary-btn" id="btn-roll">擲骰決定我的出身</button>
+  </div>`;
+}
+function bindIdentityForm(){
+  const nameInput = document.getElementById("name-input");
+  nameInput.oninput = ()=>{ state.name = nameInput.value; };
+  document.querySelectorAll(".gender-btn").forEach(btn=>{
+    btn.onclick = ()=>{ state.gender = btn.dataset.g; render(); };
+  });
+  document.getElementById("btn-roll").onclick = ()=>{
+    const identity = { name: (state.name||"").trim() || "無名氏", gender: state.gender };
+    state = newRoll(null, identity);
+    saveGame(); render();
+  };
+}
+
+function renderSetupRoll(){
+  const s = state;
+  const family = s.characters;
+  return `
+  <div class="center-screen">
+    <h2>${escapeHtml(s.name)}的天資已定</h2>
+    <p style="color:var(--ink-soft);font-size:13px;">出身無法重骰，這是你這一生的底牌。</p>
+    <div class="roll-grid">
+      <div class="roll-item"><div class="k">家境</div><div class="v" style="font-size:15px;">${s.family}</div></div>
+      <div class="roll-item"><div class="k">每月零用錢</div><div class="v" style="font-size:15px;">${s.monthlyIncome}</div></div>
+      <div class="roll-item"><div class="k">體質</div><div class="v">${s.stats.health}</div></div>
+      <div class="roll-item"><div class="k">才識起點</div><div class="v">${s.stats.knowledge}</div></div>
+      <div class="roll-item"><div class="k">人脈起點</div><div class="v">${s.stats.network}</div></div>
+      <div class="roll-item"><div class="k">福緣</div><div class="v">？</div></div>
+    </div>
+    <div class="roll-item" style="text-align:left;margin-bottom:14px;">
+      <div class="k">家庭：${escapeHtml(s.familyStructure)}</div>
+      ${family.map(c=>`<p style="font-size:12.5px;margin:4px 0;"><b>${escapeHtml(c.name)}</b>（${escapeHtml(c.relation)}）</p>`).join("")}
+    </div>
+    <p style="font-size:12px;color:var(--ink-soft);margin-top:2px;">你的性格、人際樣貌與過去，會在故事裡慢慢浮現，不會現在就告訴你。</p>
+    <button class="primary-btn" id="btn-start">睜開眼睛</button>
+  </div>`;
+}
+function bindSetupRoll(){
+  document.getElementById("btn-start").onclick = ()=>{ state.phase="lifestyle"; render(); };
+}
+
+// 五、5.5 生活方式選擇（9/14新增，玩家開局自選，跟5.4七步驟骰定分開處理）
+function renderLifestyleChoice(){
+  const s = state;
+  const habitOptions = Object.keys(SPENDING_HABITS);
+  const mealOptions = s.mealCareEligibleAtStart ? ["家裡包辦","自己打理","外食為主"] : ["自己打理","外食為主"];
+  return `
+  <div class="center-screen">
+    <h2>開學前，你習慣怎麼生活？</h2>
+    <p style="color:var(--ink-soft);font-size:13px;">這是你自己的選擇，不是天生的底色，之後隨時可能因為環境改變而重新選。</p>
+    <div class="roll-item" style="text-align:left;margin-bottom:14px;">
+      <div class="k" style="margin-bottom:8px;">花錢習慣</div>
+      ${habitOptions.map(h=>`<button class="ghost-btn habit-btn" data-habit="${h}" style="margin:0 6px 6px 0;${s.spendingHabit===h?'background:var(--ink);color:var(--paper);':''}">${h}</button>`).join("")}
+    </div>
+    <div class="roll-item" style="text-align:left;margin-bottom:14px;">
+      <div class="k" style="margin-bottom:8px;">三餐怎麼解決</div>
+      ${mealOptions.map(m=>`<button class="ghost-btn meal-btn" data-meal="${m}" style="margin:0 6px 6px 0;${s.mealArrangement===m?'background:var(--ink);color:var(--paper);':''}">${m}</button>`).join("")}
+      ${!s.mealCareEligibleAtStart ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">你家目前的狀況，還沒有人可以幫你打理三餐——大學去外地/出國，或是出社會後，都會重新開放這個選項。</p>` : ``}
+    </div>
+    <button class="primary-btn" id="btn-lifestyle-confirm" ${(!s.spendingHabit || !s.mealArrangement)?'disabled':''}>睜開眼睛</button>
+  </div>`;
+}
+function bindLifestyleChoice(){
+  document.querySelectorAll(".habit-btn").forEach(btn=>{
+    btn.onclick = ()=>{ state.spendingHabit = btn.dataset.habit; render(); };
+  });
+  document.querySelectorAll(".meal-btn").forEach(btn=>{
+    btn.onclick = ()=>{
+      state.mealArrangement = btn.dataset.meal;
+      if(btn.dataset.meal==="自己打理") state.cookingInterestSeed = true; // 興趣系統伏筆，目前不觸發任何效果
+      render();
+    };
+  });
+  const confirmBtn = document.getElementById("btn-lifestyle-confirm");
+  if(confirmBtn) confirmBtn.onclick = ()=>{
+    if(!state.spendingHabit || !state.mealArrangement) return;
+    startLife();
+  };
+}
+
+function renderPlaying(loadingTurn){
+  const s = state;
+  const active = activeCharacters();
+  const bg = s.characters.filter(c=>!c.active);
+  return `
+  <div class="cover">
+    <div><h1>人生草稿</h1><div class="sub">${escapeHtml(s.name)} · 第 ${s.reincarnations+1} 世 · 第 ${s.turnCount} 頁</div>
+    ${USE_MOCK?`<div class="sub" style="color:var(--stamp);margin-top:2px;">⚠ 示範模式：目前用規則模擬旁白，非真AI生成</div>`:``}</div>
+    <div class="stamp"><b>${s.age}</b>歲・${stageLabel(s.age)}</div>
+  </div>
+  ${renderProgressStrip(s)}
+  <div class="ledger">
+    <div class="ledger-row"><span class="lbl">存款</span><span class="dots"></span><span class="val">${s.cash.toLocaleString()}</span></div>
+    ${s.propertyValue>0 ? `<div class="ledger-row"><span class="lbl">房產淨值</span><span class="dots"></span><span class="val">${(s.propertyValue-s.mortgageBalance).toLocaleString()}</span></div>` : ``}
+    ${ledgerRow("健康", s.stats.health)}
+    ${ledgerRow("才識", s.stats.knowledge)}
+    ${ledgerRow("表達力", s.stats.expression)}
+    ${ledgerRow("外表", s.appearance)}
+    ${ledgerRow("人脈", s.stats.network)}
+    <div class="pips">${Array.from({length:s.maxActionPoints}).map((_,i)=>`<span class="pip ${i<s.actionPoints?'on':''}"></span>`).join("")}</div>
+  </div>
+  <div class="journal">
+    ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${e.timeLabel ? escapeHtml(e.timeLabel) : (e.age+'歲・'+stageLabel(e.age))}</div>${renderParagraphs(e.text)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("")}
+    ${loadingTurn ? `<div class="loading">旁白正在幫你寫下這一頁…</div>` : ""}
+  </div>
+  ${!loadingTurn ? `
+  <div class="choices">
+    ${(s.choices||[]).map((c,i)=>`<button class="choice-btn" data-choice="${i}">${escapeHtml(c)}</button>`).join("")}
+    ${(s.snapshot && s.undosLeft>0) ? `<button class="choice-btn" id="btn-undo" style="color:var(--stamp);">↺ 反悔上一步（剩 ${s.undosLeft} 次）</button>` : ""}
+  </div>
+  <div class="custom-row">
+    <input id="custom-input" placeholder="或者，自己寫下你想做的事…（消耗2點，最多${CUSTOM_INPUT_MAX_CHARS}字）">
+    <button id="btn-custom">行動</button>
+  </div>
+  <div id="custom-input-error" class="input-error"></div>
+  <div class="hint">選項消耗 1 點行動點；自訂行動消耗 2 點（自由輸入最多${CUSTOM_INPUT_MAX_CHARS}字）</div>
+  ` : ""}
+  <div class="roster">
+    <div class="roster-title">通訊錄・羈絆（${active.length} 位在場${bg.length? ` · ${bg.length} 位漸行漸遠`:""}）</div>
+    <div class="roster-scroll">
+      ${active.map(c=>rosterCard(c,false)).join("")}
+      ${bg.map(c=>rosterCard(c,true)).join("")}
+      ${active.length+bg.length===0 ? `<div style="font-size:12px;color:var(--ink-soft);">目前故事裡還沒有其他重要的人。</div>` : ""}
+    </div>
+  </div>
+  <div class="footer-actions">
+    <span>行動點不足時可示範儲值</span>
+    <a id="link-memoir">📖 回憶錄（${s.log.length}則）</a>
+    <a id="link-view-key">🔑 我的復原金鑰</a>
+    <a id="link-reset">清空存檔重來</a>
+  </div>`;
+}
+// 介面：現階段進度條（9/16新增）——顯示目前細顆粒時間標籤(如「大二・期中準備期」)+這個小段落跑了幾回合
+function renderProgressStrip(s){
+  if(!s.timeState) return ``;
+  const timeLabel = computeTimeLabel(s);
+  const progress = computeStageProgress(s);
+  const pct = progress && progress.total>0 ? clamp(Math.round(progress.current/progress.total*100),0,100) : 0;
+  return `
+  <div class="progress-strip">
+    <div class="prow"><b>${escapeHtml(timeLabel)}</b>${progress ? `<span>${progress.label}　${progress.current}/${progress.total}</span>` : ``}</div>
+    ${progress ? `<div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>` : ``}
+  </div>`;
+}
+function ledgerRow(label,val){
+  // bug修正（9/14，人生草稿0914測試.pdf）：底層數值（例如邊際遞減後的才識/人脈）是浮點數，
+  // 不影響計算精度，但呈現層要四捨五入成整數再顯示，不能把25.130356487721這種原始浮點數丟給玩家看
+  return `<div class="ledger-row"><span class="lbl">${label}</span><span class="dots"></span><span class="val">${Math.round(val)}</span></div>`;
+}
+function renderStatChanges(statChanges){
+  // 可見數值變化顯示（9/15新增）：跟財富結算小字同一種呈現邏輯，只在真的有變化時才顯示
+  if(!statChanges) return ``;
+  const parts = Object.keys(VISIBLE_STAT_LABELS)
+    .filter(k=>statChanges[k])
+    .map(k=>{
+      const v = statChanges[k];
+      const color = v>0 ? "var(--teal)" : "var(--stamp)";
+      return `<span style="color:${color};">${VISIBLE_STAT_LABELS[k]}${v>0?'+':''}${v}</span>`;
+    });
+  if(parts.length===0) return ``;
+  return `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合數值變化：${parts.join("　")}</p>`;
+}
+function renderRelationshipHints(hints){
+  // 4.1.1顯示規則（9/16新增）：關係變化用方向性提示呈現，不精確報數字，跟renderStatChanges並列在日記下方
+  if(!hints || hints.length===0) return ``;
+  return `<p style="font-size:11px;color:var(--ink-soft);margin-top:4px;">${hints.map(h=>escapeHtml(h)).join("；")}</p>`;
+}
+function rosterCard(c,isBg){
+  // 4.1.1顯示規則（9/16改版）：列表卡片以文字化狀態為主，不裸露0-100數字；點擊可叫出詳細頁
+  const category = relationCategoryLabel(c);
+  return `<div class="rcard ${isBg?'bg':''}" data-npc="${escapeHtml(c.name)}">
+    <div class="name">${escapeHtml(c.name)}</div>
+    <div class="rel">${escapeHtml(category)}</div>
+    <div class="status-text">${escapeHtml(relationshipStatusLabel(c))}</div>
+  </div>`;
+}
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+function renderParagraphs(text){
+  return String(text).split(/\n{1,}/).map(p=>p.trim()).filter(Boolean)
+    .map(p=>`<p>${escapeHtml(p)}</p>`).join("");
+}
+function bindPlaying(){
+  document.querySelectorAll(".choice-btn[data-choice]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const idx = +btn.dataset.choice;
+      const text = state.choices[idx];
+      takeTurn(text, 1);
+    };
+  });
+  const undoBtn = document.getElementById("btn-undo");
+  if(undoBtn) undoBtn.onclick = restoreUndo;
+  const customBtn = document.getElementById("btn-custom");
+  const input = document.getElementById("custom-input");
+  const inputError = document.getElementById("custom-input-error");
+  if(input){
+    input.oninput = ()=>{ if(inputError) inputError.style.display="none"; };
+  }
+  if(customBtn){
+    customBtn.onclick = ()=>{
+      const val = input.value.trim();
+      if(!val) return;
+      if(val.length > CUSTOM_INPUT_MAX_CHARS){
+        if(inputError){
+          inputError.textContent = `這段行動描述太長了（目前${val.length}字，上限${CUSTOM_INPUT_MAX_CHARS}字），請稍微縮短後再送出`;
+          inputError.style.display = "block";
+        }
+        return;
+      }
+      if(inputError) inputError.style.display="none";
+      input.value="";
+      takeTurn(val, 2);
+    };
+  }
+  const resetLink = document.getElementById("link-reset");
+  if(resetLink) resetLink.onclick = renderConfirmReset;
+  const memoirLink = document.getElementById("link-memoir");
+  if(memoirLink) memoirLink.onclick = renderMemoirModal;
+  const viewKeyLink = document.getElementById("link-view-key");
+  if(viewKeyLink) viewKeyLink.onclick = renderKeyViewModal;
+  // 四、4.1.1顯示規則（9/16新增）：點擊NPC卡片（含已降級為背景的）叫出詳細頁
+  document.querySelectorAll(".rcard[data-npc]").forEach(card=>{
+    card.onclick = ()=> renderNpcDetailModal(card.dataset.npc);
+  });
+}
+
+// 介面：回憶錄（9/19新增）——純呈現層功能，解決「畫面只顯示最近6則、往前的看起來像消失了」的體驗問題。
+// 只是把state.log完整攤開給玩家看，不影響AI實際能讀到的範圍（buildUserMessage的recent_turns_full/recent_turns_summary/chronicle_recent不變），
+// AI的長期記憶能力沒有跟著變好，這裡純粹是玩家自己回顧用的
+// 十、10.1（9/19新增）：讓玩家在同一台裝置上，忘記自己金鑰時能查回來（不是救回遺失金鑰的救援機制，
+// 純粹是「這台裝置本來就有存」的便利性——本機localStorage沒有金鑰快取的話這個連結本來就不會被點到，因為根本沒進到playing畫面）
+function renderKeyViewModal(){
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME) || "（找不到，可能是這台裝置的快取被清掉了）";
+  const div = document.createElement("div");
+  div.id = "key-view-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>我的復原金鑰</h3>
+      <div class="roll-item" style="text-align:center;margin:10px 0;">
+        <div class="v" style="font-size:16px;letter-spacing:2px;">${escapeHtml(key)}</div>
+      </div>
+      <p style="font-size:12px;">換裝置時輸入這組金鑰就能接回存檔，請自行妥善保管。</p>
+      <button class="ghost-btn" id="btn-key-view-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-key-view-close").onclick = ()=>div.remove();
+}
+function renderMemoirModal(){
+  const s = state;
+  const div = document.createElement("div");
+  div.id = "memoir-modal";
+  div.className = "modal-backdrop";
+  const entriesHtml = s.log.map(e=>`<div class="entry"><div class="age-tag">${e.timeLabel ? escapeHtml(e.timeLabel) : (e.age+'歲・'+stageLabel(e.age))}</div>${renderParagraphs(e.text)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("");
+  div.innerHTML = `
+    <div class="modal" style="max-width:560px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>回憶錄</h3>
+      <p style="margin-top:-8px;">${escapeHtml(s.name)}的完整故事，共${s.log.length}則</p>
+      <div style="overflow-y:auto;flex:1;margin-top:4px;padding-right:6px;">${entriesHtml || `<p style="color:var(--ink-soft);">還沒有任何紀錄。</p>`}</div>
+      <button class="ghost-btn" id="btn-memoir-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-memoir-close").onclick = ()=>div.remove();
+}
+function renderConfirmReset(){
+  const div = document.createElement("div");
+  div.id = "confirm-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>清空存檔重來？</h3>
+      <p>這會刪掉目前這份草稿，重新從取名開始。此動作無法復原。</p>
+      <button class="primary-btn" id="btn-confirm-reset" style="background:var(--stamp);">確定清空</button>
+      <button class="ghost-btn" id="btn-cancel-reset">再想想</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-confirm-reset").onclick = ()=>{ div.remove(); hardReset(); };
+  document.getElementById("btn-cancel-reset").onclick = ()=>{ div.remove(); };
+}
+
+function renderPaywall(){
+  const div = document.createElement("div");
+  div.id = "paywall-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>行動點用盡</h3>
+      <p>今天的因果暫時推演不動了。真正上線的版本這裡會是儲值／訂閱畫面；現在先示範性地幫你補滿，讓你能繼續測試玩法。</p>
+      <button class="primary-btn" id="btn-refill">（示範）補滿行動點</button>
+      <div class="demo-note">＊這是原型階段的假按鈕，尚未串接真實金流</div>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-refill").onclick = refillDemo;
+}
+
+// 五、5.5 三餐解決方式解鎖後，讓玩家重新選一次（9/14新增）
+function renderMealUnlockModal(){
+  const div = document.createElement("div");
+  div.id = "meal-unlock-modal";
+  div.className = "modal-backdrop";
+  const options = ["家裡包辦","自己打理","外食為主"];
+  div.innerHTML = `
+    <div class="modal">
+      <h3>生活圈變了，三餐怎麼安排？</h3>
+      <p>現在三個選項都開放了，要不要重新想一下三餐怎麼解決？（不改也可以，維持原本「${escapeHtml(state.mealArrangement)}」）</p>
+      ${options.map(m=>`<button class="ghost-btn meal-unlock-btn" data-meal="${m}" style="margin:4px 6px 0 0;${state.mealArrangement===m?'background:var(--ink);color:var(--paper);':''}">${m}</button>`).join("")}
+      <button class="primary-btn" id="btn-meal-unlock-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosen = state.mealArrangement;
+  div.querySelectorAll(".meal-unlock-btn").forEach(btn=>{
+    btn.onclick = ()=>{ chosen = btn.dataset.meal; div.querySelectorAll(".meal-unlock-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+  });
+  document.getElementById("btn-meal-unlock-confirm").onclick = ()=>{
+    state.mealArrangement = chosen;
+    if(chosen==="自己打理") state.cookingInterestSeed = true;
+    div.remove();
+    saveGame(); render();
+  };
+}
+
+// 四、4.1.1顯示規則（9/16新增）：點擊NPC卡片叫出的詳細頁，純讀取不涉及遊戲決策，關閉即結束不寫入存檔
+function renderNpcDetailModal(name){
+  const c = state.characters.find(x=>x.name===name);
+  if(!c) return;
+  const div = document.createElement("div");
+  div.id = "npc-detail-modal";
+  div.className = "modal-backdrop";
+  const category = relationCategoryLabel(c);
+  const identity = c.relation||"";
+  const turnsAgo = state.turnCount - c.lastTurn;
+  const lastInteractLabel = turnsAgo<=0 ? "剛剛" : `${turnsAgo} 回合前`;
+  div.innerHTML = `
+    <div class="modal">
+      <h3>${escapeHtml(c.name)}</h3>
+      <p style="margin-top:-8px;">${escapeHtml(identity)}${identity && category!==identity ? "　·　"+escapeHtml(category) : (!identity ? escapeHtml(category) : "")}</p>
+      <p><b>目前關係：</b>${escapeHtml(relationshipStatusLabel(c))}</p>
+      ${c.origin ? `<p style="font-size:12px;color:var(--ink-soft);">認識時間／來源：${escapeHtml(c.origin)}</p>` : ``}
+      ${c.summary ? `<p><b>共同記憶：</b>${escapeHtml(c.summary)}</p>` : ``}
+      <p style="font-size:12px;">最近互動：${lastInteractLabel}</p>
+      <p style="font-size:11px;">關係值（次要參考）：${Math.round(c.affinity)}/100</p>
+      <button class="ghost-btn" id="btn-npc-detail-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-npc-detail-close").onclick = ()=>div.remove();
+}
+
+// 八、興趣系統v1 8.7下游出口：投入度達40觸發一次副業契機，三選一（非二元開關）
+function renderSideBusinessModal(cardId){
+  const card = (state.interestCandidates||[]).find(c=>c.id===cardId);
+  if(!card) return; // 卡片已經被淡出/移除（理論上active狀態不會被sweep清掉，這裡防呆）
+  const div = document.createElement("div");
+  div.id = "side-business-modal";
+  div.className = "modal-backdrop";
+  const options = [
+    {key:"kept", label:"保持興趣原樣"},
+    {key:"gig", label:"接一些零星案子"},
+    {key:"formal", label:"認真發展成正式副業"}
+  ];
+  div.innerHTML = `
+    <div class="modal">
+      <h3>「${escapeHtml(card.category)}」好像可以更進一步了</h3>
+      <p>投入這麼久，這個興趣好像不只是興趣了——要不要考慮往下發展？</p>
+      ${options.map(o=>`<button class="ghost-btn side-business-btn" data-key="${o.key}" style="margin:4px 6px 0 0;">${o.label}</button>`).join("")}
+      <button class="primary-btn" id="btn-side-business-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosen = "kept";
+  div.querySelectorAll(".side-business-btn").forEach(btn=>{
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".side-business-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+  });
+  document.getElementById("btn-side-business-confirm").onclick = ()=>{
+    card.sideBusinessStatus = chosen;
+    div.remove();
+    saveGame(); render();
+  };
+}
+
+// ========== 九、大學科系系統：四個彈窗 ==========
+function renderMajorSelectionModal(){
+  const s = state;
+  const div = document.createElement("div");
+  div.id = "major-selection-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>選擇科系</h3>
+      <p>大學生活要開始了，想好要念哪個方向了嗎？</p>
+      ${MAJOR_CATEGORIES.map(m=>`<button class="ghost-btn major-btn" data-key="${m.key}" style="display:block;width:100%;text-align:left;margin:4px 0;">${escapeHtml(m.label)}<br><span style="font-size:12px;opacity:0.7;">${escapeHtml(m.examples)}</span></button>`).join("")}
+      <div id="major-five-year-subchoice" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--ink);">
+        <p style="font-size:13px;">「醫藥/護理類」裡，醫學/牙醫/獸醫系是5年制，其餘科系(藥學/護理/物理治療等)是4年制：</p>
+        <button class="ghost-btn five-year-btn" data-five="true" style="margin:4px 6px 0 0;">醫學／牙醫／獸醫系(5年)</button>
+        <button class="ghost-btn five-year-btn" data-five="false" style="margin:4px 6px 0 0;">其他醫藥/護理科系(4年)</button>
+      </div>
+      <button class="primary-btn" id="btn-major-confirm" style="margin-top:14px;" disabled>確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosenKey = null, chosenFiveYear = false;
+  const confirmBtn = document.getElementById("btn-major-confirm");
+  function refreshConfirmEnabled(){
+    const cat = findMajorCategory(chosenKey);
+    const needsSubchoice = cat && cat.isFiveYearEligible;
+    confirmBtn.disabled = !chosenKey || (needsSubchoice && chosenFiveYear===null);
+  }
+  div.querySelectorAll(".major-btn").forEach(btn=>{
+    btn.onclick = ()=>{
+      chosenKey = btn.dataset.key;
+      const cat = findMajorCategory(chosenKey);
+      div.querySelectorAll(".major-btn").forEach(b=>{ b.style.background=""; b.style.color=""; });
+      btn.style.background="var(--ink)"; btn.style.color="var(--paper)";
+      const sub = document.getElementById("major-five-year-subchoice");
+      if(cat && cat.isFiveYearEligible){ sub.style.display="block"; chosenFiveYear=null; }
+      else { sub.style.display="none"; chosenFiveYear=false; }
+      refreshConfirmEnabled();
+    };
+  });
+  div.querySelectorAll(".five-year-btn").forEach(btn=>{
+    btn.onclick = ()=>{
+      chosenFiveYear = btn.dataset.five==="true";
+      div.querySelectorAll(".five-year-btn").forEach(b=>{ b.style.background=""; b.style.color=""; });
+      btn.style.background="var(--ink)"; btn.style.color="var(--paper)";
+      refreshConfirmEnabled();
+    };
+  });
+  confirmBtn.onclick = ()=>{
+    if(!chosenKey) return;
+    assignStudentMajor(s, chosenKey, chosenFiveYear);
+    div.remove();
+    saveGame(); render();
+  };
+}
+// 十一、11.2/11.4（9/19新增）：期末考明牌檢定呈現——先明示「要判定了」但不秀機率數字，
+// 玩家點擊揭曉後才公開完整判定過程（骰值＋屬性加成換算依據＋門檻對比＋成敗結果），呼應對照遊戲「硃砂痣」的呈現節奏
+function renderExamCheckModal(check){
+  const div = document.createElement("div");
+  div.id = "exam-check-modal";
+  div.className = "modal-backdrop";
+  const swingText = check.swing>=0 ? `+${check.swing}` : `${check.swing}`;
+  div.innerHTML = `
+    <div class="modal">
+      <h3>期末考成績公布</h3>
+      <div id="exam-check-stage1">
+        <p>命運已經決定了，要現在揭曉判定過程嗎？</p>
+        <button class="primary-btn" id="btn-exam-reveal">揭曉</button>
+      </div>
+      <div id="exam-check-stage2" style="display:none;">
+        <p style="font-size:13px;">屬性加成：才識${check.wisdom} + 讀書${check.studyCount}次×3 = 基準${check.base}分</p>
+        <p style="font-size:13px;">骰值：擲出${check.roll}（1-100），對應加減 ${swingText} 分</p>
+        <p style="font-size:13px;">最終分數：${check.base} ${swingText} = <strong>${check.finalScore}分</strong>（及格門檻${check.passThreshold}分）</p>
+        <p style="font-size:16px;margin-top:10px;"><strong>${check.passed ? "通過及格線" : "未達及格線"}</strong></p>
+        <button class="primary-btn" id="btn-exam-confirm" style="margin-top:10px;">知道了</button>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-exam-reveal").onclick = ()=>{
+    document.getElementById("exam-check-stage1").style.display = "none";
+    document.getElementById("exam-check-stage2").style.display = "block";
+  };
+  document.getElementById("btn-exam-confirm").onclick = ()=>{ div.remove(); };
+}
+function renderTransferOfferModal(){
+  const s = state;
+  const div = document.createElement("div");
+  div.id = "transfer-offer-modal";
+  div.className = "modal-backdrop";
+  const log = s.lastExamPerformanceLog || {};
+  div.innerHTML = `
+    <div class="modal">
+      <h3>成績一直不太理想</h3>
+      <p>連續${log.streak||TRANSFER_EXAM_STREAK_TRIGGER}次段考都不太順利，要不要考慮轉系？</p>
+      <button class="ghost-btn transfer-main-btn" data-key="stay" style="margin:4px 6px 0 0;">維持現狀</button>
+      <button class="ghost-btn transfer-main-btn" data-key="apply" style="margin:4px 6px 0 0;">申請轉系</button>
+      <button class="ghost-btn transfer-main-btn" data-key="wait" style="margin:4px 6px 0 0;">先觀望不做決定</button>
+      <div id="transfer-target-list" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--ink);">
+        <p style="font-size:13px;">選一個目標科系(灰色代表轉過去會超過畢業年齡上限，不能選)：</p>
+        ${MAJOR_CATEGORIES.filter(m=>m.key!==s.studentMajorGroup).map(m=>{
+          const feasible4 = isTransferFeasible(s.age, 4, s.collegeDelayYearsUsed);
+          const feasible = m.isFiveYearEligible ? (feasible4 || isTransferFeasible(s.age,5,s.collegeDelayYearsUsed)) : feasible4;
+          const disabledAttr = feasible ? "" : "disabled";
+          const opacityStyle = feasible ? "" : "opacity:0.4;";
+          return `<button class="ghost-btn transfer-target-btn" data-key="${m.key}" ${disabledAttr} style="display:block;width:100%;text-align:left;margin:4px 0;${opacityStyle}">${escapeHtml(m.label)}</button>`;
+        }).join("")}
+      </div>
+      <button class="primary-btn" id="btn-transfer-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let mainChoice = "stay", targetKey = null;
+  div.querySelectorAll(".transfer-main-btn").forEach(btn=>{
+    btn.onclick = ()=>{
+      mainChoice = btn.dataset.key;
+      div.querySelectorAll(".transfer-main-btn").forEach(b=>{ b.style.background=""; b.style.color=""; });
+      btn.style.background="var(--ink)"; btn.style.color="var(--paper)";
+      document.getElementById("transfer-target-list").style.display = mainChoice==="apply" ? "block" : "none";
+    };
+  });
+  div.querySelectorAll(".transfer-target-btn").forEach(btn=>{
+    if(btn.disabled) return;
+    btn.onclick = ()=>{
+      targetKey = btn.dataset.key;
+      div.querySelectorAll(".transfer-target-btn").forEach(b=>{ if(!b.disabled){ b.style.background=""; b.style.color=""; } });
+      btn.style.background="var(--ink)"; btn.style.color="var(--paper)";
+    };
+  });
+  document.getElementById("btn-transfer-confirm").onclick = ()=>{
+    resolveTransferOffer(s, mainChoice, targetKey);
+    div.remove();
+    saveGame(); render();
+  };
+}
+// 9.5.1 轉系結果判定：抽出成純函式方便測試，不依賴DOM。mainChoice: "stay"/"apply"/"wait"；targetKey僅在apply時需要
+function resolveTransferOffer(s, mainChoice, targetKey){
+  s.transferCooldown = TRANSFER_COOLDOWN_TURNS;
+  s.examBelowExpectationStreak = 0;
+  if(mainChoice==="apply" && targetKey){
+    const cat = findMajorCategory(targetKey);
+    if(!cat) return;
+    // 9.5.1【定案】結果判定複用2.4考試成績算法精神：知識值+自律程度換算成功機率，不另設新公式
+    const successProb = clamp(0.3 + (s.stats.knowledge/100)*0.5 + (s.conscientiousness.selfDiscipline-50)/200, 0.1, 0.95); // 【測試參數】
+    const success = Math.random() < successProb;
+    if(success){
+      const isFive = cat.isFiveYearEligible && isTransferFeasible(s.age,5,s.collegeDelayYearsUsed);
+      assignStudentMajor(s, targetKey, isFive);
+      s.timeState.yearInStage = 1; // 9.5.1【定案】不做學分抵免判斷，一律從大一重新起算
+      s.universityEventLog = { type:"transfer_success", major: cat.label };
+    } else {
+      s.universityEventLog = { type:"transfer_failed", major: cat.label };
+    }
+  } else if(mainChoice==="stay"){
+    s.universityEventLog = { type:"transfer_declined" };
+  }
+}
+function renderDualMajorOfferModal(){
+  const s = state;
+  const div = document.createElement("div");
+  div.id = "dual-major-offer-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>要不要挑戰雙主修？</h3>
+      <p>以你目前的狀態，雙主修應該應付得來——不會多花時間，但課業壓力會增加（學費由家長負擔，不影響你的存款）。</p>
+      <button class="ghost-btn dual-major-btn" data-key="apply" style="margin:4px 6px 0 0;">申請雙主修</button>
+      <button class="ghost-btn dual-major-btn" data-key="decline" style="margin:4px 6px 0 0;">僅維持單一主修</button>
+      <button class="primary-btn" id="btn-dual-major-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosen = "decline";
+  div.querySelectorAll(".dual-major-btn").forEach(btn=>{
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".dual-major-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+  });
+  document.getElementById("btn-dual-major-confirm").onclick = ()=>{
+    resolveDualMajorOffer(s, chosen);
+    div.remove();
+    saveGame(); render();
+  };
+}
+// 9.5.2 雙主修候選決定：choice = "apply"/"decline"
+function resolveDualMajorOffer(s, choice){
+  // 9.5.2【定案】zero-cost：不論選哪邊都不動collegeDelayYearsUsed
+  s.dualMajorStatus = choice==="apply" ? "active" : null; // decline時歸零而非設abandoned，abandoned專指「進行中才放棄」
+}
+// 9.5.2（9/16補充）雙主修中途放棄彈窗：candidate成立條件見checkDualMajorAbandonCandidate()
+function renderDualMajorAbandonModal(){
+  const s = state;
+  const div = document.createElement("div");
+  div.id = "dual-major-abandon-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>雙主修快撐不住了？</h3>
+      <p>最近日子一直緊繃著，要不要重新考慮一下雙主修這件事？</p>
+      <button class="ghost-btn dual-major-abandon-btn" data-key="keep" style="margin:4px 6px 0 0;">撐下去（維持雙主修）</button>
+      <button class="ghost-btn dual-major-abandon-btn" data-key="abandon" style="margin:4px 6px 0 0;">正式撤銷雙主修申請</button>
+      <button class="primary-btn" id="btn-dual-major-abandon-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosen = "keep";
+  div.querySelectorAll(".dual-major-abandon-btn").forEach(btn=>{
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".dual-major-abandon-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+  });
+  document.getElementById("btn-dual-major-abandon-confirm").onclick = ()=>{
+    resolveDualMajorAbandonOffer(s, chosen);
+    div.remove();
+    saveGame(); render();
+  };
+}
+// 9.5.2（9/16補充）choice = "keep"/"abandon"；程式只負責候選成立與狀態轉換，不判斷「應不應該放棄」（呼應9.9）
+function resolveDualMajorAbandonOffer(s, choice){
+  s.dualMajorAbandonStreak = 0;
+  s.dualMajorAbandonCooldown = DUAL_MAJOR_ABANDON_COOLDOWN_TURNS;
+  if(choice==="abandon"){
+    s.dualMajorStatus = "abandoned"; // 終局狀態，checkDualMajorCandidate()已有`|| s.dualMajorStatus`守門，不會重新申請
+    s.universityEventLog = { type:"dual_major_abandoned" };
+  }
+}
+function renderWithdrawalOfferModal(reason){
+  const s = state;
+  const div = document.createElement("div");
+  div.id = "withdrawal-offer-modal";
+  div.className = "modal-backdrop";
+  const reasonText = reason==="health" ? "健康狀況已經連續一段時間亮紅燈" : "手頭已經連續一段時間很緊";
+  // 9.8：休學要消耗delay_years同一個額度（跟延畢共用上限，不可各自獨立），額度用完就不能再選休學，只能肄業或硬撐
+  const leaveAvailable = (s.collegeDelayYearsUsed||0) < COLLEGE_DELAY_CAP;
+  div.innerHTML = `
+    <div class="modal">
+      <h3>該喘口氣了嗎？</h3>
+      <p>${reasonText}，要不要考慮暫停或結束學業？</p>
+      <button class="ghost-btn withdrawal-btn" data-key="leave" ${leaveAvailable?"":"disabled"} style="margin:4px 6px 0 0;${leaveAvailable?"":"opacity:0.4;"}">休學一學期${leaveAvailable?"":"（延畢額度已用完，不能再休學）"}</button>
+      <button class="ghost-btn withdrawal-btn" data-key="withdraw" style="margin:4px 6px 0 0;">正式肄業</button>
+      <button class="ghost-btn withdrawal-btn" data-key="stay" style="margin:4px 6px 0 0;">維持現狀，繼續撐著</button>
+      <button class="primary-btn" id="btn-withdrawal-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosen = "stay";
+  div.querySelectorAll(".withdrawal-btn").forEach(btn=>{
+    if(btn.disabled) return;
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".withdrawal-btn").forEach(b=>{ if(!b.disabled){ b.style.background=""; b.style.color=""; } }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+  });
+  document.getElementById("btn-withdrawal-confirm").onclick = ()=>{
+    resolveWithdrawalOffer(s, chosen);
+    div.remove();
+    saveGame(); render();
+  };
+}
+// 9.5.3 休學/肄業決定：choice = "leave"/"withdraw"/"stay"
+function resolveWithdrawalOffer(s, choice){
+  // 9.8：休學跟延畢共用同一個delay_years額度、不可各自獨立上限，額度用完時「休學」直接視同無效選擇（防呆，UI也會先擋，這裡是程式層再把關一次）
+  if(choice==="leave" && (s.collegeDelayYearsUsed||0)>=COLLEGE_DELAY_CAP) return;
+  if(choice==="leave"){
+    // 9.8：delay_years最小粒度0.5年對應休一學期，記一次0.5年代價
+    s.collegeDelayYearsUsed = clamp((s.collegeDelayYearsUsed||0)+0.5, 0, COLLEGE_DELAY_CAP);
+    // 9.5.3（9/16補充）：記錄休學當下正在哪個學期（上學期0~6段 or 下學期7~13段），供復學時重置回該學期開頭，該學期視為未完成不計入進度
+    s.leaveSemesterHalfIndex = (s.timeState.segmentIndex||0) < SEMESTER_PHASES.length ? 0 : SEMESTER_PHASES.length;
+    s.leaveStatus = "onLeave";
+    s.leaveResumeCountdown = LEAVE_OF_ABSENCE_TURNS;
+    s.lowHealthStreak = 0; s.lowCashStreak = 0; // 復學視為重新開始，不然同樣的低點會立刻再次觸發候選
+    s.universityEventLog = { type:"leave_of_absence" };
+  } else if(choice==="withdraw"){
+    s.studentStatus = "withdrawn";
+    s.timeState.stageMode = "career"; s.timeState.adultTurnsInYear = 0; // 9.5.3：跳轉至22歲以後曲線起點，肄業不代表人生卡死
+    s.universityEventLog = { type:"withdrawn" };
+  }
+}
+
+function renderEnding(){
+  const s = state;
+  const kids = eligibleChildren();
+  const canSucceed = s.ending.successionAvailable && kids.length>0;
+  // 七、7.1.4（9/20改版）：不顯示任何標籤、分數、排名。
+  // 依序是 L1段落回顧 →（階段之間）L2變化句 → L3墓誌銘。
+  // 舊存檔相容：9/20以前的存檔只有title/summary，沒有segments，降級成單段顯示不讓畫面爆掉。
+  const segs = s.ending.segments || (s.ending.summary ? [{label:"", text:s.ending.summary}] : []);
+  const transByStage = {};
+  (s.ending.transitions||[]).forEach(t=>{ if(t && t.after_stage) transByStage[t.after_stage] = t.text||""; });
+  const summaryHtml = segs.map(seg=>{
+    const trans = transByStage[seg.stage];
+    return `
+    <div style="text-align:left;margin-bottom:14px;">
+      ${seg.label ? `<div class="k" style="margin-bottom:4px;">${escapeHtml(seg.label)}${seg.age_from!=null?`（${seg.age_from}－${seg.age_to}歲）`:""}</div>` : ``}
+      <p style="font-size:14.5px;margin:0;">${escapeHtml(seg.text||"")}</p>
+    </div>
+    ${trans ? `<p style="font-size:14px;opacity:.75;text-align:left;margin:0 0 14px;">${escapeHtml(trans)}</p>` : ``}`;
+  }).join("");
+  return `
+  <div class="center-screen">
+    <div class="stamp" style="margin:0 auto 14px;"><b>${s.age}</b>歲</div>
+    ${summaryHtml}
+    ${s.ending.epitaph ? `<div class="end-title" style="font-size:18px;line-height:1.7;margin:18px 0 10px;">${escapeHtml(s.ending.epitaph)}</div>` : ``}
+    <div class="roll-grid">
+      <div class="roll-item"><div class="k">存款</div><div class="v" style="font-size:15px;">${s.cash.toLocaleString()}</div></div>
+      <div class="roll-item"><div class="k">健康</div><div class="v">${Math.round(s.stats.health)}</div></div>
+      <div class="roll-item"><div class="k">才識</div><div class="v">${Math.round(s.stats.knowledge)}</div></div>
+      <div class="roll-item"><div class="k">人脈</div><div class="v">${Math.round(s.stats.network)}</div></div>
+      <div class="roll-item"><div class="k">福緣</div><div class="v">${s.luckHidden}</div></div>
+      <div class="roll-item"><div class="k">羈絆</div><div class="v">${s.characters.length}</div></div>
+    </div>
+    ${canSucceed ? `
+    <div class="roll-item" style="text-align:left;margin-bottom:14px;">
+      <div class="k">延續下一世——選一位孩子接續</div>
+      ${kids.map(k=>`<button class="choice-btn" data-child="${escapeHtml(k.name)}" style="padding-left:8px;">${escapeHtml(k.name)}（${escapeHtml(k.relation)}）</button>`).join("")}
+    </div>` : ``}
+    <button class="primary-btn" id="btn-reincarnate">服下轉世丹，重新投胎</button>
+    <button class="ghost-btn" id="btn-reset-end">就此闔卷</button>
+  </div>`;
+}
+function bindEnding(){
+  document.getElementById("btn-reincarnate").onclick = reincarnate;
+  document.getElementById("btn-reset-end").onclick = hardReset;
+  document.querySelectorAll(".choice-btn[data-child]").forEach(btn=>{
+    btn.onclick = ()=> succeedAsChild(btn.dataset.child);
+  });
+}
+
+// ---------- DEBUG 測試面板（僅 USE_MOCK=true 時出現，正式模式完全不會被建立）----------
+function ensureDebugUI(){
+  if(!USE_MOCK) return;
+  let btn = document.getElementById("debug-toggle-btn");
+  if(!btn){
+    btn = document.createElement("button");
+    btn.id = "debug-toggle-btn";
+    btn.textContent = "🛠";
+    btn.title = "Debug 測試面板";
+    btn.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:300;width:44px;height:44px;border-radius:50%;background:var(--stamp,#9c3b2e);color:#fff;border:none;font-size:18px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);";
+    btn.onclick = toggleDebugPanel;
+    document.body.appendChild(btn);
+  }
+  const panel = document.getElementById("debug-panel");
+  if(panel && panel.dataset.open==="1"){
+    panel.innerHTML = renderDebugPanelContent();
+    bindDebugPanelContent();
+  }
+}
+function toggleDebugPanel(){
+  let panel = document.getElementById("debug-panel");
+  if(!panel){
+    panel = document.createElement("div");
+    panel.id = "debug-panel";
+    panel.style.cssText = "position:fixed;top:0;right:0;bottom:0;width:300px;max-width:88vw;background:#211f1d;color:#eee;z-index:299;overflow-y:auto;padding:16px 14px;font-family:'Courier New',monospace;font-size:12px;box-shadow:-3px 0 14px rgba(0,0,0,.4);";
+    document.body.appendChild(panel);
+  }
+  const isOpen = panel.dataset.open==="1";
+  panel.dataset.open = isOpen ? "0" : "1";
+  panel.style.display = isOpen ? "none" : "block";
+  if(!isOpen){ panel.innerHTML = renderDebugPanelContent(); bindDebugPanelContent(); }
+}
+function debugFieldGroups(){
+  const s = state;
+  return [
+    { title:"時間／基本", fields:[
+      ["年齡","age", s.age],
+    ]},
+    { title:"可見數值", fields:[
+      ["健康","stats.health", s.stats.health],
+      ["才識","stats.knowledge", s.stats.knowledge],
+      ["表達力","stats.expression", s.stats.expression],
+      ["人脈","stats.network", s.stats.network],
+      ["外表","appearance", s.appearance],
+    ]},
+    { title:"隱藏數值", fields:[
+      ["智慧(天資)","wisdom", s.wisdom],
+      ["邏輯能力","logicAbility", s.logicAbility],
+      ["幸福感","happiness", s.happiness],
+      ["幸福感基準線(唯讀)","happinessBaseline", Math.round(s.happinessBaseline||0)],
+      ["福緣","luckHidden", s.luckHidden],
+    ]},
+    { title:"財富", fields:[
+      ["現金","cash", s.cash],
+      ["房產淨值","propertyValue", s.propertyValue],
+      ["房貸餘額","mortgageBalance", s.mortgageBalance],
+      ["月收入","monthlyIncome", s.monthlyIncome],
+    ]},
+    { title:"依附兩軸", fields:[
+      ["焦慮軸","anxiety", s.anxiety],
+      ["迴避軸","avoidance", s.avoidance],
+    ]},
+    { title:"做事態度光譜", fields:[
+      ["自律","conscientiousness.selfDiscipline", s.conscientiousness.selfDiscipline],
+      ["審慎","conscientiousness.prudence", s.conscientiousness.prudence],
+      ["成就傾向","conscientiousness.achievement", s.conscientiousness.achievement],
+      ["責任感","conscientiousness.responsibility", s.conscientiousness.responsibility],
+      ["團隊vs單打","conscientiousness.teamSolo", s.conscientiousness.teamSolo],
+    ]},
+    { title:"其他", fields:[
+      ["行動點","actionPoints", s.actionPoints],
+      ["反悔卡剩餘","undosLeft", s.undosLeft],
+    ]},
+  ];
+}
+function renderDebugPanelContent(){
+  const header = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #444;padding-bottom:8px;">
+    <b style="letter-spacing:1px;">🛠 DEBUG 面板</b>
+    <span style="cursor:pointer;color:#aaa;" onclick="toggleDebugPanel()">✕ 關閉</span>
+  </div>`;
+  if(!state || !state.stats){
+    return header + `<p style="color:#999;">尚未開局，先建立角色（跑完開局擲骰）之後再回來調數值。</p>`;
+  }
+  const toggles = `
+    <div style="margin-bottom:12px;border-bottom:1px solid #444;padding-bottom:10px;">
+      <div style="color:#e0a15c;margin-bottom:4px;">3.5.3 平衡開關（測試參數，方便回歸比較）</div>
+      <label style="display:flex;align-items:center;gap:6px;margin-bottom:5px;color:#ccc;">
+        <input type="checkbox" id="toggle-marginal-diminish" ${ENABLE_MARGINAL_DIMINISH?"checked":""}> 邊際遞減（才識/人脈）
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:#ccc;margin-bottom:8px;">
+        <input type="checkbox" id="toggle-network-idle-decay" ${ENABLE_NETWORK_IDLE_DECAY?"checked":""}> 人脈閒置衰退
+      </label>
+      <div style="color:#e0a15c;margin:8px 0 4px;">A4 敏感度分析倍率</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+        <label style="flex:1;color:#ccc;">薪資倍率(SALARY_SCALE)</label>
+        <input type="number" step="0.1" id="input-salary-scale" value="${SALARY_SCALE}" style="width:70px;background:#333;color:#fff;border:1px solid #555;padding:3px 5px;font-family:'Courier New',monospace;">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="flex:1;color:#ccc;">生活費倍率(LIVING_COST_MULTIPLIER)</label>
+        <input type="number" step="0.1" id="input-living-cost-mult" value="${LIVING_COST_MULTIPLIER}" style="width:70px;background:#333;color:#fff;border:1px solid #555;padding:3px 5px;font-family:'Courier New',monospace;">
+      </div>
+    </div>`;
+  const groups = debugFieldGroups();
+  const body = groups.map(g=>`
+    <div style="margin-bottom:12px;">
+      <div style="color:#e0a15c;margin-bottom:4px;">${g.title}</div>
+      ${g.fields.map(([label,path,val])=>`
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <label style="flex:1;color:#ccc;">${label}</label>
+          <input type="number" step="any" data-path="${path}" value="${val}"
+            style="width:70px;background:#333;color:#fff;border:1px solid #555;padding:3px 5px;font-family:'Courier New',monospace;">
+        </div>`).join("")}
+    </div>`).join("");
+  return header + `
+    <div style="max-height:56vh;overflow-y:auto;padding-right:4px;">${toggles}${body}</div>
+    <button id="debug-apply" style="width:100%;margin-top:8px;padding:9px;background:var(--teal,#3e6b5c);color:#fff;border:none;cursor:pointer;font-family:inherit;">套用變更並刷新畫面</button>
+    <button id="debug-dump" style="width:100%;margin-top:6px;padding:7px;background:#444;color:#fff;border:none;cursor:pointer;font-family:inherit;">印出完整 state 到 Console</button>
+    <p style="color:#888;font-size:10.5px;margin-top:12px;line-height:1.6;">＊此面板只在 USE_MOCK=true 時出現，正式模式（USE_MOCK=false）完全不會建立這個按鈕。<br>＊目前程式碼還沒有「事件狀態（completed/skipped/locked）」追蹤機制，所以還無法在此指定觸發特定里程碑或查詢事件完成紀錄。<br>＊數值故意不做範圍限制，方便測試極端角色（例如全部設100或全部設0）。</p>
+  `;
+}
+function bindDebugPanelContent(){
+  const marginalToggle = document.getElementById("toggle-marginal-diminish");
+  if(marginalToggle) marginalToggle.onchange = ()=>{ ENABLE_MARGINAL_DIMINISH = marginalToggle.checked; };
+  const idleToggle = document.getElementById("toggle-network-idle-decay");
+  if(idleToggle) idleToggle.onchange = ()=>{ ENABLE_NETWORK_IDLE_DECAY = idleToggle.checked; };
+  const salaryScaleInput = document.getElementById("input-salary-scale");
+  if(salaryScaleInput) salaryScaleInput.onchange = ()=>{ const v=Number(salaryScaleInput.value); if(!Number.isNaN(v)) SALARY_SCALE = v; };
+  const livingCostMultInput = document.getElementById("input-living-cost-mult");
+  if(livingCostMultInput) livingCostMultInput.onchange = ()=>{ const v=Number(livingCostMultInput.value); if(!Number.isNaN(v)) LIVING_COST_MULTIPLIER = v; };
+  const applyBtn = document.getElementById("debug-apply");
+  if(applyBtn) applyBtn.onclick = ()=>{
+    document.querySelectorAll("#debug-panel input[data-path]").forEach(inp=>{
+      const path = inp.dataset.path.split(".");
+      let obj = state;
+      for(let i=0;i<path.length-1;i++) obj = obj[path[i]];
+      const num = Number(inp.value);
+      if(!Number.isNaN(num)) obj[path[path.length-1]] = num;
+    });
+    saveGame();
+    render();
+  };
+  const dumpBtn = document.getElementById("debug-dump");
+  if(dumpBtn) dumpBtn.onclick = ()=>{
+    console.log(JSON.parse(JSON.stringify(state)));
+    alert("已印到瀏覽器主控台（F12 → Console 分頁）");
+  };
+}
+
+initApp();
+</script>
+</body>
+</html>
