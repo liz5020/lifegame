@@ -232,6 +232,9 @@ const STORAGE_KEY = "life_sim_save_v1";
 const RECOVERY_KEY_STORAGE_NAME = "life_sim_recovery_key"; // 復原金鑰快取在本機，方便同一台裝置不用每次重輸入
 const ACTIVE_SLOT_STORAGE_NAME = "life_sim_active_slot"; // 記住這台裝置上次玩的是第幾段人生(0~2)
 const MAX_LIFE_SLOTS = 3; // 【定案,十、10.1】
+// 十、10.1補充（2026-09-22新增）：雲端同步狀態，純本次session的UI顯示用，不存進state/localStorage——
+// {success:true,time:timestamp}表示上次saveGame()雲端同步成功、{success:false}表示失敗、null表示這個session還沒嘗試過
+let cloudSyncStatus = null;
 function generateRecoveryKey(){
   // 用瀏覽器內建crypto產生10 bytes(80 bits)隨機性，格式化成5組4碼英數字方便玩家抄寫核對，例如 A1B2-C3D4-E5F6-7890-1234
   const bytes = new Uint8Array(10);
@@ -240,7 +243,73 @@ function generateRecoveryKey(){
   return hex.match(/.{1,4}/g).join("-").toUpperCase();
 }
 const MODEL = "claude-sonnet-5"; // 2026-09-18：舊版claude-sonnet-4-6疑似帳號無此模型存取權限（403，非404 not_found，見CHANGELOG排查記錄），改用目前最新且更便宜的Sonnet版本
-const CUSTOM_INPUT_MAX_CHARS = 300; // 呼應設計文件1.1.3：至少100字，理想200-300字，取上限值
+const CUSTOM_INPUT_MAX_CHARS = 200; // 十、10.3.2（2026-09-23取代同日稍早的100字版本）：上限200字，標點符號也算
+// 字數一律用Array.from計算（依Unicode字元，不是UTF-16長度），避免emoji等被算成2字
+function countInputChars(str){ return Array.from(str||"").length; }
+
+// ---------- 十、10.3 行動點經濟（2026-09-23新增）----------
+// 每條人生各自一個ap物件：daily=每日池、gift=禮包點、purchased=購買點(封測未開放購買，欄位先預留)、lastRefillDate=上次補點的台灣日期
+const AP_DAILY_REFILL = 5;        // 【定案,10.3.5】每天補到5點，不累加
+const AP_NEW_LIFE_GIFT = 55;      // 【定案,10.3.4】新手禮包55點（使用者2026-09-23確認由50改55）
+const AP_GIFT_CLAIMS_PER_KEY = 3; // 【定案,10.3.4】每把金鑰一輩子最多領3次
+const AP_COST_PER_TURN = 1;       // 【定案,10.3.1】每回合固定扣1點，選項/自由輸入相同
+const GIFT_CLAIMS_LOCAL_PREFIX = "life_sim_gift_claims:"; // Worker連不上時的本機後備計數
+const ARCHIVE_LOCAL_PREFIX = "life_sim_archive:";         // 人生回顧的本機後備副本
+// 【定案,10.3.5】「今天」一律換算成Asia/Taipei日期(UTC+8，無日光節約)，不直接用UTC日期；
+// 封測階段暫用瀏覽器時間，開放付費前要改由伺服器判斷
+function taipeiDateString(ts){
+  return new Date((ts ?? Date.now()) + 8*3600*1000).toISOString().slice(0,10);
+}
+function newLifeAP(){
+  return { daily:AP_DAILY_REFILL, gift:0, purchased:0, lastRefillDate:taipeiDateString(), giftPending:true };
+}
+// 舊存檔相容/防呆：沒有ap物件時補一個（不發禮包，只給當日每日池）
+function ensureAP(s){
+  if(!s.ap) s.ap = { daily:AP_DAILY_REFILL, gift:0, purchased:0, lastRefillDate:taipeiDateString() };
+  return s.ap;
+}
+function totalAP(s){ const ap = ensureAP(s); return ap.daily + ap.gift + ap.purchased; }
+// 不用排程：進入遊戲或行動時發現台灣日期不同才補。只看每日池，永久池多少不影響。回傳是否有補
+function refillDailyIfNeeded(s){
+  const ap = ensureAP(s);
+  const today = taipeiDateString();
+  if(ap.lastRefillDate === today) return false;
+  ap.lastRefillDate = today;
+  if(ap.daily >= AP_DAILY_REFILL) return false;
+  ap.daily = AP_DAILY_REFILL;
+  return true;
+}
+// 扣點順序：每日池 → 禮包點 → 購買點（先用免費的，保護付費的）；回傳各池實際扣了多少，API失敗時照原樣退回
+function spendAP(s, n){
+  const ap = ensureAP(s);
+  const used = { daily:0, gift:0, purchased:0 };
+  for(const pool of ["daily","gift","purchased"]){
+    const take = Math.min(n, ap[pool]);
+    ap[pool] -= take; used[pool] = take; n -= take;
+  }
+  return used;
+}
+function refundAP(s, used){
+  const ap = ensureAP(s);
+  ap.daily += used.daily; ap.gift += used.gift; ap.purchased += used.purchased;
+}
+// 新手禮包：跟著金鑰計次，優先問Worker（跨裝置、清瀏覽器資料也不會重置），連不上才退回本機計數
+async function claimNewLifeGift(key){
+  const localName = GIFT_CLAIMS_LOCAL_PREFIX + key;
+  let localCount = 0;
+  try{ localCount = Number(localStorage.getItem(localName)) || 0; }catch(e){}
+  try{
+    const res = await fetch(WORKER_URL+"claim-gift", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ key }) });
+    const data = await res.json();
+    if(res.ok && data && data.success){
+      try{ localStorage.setItem(localName, String(Math.max(localCount, data.claimed||0))); }catch(e){}
+      return !!data.granted;
+    }
+  }catch(e){ console.warn("禮包領取改用本機計數", e); }
+  if(localCount >= AP_GIFT_CLAIMS_PER_KEY) return false;
+  try{ localStorage.setItem(localName, String(localCount+1)); }catch(e){}
+  return true;
+}
 
 const STAGE_LABELS = [
   [0,14,"孩提"],[15,17,"高中"],[18,22,"大學／技職"],
@@ -599,6 +668,27 @@ function assembleEnding(s, r){
   };
 }
 
+// 三、3.7.3（2026-09-23拍板）自律作為效率乘數：自律乘數＝1+(自律-50)×0.5%，範圍0.75~1.25【測試參數,待驗證】。
+// 斜率刻意取其他四條光譜(3.7.3既有公式多為×1%)的一半，因為3.2.2才識成長鏈已疊加智慧/邏輯/團隊三層乘數，
+// 若自律再用1%斜率，低自律角色會被連乘壓得太重。套用位置：①3.2.2才識成長鏈 ②8.3興趣投入度成長 ③3.5.1過勞門檻(見下方burnout signal)。
+// 此條與3.7.2（自律本身怎麼成長，見SELF_DISCIPLINE_INTEREST_STREAK_1/2）是兩件事，不要混在一起。
+function getDisciplineMultiplier(s){
+  return clamp(1 + (s.conscientiousness.selfDiscipline-50)*0.005, 0.75, 1.25);
+}
+// 三、3.5.1（2026-09-23拍板）過勞/憂鬱訊號門檻：自律≥60時連續6回合、其餘連續5回合，取代原本文件寫的「5-6回合」模糊區間。
+// 技術判斷：3.5.1文件本身只說「觸發過勞/憂鬱相關負面里程碑事件」，但代碼裡沒有獨立的過勞里程碑機制，
+// s.lowHealthStreak原本只是原始數字送給AI參考(low_health_streak)，AI自行決定何時寫成敘事，不是程式強制觸發；
+// 九、9.7的WITHDRAWAL_STREAK_TRIGGER(=4)是另一個獨立機制(休學候選)，不是3.5.1這條，兩者不能混用同一個門檻，
+// 故這裡新增一個獨立訊號(burnoutSignalNow)，達門檻時额外告訴AI「這是門檻制的明確訊號」，不去動9.7既有的休學門檻
+function burnoutStreakThreshold(s){
+  return s.conscientiousness.selfDiscipline>=60 ? 6 : 5;
+}
+// 三、3.2.4（2026-09-23拍板）exam_score_hint的才識拖累斜率：考前每選一次興趣路徑扣EXAM_INTEREST_DRAG_PER_CHOICE分【測試參數,待驗證】，
+// 乘上拖累倍率(才識越高，拖累越輕)，沿用3.7.3以50分為中性基準的結構，但斜率(1%)、依據數值(才識而非自律)皆與3.7.3自律乘數是兩件獨立的事
+const EXAM_INTEREST_DRAG_PER_CHOICE = 2; // 【測試參數,待驗證】
+function computeExamInterestDragMultiplier(knowledge){
+  return clamp(1 - (knowledge-50)*0.01, 0.5, 1.5);
+}
 // 三、3.2.2（9/16修正）才識成長：AI只給event_type標籤，程式查表決定「事件原始學習值」，取代原本AI直接給的knowledge delta
 // 區間數字為【測試參數,待驗證】，milestone上限1~2次取上限值2（同一人生階段=timeState.stageMode）
 const KNOWLEDGE_EVENT_VALUES = { ordinary:[3,5], intensive:[5,8], milestone:[10,15] };
@@ -648,8 +738,9 @@ function rollKnowledgeRawValue(eventType, eventId, s){
 // 以下數字皆為【測試參數,待驗證】，文件本身也明講候選淡出時間、轉正門檻等尚未定案，這裡先給一組內部一致的測試值
 const INTEREST_CATEGORIES = ["藝術創作","手作工藝","知識研究","體能競技","科技邏輯","社交表演","商業交易"];
 const INTEREST_CANDIDATE_TO_ACTIVE_STREAK = 3; // 候選連續正向N次轉正為正式興趣卡【測試參數】
-const INTEREST_CANDIDATE_FADE_TURNS = 6; // 候選興趣連續N回合沒有任何互動就自然淡出消失【測試參數】
-const INTEREST_ACTIVE_DORMANT_TURNS = 10; // 正式興趣卡連續N回合沒有投入就降階為背景興趣【測試參數】
+// 八、8.1（2026-09-23拍板）：候選興趣12回合(對齊四、4.1 NPC「12回合無互動降級」)、正式興趣卡24回合，取代原本6/10的暫定值
+const INTEREST_CANDIDATE_FADE_TURNS = 12; // 【測試參數,待驗證】候選興趣距上次positive/neutral反應滿N回合就淡出消失
+const INTEREST_ACTIVE_DORMANT_TURNS = 24; // 【測試參數,待驗證】正式興趣卡距上次positive投入滿N回合就降階為背景興趣
 const INTEREST_SIDE_BUSINESS_THRESHOLD = 40; // 【定案】投入度達40觸發副業契機事件
 const SELF_DISCIPLINE_INTEREST_STREAK_1 = 3; // 【定案,3.7.2】連續3次持續投入
 const SELF_DISCIPLINE_INTEREST_STREAK_2 = 6; // 【定案,3.7.2】連續6次持續投入
@@ -668,6 +759,8 @@ function computeInterestCareerWeightBonus(investment){
 //   positiveStreak仍是嚴格「連續」計數，供3.7.2自律判定使用，中斷(negative)一樣重新起算，這條規則v2.1未變動
 function applyInterestEvent(s, interestEvent){
   if(!interestEvent || !interestEvent.category || !INTEREST_CATEGORIES.includes(interestEvent.category)) return;
+  // 三、3.2.4（2026-09-23拍板）：這回合的行動投入在興趣路徑上，算一次考前拖累計數，與study_count_this_term同時累積、同時歸零
+  s.interestCountThisTerm = (s.interestCountThisTerm||0)+1;
   if(!s.interestCandidates) s.interestCandidates = [];
   const category = interestEvent.category;
   const reaction = interestEvent.reaction; // "positive" | "neutral" | "negative"
@@ -675,15 +768,19 @@ function applyInterestEvent(s, interestEvent){
   if(!card){
     card = {
       id: category+"_"+s.turnCount, category, status:"candidate", investment:0, positiveStreak:0, candidateProgress:0,
-      lastTouchTurn: s.turnCount, sideBusinessOffered:false, sideBusinessStatus:null,
+      lastEngagedRound: s.turnCount, sideBusinessOffered:false, sideBusinessStatus:null,
       selfDisciplineAwarded3:false, selfDisciplineAwarded6:false
     };
     s.interestCandidates.push(card);
   }
-  card.lastTouchTurn = s.turnCount; // 任何反應都算「有互動」，重置淡出/降階的閒置計時
+  // 八、8.1（2026-09-23拍板）：candidate階段positive/neutral都算互動、重置淡出計時；
+  // active階段只有positive算投入、重置降階計時，neutral不算；negative兩階段都不重置(呼應「negative反應不會重置計時」)
+  if(reaction==="positive" || (reaction==="neutral" && card.status==="candidate")){
+    card.lastEngagedRound = s.turnCount;
+  }
   if(reaction==="positive"){
     const raw = rnd(4,9); // 8.3【測試參數】原始投入值，量級比照其他成長型數值
-    const grown = applyMarginalDiminish(raw, card.investment); // 8.3：與才識/人脈共用同一套邊際遞減
+    const grown = applyMarginalDiminish(raw*getDisciplineMultiplier(s), card.investment); // 8.3：套3.7.3自律乘數後再套邊際遞減，與才識/人脈共用同一套邊際遞減
     card.investment = clamp(card.investment+grown, 0, 100);
     card.positiveStreak++;
     card.candidateProgress = (card.candidateProgress||0) + 1; // 8.2：候選進度+1，不設上限
@@ -714,7 +811,7 @@ function applyInterestEvent(s, interestEvent){
 function sweepInterestDecay(s){
   if(!s.interestCandidates) return;
   s.interestCandidates = s.interestCandidates.filter(card=>{
-    const idleTurns = s.turnCount - card.lastTouchTurn;
+    const idleTurns = s.turnCount - (card.lastEngagedRound ?? s.turnCount);
     if(card.status==="candidate" && idleTurns>=INTEREST_CANDIDATE_FADE_TURNS) return false;
     if(card.status==="active" && idleTurns>=INTEREST_ACTIVE_DORMANT_TURNS) card.status="dormant";
     return true;
@@ -842,17 +939,21 @@ const MARRIAGE_CRISIS_COOLDOWN_TURNS = 20; // 【測試參數,待驗證,7.6.2】
 const MARRIAGE_CRISIS_ESCALATING_TEEN_CHOICES = ["strict_rules","let_go"];
 function sweepMarriageCrisisCandidate(s){
   const spouse = s.characters.find(c=>c.romanceStatus==="married");
-  if(!spouse){ s.justEscalatedTeenConflict = false; return; }
+  if(!spouse){ s.justEscalatedTeenConflict = false; s.justLostJob = false; s.justReachedFertilityStage4 = false; return; }
   spouse.lowAffinityStreak = spouse.affinity<MARRIAGE_CRISIS_LOW_THRESHOLD ? (spouse.lowAffinityStreak||0)+1 : 0;
   if(!s.pendingMarriageCrisis && s.turnCount >= (s.marriageCrisisCooldownUntilTurn||0)){
     const lowStreakTrigger = spouse.lowAffinityStreak >= MARRIAGE_CRISIS_LOW_STREAK_TRIGGER;
-    // 特定高壓事件疊加：青春期衝突激化方向、配偶失業(掛在十二、職涯系統的career_status，本輪12尚未實作前恆為undefined，不影響其他觸發路徑)
-    const pressureEventTrigger = !!s.justEscalatedTeenConflict || s.careerStatus==="unemployed";
+    // 特定高壓事件疊加：青春期衝突激化方向、剛失業、七、7.3.3不孕症走到第四階段
+    // 【定案,2026-09-23】三個旗標都是「只在狀態剛發生的那一回合觸發」，本函式每回合結束都會清成false，
+    // 剛好滿足「如果剛失業/剛進第四階段那回合婚姻危機正在冷卻期，則不觸發也不延後」的要求——旗標只活一個sweep週期，不會被留到冷卻結束後重新判定
+    const pressureEventTrigger = !!s.justEscalatedTeenConflict || !!s.justLostJob || !!s.justReachedFertilityStage4;
     if(lowStreakTrigger || pressureEventTrigger){
       s.pendingMarriageCrisis = { spouseName: spouse.name };
     }
   }
   s.justEscalatedTeenConflict = false;
+  s.justLostJob = false;
+  s.justReachedFertilityStage4 = false;
 }
 // choice: "repair"／"maintain"／"divorce"。三者在幸福感計算上地位平等，不預設哪個正確(呼應六、6.4)
 // 技術判斷：文件明文只講「選擇修復後設冷卻期」，但「維持現狀」若不重置也會導致下回合立刻再次觸發(違反6.1不可無止盡重複的精神)，
@@ -928,6 +1029,11 @@ function computeInheritedParentingStyle(child){
 // ========== 十二、職涯系統（2026-09-20新增） ==========
 // 【定案,12.1】不新增第二套「工作績效」數值，職場表現一律由既有數值(才識/自律/責任感/人脈)合成
 // 【定案,12.1】本章通則：不升遷/不創業/一輩子同一份工作都不預設扣分，只能透過既有幸福感管道的投入回饋影響(呼應3.8.4程式層禁令)
+// 【定案,2026-09-23】career_status集中定義成常數，避免中英文字串對不上（曾發生七、7.6.2誤比對英文"unemployed"，但這裡實際寫入的是中文"失業"，導致條件永遠不成立）
+const CAREER_STATUS = {
+  EMPLOYED: "在職", JOB_SEARCHING: "求職中", UNEMPLOYED: "失業",
+  BUSINESS: "創業中", SEMI_RETIRED: "半退休", RETIRED: "退休", NOT_EMPLOYED: "未就業"
+};
 
 // 12.3：職級語意依類別調整，自營類另看12.8經營規模不套用此表；自由/創作類另有專屬語意標籤
 const JOB_LEVEL_LABELS_DEFAULT = ["新人","熟手","資深","管理職"];
@@ -971,17 +1077,20 @@ function computeHireProbability(s, targetCategory, opts){
   if(s.studentStatus==="withdrawn") pp -= 10;
   if((s.collegeDelayYearsUsed||0) > 0) pp -= 5;
   if(s.age>=55) pp -= 20; else if(s.age>=50) pp -= 10;
+  // 十二、12.11.1（2026-09-22新增）：自由接案/演藝圈職涯伏筆成為候選時，「自由/創作類」錄取機率加成，比照科系對口加成的作法
+  if(opts.creativeBonusPct && targetCategory==="自由/創作類") pp += opts.creativeBonusPct;
   return clamp(pp,5,90);
 }
-function buildJobSearchOffers(s){
-  const isTransfer = s.careerStatus==="在職";
+function buildJobSearchOffers(s, extraOpts){
+  const isTransfer = s.careerStatus===CAREER_STATUS.EMPLOYED;
   return OCCUPATION_CATEGORIES.map(cat=>({
     category: cat.key,
-    probPct: Math.round(computeHireProbability(s, cat.key, { crossCategoryTransfer: isTransfer && s.occupationCategory!==cat.key }))
+    probPct: Math.round(computeHireProbability(s, cat.key, Object.assign({ crossCategoryTransfer: isTransfer && s.occupationCategory!==cat.key }, extraOpts)))
   }));
 }
 // 12.4/12.6【定案,務必遵守12.13】求職/轉職成敗判定完全由客戶端擲骰決定；十一、11.4/12.14明牌檢定：roll+probPct完整回傳供UI詳細呈現
-function resolveJobApplication(s, category, isTransfer){
+function resolveJobApplication(s, category, isTransfer, opts){
+  opts = opts||{};
   const isFallbackForced = (s.jobSearchStreak||0) >= JOB_SEARCH_STREAK_FALLBACK;
   let finalCategory = category;
   let roll, probPct, hired;
@@ -990,7 +1099,7 @@ function resolveJobApplication(s, category, isTransfer){
     finalCategory = ["不穩定/待業類","勞力/服務類"].includes(category) ? category : pick(["不穩定/待業類","勞力/服務類"]);
     roll = 1; probPct = 100; hired = true;
   } else {
-    probPct = Math.round(computeHireProbability(s, category, { crossCategoryTransfer: isTransfer && s.occupationCategory!==category }));
+    probPct = Math.round(computeHireProbability(s, category, { crossCategoryTransfer: isTransfer && s.occupationCategory!==category, creativeBonusPct: opts.creativeBonusPct }));
     roll = rnd(1,100);
     hired = roll <= probPct;
   }
@@ -998,7 +1107,8 @@ function resolveJobApplication(s, category, isTransfer){
     const wasFirstJob = !s.occupationCategory;
     const sameCategory = isTransfer && s.occupationCategory===finalCategory;
     s.jobSearchStreak = 0;
-    if(isTransfer && !sameCategory){
+    // 十二、12.6.1【定案】海外型轉職一律視為跨類別轉職的子情境(留學/外派/移居)，即使選了同一類別也套用降級/歸零，不比照一般同類別轉職保留
+    if(isTransfer && (!sameCategory || opts.isOverseas)){
       // 12.6【定案】跨類別轉職：job_level降一級(不低於新人)，tenure_months歸零
       s.jobLevel = 0; s.tenureMonths = 0;
     }
@@ -1006,7 +1116,7 @@ function resolveJobApplication(s, category, isTransfer){
     s.occupationCategory = finalCategory;
     const catDef = findOccupationCategory(finalCategory);
     s.riskyLifestyle = !!(catDef && catDef.isHighRisk); // 12.3：is_high_risk旗標接上7.1.1死亡機率加成
-    s.careerStatus = "在職";
+    s.careerStatus = CAREER_STATUS.EMPLOYED;
     s.retirementStatus = s.retirementStatus || "在職";
     s.monthlyIncome = Math.round(computeCareerSalary(s, finalCategory) * SALARY_SCALE);
     if(wasFirstJob && !s.mealFullyUnlocked){ s.mealFullyUnlocked = true; s.mealJustUnlocked = true; }
@@ -1017,9 +1127,15 @@ function resolveJobApplication(s, category, isTransfer){
     rollCareerForeshadow(s); // 12.11：畢業後首次求職／轉職／失業後再就業，三個觸發點都會經過這裡的「錄取成功」分支
   } else {
     s.jobSearchStreak = (s.jobSearchStreak||0)+1;
-    if(s.careerStatus!=="在職") s.careerStatus = "求職中";
+    if(s.careerStatus!==CAREER_STATUS.EMPLOYED) s.careerStatus = CAREER_STATUS.JOB_SEARCHING;
   }
   s.pendingJobSearch = null;
+  // 十二、12.11.1（2026-09-22新增）：若這次求職候選來自職涯伏筆(自由接案/演藝圈線/海外線)，結算候選狀態——
+  // 「已接受」定義為確實錄取且落在該線對應的目標路徑(自由接案/演藝圈線需命中自由/創作類；海外線只要錄取即算，因為重點是離開原職而非特定類別)
+  if(opts.foreshadowLine){
+    const landedIntendedPath = opts.isOverseas ? hired : (hired && finalCategory==="自由/創作類");
+    closeForeshadowCandidate(s, opts.foreshadowLine, landedIntendedPath);
+  }
   s.careerEventLog = { type:"job_search", category:finalCategory, roll, probPct, hired, isTransfer:!!isTransfer, wasFallback:isFallbackForced };
   return { category:finalCategory, roll, probPct, hired };
 }
@@ -1027,8 +1143,8 @@ function resolveJobApplication(s, category, isTransfer){
 function checkJobSearchTrigger(s){
   if(s.pendingJobSearch) return;
   const graduatedNotWorking = (s.studentStatus==="graduated" || s.studentStatus==="withdrawn") &&
-    !s.occupationCategory && s.careerStatus!=="創業中" && s.careerStatus!=="退休" && s.careerStatus!=="半退休";
-  const searching = s.careerStatus==="求職中" || s.careerStatus==="失業" || graduatedNotWorking;
+    !s.occupationCategory && s.careerStatus!==CAREER_STATUS.BUSINESS && s.careerStatus!==CAREER_STATUS.RETIRED && s.careerStatus!==CAREER_STATUS.SEMI_RETIRED;
+  const searching = s.careerStatus===CAREER_STATUS.JOB_SEARCHING || s.careerStatus===CAREER_STATUS.UNEMPLOYED || graduatedNotWorking;
   if(searching){
     s.pendingJobSearch = { offers: buildJobSearchOffers(s), isTransfer:false, isFallback:(s.jobSearchStreak||0)>=JOB_SEARCH_STREAK_FALLBACK };
   }
@@ -1040,7 +1156,7 @@ function detectJobChangeIntent(actionText){
 }
 // 12.6【定案】被動候選訊號一律採可結構化觀察的數值，不使用幸福感(隱藏數值，依3.8.1不進入判決迴路)
 function checkTransferCandidate(s, activeIntent){
-  if(s.careerStatus!=="在職" || s.pendingJobSearch || (s.careerTransferCooldown||0)>0) return;
+  if(s.careerStatus!==CAREER_STATUS.EMPLOYED || s.pendingJobSearch || (s.careerTransferCooldown||0)>0) return;
   const passiveTrigger = (s.promotionDeclineStreak||0)>=CAREER_TRANSFER_STREAK_TRIGGER || (s.lowHealthStreak||0)>=CAREER_TRANSFER_STREAK_TRIGGER;
   if(activeIntent || passiveTrigger){
     s.pendingJobSearch = { offers: buildJobSearchOffers(s), isTransfer:true, isFallback:false, passive:!activeIntent };
@@ -1051,7 +1167,7 @@ function checkTransferCandidate(s, activeIntent){
 const PROMOTION_TENURE_MONTHS = [24,48,72];
 const PROMOTION_COOLDOWN_TURNS = 6; // 【測試參數,待驗證,12.5】
 function checkPromotionCandidate(s){
-  if(s.careerStatus!=="在職" || s.occupationCategory==="自營/家庭事業類") return; // 自營類看12.8經營規模，不套用升遷
+  if(s.careerStatus!==CAREER_STATUS.EMPLOYED || s.occupationCategory==="自營/家庭事業類") return; // 自營類看12.8經營規模，不套用升遷
   if(s.pendingPromotionOffer || s.pendingJobSearch || (s.promotionCooldown||0)>0) return;
   const level = s.jobLevel||0;
   if(level>=3){ checkCareerForkAtLevelCap(s); return; }
@@ -1109,7 +1225,7 @@ const LAYOFF_ANNUAL_PROBABILITY = {
 };
 const LAYOFF_TENURE_DISCOUNT_INTERVAL_YEARS = 3;
 function rollAnnualLayoffCheck(s){
-  if(s.careerStatus!=="在職") return { justForeshadowed:false, layoffTriggered:false };
+  if(s.careerStatus!==CAREER_STATUS.EMPLOYED) return { justForeshadowed:false, layoffTriggered:false };
   const baseProb = LAYOFF_ANNUAL_PROBABILITY[s.occupationCategory];
   if(baseProb==null) return { justForeshadowed:false, layoffTriggered:false };
   const tenureYears = (s.tenureMonths||0)/12;
@@ -1119,7 +1235,8 @@ function rollAnnualLayoffCheck(s){
   // 12.7【定案】裁員前需有前兆，比照7.1.2前兆機制的兩段式關卡設計精神
   if(!s.layoffForeshadowed){ s.layoffForeshadowed = true; return { justForeshadowed:true, layoffTriggered:false }; }
   s.layoffForeshadowed = false;
-  s.careerStatus = "失業";
+  s.careerStatus = CAREER_STATUS.UNEMPLOYED;
+  s.justLostJob = true; // 【定案,2026-09-23】七、7.6.2婚姻危機失業觸發改讀這個旗標，回合結束時清除
   s.monthlyIncome = 0;
   s.jobSearchStreak = 0;
   return { justForeshadowed:false, layoffTriggered:true };
@@ -1137,8 +1254,9 @@ function launchBusiness(s){
   s.cash -= capital;
   s.businessCapital = capital;
   s.businessStatus = "經營中";
+  s.businessOrigin = "startup"; // 12.11.1（2026-09-22新增）：區別於接手家業，供rollAnnualBusinessCheck()判斷是否套用接手家業的成功率加成
   s.occupationCategory = "自營/家庭事業類";
-  s.careerStatus = "創業中";
+  s.careerStatus = CAREER_STATUS.BUSINESS;
   s.consecutiveLossYears = 0;
   s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE);
   // 12.8.3：第一次創業改列客戶端結構化自動判斷
@@ -1146,12 +1264,16 @@ function launchBusiness(s){
   s.careerEventLog = { type:"business_launch", success:true };
   return true;
 }
-// 12.8.2【定案,測試參數】年度營運成功率＝基礎45%＋(成就傾向−50)×0.3＋才識修正＋人脈修正＋相關興趣投入度修正(上限+5個百分點)
+// 十二、12.11.1（2026-09-22新增,Claude Code依使用者直接詢問後建議判斷,可覆寫）：接手家業已有既有客源/品牌/營運模式，
+// 起跑點比從零開始的新創更穩，年度營運成功率額外+10個百分點，量級比照下方才識/人脈修正(各自約±10)與興趣投入度修正上限(+5)同一數量級
+const INHERITED_BUSINESS_SUCCESS_BONUS_PP = 10; // 【測試參數】
+// 12.8.2【定案,測試參數】年度營運成功率＝基礎45%＋(成就傾向−50)×0.3＋才識修正＋人脈修正＋相關興趣投入度修正(上限+5個百分點)＋接手家業加成
 function rollAnnualBusinessCheck(s){
   if(s.businessStatus!=="經營中") return null;
   const topInvestment = (s.interestCandidates||[]).length ? Math.max.apply(null,(s.interestCandidates||[]).map(c=>c.investment||0)) : 0;
   const interestMod = Math.min(topInvestment*0.05, 5); // 8.4限制：興趣投入度只能是有上限的修正項，不得直接當成功率使用
-  const probPct = clamp(45 + (s.conscientiousness.achievement-50)*0.3 + (s.stats.knowledge-50)*0.1 + (s.stats.network-50)*0.1 + interestMod, 5, 95);
+  const inheritedMod = s.businessOrigin==="inherited" ? INHERITED_BUSINESS_SUCCESS_BONUS_PP : 0;
+  const probPct = clamp(45 + (s.conscientiousness.achievement-50)*0.3 + (s.stats.knowledge-50)*0.1 + (s.stats.network-50)*0.1 + interestMod + inheritedMod, 5, 95);
   const roll = rnd(1,100);
   // 技術判斷：三態切分非文件明文規定，成長取roll<=probPct，持平再取後20個百分點，其餘視為虧損
   let outcome;
@@ -1178,10 +1300,12 @@ function resolveBusinessContinuation(s, choice){ // "close"/"persist"/"inject"
   s.pendingBusinessContinuation = null;
   if(choice==="close"){
     s.businessStatus = "收攤";
-    s.careerStatus = "失業"; // 12.8.2【定案】收攤後回到12.4求職段落，不卡死人生
+    s.careerStatus = CAREER_STATUS.UNEMPLOYED; // 12.8.2【定案】收攤後回到12.4求職段落，不卡死人生
+    s.justLostJob = true; // 【定案,2026-09-23】收攤視同一次失業寫入點，同樣要設旗標
     s.occupationCategory = null;
     s.monthlyIncome = 0;
     s.consecutiveLossYears = 0;
+    s.businessOrigin = null;
   } else if(choice==="inject"){
     const capital = computeStartupCapitalRequired();
     if(s.cash>=capital){ s.cash -= capital; s.businessCapital = (s.businessCapital||0)+capital; s.consecutiveLossYears = 0; }
@@ -1204,7 +1328,7 @@ const RETIREMENT_REPLACEMENT_RATE = {
 const RETIREMENT_FORCED_HEALTH_THRESHOLD = 20; // 【測試參數,待驗證,12.10／十三、13.3.4】待十三章health_cap機制實作後再校準
 function checkRetirementCandidate(s){
   if(s.retirementStatus==="已退休" || s.pendingRetirementOffer) return;
-  const working = s.careerStatus==="在職" || s.careerStatus==="創業中" || s.careerStatus==="半退休";
+  const working = s.careerStatus===CAREER_STATUS.EMPLOYED || s.careerStatus===CAREER_STATUS.BUSINESS || s.careerStatus===CAREER_STATUS.SEMI_RETIRED;
   if(!working) return;
   // 被迫退休分支：健康低於閾值時，不經過六選項候選，直接觸發（十三、13.3.4重大疾病治療期的觸發，待十三章實作後另外補掛）
   if(s.stats.health < RETIREMENT_FORCED_HEALTH_THRESHOLD){
@@ -1227,7 +1351,7 @@ function resolveRetirementOffer(s, choice){
   const rate = RETIREMENT_REPLACEMENT_RATE[s.occupationCategory] || 0.45;
   const preRetireSalary = s.monthlyIncome;
   s.retirementStatus = "已退休";
-  s.careerStatus = choice==="semi" ? "半退休" : "退休";
+  s.careerStatus = choice==="semi" ? CAREER_STATUS.SEMI_RETIRED : CAREER_STATUS.RETIRED;
   // 3.4.7既有「下一個完整月份才計入」規則：這裡直接覆寫monthlyIncome，因為退休決定發生在彈窗(回合之間)，
   // 自然只會影響下一次月結算，不會回溯這一回合已經算過的舊薪水，效果上等同「下一個完整月份起才變動」
   s.monthlyIncome = Math.round(preRetireSalary * rate * (choice==="semi" ? 0.5 : 1));
@@ -1236,25 +1360,103 @@ function resolveRetirementOffer(s, choice){
 }
 
 // 12.11 職涯伏筆觸發點：掛在5個既有職涯狀態轉換節點，不新增判定回合(呼應9.1)
-// 【已知簡化】五條伏筆線本身尚無對應的下游數值後果(9.6/9.7既有承認的缺口)，本輪只做「觸發並記錄」，供AI敘事參考，
-// 不強制彈窗要求玩家立刻決定要不要走這條線——玩家仍可透過自由輸入/側業轉正/12.8創業自行銜接
+// 12.11.1（2026-09-22新增，取代原本「只寫入不讀取」的缺口）：命中後不再是單純的旗標陣列，而是{line,hitAge,hitTurn,status}
+// 記錄，status依序鋪陳中(brewing)→已成為候選(candidate)→已接受(accepted)/已拒絕(declined)；判定順序每次隨機打亂，
+// 不再固定創業線優先；每條線只要曾經有記錄（不論哪個狀態）就不會再命中第二次
+function shuffledForeshadowLines(){
+  const arr = FORESHADOW_LINES.slice();
+  for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=arr[i]; arr[i]=arr[j]; arr[j]=t; }
+  return arr;
+}
 function rollCareerForeshadow(s){
   if(!s.studentMajorGroup) return null;
   s.careerForeshadowLines = s.careerForeshadowLines || [];
   let hit = null;
-  FORESHADOW_LINES.forEach(line=>{
+  shuffledForeshadowLines().forEach(line=>{
     if(hit) return;
+    if(s.careerForeshadowLines.some(e=>e.line===line)) return; // 每條線每一世最多命中一次
     if(Math.random() < foreshadowTriggerProbability(s.studentMajorGroup, line)){
       hit = line;
-      if(!s.careerForeshadowLines.includes(line)) s.careerForeshadowLines.push(line);
+      s.careerForeshadowLines.push({ line, hitAge:s.age, hitTurn:s.turnCount, status:"brewing" });
     }
   });
   return hit;
 }
+const FORESHADOW_CANDIDATE_DELAY_TURNS = 6; // 【測試參數】命中後延遲幾回合才排入候選，鋪陳期間讓AI先自然帶出相關人事物
+const FORESHADOW_CREATIVE_OFFER_BONUS_PP = 10; // 【測試參數】自由接案/演藝圈線候選時，「自由/創作類」錄取機率加成
+const FORESHADOW_OVERSEAS_CASH_MONTHS = 6; // 【測試參數】海外線候選現金門檻＝N個月基本生活開銷（12.6.1原本待補的具體金額）
+// 五、5.2.5／十二、12.11.1：接手家業前置條件——有一位父母角色卡職業為自營業者、仍在世、且這個機會還沒被任一觸發來源用掉過
+// （2026-09-22補充：接手家業有兩個觸發來源——本函式供伏筆線與家長退休共用同一個判斷與同一個familyBusinessOfferUsed防重複旗標）
+function findFamilyBusinessParent(s){
+  return (s.characters||[]).find(c=>c.origin==="父母，從出生起" && c.occupation==="自營業者" && c.active!==false && !c.deceased && !c.familyBusinessOfferUsed) || null;
+}
+function closeForeshadowCandidate(s, line, accepted){
+  const entry = (s.careerForeshadowLines||[]).find(e=>e.line===line && e.status==="candidate");
+  if(entry) entry.status = accepted ? "accepted" : "declined";
+}
+// 每回合都要跑的掃描：鋪陳期滿的職涯伏筆線接回既有機制成為候選。各線候選欄位若被其他事件占用，這次先跳過，下回合再試
+function sweepCareerForeshadowCandidates(s){
+  (s.careerForeshadowLines||[]).forEach(entry=>{
+    if(entry.status!=="brewing") return;
+    if((s.turnCount - (entry.hitTurn||0)) < FORESHADOW_CANDIDATE_DELAY_TURNS) return;
+    if(entry.line==="創業線"){
+      if(s.businessStatus==="經營中"){ entry.status = "declined"; return; } // 已在創業中，直接記為已使用
+      if(s.pendingBusinessLaunch) return;
+      s.pendingBusinessLaunch = { foreshadowLine: entry.line };
+      entry.status = "candidate";
+    } else if(entry.line==="自由接案" || entry.line==="演藝圈線"){
+      if(s.pendingJobSearch) return;
+      s.pendingJobSearch = { offers: buildJobSearchOffers(s, { creativeBonusPct: FORESHADOW_CREATIVE_OFFER_BONUS_PP }), isTransfer: s.careerStatus===CAREER_STATUS.EMPLOYED, isFallback:false, foreshadowLine: entry.line, creativeBonusPct: FORESHADOW_CREATIVE_OFFER_BONUS_PP };
+      entry.status = "candidate";
+    } else if(entry.line==="海外線"){
+      if(s.pendingJobSearch) return;
+      if(s.cash < computeBaseLivingCost(s)*FORESHADOW_OVERSEAS_CASH_MONTHS){ entry.status = "declined"; return; } // 現金不足，候選不成立，不扣款
+      s.pendingJobSearch = { offers: buildJobSearchOffers(s), isTransfer:true, isFallback:false, foreshadowLine: entry.line, isOverseas:true };
+      entry.status = "candidate";
+    } else if(entry.line==="接手家業"){
+      const parent = findFamilyBusinessParent(s);
+      if(!parent){ entry.status = "declined"; return; } // 前置條件不成立，只保留敘事，不產生候選
+      if(s.pendingFamilyBusinessOffer) return;
+      s.pendingFamilyBusinessOffer = { foreshadowLine: entry.line, parentName: parent.name };
+      entry.status = "candidate";
+    }
+  });
+}
+// 十二、12.11.1（2026-09-22補充）：接手家業的第二個觸發來源——家長退休（parent_retirement里程碑由AI回報completed）時，
+// 若還有一位自營業者家長沒被問過，也排入同一個「回家接手」候選；跟伏筆線觸發共用findFamilyBusinessParent()同一份判斷，
+// 兩個來源合計每位家長只會被詢問一次，差別只在觸發來源不同（呼應9.3/12.11.1【定案】兩者共用同一個交棒動作）
+function checkFamilyBusinessOnParentRetirement(s){
+  if(s.pendingFamilyBusinessOffer) return;
+  const parent = findFamilyBusinessParent(s);
+  if(!parent) return;
+  s.pendingFamilyBusinessOffer = { foreshadowLine: null, parentName: parent.name };
+}
+// 接受「接手家業」：玩家比照既有轉職流程結束原職業，occupation_category轉為自營/家庭事業類、business_status經營中，
+// 免啟動資金，不計入first_startup里程碑（12.11.1【定案】，區別於12.8.1一般創業路徑）
+function acceptFamilyBusinessOffer(s){
+  s.occupationCategory = "自營/家庭事業類";
+  s.businessStatus = "經營中";
+  s.businessOrigin = "inherited"; // 供rollAnnualBusinessCheck()判斷是否套用接手家業的成功率加成
+  s.careerStatus = CAREER_STATUS.BUSINESS;
+  s.consecutiveLossYears = 0;
+  s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE);
+  s.careerEventLog = { type:"family_business_takeover", success:true };
+}
+// pending: { foreshadowLine, parentName }；choice: "accept"/"decline"——不論接受或拒絕，該家長都標記familyBusinessOfferUsed，
+// 兩個觸發來源合計只會問這位家長一次；只有實際接受才額外標記handedOver（12.11.1【定案】「該家長職業標記為已交棒」）
+function resolveFamilyBusinessOffer(s, pending, choice){
+  const parent = s.characters.find(c=>c.name===pending.parentName);
+  if(parent){
+    parent.familyBusinessOfferUsed = true;
+    if(choice==="accept") parent.handedOver = true;
+  }
+  if(choice==="accept") acceptFamilyBusinessOffer(s);
+  if(pending.foreshadowLine) closeForeshadowCandidate(s, pending.foreshadowLine, choice==="accept");
+}
 
 // 12.12：職涯主狀態欄位初始化輔助——所有欄位皆用||預設值處理，比照9.4/9.8既有做法，不需要改newRoll()/succeedAsChild()，對舊存檔相容
 function ensureCareerDefaults(s){
-  if(!s.careerStatus) s.careerStatus = s.occupationCategory ? "在職" : "未就業";
+  if(!s.careerStatus) s.careerStatus = s.occupationCategory ? CAREER_STATUS.EMPLOYED : CAREER_STATUS.NOT_EMPLOYED;
   if(!s.retirementStatus) s.retirementStatus = "在職";
   if(typeof s.jobLevel!=="number") s.jobLevel = 0;
   if(typeof s.tenureMonths!=="number") s.tenureMonths = 0;
@@ -1273,9 +1475,17 @@ function checkCareerTriggers(s){
   checkJobSearchTrigger(s);
   checkPromotionCandidate(s);
   checkTransferCandidate(s, false);
+  sweepCareerForeshadowCandidates(s); // 十二、12.11.1（2026-09-22新增）
 }
 
 let state = null;
+// 十、10.3.8：點數歸零時畫面停用到補回來為止；玩家把頁面開著跨過台灣時間00:00時，每分鐘檢查一次自動解鎖
+setInterval(()=>{
+  if(state && state.phase==="playing" && totalAP(state)===0 && refillDailyIfNeeded(state)){
+    document.getElementById("ap-exhausted-modal")?.remove();
+    saveGame(); render();
+  }
+}, 60*1000);
 
 // 十、10.1（9/19新增）：封測階段純金鑰模式的啟動流程，取代原本單純讀localStorage的loadGame()
 // 流程：本機沒有金鑰→顯示「開始新旅程／我有復原金鑰」選擇；本機有金鑰→嘗試自動接續上次玩的slot，
@@ -1297,6 +1507,7 @@ async function initApp(){
 }
 // 讀取指定slot：先試Worker(跨裝置的最新資料)，失敗且allowLocalFallback時退回本機快取（離線容錯，不會直接卡死玩家）
 async function tryLoadSlot(key, slot, allowLocalFallback){
+  cloudSyncStatus = null; // 十、10.1補充：換一段人生要玩，上一段的同步狀態顯示沒有意義了
   try{
     const res = await fetch(WORKER_URL+"load?key="+encodeURIComponent(key)+"&slot="+slot);
     const data = await res.json();
@@ -1315,15 +1526,30 @@ async function tryLoadSlot(key, slot, allowLocalFallback){
   }
   return false;
 }
-async function showSlotPicker(key){
+async function showSlotPicker(key, currentSlot){
   let slots = [null,null,null];
+  let wallet = 0; // 十、10.3.3金鑰錢包：封測未開放購買，實際上會一直是0，轉點介面等開放付費再做
   try{
     const res = await fetch(WORKER_URL+"slots?key="+encodeURIComponent(key));
     const data = await res.json();
     if(data && data.success && Array.isArray(data.slots)) slots = data.slots;
+    if(data && data.success) wallet = Number(data.wallet)||0;
   }catch(e){ console.warn("讀取存檔清單失敗", e); }
-  state = { phase:"slotPicker", slots };
+  // 十、10.1補充（2026-09-22新增）：currentSlot有值時(從switchLife()同一瀏覽器內切換人生進來)，
+  // renderSlotPicker()要在對應那段人生標示「進行中」；換裝置輸入金鑰進來的路徑不會帶這個參數，維持原樣不顯示
+  state = { phase:"slotPicker", slots, wallet, currentSlot: currentSlot!==undefined ? currentSlot : null };
   render();
+}
+// 十、10.1補充（2026-09-22新增）：同一瀏覽器內切換人生——只清除本機「目前使用中slot」記錄，不刪除任何存檔，
+// 回到三段人生選擇畫面(跟換裝置輸入金鑰後看到的畫面一樣)，並標示玩家剛剛離開的那一段是「進行中」
+async function switchLife(){
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  const prevSlotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  const prevSlot = prevSlotRaw!==null ? Number(prevSlotRaw) : null;
+  try{ localStorage.removeItem(ACTIVE_SLOT_STORAGE_NAME); }catch(e){}
+  cloudSyncStatus = null;
+  if(!key){ state = { phase:"keyChoice" }; render(); return; } // 防呆：理論上進得了playing畫面一定已經有金鑰
+  await showSlotPicker(key, prevSlot);
 }
 async function saveGame(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
@@ -1336,7 +1562,7 @@ async function saveGame(){
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
   if(key && slot!==null && state && (state.phase==="playing" || state.phase==="ending")){
     try{
-      await fetch(WORKER_URL+"save", {
+      const res = await fetch(WORKER_URL+"save", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
           key, slot,
@@ -1344,8 +1570,38 @@ async function saveGame(){
           state
         })
       });
-    }catch(e){ console.warn("雲端存檔失敗", e); }
+      // 十、10.1補充（2026-09-22修正）：原本只看fetch有沒有拋出網路例外，Worker回傳403/429/500等HTTP錯誤狀態
+      // 時fetch本身不會拋例外，會被誤判成同步成功——改成明確檢查res.ok(HTTP狀態碼)+回傳body的success欄位
+      let data = null;
+      try{ data = await res.json(); }catch(e){}
+      if(!res.ok || !data || data.success!==true) throw new Error("Worker回傳失敗狀態："+res.status);
+      cloudSyncStatus = { success:true, time:Date.now() };
+    }catch(e){
+      console.warn("雲端存檔失敗", e);
+      cloudSyncStatus = { success:false };
+    }
+    updateCloudSyncStatusUI();
   }
+}
+// 十、10.1補充（2026-09-22新增）：只更新畫面上「☁️ 已同步」狀態文字的那個小容器，不呼叫完整的render()——
+// saveGame()是fire-and-forget呼叫(呼叫端通常不await，緊接著就呼叫render())，如果這裡也呼叫完整render()，
+// 等雲端fetch非同步結束時很可能會蓋掉玩家當下正在輸入的自訂行動文字框內容
+function cloudSyncStatusHTML(){
+  if(!cloudSyncStatus) return "";
+  if(cloudSyncStatus.success){
+    const d = new Date(cloudSyncStatus.time);
+    const hh = String(d.getHours()).padStart(2,"0");
+    const mm = String(d.getMinutes()).padStart(2,"0");
+    return `☁️ 已同步：${hh}:${mm}`;
+  }
+  return `⚠️ 雲端同步失敗，這段進度目前只存在本機 <a id="link-retry-sync">重試同步</a>`;
+}
+function updateCloudSyncStatusUI(){
+  const wrap = document.getElementById("cloud-sync-status-wrap");
+  if(!wrap) return; // 不在playing/ending畫面時，畫面上本來就沒有這個容器
+  wrap.innerHTML = cloudSyncStatusHTML();
+  const retryLink = document.getElementById("link-retry-sync");
+  if(retryLink) retryLink.onclick = ()=>{ saveGame(); };
 }
 
 const PARENTING_STYLES = [
@@ -1539,10 +1795,13 @@ function computeHouseholdStatus(s){
   const married = s.characters.find(c=>c.romanceStatus==="married");
   if(married) return (s.spouseIncome||0) > 0 ? "已婚雙薪" : "已婚單薪";
   if(s.characters.some(c=>c.romanceStatus==="divorced")) return "離婚後";
-  if(s.characters.some(c=>c.romanceStatus==="stable" && c.cohabiting)) return "同居"; // 【已知簡化】目前無獨立觸發「搬去同居但未婚」的入口，此狀態理論存在但實務上很少被觸發到，見CHANGELOG
+  if(s.characters.some(c=>c.romanceStatus==="stable" && c.cohabiting)) return "同居"; // 七、7.6.1.1（2026-09-22新增觸發入口）：穩定交往滿8回合且已搬出原生家庭時，可透過結構化彈窗選擇搬去一起住
   return "單身";
 }
-const HOUSEHOLD_SHARED_LIVING_MULTIPLIER = 1.6; // 【測試參數,待驗證,3.4.11】共同生活基本開銷＝單人基準×1.6，不是2倍
+const HOUSEHOLD_SHARED_LIVING_MULTIPLIER = 1.6; // 【測試參數,待驗證,3.4.11】已婚雙薪/已婚單薪：共同生活基本開銷＝單人基準×1.6，搭配配偶收入併入計算
+// 七、7.6.1.1／三、3.4.11（2026-09-22新增）：同居(未婚)不合併伴侶收入，係數改為單人基準×1.6÷2＝0.8倍，
+// 不再套用已婚的1.6倍——原本同居套用跟已婚一樣的1.6倍但沒有伴侶收入併入，等於玩家一個人負擔比單身還貴的開銷
+const HOUSEHOLD_COHABITING_LIVING_MULTIPLIER = HOUSEHOLD_SHARED_LIVING_MULTIPLIER / 2; // 【測試參數】0.8倍
 // 【定案】子女扶養費依年齡三級，大學階段直接接3.4.4(統一由家長支付，不扣款)，不重複建一套
 const CHILD_SUPPORT_PRESCHOOL_MAX_AGE = 5;
 const CHILD_SUPPORT_SCHOOL_MAX_AGE = 17;
@@ -1566,11 +1825,13 @@ function computeBaseLivingCost(s){
   }
   const tier = livingCostTierForState(s);
   let amount = LIVING_COST_BASE[tier] * LIVING_COST_MULTIPLIER;
-  // 三、3.4.11（2026-09-20新增，取代原本「與伴侶共同生活時整體×0.75」算不出household_status的舊做法）：
-  // 共同生活(已婚雙薪/已婚單薪/同居)採分攤係數1.6倍，不是單人基準的2倍；離婚後回到單身級距，不套用此係數
+  // 三、3.4.11（2026-09-20新增，2026-09-22拆分同居/已婚兩組係數，取代原本「與伴侶共同生活時整體×0.75」算不出household_status的舊做法）：
+  // 已婚雙薪/已婚單薪採分攤係數1.6倍(搭配配偶收入併入計算)；同居(未婚)不合併伴侶收入，改用0.8倍；離婚後回到單身級距，不套用此係數
   const householdStatus = computeHouseholdStatus(s);
-  if(householdStatus==="已婚雙薪" || householdStatus==="已婚單薪" || householdStatus==="同居"){
+  if(householdStatus==="已婚雙薪" || householdStatus==="已婚單薪"){
     amount = amount * HOUSEHOLD_SHARED_LIVING_MULTIPLIER;
+  } else if(householdStatus==="同居"){
+    amount = amount * HOUSEHOLD_COHABITING_LIVING_MULTIPLIER;
   }
   // 十三、13.3.3（2026-09-20新增）：慢性病每項每月低費用等級固定支出，掛在這裡與子女扶養費同一套週期性結算路徑
   return Math.round(amount) + computeChildSupportCost(s) + (s.chronicConditions||[]).length*CHRONIC_CONDITION_MONTHLY_COST;
@@ -1603,7 +1864,8 @@ function newRoll(carry, identity){
       affinity: aff, summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "父母，從出生起", // 四、4.1（9/19新增）：家人是先天既有關係，不是AI敘事中新認識的
       cohabiting: true, // 四、4.1.2（2026-09-20新增）：開局起與父母同住
-      age: rnd(25,35)+15 // 十三、13.5.1（2026-09-20新增）：玩家出生時父母年齡25-35歲，開局時玩家已15歲
+      age: 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX), // 十三、13.5.1（2026-09-22修正）：父母年齡＝玩家年齡＋22~38歲，開局時玩家已15歲
+      occupation: occ.label // 五、5.2.5／十二、12.11.1（2026-09-22新增）：持久化在角色卡上，供「接手家業」職涯伏筆線的前置條件判斷用
     });
   }
 
@@ -1619,7 +1881,11 @@ function newRoll(carry, identity){
       name: gp[0], relation: gp[1],
       traits:"疼愛藏在生活提醒裡，用詞偏舊式，很少直接過問交友或行程",
       affinity: rnd(55,75), summary:"", lastTurn:turnCount, active:true, isChild:false,
-      origin: "隔代教養，從出生起", cohabiting: true
+      origin: "隔代教養，從出生起", cohabiting: true,
+      // 十三、13.5.1（2026-09-23新增）：套用父母健康狀態機——祖孫兩代年齡落差各自沿用PARENT_CHILD_AGE_GAP_MIN/MAX，
+      // 開局時玩家已15歲，故祖父母年齡＝玩家年齡＋兩代落差
+      age: 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX) + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX),
+      healthStage: 1
     });
   } else if(familyStructure==="一方服刑中"){
     const incarcerated = pick(["父親","母親"]);
@@ -1630,7 +1896,7 @@ function newRoll(carry, identity){
       relation: incarcerated+"（服刑中）",
       traits:"透過書信或有限探視保持聯繫，內容報喜不報憂，關係停留在某個時間點",
       affinity: rnd(30,50), summary:"", lastTurn:turnCount, active:true, isChild:false,
-      origin: "父母，從出生起", age: rnd(25,35)+15
+      origin: "父母，從出生起", age: 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX)
     });
   }
 
@@ -1702,8 +1968,9 @@ function newRoll(carry, identity){
     age:15, luckHidden,
     family: economicTier, familyMonthlyIncome, familySavings, familyStructure, isPoliticianChild,
     collegeLocation: null,
-    timeState: { stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0 },
-    studyCountThisTerm: 0,
+    // 二、2.2（2026-09-23新增）：prologue開場段落只出現這一次，見startLife()/advanceStructuredTime()
+    timeState: { stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0, prologue:true },
+    studyCountThisTerm: 0, interestCountThisTerm: 0, // 三、3.2.4（2026-09-23拍板）：考前選興趣路徑的拖累計數，與讀書次數同時累積、同時歸零
     anxiety, avoidance, peerPosition, peerPositionSpecial,
     anxietyBaseline: anxiety, avoidanceBaseline: avoidance, peerPositionBaseline: peerPosition, // 六、6.2（2026-09-20新增）：破格里程碑判定用的開局基準線，終身不變
     keyEvent: keyEventType ? { type:keyEventType, revealed:false } : null,
@@ -1732,7 +1999,8 @@ function newRoll(carry, identity){
     // 四、4.5（9/20新增）人生軌跡紀錄：每個人生階段結束時結算一次並凍結
     lifeTrajectory: [],
     stageAccum: null,
-    actionPoints:20, maxActionPoints:20,
+    // 十、10.3：restart_item(轉世丹)沿用同一格子，禮包點/購買點全部保留、不另發禮包；全新人生才標giftPending，startLife()時領禮包
+    ap: carry?.ap ? { ...carry.ap, giftPending:false } : newLifeAP(),
     turnCount,
     characters,
     chronicle: carry?.chronicleCarry ? [carry.chronicleCarry] : [],
@@ -1771,7 +2039,9 @@ function newRoll(carry, identity){
     pendingLeaveOffer: null, // null/'financial'/'health'
     leaveResumeCountdown: 0,
     universityEventLog: null,
-    lastExamPerformanceLog: null
+    lastExamPerformanceLog: null,
+    // 九、9.8.1（2026-09-22新增）：休學復學累積的半年進位，0或1；累積到2（滿一年）時歸零並讓年齡+1
+    halfYearCarry: 0
   };
 }
 
@@ -1790,6 +2060,12 @@ const YEAR_SEGMENTS = [
   ...SEMESTER_PHASES.map(p=>({ ...p, half:"上學期" })),
   ...SEMESTER_PHASES.map(p=>({ ...p, half:"下學期" }))
 ]; // 14段：上學期7段+下學期7段（假期段落分別代表寒假/暑假），一學期預算上限27回合、一學年54回合
+// 一、1.2.9.1（2026-09-23修正,發現monthsCrossed校準bug）：學生時期每回合的monthsCrossed原本寫死1.5，
+// 54回合(一整年)累加起來等於81個月(6.75年)，跟「54回合＝年齡+1歲」的既有結構(見advanceStageYear)完全對不上——
+// 已用Node vm模擬驗證：55回合(含開場段落)跑滿一整年，累加monthsCrossed=81，不是預期的12。
+// 對照career模式既有的12/budget算法(12個月平均分攤到該年齡帶的budget回合數，兩者相除必為12)，
+// 改用同一種算法：12個月平均分攤到一整年的54回合，讓總量正確等於12，不分段落類型(exam/prep/假期等份量差異留待之後細分，見1.2.9.1備註)
+const STUDENT_MONTHS_PER_ROUND = 12 / YEAR_SEGMENTS.reduce((sum,seg)=>sum+seg.budget,0);
 
 // 二、2.5（9/16新增，9/16-v2.1下修數字+年齡帶改左閉右開）：22歲以後加速曲線，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
 // 邊界採10年一段、左閉右開（以生日為界，22-29歲＝22歲起滿30歲生日前），取代v2.1之前22-30/31-40等不對稱分段
@@ -1806,17 +2082,12 @@ function roundsPerYearForAge(age){
   const bucket = LIFE_STAGE_ROUND_BUDGET.find(b=>age>=b.minAge && age<=b.maxAge);
   return bucket ? bucket.roundsPerYear : 10;
 }
-// 九、9.4（9/16新增，大學科系系統實作前的鋪墊）：修業年限改為依角色查表，取代原本寫死的「大學4年」
-// s.collegeYearsRequired：科系基礎修業年限，尚未實作科系選擇機制前預設4年（一般科系），未來9.2/9.4科系選擇會把醫/牙/獸科系寫入5
-// s.collegeDelayYearsUsed：已使用的延畢年數，封頂COLLEGE_DELAY_CAP，尚未實作延畢觸發機制前預設0
+// 九、9.4（9/16新增）：修業年限改為依角色查表，取代原本寫死的「大學4年」
+// s.collegeYearsRequired：科系基礎修業年限，一般科系4年、醫/牙/獸科系5年，由9.2/9.4科系選擇機制(assignStudentMajor())決定，未選科系前預設4年
+// s.collegeDelayYearsUsed：已使用的延畢年數，封頂COLLEGE_DELAY_CAP，由9.5.3休學/延畢機制(sweepUniversityState())寫入
 const COLLEGE_DELAY_CAP = 2; // 【定案,9.4】延畢封頂兩年
 // 9.5.2（9/16 ChatGPT開發審閱+Claude Code判斷,可覆寫）：雙主修zero-cost，不計入delay_years，
-// 所以雙主修相關代碼（尚未實作）完成後也不該呼叫任何地方去增加collegeDelayYearsUsed
-function collegeTotalYearsRequired(s){
-  const base = s.collegeYearsRequired || 4;
-  const delay = clamp(s.collegeDelayYearsUsed||0, 0, COLLEGE_DELAY_CAP);
-  return base + delay;
-}
+// 雙主修相關代碼(renderDualMajorOfferModal()等)完成後同樣不會呼叫任何地方去增加collegeDelayYearsUsed
 const COLLEGE_GRAD_AGE_CAP = { 4:24, 5:25 }; // 【定案,9.4】其餘科系最晚24歲、醫牙獸最晚25歲畢業
 // 9.4「轉系最後可行年齡」：轉系當下年齡+目標科系修業年限+目前已用延畢年數，不得超過目標科系的畢業年齡上限
 // （已用延畢年數要算進去，因為它代表「已消耗掉多少延畢緩衝額度」，轉系不會重置這個額度，見9.4【待驗證】備註）
@@ -1825,14 +2096,26 @@ function isTransferFeasible(currentAge, targetYearsRequired, delayYearsUsed){
   const usedDelay = clamp(delayYearsUsed||0, 0, COLLEGE_DELAY_CAP);
   return (currentAge + targetYearsRequired + usedDelay) <= cap;
 }
+// 九、9.8.1（2026-09-22修正）：延畢的時間延長改由「該學期重跑」自然產生，yearInStage正常情況下不會超過base，
+// 不再用「延畢第N年」這種獨立序數，改為在年級後面附註已延畢年數（若有）
 function collegeYearLabel(s){
   const base = s.collegeYearsRequired || 4;
-  const yearInStage = s.timeState.yearInStage;
-  if(yearInStage<=base){
-    const ordinals = ["大一","大二","大三","大四","大五"];
-    return ordinals[clamp(yearInStage,1,ordinals.length)-1];
-  }
-  return `延畢第${yearInStage-base}年`; // 超過基礎修業年限的部分，用延畢年數標示，不再套用「大X」序數
+  const ordinals = ["大一","大二","大三","大四","大五"];
+  const yearInStage = clamp(s.timeState.yearInStage, 1, base);
+  const label = ordinals[clamp(yearInStage,1,ordinals.length)-1];
+  const delay = clamp(s.collegeDelayYearsUsed||0, 0, COLLEGE_DELAY_CAP);
+  return delay>0 ? `${label}・已延畢${delay}年` : label;
+}
+// 九、9.8.1（2026-09-22新增）：休學選項可用條件——delay_years尚未達上限，且「加上這次休學半年後的預計畢業年齡」
+// 不得超過該科系畢業年齡上限（取代原本「delay_years封頂兩年已自然限制最多4次」的舊定案，該定案沒考慮到轉系後
+// 起始年齡已提高的情境）
+function isAnotherLeaveFeasible(s){
+  const usedDelay = clamp(s.collegeDelayYearsUsed||0, 0, COLLEGE_DELAY_CAP);
+  if(usedDelay >= COLLEGE_DELAY_CAP) return false;
+  const base = s.collegeYearsRequired || 4;
+  const cap = COLLEGE_GRAD_AGE_CAP[base] || COLLEGE_GRAD_AGE_CAP[4];
+  const projectedGradAge = computeExpectedGraduationAge(s) + 0.5;
+  return projectedGradAge <= cap;
 }
 
 // ========== 九、大學科系系統（9/16新增）==========
@@ -1880,10 +2163,12 @@ function assignStudentMajor(s, majorKey, isFiveYear){
   s.studentIsFiveYearTrack = !!(cat.isFiveYearEligible && isFiveYear);
   s.collegeYearsRequired = s.studentIsFiveYearTrack ? 5 : 4;
 }
+// 九、9.8.1（2026-09-22修正）：改用基礎修業年限(不含delay)＋尚未實現的halfYearCarry半年——
+// 已實現的延畢（每滿兩次休學復學）已經直接反映在s.age本身，若再加整個collegeDelayYearsUsed會把同一段延畢重複計算兩次
 function computeExpectedGraduationAge(s){
-  // 預計畢業年齡：以目前年齡推算，若尚未進大學則用最新collegeYearsRequired/collegeDelayYearsUsed純推算，不受轉系影響殘留
-  const remainingYears = collegeTotalYearsRequired(s) - (s.timeState?.yearInStage||1) + 1;
-  return s.age + Math.max(0, remainingYears);
+  const base = s.collegeYearsRequired || 4;
+  const remainingYears = base - (s.timeState?.yearInStage||1) + 1;
+  return s.age + Math.max(0, remainingYears) + (s.halfYearCarry||0)*0.5;
 }
 // 9.5.1 轉系候選觸發：連續兩次段考成績低於預期區間【測試參數，9.7測試項目2待校準】
 // 「預期區間」用跟2.4考試成績算法同精神、但採client端可重算的proxy（知識值+讀書次數×3），
@@ -1954,9 +2239,13 @@ function checkWithdrawalCandidate(s){
   if((s.lowCashStreak||0)>=WITHDRAWAL_STREAK_TRIGGER){ s.pendingLeaveOffer = "financial"; }
 }
 // 9.8 leave_status復學（9/16補充,取代原本「不真的暫停回合引擎」的簡化說明）：休學期間改用獨立的「休學學期」段落，
-// 回合數比照2.3假期段落份量（6-8回合，測試參數），不套用SEMESTER_PHASES/YEAR_SEGMENTS正常學期結構（見advanceStructuredTime的onLeave分支）；
-// 復學時該學期視為未完成，segmentIndex重置回休學當下那個學期（上/下學期）的開頭重新跑一次，不從中斷點續接
-const LEAVE_OF_ABSENCE_TURNS = 7; // 【測試參數,9/16補充】6-8回合區間，比照2.3假期段落份量
+// 回合數為7回合（測試參數，9.8.1定案取代原本「比照2.3假期段落份量6-8回合」的寫法），不套用SEMESTER_PHASES/YEAR_SEGMENTS
+// 正常學期結構（見advanceStructuredTime的onLeave分支）；復學時該學期視為未完成，segmentIndex重置回休學當下那個學期
+// （上/下學期）的開頭重新跑一次，不從中斷點續接
+const LEAVE_OF_ABSENCE_TURNS = 7; // 【測試參數】
+// 一、1.2.9.1（2026-09-23修正,同monthsCrossed校準bug）：休學一學期對應delay_years+=0.5(半年=6個月)，
+// 平均分攤到LEAVE_OF_ABSENCE_TURNS回合，取代原本advanceStructuredTime onLeave分支寫死monthsCrossed:1的做法(7回合×1=7個月，跟6個月對不上)
+const LEAVE_MONTHS_PER_ROUND = 6 / LEAVE_OF_ABSENCE_TURNS;
 // 每回合college狀態下都要跑的維護：冷卻倒數、財務floor連續低值streak、休學復學倒數、雙主修/休學候選檢查
 function sweepUniversityState(s){
   if(s.timeState?.stageMode!=="college" || s.studentStatus!=="enrolled") return;
@@ -1972,6 +2261,14 @@ function sweepUniversityState(s){
       s.timeState.segmentIndex = s.leaveSemesterHalfIndex||0;
       s.timeState.turnsInSegment = 0;
       s.studyCountThisTerm = 0;
+      s.interestCountThisTerm = 0;
+      // 9.8.1（2026-09-22新增）：每完成一次休學復學記半年，累積到2次（滿一年）時年齡+1並歸零
+      s.halfYearCarry = (s.halfYearCarry||0) + 1;
+      if(s.halfYearCarry>=2){
+        s.halfYearCarry = 0;
+        s.age += 1;
+        ageChildren(s, 1);
+      }
       s.universityEventLog = { type:"leave_resumed" };
     }
     return; // 休學期間不再檢查新的雙主修/休學候選
@@ -1980,11 +2277,17 @@ function sweepUniversityState(s){
   checkDualMajorAbandonCandidate(s); // 9.5.2（9/16補充）雙主修中途放棄候選
   checkWithdrawalCandidate(s);
 }
-function segmentLabel(seg, isFirstHalf){
-  if(seg.key==="假期") return isFirstHalf ? "寒假" : "暑假";
+// 9.8.1（2026-09-22修正）：halfYearCarry為1時代表行事曆已錯開半年，寒假/暑假標籤對調
+function segmentLabel(seg, isFirstHalf, halfYearCarry){
+  if(seg.key==="假期"){
+    const isWinter = halfYearCarry ? !isFirstHalf : isFirstHalf;
+    return isWinter ? "寒假" : "暑假";
+  }
   return seg.half+"・"+seg.key;
 }
 function computeTimeLabel(s){
+  // 二、2.2（2026-09-23新增）：開場段落，整局只會出現這一次
+  if(s.timeState.prologue) return "高一開學前・暑假最後一天";
   const mode = s.timeState.stageMode;
   if(mode==="college" && s.leaveStatus==="onLeave"){
     return collegeYearLabel(s)+"・休學中"; // 9.5.3（9/16補充）：學期引擎凍結期間不顯示段落標籤，避免看起來仍在正常推進
@@ -1995,8 +2298,8 @@ function computeTimeLabel(s){
     const yr = mode==="highschool"
       ? ["高一","高二","高三"][clamp(s.timeState.yearInStage,1,3)-1]
       : collegeYearLabel(s);
-    let label = yr+"・"+segmentLabel(seg, idx<SEMESTER_PHASES.length);
-    if(mode==="college" && s.timeState.yearInStage>=collegeTotalYearsRequired(s) && idx>=SEMESTER_PHASES.length) label += "（畢業倒數）";
+    let label = yr+"・"+segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry);
+    if(mode==="college" && s.timeState.yearInStage>=(s.collegeYearsRequired||4) && idx>=SEMESTER_PHASES.length) label += "（畢業倒數）";
     return label;
   }
   if(mode==="career"){
@@ -2008,6 +2311,7 @@ function computeTimeLabel(s){
 // 介面：現階段進度指示（9/16新增）——依目前所在模式，回傳「這個小段落」還剩多少回合的進度資訊，供UI畫進度條
 // 三種模式各自的「一個段落」定義不同：學生時期是目前學期段落(開學初/準備期/考試/假期等)；休學中是休學倒數；出社會是本年度
 function computeStageProgress(s){
+  if(s.timeState.prologue) return { label:"開場", current:0, total:1 };
   const mode = s.timeState.stageMode;
   if(mode==="college" && s.leaveStatus==="onLeave"){
     const total = LEAVE_OF_ABSENCE_TURNS;
@@ -2017,7 +2321,7 @@ function computeStageProgress(s){
   if(mode==="highschool" || mode==="college"){
     const idx = s.timeState.segmentIndex % YEAR_SEGMENTS.length;
     const seg = YEAR_SEGMENTS[idx];
-    return { label:segmentLabel(seg, idx<SEMESTER_PHASES.length)+"進度", current:Math.min(s.timeState.turnsInSegment||0, seg.budget), total:seg.budget };
+    return { label:segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry)+"進度", current:Math.min(s.timeState.turnsInSegment||0, seg.budget), total:seg.budget };
   }
   if(mode==="career"){
     const total = roundsPerYearForAge(s.age);
@@ -2025,52 +2329,85 @@ function computeStageProgress(s){
   }
   return null;
 }
+// 二、2.2（2026-09-23修正）：原本的關鍵字太寬(直接/之後/過了/寒假/暑假/下學期單獨出現就觸發)，
+// 一般行動描述（例如「放學之後直接去打工」）也會被誤判成跳過，導致隨機跳段可能越過考試；
+// 收窄為只有明確跳過指令才算：跳過/快轉/直接跳到/一段時間後，或「跳到」+段落名稱
 function detectTimeSkipIntent(actionText){
-  return /跳過|直接|快轉|之後|畢業後|下學期|寒假|暑假|一段時間後|過了/.test(actionText||"");
+  const t = actionText||"";
+  if(/跳過|快轉|直接跳到|一段時間後/.test(t)) return true;
+  return /跳到/.test(t) && /寒假|暑假|下學期|期中|期末/.test(t);
+}
+// 只有「跳到」+段落名稱才有明確目標，其餘跳過指令(跳過/快轉/一段時間後)沒有指定目標
+function resolveTimeSkipTarget(actionText){
+  const t = actionText||"";
+  if(!/跳到/.test(t)) return null;
+  if(/下學期/.test(t)) return { key:"開學初", half:"下學期" };
+  if(/寒假/.test(t)) return { key:"假期", half:"上學期" };
+  if(/暑假/.test(t)) return { key:"假期", half:"下學期" };
+  if(/期中/.test(t)) return { key:"期中考", half:null };
+  if(/期末/.test(t)) return { key:"期末考", half:null };
+  return null;
+}
+// 從fromGlobalIdx往後找第一個符合target的段落，14段一輪必定會命中一次
+function findNextSegmentGlobalIdx(fromGlobalIdx, target){
+  for(let i=fromGlobalIdx+1; i<=fromGlobalIdx+YEAR_SEGMENTS.length; i++){
+    const seg = YEAR_SEGMENTS[i%YEAR_SEGMENTS.length];
+    if(seg.key===target.key && (!target.half || seg.half===target.half)) return i;
+  }
+  return fromGlobalIdx+1; // 防呆，理論上不會走到這裡
 }
 function detectStudyIntent(actionText){
   return /讀|念|書|學|考|研究|課/.test(actionText||"");
 }
-// 依經過的segment範圍[fromIdx+1, toIdx]（含跳過中間夾帶的），偵測是否跨過期中/期末考，回傳最後一個遇到的考試型別
-function detectExamCrossed(fromIdx, toIdx){
-  let examType = null;
-  for(let i=fromIdx+1;i<=toIdx;i++){
-    const seg = YEAR_SEGMENTS[i%YEAR_SEGMENTS.length];
-    if(seg.isExam) examType = seg.examType;
-  }
-  return examType;
-}
 function advanceStructuredTime(actionText){
   const s = state;
+  // 二、2.2（2026-09-23新增）：開場段落只出現這一次，不做跳過判定/不推進段落/不累計讀書次數，
+  // 系統自動產生的行動文字（例如開局那句）本來就不該被拿去做跳過判定，這個早期return涵蓋了這個情況
+  if(s.timeState.prologue){
+    const label = computeTimeLabel(s);
+    s.timeState.prologue = false;
+    return { bigJump:false, fromLabel:label, toLabel:label, currentLabel:label, monthsCrossed:0, examTriggered:false, examType:null };
+  }
   const mode = s.timeState.stageMode;
-  const skip = detectTimeSkipIntent(actionText);
   // 九、9.5.3（9/16補充）：休學期間學期引擎完全凍結，不套用SEMESTER_PHASES/YEAR_SEGMENTS，
   // segmentIndex/turnsInSegment/考試判定一律不動；回合預算另外由sweepUniversityState()的leaveResumeCountdown計數
   if(mode==="college" && s.leaveStatus==="onLeave"){
     const label = computeTimeLabel(s);
-    return { bigJump:false, fromLabel:label, toLabel:label, monthsCrossed:1, examTriggered:false, examType:null };
+    return { bigJump:false, fromLabel:label, toLabel:label, currentLabel:label, monthsCrossed:+LEAVE_MONTHS_PER_ROUND.toFixed(2), examTriggered:false, examType:null };
   }
   if(detectStudyIntent(actionText)) s.studyCountThisTerm = (s.studyCountThisTerm||0)+1;
   if(mode==="highschool" || mode==="college"){
-    const fromLabel = computeTimeLabel(s);
     const fromGlobalIdx = (s.timeState.yearInStage-1)*YEAR_SEGMENTS.length + s.timeState.segmentIndex;
+    const currentSeg = YEAR_SEGMENTS[fromGlobalIdx % YEAR_SEGMENTS.length];
+    // 二、2.2（2026-09-23修正,標籤慢一拍bug）：本回合的時間標籤與考試判定都以「這回合所在的段落」為準
+    // (即fromLabel，換段是這回合結束後才生效、供下一回合用)，取代原本把換段後的toLabel當成本回合標籤的舊寫法
+    const fromLabel = computeTimeLabel(s);
+    // 考試段不能被跳過：人已經站在考試段上，這回合強制進行考試，不允許用跳過語意繞過去
+    const skip = detectTimeSkipIntent(actionText) && !currentSeg.isExam;
     let examType = null;
     let monthsCrossed;
+    let currentLabel = fromLabel;
+    let toLabel = fromLabel;
     if(skip){
-      // 跳過語意：直接跳過整個段落（甚至更多），不逐回合累積turnsInSegment
-      const jumpSegs = rnd(2,4);
-      const toGlobalIdx = fromGlobalIdx + jumpSegs;
-      examType = detectExamCrossed(fromGlobalIdx, toGlobalIdx);
+      // 二、2.2（2026-09-23修正）：沒指定目標時只結束目前段落、進下一段第1回合，不再是原本的rnd(2,4)大跳段；
+      // 有指定目標(跳到+寒假/暑假/下學期/期中/期末)時找下一次出現該段落的位置
+      const target = resolveTimeSkipTarget(actionText);
+      let toGlobalIdx = target ? findNextSegmentGlobalIdx(fromGlobalIdx, target) : fromGlobalIdx+1;
+      // 考試段不能被跳過：途中遇到考試段就停在考試段，下一回合才真的進行考試
+      for(let i=fromGlobalIdx+1;i<toGlobalIdx;i++){
+        if(YEAR_SEGMENTS[i%YEAR_SEGMENTS.length].isExam){ toGlobalIdx = i; break; }
+      }
       s.timeState.segmentIndex = toGlobalIdx % YEAR_SEGMENTS.length;
       s.timeState.turnsInSegment = 0;
       const yearsToAdd = Math.floor(toGlobalIdx/YEAR_SEGMENTS.length) - Math.floor(fromGlobalIdx/YEAR_SEGMENTS.length);
-      monthsCrossed = Math.round(jumpSegs*1.5);
+      monthsCrossed = +((toGlobalIdx-fromGlobalIdx)*STUDENT_MONTHS_PER_ROUND).toFixed(2);
       if(yearsToAdd>0) advanceStageYear(s, mode, yearsToAdd);
+      toLabel = computeTimeLabel(s);
+      currentLabel = toLabel; // 跳過本身就是這回合的行動，這回合的敘事就是「跳到了X」
     } else {
-      // 一般行動：這個段落的turnsInSegment+1，滿了budget才進下一段
+      // 一般行動：這個段落的turnsInSegment+1，滿了budget才進下一段(下一段從下一回合才開始生效)
       s.timeState.turnsInSegment = (s.timeState.turnsInSegment||0)+1;
-      const currentSeg = YEAR_SEGMENTS[s.timeState.segmentIndex%YEAR_SEGMENTS.length];
-      monthsCrossed = 1.5; // 每回合粗估1.5個月，budget結束時的整段時間感由多回合累積出來
+      monthsCrossed = +STUDENT_MONTHS_PER_ROUND.toFixed(2); // 修正版：12個月平均分攤到一整年54回合，見上方STUDENT_MONTHS_PER_ROUND說明
       if(s.timeState.turnsInSegment >= currentSeg.budget){
         if(currentSeg.isExam) examType = currentSeg.examType;
         s.timeState.turnsInSegment = 0;
@@ -2080,14 +2417,16 @@ function advanceStructuredTime(actionText){
         if(yearsToAdd>0) advanceStageYear(s, mode, yearsToAdd);
       }
     }
-    const result = { bigJump: skip, fromLabel, toLabel: computeTimeLabel(s), monthsCrossed, examTriggered: !!examType, examType };
-    if(examType) s.studyCountThisTerm = 0; // 考試結算後歸零，重新累積下一次備考的讀書次數
+    const result = { bigJump: skip, fromLabel, toLabel, currentLabel, monthsCrossed, examTriggered: !!examType, examType };
+    if(examType){ s.studyCountThisTerm = 0; s.interestCountThisTerm = 0; } // 考試結算後歸零，重新累積下一次備考的讀書次數/興趣路徑次數
     return result;
   }
   if(mode==="career"){
     // 十二、12.6（2026-09-20新增）：玩家自由輸入出現轉職意圖時的主動觸發，關鍵字偵測比照detectStudyIntent既有模式
     if(detectJobChangeIntent(actionText)) checkTransferCandidate(s, true);
     // 二、2.5（9/16新增）：22歲以後改用「每年回合預算」取代原本半年制，budget依年齡查LIFE_STAGE_ROUND_BUDGET
+    // 2026-09-23：改用收窄後的detectTimeSkipIntent，避免「之後」「直接」等一般用語誤觸發整年跳過
+    const skip = detectTimeSkipIntent(actionText);
     const fromLabel = computeTimeLabel(s);
     const budget = roundsPerYearForAge(s.age);
     let yearsToAdd = 0;
@@ -2113,15 +2452,26 @@ function advanceStructuredTime(actionText){
       rollAnnualCareerChecks(s); // 十二、12.2/12.7/12.8/12.10：裁員/創業年度營運/退休候選，同樣每滿一年才判定一次
       rollAnnualHealthChecks(s); // 十三、13.2/13.3/13.5：健康cap收斂/疾病判定/父母健康狀態機推進，同樣每滿一年才判定一次
     }
-    return { bigJump: skip, fromLabel, toLabel: computeTimeLabel(s), monthsCrossed, examTriggered:false, examType:null, deathForeshadowNow: deathCheck.justForeshadowed, deathTriggered: deathCheck.deathTriggered };
+    const toLabel = computeTimeLabel(s);
+    return { bigJump: skip, fromLabel, toLabel, currentLabel:toLabel, monthsCrossed, examTriggered:false, examType:null, deathForeshadowNow: deathCheck.justForeshadowed, deathTriggered: deathCheck.deathTriggered };
   }
-  return { bigJump:false, fromLabel:null, toLabel:null, monthsCrossed:0, examTriggered:false, examType:null };
+  return { bigJump:false, fromLabel:null, toLabel:null, currentLabel:null, monthsCrossed:0, examTriggered:false, examType:null };
 }
 // 七、7.3.5／十三、13.5前置需求（2026-09-20新增）：子女/父母角色卡的年齡追蹤，供成長節點(7.3.5.2)、
 // 3.4.11子女扶養費三級判斷、13.5父母狀態機共用——所有帶有數字age欄位的角色卡統一在這裡跟著玩家年齡一起推進
 function ageChildren(s, years){
   if(!years) return;
   (s.characters||[]).forEach(c=>{ if(typeof c.age==="number") c.age += years; });
+}
+// 九、9.8.1（2026-09-22新增）：帶著halfYearCarry=1進入22歲以後職涯曲線時，當年度回合預算設為一半
+// （下一個生日在半年後），halfYearCarry歸零；沒有halfYearCarry時不影響原本行為
+function applyHalfYearCarryOnCareerEntry(s){
+  if(s.halfYearCarry===1){
+    s.timeState.adultTurnsInYear = Math.round(roundsPerYearForAge(s.age)/2);
+    s.halfYearCarry = 0;
+  } else {
+    s.timeState.adultTurnsInYear = 0;
+  }
 }
 function advanceStageYear(s, mode, yearsToAdd){
   s.age += yearsToAdd;
@@ -2131,11 +2481,14 @@ function advanceStageYear(s, mode, yearsToAdd){
     s.timeState.stageMode="college"; s.timeState.yearInStage=1;
     s.milestones.graduation_highschool = "completed"; // 4.3事件狀態機制：客戶端結構化判斷，不假手AI
     s.studentStatus = "enrolled"; s.pendingMajorSelection = true; // 九、9.1：進大學觸發選科系流程
-  } else if(mode==="college" && s.timeState.yearInStage>collegeTotalYearsRequired(s)){
-    s.timeState.stageMode="career"; s.timeState.adultTurnsInYear=0;
+  } else if(mode==="college" && s.timeState.yearInStage>(s.collegeYearsRequired||4)){
+    // 9.8.1（2026-09-22修正）：畢業判定改為只看科系基礎修業年限，不疊加delay_years——
+    // 延畢的時間延長已經由「休學學期重跑」自然反映在真實經過的回合數裡，不需要在這裡再加一次
+    s.timeState.stageMode="career";
+    applyHalfYearCarryOnCareerEntry(s);
     s.milestones.graduation_college = "completed";
     s.studentStatus = "graduated"; // 九、9.8：畢業後用studentStatus判斷已出社會，不是只看年齡
-    // 9.5.2：畢業時若雙主修仍在active狀態，直接結算為completed（本輪未實作中途主動放棄的獨立UI，見CHANGELOG）
+    // 9.5.2：畢業時若雙主修仍在active狀態（未經由renderDualMajorAbandonModal()中途放棄），直接結算為completed
     if(s.dualMajorStatus==="active") s.dualMajorStatus = "completed";
   }
 }
@@ -2152,13 +2505,20 @@ function releaseCohabiting(c){
   // 4.1.2【定案】解除同住標記後，回歸4.1既有的12回合降級規則
   if(c) c.cohabiting = false;
 }
-function demoteStaleCharacters(){
+// 四、4.1.1（2026-09-22新增）：hintCandidates為選填參數，供同住緩降造成的關係狀態級距改變推入第2層提示候選——
+// 緩降本身不產生第3層一般提示（呼應4.1.2「不跳一般提示」定案），只有下滑跨過relationshipStatusLabel()的級距邊界時才提示
+function demoteStaleCharacters(hintCandidates){
   const THRESHOLD=12;
   state.characters.forEach(c=>{
     if(c.cohabiting){
       const idle = state.turnCount - c.lastTurn;
       if(idle>0 && idle % COHABITING_IDLE_THRESHOLD === 0){
+        const beforeLabel = relationshipStatusLabel(c);
         c.affinity = clamp(c.affinity - COHABITING_DECAY_AMOUNT, COHABITING_AFFINITY_FLOOR, 100);
+        const afterLabel = relationshipStatusLabel(c);
+        if(hintCandidates && afterLabel!==beforeLabel){
+          hintCandidates.push({ tier:2, text:`和${c.name}的關係好像不一樣了，現在更像是「${afterLabel}」` });
+        }
       }
       return;
     }
@@ -2196,6 +2556,9 @@ function relationCategoryLabel(c){
   if(c.romanceStatus==="dating" || c.romanceStatus==="stable") return "戀愛對象";
   return c.relation||"";
 }
+// 四、4.1.1（2026-09-22新增）：第3層一般關係值增減的累積提示門檻、每回合提示則數上限
+const RELATIONSHIP_HINT_ACCUM_THRESHOLD = 8; // 【測試參數,待驗證】
+const RELATIONSHIP_HINT_MAX_PER_TURN = 2; // 【定案】
 function relationshipStatusLabel(c){
   // 4.1.1「目前關係狀態」文字化呈現。非戀愛關係的級距文字為【測試參數,待驗證】的實作判斷，非文件明文規定的精確級距
   // 四、4.4.1（2026-09-20新增）：已婚狀態下關係值變化沿用4.4既有文字化呈現，不另立婚姻危機狀態（危機由七、7.6.2承接）
@@ -2232,14 +2595,20 @@ function applyRomanceSignal(s, c, signal){
       c.romanceStatus = "dating";
     } else if(c.romanceStatus==="dating"){
       c.romanceStableStreak += 1;
-      if(c.romanceStableStreak>=ROMANCE_STABLE_STREAK) c.romanceStatus = "stable";
+      if(c.romanceStableStreak>=ROMANCE_STABLE_STREAK){
+        c.romanceStatus = "stable";
+        c.stableSinceTurn = s.turnCount; // 七、7.6.1.1（2026-09-22新增）：記錄進入穩定交往的回合數，供同居觸發入口判斷「持續≥8回合」
+      }
     }
   } else if(signal==="negative"){
     c.romanceProgress = Math.max(0, c.romanceProgress-1);
     c.romanceStableStreak = 0;
     if(c.romanceStatus==="dating" || c.romanceStatus==="stable"){
       c.romanceNegativeStreak += 1;
-      if(c.romanceNegativeStreak>=ROMANCE_BREAKUP_STREAK) c.romanceStatus = "breakup";
+      if(c.romanceNegativeStreak>=ROMANCE_BREAKUP_STREAK){
+        c.romanceStatus = "breakup";
+        releaseCohabiting(c); // 七、7.6.1.1：穩定交往轉分手時解除同住標記
+      }
     }
   }
   // 4.4定案：first_romance里程碑改由客戶端在第一次進入「交往中」時自動判定，取代AI自由回報（9/16使用者確認）
@@ -2264,13 +2633,46 @@ function applyMarriageDecisionCompletion(s){
   setSpouseIncome(s, spouseRoll.monthlyIncome, spouseRoll.category);
 }
 
+// ========== 七、7.6.1.1 同居觸發入口（2026-09-22新增） ==========
+const COHABITATION_STABLE_TURNS = 8; // 【測試參數,待驗證】穩定交往持續回合數門檻
+const COHABITATION_OFFER_COOLDOWN_TURNS = 12; // 【測試參數,待驗證】選「先維持各自住」後的冷卻回合數
+function detectCohabitationIntent(actionText){
+  return /同居|搬去一起住|一起租房|搬過去一起住|住在一起/.test(actionText||"");
+}
+// 被動觸發條件全部成立：與某NPC穩定交往≥8回合、已搬出原生家庭且住租屋/自有房、沒有配偶、沒有其他同居對象；
+// 主動觸發：偵測到同居意圖關鍵字時，條件符合就立即排入彈窗，比照detectJobChangeIntent()既有模式
+function checkCohabitationOffer(s, actionText){
+  if(s.pendingCohabitationOffer || s.turnCount < (s.cohabitationOfferCooldownUntilTurn||0)) return;
+  if(s.characters.some(c=>c.romanceStatus==="married")) return; // 已有配偶
+  if(s.characters.some(c=>c.cohabiting && c.romanceStatus==="stable")) return; // 已有其他同居對象
+  if(s.milestones.moved_out!=="completed") return; // 還住在原生家庭，不出現這個彈窗
+  if(!s.housing || (s.housing.type!=="rent" && s.housing.type!=="own")) return;
+  const partner = s.characters.find(c=>c.romanceStatus==="stable" && !c.cohabiting);
+  if(!partner) return;
+  const durationOk = (s.turnCount - (partner.stableSinceTurn ?? s.turnCount)) >= COHABITATION_STABLE_TURNS;
+  if(detectCohabitationIntent(actionText) || durationOk){
+    s.pendingCohabitationOffer = { partnerName: partner.name };
+  }
+}
+// choice: "move_in"/"stay_separate"；此彈窗是玩家選擇，不涉及機率判定，不列入十一、11.4明牌檢定白名單
+function resolveCohabitationOffer(s, partnerName, choice){
+  if(choice==="move_in"){
+    const partner = s.characters.find(c=>c.name===partnerName);
+    if(partner) partner.cohabiting = true;
+  } else {
+    s.cohabitationOfferCooldownUntilTurn = s.turnCount + COHABITATION_OFFER_COOLDOWN_TURNS;
+  }
+  s.cohabitationEventLog = { choice, partnerName }; // 供下一回合payload的cohabitation_event_now告訴AI剛發生了什麼
+}
+
 function buildSystemPrompt(){
   return `你是「人生草稿」的敘事引擎。這是一款寫實的現代人生模擬文字遊戲，玩家在台灣現代社會中從15歲的高中生一路活到老年。
 
 規則：
-- 第二人稱「你」，日記體語氣，繁體中文，每次敘事約250～350字，篇幅拉長不是單純堆字數，而是多容納一點環境/氛圍的感官細節、內心想法多鋪陳一點、必要時加一句銜接性質的過渡句。
+- 第二人稱「你」，日記體語氣，繁體中文。【一、1.2.9.1，2026-09-23取代原本固定「每次敘事約250-350字」的規則，全年齡適用，不分人生階段】字數依這回合實際涵蓋的遊戲內時間長度分級，payload的narrative_length_guide已經幫你算好這回合屬於哪一級（tier短/中/長、word_range建議字數、structure該用什麼結構），直接照著寫即可，不用自己換算週期：兩週以內(short)寫400-500字，只寫一個核心場景，不需要轉場句；兩週到一個月(medium)寫450-600字，核心場景為主可加一點次要片段；一個月以上(long)寫500-700字，用完整三段結構(核心場景+次要片段0-2個+轉場句)。核心場景本身的份量以約450字的單一場景為基準，字數往上加的部分主要用在次要片段與轉場句，不是把核心場景本身拉更長。篇幅拉長不是單純堆字數，而是多容納一點環境/氛圍的感官細節、內心想法多鋪陳一點。
 - 【誰在場原則】：父母的互動應該低頻但情感權重高，不要每回合都出現；日常高頻互動應該交給同儕、老師、老闆、同事這些人負責，父母只在真正合適的時機才登場。
 - 【避免AI感的寫作提醒】：(1) 不要濫用「不是A，是B」這種對比句型，那是講解機制方便理解用的，直接寫進敘事會讓內心話變得像在做心理測驗解說；(2) 不是每一段內心獨白都要收在一個「頓悟」或「發現」上，真實的人常常想到一半就被打斷、或根本沒有結論；(3) 避免把不同情境寫成同一種「畫面→動作→內心一句話」的固定結構，節奏要雜亂不對稱；(4) 適度加入一些「不重要的細節」——真實的內心話會岔題、講廢話、想到不相干的事，不必每一句都在為劇情或性格服務。
+- 【一、1.2.10，2026-09-23新增，務必遵守】玩家自由輸入的內容一律視為角色的意圖與行動，不是既定事實：成功與否、NPC如何反應，都由既有的數值/機率/好感度系統判定，不是玩家說了算。如果玩家在輸入裡順便替NPC寫了反應、或替自己寫了結果（例如「她答應了」「我考了第一名」），那只算是角色心裡的期待/預想，不直接成立——敘事可以自然呈現「期待」與「系統判定出來的現實」之間的落差（不論落差方向是更好還是更差），但不要用旁白直接指出「你猜錯了」這種點破的講法，順著故事自然帶過就好。玩家一回合輸入了不只一件事時，依這回合實際涵蓋的時間長度合理分配，放不下的部分可以寫成還沒做到、或留到後續回合自然接續，不用勉強把玩家寫的每件事都在這回合做完。（呼應1.1.3自由輸入合理性邊界——1.1.3管「這件事在現實裡能不能發生」，本條管「發生的結果由誰決定」，兩者互相補充。）
 - 數值：健康、才識、表達力、人脈、外表（0-100，可見），存款/月收入/月支出（遊戲幣單位金額，可見），以及隱藏的智慧、邏輯能力、幸福感、人格魅力風格、做事態度光譜（自律/審慎/成就傾向/責任感/團隊vs單打獨鬥，各0-100，開局都是50中性值，純靠選擇累積）。
 - 【財富改遊戲幣具體金額制，9/19改版取代原本真實台幣金額制】：不要用0-100分數描述財富，一律使用 payload 裡的 savings（存款）、monthly_income（月收入）、monthly_expenses（月支出項目列表）、financial_health（財務健康度0-100，內部換算好給你參考機率用，不用讓玩家看到這個數字）。**全人生階段(不分學生或出社會)的savings/monthly_income/one_time_transaction等金額欄位，一律是遊戲幣單位，不是新台幣，敘事裡不要講「NT$」「元」這種真實幣值字眼，只講「錢」「存款」這種抽象講法即可，例如「你數了數口袋裡的錢」而不是「你數了數口袋裡的300元」**。日常小額開銷不用你計算，系統會在回合之間自動結算月收支（滿一個月份邊界才結算，你完全不用管這個算術）。你只需要在下列情況回傳對應欄位：
   - （job_change欄位已於2026-09-20移除，求職/轉職/薪資全部改由十二、職涯系統的系統彈窗處理，見下方職涯系統說明，你不用也不能再回報這個欄位）
@@ -2281,7 +2683,7 @@ function buildSystemPrompt(){
   - 【學生存款下限0，不能變負值】：is_student 為 true 時，玩家提出的消費行為，如果金額會超過目前 savings，這筆消費「不會發生」，系統會自動擋下不真的扣款——你在敘事上要配合寫成「猶豫之後還是沒買」「算了算口袋裡的錢，還是算了」這種打消念頭的語氣，不要寫成「買了但錢變成負的」或忽略這個限制硬寫買成功
   - 【三餐解決方式 meal_arrangement：家裡包辦/自己打理/外食為主】：payload 會告訴你目前的三餐安排，影響敘事情境的自然選擇——「自己打理」適合帶出下廚、超商微波、宿舍小廚房這類畫面；「外食為主」適合帶出小吃店、便當店、跟同學一起吃飯這類畫面；「家裡包辦」則餐食本身很少入鏡，重點在家人準備飯菜的互動細節。payload 的 meal_event_multipliers 會給你社交偶遇類事件、健康加分命中、打工社團類里程碑這三項的機率倍率參考（只在自己打理/外食為主之間有差異），大方向機率請依這個倍率調整，不要每次都一樣
 - 【才識成長，三、3.2.2，9/16修正】：不要在stat_deltas裡給knowledge數值（這個欄位已經移除），改成透過event_type標籤告訴系統這回合的學習份量：這回合沒有任何值得累積才識的事件就整個不填(null)；一般程度的學習/嘗試填"ordinary"；份量明顯更重的（熬夜衝刺、投入大量心力鑽研）填"intensive"；真正重大的突破/成就（不能自己隨口認定，只有情節上真的是重大轉折時才用）填"milestone"，且milestone必須額外提供event_id（幫這個具體事件取一個簡短英文/拼音代稱，之後如果同一件事被你在敘事裡重複提起，要用同一個event_id，讓系統知道這是同一件事不是新的一次）。實際會轉換成多少才識成長、milestone一個人生階段最多能算幾次，都由系統計算，不用你操心精確公式或去記錄次數。
-- 【二、2.4考試成績算法，exam_triggered為true時務必處理】：這回合是系統判斷該考試的時間點（exam_type是「期中考」或「期末考」），必須在敘事裡明確揭曉這次考試/報告的具體成績或名次，不能含糊帶過。若exam_final_score不是null（期末考，見十一、11.4明牌檢定機制）：這個確切分數已經由系統擲骰判定完成、玩家會另外在畫面上看到完整的骰值/加成/及格門檻明細，你在敘事裡必須直接採用這個確切數字，不能自己改成別的分數或另外暗示一個不同的結果，只需要順著這個已經確定的分數與及格與否寫出對應的敘事細節即可，不用自己判斷這次算不算及格；若exam_score_hint不是null（期中考，尚未列入明牌檢定白名單，維持原本兩層骰自由發揮）：這是系統依「目前才識數值＋這段時間讀書次數」算出的大方向落點（已內含天資長期加成，你不用重算），實際成績請在這個數字附近生成具體分數與細節，大部分時候落在hint±10分左右合理，但保留少量機率出現更意外的結果，不要每次都精準卡在hint上顯得死板；study_count_this_term是這段期間玩家選擇讀書的次數，可以在敘事裡呼應（例如讀書次數多但考差了、或平常沒特別讀書卻超常發揮，都可以，不用強制對應）
+- 【二、2.4考試成績算法，exam_triggered為true時務必處理】：這回合是系統判斷該考試的時間點（exam_type是「期中考」或「期末考」），必須在敘事裡明確揭曉這次考試/報告的具體成績或名次，不能含糊帶過。若exam_final_score不是null（期末考，見十一、11.4明牌檢定機制）：這個確切分數已經由系統擲骰判定完成、玩家會另外在畫面上看到完整的骰值/加成/及格門檻明細，你在敘事裡必須直接採用這個確切數字，不能自己改成別的分數或另外暗示一個不同的結果，只需要順著這個已經確定的分數與及格與否寫出對應的敘事細節即可，不用自己判斷這次算不算及格；若exam_score_hint不是null（期中考，尚未列入明牌檢定白名單，維持原本兩層骰自由發揮）：這是系統依「目前才識數值＋這段時間讀書次數－選興趣路徑次數的拖累」算出的大方向落點（三、3.2.4，2026-09-23新增拖累項；已內含天資長期加成，你不用重算），實際成績請在這個數字附近生成具體分數與細節，大部分時候落在hint±10分左右合理，但保留少量機率出現更意外的結果，不要每次都精準卡在hint上顯得死板；study_count_this_term/interest_count_this_term分別是這段期間玩家選擇讀書/選擇興趣路徑的次數，可以在敘事裡呼應（例如讀書次數多但考差了、或平常沒特別讀書卻超常發揮，或這段時間一直在忙興趣的事所以成績受影響，都可以，不用強制對應）
 - 隨機性採「兩層骰」：大方向要合理反映玩家目前的數值（數值高的人成功機率自然較高），但具體情節細節可以有意外驚喜，不必每次都溫吞可預期。
 - 人生里程碑（升學、就業、感情、成家等）到了年紀就自然帶出選項，但玩家永遠可以選擇「跳過／不做」，且要給出跳過後的合理後果，不強迫走傳統路線。
 - 【職涯/感情不設終身鎖死】：30歲以後，玩家隨時可以轉職、創業失敗重來、進入新的感情關係，不要因為玩家選定過某個職業或穩定關係，就假設劇情從此定型不再變化。
@@ -2293,15 +2695,17 @@ function buildSystemPrompt(){
 - 【事件狀態機制，四、4.3，務必遵守】：payload的milestone_status會列出13個一次性里程碑事件目前的狀態(available未觸發/completed已完成/skipped已跳過/locked鎖定中)。狀態是completed或skipped的事件，**絕對不能再當作新鮮事重新觸發**（例如已經completed的「第一張信用卡」，不能再讓劇情出現「要不要辦第一張信用卡」這種選項；已經skipped的，可以在特定情境提起「你當初沒有選擇辦卡」，但不能重新當成一個懸而未決的選擇再問一次）。狀態是locked的，代表前置條件還沒到，不要主動帶出這個選項。以下4個里程碑由你自己判斷完成/跳過後透過milestone_updates回傳{id, status:"completed"或"skipped"}：first_credit_card(第一張信用卡)、first_part_time_job(第一次打工)、marriage_decision(結婚或明確決定不婚)、parent_retirement(父母退休，9/19新增)——只有這4個需要你回報，沒發生變化就不用回傳。first_startup(第一次創業，2026-09-20起改為系統自動判斷，不在這4個裡面)見下方唯一例外說明。- 【六、6.2性格破格里程碑，2026-09-20新增，務必遵守】：payload的breakthrough_event_now不是null時，代表系統剛判定玩家的依附風格或同儕位置光譜出現一次「打破底色」的重大偏移，這回合請寫一段比平常更長、更慢、更聚焦情緒的加重敘事，讓玩家清楚感覺到「我打破了原本的樣子」，不是日常流水帳；是否成立、多久成立一次由系統判斷，你不用也不能自己決定要不要觸發。
 另外9個（畢業高中/畢業大學、第一次正職、買房、搬出家裡、第一次戀愛first_romance、第一次轉職first_job_change、生育或領養first_child、第一次創業first_startup）是系統自動判斷，你不用管，milestone_status裡看到它們變成completed是系統自己更新的（first_romance是9/16改版，玩家關係第一次進入「交往中」時系統自動判定；first_job_change/first_child是9/19新增，分別由求職結果非首次觸發、new_characters的is_child判斷；first_startup是2026-09-20新增，由business_status轉為經營中時判定，一律不由你回報），你只需要讀取參考，不用也不能透過milestone_updates去改它們——**唯一例外（2026-09-20新增）**：這9個裡的home_purchase(買房)、moved_out(搬出家裡)、first_child(生育或領養)、first_startup(第一次創業)四項，如果玩家的自由輸入明確表達「決定不買房」「決定不搬出去住」「決定不生小孩」「決定不創業」這類明確不做的意圖，你可以（也只能）透過milestone_updates回傳{id, status:"skipped"}，讓這個決定被系統記錄下來；但你不能對這四項回傳"completed"，達成與否永遠由系統自動判斷，不由你決定
 - 【十三、健康衰退與老年階段，2026-09-20新增，務必遵守】：30歲以後每年有機率生病(急性/慢性/重大疾病三種)，60歲以後父母可能進入需要協助/失能/過世的狀態，全部由系統結構化判定並透過payload的illness_event_now／major_illness_event_now／parent_health_event_now／eldercare_event_now／parent_death_event_now告訴你剛發生了什麼，你只要自然帶進敘事即可，不要自己判斷玩家或NPC「該不該生病」「該不該過世」；疾病與長照題材允許沉重，但要保留旁白喘息空間(呼應六、6.3)與正向意外機率(呼應六、6.1)，不要連續好幾回合都是壞消息。60歲以後的敘事主題可以多圍繞健康/醫療、關係(老友/伴侶/子女角色反轉)、自我與意義回顧、事務交代這四個方向，年紀越大，事務性與回顧性的比例可以越高。
-- 【十二、職涯系統，2026-09-20新增，務必遵守】：出社會後的求職/面試/升遷/轉職/裁員/創業/退休，全部由系統跳出獨立彈窗讓玩家做結構化決定，不經過你的choices欄位，也不再透過job_change欄位回報(該欄位已移除)。彈窗結果會透過payload的career_event_now告訴你這回合剛發生了什麼(例如剛錄取哪個類別的工作、剛升遷、剛被裁員、剛退休)，你只要自然帶進敘事即可，職業類別、薪資數字、成功與否全部由系統計算，你不用也不能自己編造或回報具體薪資金額
+- 【十二、職涯系統，2026-09-20新增，務必遵守】：出社會後的求職/面試/升遷/轉職/裁員/創業/退休，全部由系統跳出獨立彈窗讓玩家做結構化決定，不經過你的choices欄位，也不再透過job_change欄位回報(該欄位已移除)。彈窗結果會透過payload的career_event_now告訴你這回合剛發生了什麼(例如剛錄取哪個類別的工作、剛升遷、剛被裁員、剛退休、剛接手家裡的事業)，你只要自然帶進敘事即可，職業類別、薪資數字、成功與否全部由系統計算，你不用也不能自己編造或回報具體薪資金額
+- 【十二、12.11.1職涯伏筆，2026-09-22新增】：payload的career_foreshadow是一個陣列，列出目前正在「鋪陳中」的職涯伏筆線(創業線/自由接案/海外線/演藝圈線/接手家業其中之一或多個)，請在敘事中自然帶出相關的人事物鋪陳(例如提到某個朋友在國外發展、家裡生意缺人手、有人找你接案)，讓這件事之後真的成為候選時感覺有跡可循；不要替玩家宣告已經轉職、已經創業或已經決定接手，成不成立、什麼時候成立全部由系統判斷
 - 【college_location 大學地點選擇】：如果玩家在劇情中實際做出「大學/技職要去哪裡念」的決定（本地／外縣市／出國），透過 college_location_choice 回傳其中一個值；如果這件事還沒發生或已經決定過，一律回傳 null（已決定過的地點會透過 payload 的 college_location 持續告訴你，不用重複詢問或重複設定）。地點會影響親子互動的密度質地：本地就讀的話，跟父母碰面頻率高但多是表面的日常擦身而過（深度對話需要特別情境才觸發，不要因為住在一起就自動假設關係更緊密）；外縣市或出國就讀的話，聯絡頻率低（大約一週一次），但每次聯絡在敘事份量上可以稍微重一點。
 - 【房屋里程碑】：初入社會階段(23-29歲)，或大學選了外縣市/出國分支畢業後，適合自然帶出「租屋/買房/住家裡」的選項。玩家選定後透過 housing_choice 回傳 {type:"rent"/"own"/"parents", monthly_amount:數字}（租屋或房貸才需要monthly_amount，住家裡填0），系統會自動疊加進月支出；買房後如果財務惡化，可以在劇情裡提供「賣房/轉租」的逆向選項。沒有相關決定時 housing_choice 填 null。
   - 【買房頭期款門檻，務必檢查】：買房不是按一個選項就完成，需要現金足夠支付頭期款。payload的max_affordable_home_monthly_payment告訴你，以目前現金，最高能負擔多少月付房貸（背後公式：頭期款＝月付房貸×60，對應20年期、8成貸款成數的簡化假設）。你決定的monthly_amount不能超過這個數字，否則系統會直接擋下這次購屋、完全不生效。如果玩家想買的房子明顯超出負擔，請在敘事裡走向「看房後發現預算不夠、繼續存錢」「找更便宜的物件」這類分支，不要讓劇情寫成買房成功了，實際上系統會忽略這個housing_choice導致劇情跟數值對不上
 - 【感情關係的收尾】：一段感情走到尾聲時，不用預設哪種收法更好，常見的是三種——分手（適合當作前面關係測試點失敗後的自然結果，不必是狗血事件）、畢業後漸行漸遠（沒有明確攤牌，只是聯絡越來越少，適合留白處理）、或關係持續帶入下一個人生階段（不用在這裡寫完結局，讓角色卡的關係史摘要繼續累積即可）。分手當下，可以依玩家的依附軸呈現不同反應：焦慮軸偏高的容易反覆回想、翻舊訊息；迴避軸偏高的容易把訊息封存、迅速恢復日常表面上的樣子。
 - 【七、7.6伴侶關係維繫/婚姻危機/離婚，2026-09-20新增】：穩定交往以上的伴侶關係，久了系統會自己跳出關係投入節點、婚姻危機、離婚結算等彈窗，玩家在彈窗裡做的選擇會透過payload的relationship_investment_event_now／marriage_crisis_event_now／divorce_event_now告訴你，你只要自然帶進敘事即可，這些事件成不成立、財務怎麼分，全部由系統計算，不用也不能自己判斷或回報。
+- 【七、7.6.1.1同居觸發入口，2026-09-22新增】：穩定交往一段時間、且已搬出原生家庭的玩家，系統會自己跳出「要不要一起住」彈窗，玩家的選擇會透過payload的cohabitation_event_now告訴你(choice為move_in或stay_separate)，你只要自然帶進敘事即可，不用也不能自己判斷玩家該不該同居；household_status變成「同居」後純供你敘事參考，共同生活開銷怎麼算全部由系統計算。
 - 【七、7.3.5子女成長里程碑，2026-09-20新增】：子女到了特定年齡，系統會跳出一個獨立彈窗讓玩家直接選教養做法，不經過你的choices欄位；彈窗結果會透過payload的parenting_event_now告訴你這回合剛發生了什麼，你只要自然帶進敘事即可，教養風格的位移量與判斷全部由系統計算，你不用也不能自己推算或回報。
 - 【三、3.4.11家庭財務合併，2026-09-20新增】：結婚後payload會多出household_status(單身/同居/已婚雙薪/已婚單薪/離婚後)與spouse_income(配偶月收入)，這兩個數字純供你敘事參考(例如可以提一句「兩人的收入加起來」)，實際的共同生活開銷分攤、配偶收入多寡、子女扶養費，全部由系統自動計算並加減到存款結算，你不用也不能自己算這些數字或透過任何欄位回報。
-- 【兒女與生育系統】：不需要先結婚，單身也可以選擇生育或領養，只要有穩定關係或經濟條件即可，不限年齡階段，每次觸發都是一次性決定要不要生/領養，可以反覆觸發累積多個小孩。決定生育後用兩層骰邏輯（大方向看健康/年齡/financial_health，細節你自由發揮：一次成功/需要多次嘗試/走向不孕症）。如果走向不孕症，採四階段慢慢展開：①自然嘗試期(平淡帶過，期待與輕微失落交替)→②意識到不對勁決定就醫(先模糊的不對勁，隔一段時間才出現具體導火線去看醫生)→③治療嘗試多回合(依附兩軸呈現伴侶雙方不同反應；用one_time_transaction扣治療費，費用等級用「高費用」對照can_afford_medical判斷)→④岔路點(繼續嘗試/轉向領養/決定不再嘗試，三者在情緒份量上地位平等，不預設哪個正確，也不要無止盡重複讓玩家陷入負面循環，嘗試幾次後就該給出明確岔路)。小孩透過 new_characters 建立角色卡，relation 填「兒子」或「女兒」，並額外加一個欄位 is_child:true。領養的小孩跟親生地位完全對等。
+- 【兒女與生育系統】：不需要先結婚，單身也可以選擇生育或領養，只要有穩定關係或經濟條件即可，不限年齡階段，每次觸發都是一次性決定要不要生/領養，可以反覆觸發累積多個小孩。決定生育後用兩層骰邏輯（大方向看健康/年齡/financial_health，細節你自由發揮：一次成功/需要多次嘗試/走向不孕症）。如果走向不孕症，採四階段慢慢展開：①自然嘗試期(平淡帶過，期待與輕微失落交替)→②意識到不對勁決定就醫(先模糊的不對勁，隔一段時間才出現具體導火線去看醫生)→③治療嘗試多回合(依附兩軸呈現伴侶雙方不同反應；用one_time_transaction扣治療費，費用等級用「高費用」對照can_afford_medical判斷)→④岔路點(繼續嘗試/轉向領養/決定不再嘗試，三者在情緒份量上地位平等，不預設哪個正確，也不要無止盡重複讓玩家陷入負面循環，嘗試幾次後就該給出明確岔路)。小孩透過 new_characters 建立角色卡，relation 填「兒子」或「女兒」，並額外加一個欄位 is_child:true。領養的小孩跟親生地位完全對等。**（2026-09-23新增）**這四階段目前走到第幾階段由你的敘事節奏決定，但系統需要知道目前走到哪一階段（供七、7.6.2婚姻危機判斷「走到第四階段」這個觸發條件用），所以只要這回合的敘事推進或維持在不孕症四階段中的某一階段，透過fertility_stage_update回傳對應數字(1~4)；沒有涉及這條敘事線的回合就回傳null，不用每回合重複回報同一個數字。
 - 【死亡機制（七、7.1.5，9/16改版，機率判定型，取代原本「壽命到達/意外死亡」兩條路徑）】：死亡結局現在完全由系統的年度機率判定決定，**你不用也不能自己判斷這回合玩家會不會死**，只負責在系統已經決定的框架內把細節寫出來：
   - **這回合是死亡結局本身**：如果 payload 的 forceEnding 是 true，代表系統已經判定這是玩家人生的最後一回合，你必須在這回合寫出結局場景的敘事（呼應前面已經鋪陳過的前兆，讓死亡感覺是這段人生的自然收尾，不是突兀的意外），並把 is_ending 設為 true、填寫 life_summary（見下面的【人生總結】規則）；forceEnding 為 false 時，即使你覺得劇情很適合角色死掉，也絕對不能自己把 is_ending 設為 true，系統會忽略這個欄位。
   - **這回合要埋前兆**：如果 payload 的 death_foreshadow_now 是 true，代表系統剛好判定「風險正在上升」，這回合的敘事裡要自然帶出一個微小前兆（疲勞感、差點發生意外的驚險場面、健康檢查結果不佳等），呼應防壓抑機制的精神，點到為止即可，不用解釋這代表什麼；death_foreshadowed 告訴你之前是否已經有過前兆，只是給你維持語氣延續感的參考，不用你判斷任何事。
@@ -2324,6 +2728,7 @@ function buildSystemPrompt(){
   - achievement_probability_modifier_pp：遇到創業/升遷這類機會時，把這個百分點數加到你原本評估的基礎成功機率上再決定結果（例如基礎機率70%，這個值是+9，代表大方向落點應該當作79%在判斷，不是71%或其他算法）；加總後不得超過95%、也不得低於5%，超過或低於這個範圍一律視為95%/5%，保留最基本的意外空間，不要出現「一定成功」或「一定失敗」的機率
   - achievement_health_cost_multiplier：玩家選擇積極衝刺事業/創業時，健康代價（health的負向delta）建議乘上這個倍率再輸出
   - 【自律，3.7.2，9/16修正】自律的「興趣持續投入」來源已經改成系統依interest_event自動計算(連續3次/6次持續投入才加1分)，你不用也不要透過conscientiousness_shift.selfDiscipline去反映興趣相關的持續投入，避免重複計分；conscientiousness_shift.selfDiscipline只用在其他來源（準時交作業、不遲到、規律作息等）
+- 【健康連續偏低訊號 low_health_streak／burnout_signal_now，三、3.5.1，2026-09-23新增】：low_health_streak是健康連續低於30分的回合數，僅供你參考節奏；burnout_signal_now是true時，代表這個連續低迷已經達到系統設定的門檻（自律高的角色門檻略寬，因為比較扛得住），這是明確訊號，請在這回合的敘事裡帶出過勞/情緒低落的具體徵兆（不是要你判斷要不要觸發，是系統已經判斷「夠久了」，你只負責把這個狀態寫進敘事），不用附帶選項或機制性後果，純敘事呈現即可；為false時不用特別提這件事
 - 【興趣系統 interest_event，八、興趣系統v1，9/16新增】：如果玩家這回合的行動/選擇明顯屬於某個興趣類別的探索或投入（不限定被動觸發的興趣種子事件，玩家自己主動提的也算），回傳 interest_event:{"category":"...", "reaction":"..."}；category必須是這7類之一：藝術創作、手作工藝、知識研究、體能競技、科技邏輯、社交表演、商業交易；reaction是你對玩家這次反應的判斷：明顯喜歡/主動投入填"positive"，沒特別感覺或只是隨口提一下填"neutral"，玩家明確表態不喜歡/想放棄填"negative"。這回合完全沒有興趣相關的行動就整個不填(null)。**你只負責分類，不要自己判斷「這個興趣候選是否已經成立」「投入度多少」「該不該轉正為正式興趣卡」，這些一律由系統計算，你不用管也不用在意payload裡的interest_status怎麼變化，只需要在敘事上自然帶出玩家既有的興趣（如果interest_status顯示已經有active的興趣）**。如果payload的pending_side_business_category不是null，代表玩家在這個類別上已經觸發副業契機，你要在敘事裡自然帶出這個契機、讓玩家在choices裡看到三個方向（保持興趣原樣／接一些零星案子／認真發展成正式副業），但實際選擇結果由玩家下一步輸入決定，不用你在這回合就強制分出結果。
 - 【大學科系系統 university_status/university_recent_event，九、大學科系系統，9/16新增】：payload的university_status告訴你玩家目前的科系分類、年級、雙主修狀態、休學狀態，只在is_student且已經選過科系時才會有值，否則是null；你只需要在敘事上自然帶出這些既有狀態（例如年級對話、雙主修課業壓力、休學中的生活感），**完全不要自己判斷/宣告「這回合轉系成功了」「開始雙主修了」「休學/肄業了」這些狀態轉換，一律由系統的彈窗機制處理，不透過你的敘事或任何JSON欄位回傳**。如果university_recent_event不是null（代表系統剛結算完一次轉系/雙主修中途放棄/休學/復學/肄業的結果，例如{type:"transfer_success",major:"商管/財經類"}、{type:"dual_major_abandoned"}、{type:"leave_resumed"}），你要在下一段敘事裡自然承接這個已經發生的結果（延續情緒、環境變化），不要重新演一次選擇的過程，那個已經是玩家上一步做過的決定。學費相關敘事一律當背景細節描寫，不涉及任何金額回報（見前面one_time_transaction說明）。【休學中，leave_status為on_leave時】不要出現任何考試/選課/學期進度相關的情節，敘事改走生活/打工/家庭/自我探索方向（呼應9.5.3），這段期間的payload不會有exam_triggered，你也不需要主動安排。
 - 【家庭結構 family_structure】：決定了通訊錄裡實際有誰（雙親／單親／隔代／服刑一方），active_characters 裡每個家人角色卡的 relation 跟 traits 已經反映了這個結構，你只需要順著這些角色卡的設定去寫互動，語氣要符合各自的關係質地（例如服刑家長的互動應該透過書信/有限探視，不是日常對話；隔代教養的語氣要有世代感）。
@@ -2393,6 +2798,7 @@ const TURN_RESULT_TOOL = {
       },
       revealed_key_event: { type: "boolean" },
       college_location_choice: { type: ["string","null"], description: "本地/外縣市/出國，尚未決定則null" },
+      fertility_stage_update: { type: ["number","null"], description: "七、7.3.3不孕症四階段敘事目前走到第幾階段（1~4），只有這回合劇情涉及生育嘗試/不孕症敘事時才回傳對應數字；沒有進展或不相關則null，不要每回合重複回傳同一個數字" },
       milestone_updates: {
         type: "array",
         items: { type:"object", properties:{ id:{type:"string"}, status:{type:"string", description:"completed或skipped"} } }
@@ -2612,12 +3018,49 @@ function advanceMajorIllness(s){
 
 // 13.5 照顧年邁父母
 // 13.5.1【定案,測試參數】父母年齡骰定為玩家出生時25到35歲；健康採四階段狀態機：1健康自理/2需要協助/3失能長照/4過世(見13.6)
-const PARENT_HEALTH_STAGE_ANNUAL_PROBABILITY = 0.05; // 【測試參數,待驗證,13.5.1】沿用13.3.1結構但簡化為單一機率，不抽等級
+// 2026-09-22修正（bug回報：父母年齡沒有上限，20萬次模擬80歲時仍有約20%父母在世且常超過110歲）：
+//   - 父母初始年齡改用PARENT_CHILD_AGE_GAP_MIN/MAX（主角年齡＋22~38歲），取代newRoll()原本rnd(25,35)+15（換算落差只有25-35歲，比要求的22-38歲窄）
+//   - 健康階段推進機率改依父母年齡分級，取代原本不分年齡的單一5%
+//   - 最後一個「在世」階段(失能長照)另加每年獨立死亡機率，避免長期卡在同一階段不動
+//   - 新增105歲硬上限，到齡強制進入過世流程
+// 2026-09-22二次修正：使用者回報的原始分級表(60-69:5%/70-79:10%/80-89:18%/90-99:30%/100+:50%+最後階段30%)
+// 20萬次模擬顯示60歲時父母在世比例只有約18%，遠低於「25%~40%」的目標——70-79與80-89兩檔、以及最後階段死亡機率調降，
+// 60-69歲維持原本5%不變；調整後20萬次模擬：40歲86.65%(目標80-90)／60歲35.75%(目標25-40)／80歲0.20%(目標<2)，皆落在目標範圍內
+const PARENT_CHILD_AGE_GAP_MIN = 22; // newRoll()開局骰父母年齡用
+const PARENT_CHILD_AGE_GAP_MAX = 38;
+const PARENT_HEALTH_STAGE_ADVANCE_PROBABILITY_BY_AGE = [
+  { maxAge:59, probability:0.02 },
+  { maxAge:69, probability:0.05 },
+  { maxAge:79, probability:0.06 }, // 2026-09-22二次修正：原10%，20萬次模擬顯示會讓60歲在世比例過低
+  { maxAge:89, probability:0.09 }, // 2026-09-22二次修正：原18%，同上
+  { maxAge:99, probability:0.30 },
+  { maxAge:Infinity, probability:0.50 }
+];
+function parentHealthStageAdvanceProbability(age){
+  const tier = PARENT_HEALTH_STAGE_ADVANCE_PROBABILITY_BY_AGE.find(t=>(age||0)<=t.maxAge);
+  return tier ? tier.probability : 0.50;
+}
+const PARENT_HEALTH_LAST_LIVING_STAGE = 3; // 失能長照：過世(4)前最後一個在世階段
+const PARENT_HEALTH_LAST_STAGE_DEATH_PROBABILITY = 0.22; // 2026-09-22二次修正：原30%，理由同上
+const PARENT_HEALTH_HARD_CAP_AGE = 105;
 function rollParentHealthStageAdvance(s){
   const events = [];
-  s.characters.filter(c=>c.origin==="父母，從出生起" && (c.healthStage||1)<4 && c.active!==false).forEach(c=>{
-    if(Math.random() < PARENT_HEALTH_STAGE_ANNUAL_PROBABILITY){
-      c.healthStage = (c.healthStage||1)+1;
+  // 13.6【定案】過世的父母(deceased===true，含世代傳承後標記為過世的上一代主角)不再進入這個狀態機，避免被判定「再過世一次」
+  // 十三、13.5.1（2026-09-23新增）：隔代教養的祖父母卡納入同一套狀態機，長照決策/過世/遺產一律沿用13.5、13.6既有流程
+  s.characters.filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && (c.healthStage||1)<4 && c.active!==false && !c.deceased).forEach(c=>{
+    if((c.age||0) >= PARENT_HEALTH_HARD_CAP_AGE){
+      finalizeParentDeath(s, c.name);
+      events.push({ parentName:c.name, newStage:4 });
+      return;
+    }
+    const stage = c.healthStage||1;
+    if(stage===PARENT_HEALTH_LAST_LIVING_STAGE && Math.random() < PARENT_HEALTH_LAST_STAGE_DEATH_PROBABILITY){
+      finalizeParentDeath(s, c.name);
+      events.push({ parentName:c.name, newStage:4 });
+      return;
+    }
+    if(Math.random() < parentHealthStageAdvanceProbability(c.age||0)){
+      c.healthStage = stage+1;
       events.push({ parentName:c.name, newStage:c.healthStage });
       if(c.healthStage===2 || c.healthStage===3){
         if(!s.pendingEldercareDecision) s.pendingEldercareDecision = { parentName:c.name, stage:c.healthStage };
@@ -2655,8 +3098,10 @@ function resolveEldercareDecision(s, parentName, choice){
 function finalizeParentDeath(s, parentName){
   const parent = s.characters.find(c=>c.name===parentName);
   if(!parent) return;
+  if(parent.estateSettled) return; // 2026-09-22修正：遺產/過世結算只能觸發一次，防止同一位角色被重複判定過世、重複發遺產
   parent.active = false;
   parent.deceased = true;
+  parent.estateSettled = true;
   // 13.6【定案,測試參數】遺產依家境與是否有房產，一次性變動現金；簡化估算，非精算遺產稅/繼承法規則
   const inheritance = s.familySavings ? Math.round(s.familySavings*0.1) : rnd(5,20);
   s.cash += inheritance;
@@ -2680,6 +3125,14 @@ function rollAnnualHealthChecks(s){
 // 更早的完全不送給AI（由4.2履歷/4.1 NPC記憶承接長期記憶），取代原本「recent_log只給最近2則原文、更早整個看不到」的做法
 const RECENT_FULL_TEXT_TURNS = 3; // 【定案,9/19,見4.2.1.1】
 const RECENT_SUMMARY_TURNS = 6; // 【測試參數,Claude Code判斷,呼應L3履歷摘要同樣抓6則】
+// 一、1.2.9.1（2026-09-23取代原本固定250-350字規則）：敘事字數依這回合monthsCrossed(這回合涵蓋的遊戲內時間長度)分級，
+// 程式直接算好級距+建議字數告訴AI，不讓AI自己換算週期。三個級距的分界(2週=0.5個月/1個月)與各級字數皆為【測試參數,暫定,待驗證】
+function narrativeLengthTier(monthsCrossed){
+  const m = monthsCrossed||0;
+  if(m<=0.5) return { tier:"short", word_range:"400-500字", structure:"只寫一個核心場景(約450字為基準)，不需要轉場句" };
+  if(m<=1) return { tier:"medium", word_range:"450-600字", structure:"核心場景為主，可視情況加0-1個次要片段，多出的字數優先用在片段/轉場，不要拉長核心場景本身" };
+  return { tier:"long", word_range:"500-700字", structure:"完整三段結構：核心場景(約450字為基準)＋次要片段0-2個(各1-3句)＋轉場句1-2句" };
+}
 function buildUserMessage(actionText, forceEnding, timeCtx){
   const s = state;
   const roster = activeCharacters().map(c=>({
@@ -2708,11 +3161,13 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     meal_event_multipliers: s.mealArrangement ? MEAL_EVENT_MULT[s.mealArrangement] || null : null,
     occupation_category: s.occupationCategory, housing: s.housing,
     // 十二、職涯系統（2026-09-20新增）：以下欄位僅供你敘事參考，狀態轉換/薪資/成敗全部由系統計算，你不用也不能自己判斷或回報
-    career_status: s.careerStatus||"未就業",
+    career_status: s.careerStatus||CAREER_STATUS.NOT_EMPLOYED,
     job_level_label: s.occupationCategory ? jobLevelLabel(s.occupationCategory, s.jobLevel) : null,
     business_status: s.businessStatus||null,
     retirement_status: s.retirementStatus||"在職",
     career_event_now: s.careerEventLog,
+    // 十二、12.11.1（2026-09-22新增）：鋪陳中(status:"brewing")的職涯伏筆線，讓AI在正式成為候選前先自然埋一些相關人事物
+    career_foreshadow: (s.careerForeshadowLines||[]).filter(e=>e.status==="brewing").map(e=>e.line),
     // 十三、健康衰退與老年階段（2026-09-20新增）：以下欄位僅供你敘事參考，疾病/父母健康狀態/過世全部由系統判定，你不用也不能自己決定要不要生病或死亡
     health_cap: computeHealthCap(s),
     chronic_conditions_count: (s.chronicConditions||[]).length,
@@ -2730,15 +3185,23 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     milestone_status: MILESTONE_DEFS.map(def=>({ id:def.id, label:def.label, status:s.milestones[def.id] })),
     interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, status:c.status, investment:Math.round(c.investment) })),
     pending_side_business_category: s.pendingSideBusinessCardId ? ((s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId)||{}).category || null : null,
+    // 一、1.2.9.1（2026-09-23新增）：取代原本system prompt裡寫死的「每次敘事約250-350字」，改依這回合monthsCrossed分級給字數目標
+    narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed),
     exam_triggered: !!(timeCtx && timeCtx.examTriggered),
     exam_type: (timeCtx && timeCtx.examType) || null,
     // 二、2.4.1（9/16修正執行順序bug）：exam_triggered這回合，studyCountThisTerm在advanceStructuredTime()裡已經歸零，
     // 必須改用考前存的快照(timeCtx.studyCountAtExam)算hint，不能直接讀s.studyCountThisTerm（否則讀書次數加成永遠算不到）
     // 十一、11.4（9/19新增）：期末考已改採明牌檢定，分數由client端擲骰確定並透過exam_final_score告知AI，
     // exam_score_hint（大方向層落點提示，AI仍可在附近自由發揮細節）只在「有考試但不是明牌檢定範圍」（即期中考）時才提供
-    exam_score_hint: (timeCtx && timeCtx.examTriggered && !timeCtx.examCheck) ? clamp(Math.round(s.stats.knowledge + (timeCtx.studyCountAtExam||0)*3), 0, 100) : null,
+    // 三、3.2.4（2026-09-23拍板）：exam_score_hint公式新增才識拖累項——考前每選一次興趣路徑，落點扣「2分×拖累倍率」，
+    // 拖累倍率＝1-(才識-50)×1%，上下限0.5~1.5，沿用3.7.3以50分為中性基準的結構
+    exam_score_hint: (timeCtx && timeCtx.examTriggered && !timeCtx.examCheck) ? clamp(Math.round(
+      s.stats.knowledge + (timeCtx.studyCountAtExam||0)*3
+      - (timeCtx.interestCountAtExam||0) * EXAM_INTEREST_DRAG_PER_CHOICE * computeExamInterestDragMultiplier(s.stats.knowledge)
+    ), 0, 100) : null,
     exam_final_score: (timeCtx && timeCtx.examCheck) ? timeCtx.examCheck.finalScore : null,
     study_count_this_term: (timeCtx && timeCtx.examTriggered) ? (timeCtx.studyCountAtExam||0) : (s.studyCountThisTerm||0),
+    interest_count_this_term: (timeCtx && timeCtx.examTriggered) ? (timeCtx.interestCountAtExam||0) : (s.interestCountThisTerm||0),
     // 九、大學科系系統（9/16新增）：這些欄位只給你當敘事參考，候選是否成立/狀態轉換一律由系統計算，你不用也不能自己判斷
     university_status: s.studentStatus!=="enrolled" ? null : {
       major_group: s.studentMajorGroup ? findMajorCategory(s.studentMajorGroup)?.label : null,
@@ -2752,6 +3215,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     relationship_investment_event_now: s.relationshipInvestmentEventLog, // 七、7.6.1（2026-09-20新增）：{choice,partnerName}，玩家剛在彈窗做了關係投入的選擇
     marriage_crisis_event_now: s.marriageCrisisEventLog, // 七、7.6.2（2026-09-20新增）：{choice,spouseName}，玩家剛在婚姻危機彈窗做了選擇(repair/maintain/divorce)
     divorce_event_now: s.divorceEventLog, // 七、7.6.3（2026-09-20新增）：{spouseName,playerCashSharePct,propertyChoice,custody}，離婚結算剛完成，數字僅供敘事參考不用你計算
+    cohabitation_event_now: s.cohabitationEventLog, // 七、7.6.1.1（2026-09-22新增）：{choice,partnerName}，玩家剛在「要不要一起住」彈窗做了選擇(move_in/stay_separate)
     family_structure: s.familyStructure,
     family_background: s.family,
     attachment_axes: { anxiety: s.anxiety, avoidance: s.avoidance },
@@ -2762,6 +3226,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     death_foreshadow_now: !!(timeCtx && timeCtx.deathForeshadowNow), // 這回合系統剛好擲中「該埋前兆了」，你必須在這回合寫一個前兆片段
     death_foreshadowed: s.deathForeshadowed, // 之前是否已經埋過前兆（僅供你維持語氣延續感參考，不用你判斷任何事）
     low_health_streak: s.lowHealthStreak,
+    burnout_signal_now: !!s.burnoutSignalNow, // 三、3.5.1（2026-09-23拍板）：健康連續偏低達自律門檻(自律≥60連續6回合/其餘5回合)時為true
     has_children: s.characters.some(c=>c.isChild),
     fertility_journey: s.fertilityJourney,
     active_characters: roster,
@@ -2871,7 +3336,18 @@ function isMalformedTurnResult(input){
 }
 
 // ---------- 離線模擬旁白（不呼叫AI，純規則模擬，供沒有API時測試用） ----------
-const USE_MOCK = false; // 2026-09-16 使用者明確授權，改用真實API測試敘事品質（mock模式旁白重複、無法反映真實效果），會產生實際費用
+const FORCE_REAL_API_KEY = "lifegame_force_real_api";
+const USE_MOCK = (function(){
+  try { return localStorage.getItem(FORCE_REAL_API_KEY) !== "yes"; }
+  catch(e){ return true; } // localStorage不可用時安全預設mock
+})();
+// 2026-09-22變更：USE_MOCK不再是寫死的常數，改成讀瀏覽器localStorage。
+// 版本庫裡永遠是安全預設（mock），不會再有「忘記改回true」被commit出去的風險。
+// 你自己要手動測試真實API時，在瀏覽器主控台（F12→Console）打一行：
+//   localStorage.setItem("lifegame_force_real_api", "yes")
+// 打完重新整理頁面才生效；測完想關掉，改打：
+//   localStorage.removeItem("lifegame_force_real_api")
+// 這個設定只存在你自己那台瀏覽器裡，其他玩家的瀏覽器不會受影響。
 
 function weightedPick(pairs){
   const total = pairs.reduce((s,p)=>s+p[1],0);
@@ -3059,7 +3535,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
     narrative, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
     stat_deltas: deltas, event_type, event_id, interest_event, emotional_tone,
     attachment_shift, peer_position_shift, revealed_key_event:false,
-    college_location_choice:null,
+    college_location_choice:null, fertility_stage_update:null,
     new_characters, character_updates, major_event_summary, major_event_type,
     choices, is_ending:false
   };
@@ -3074,7 +3550,7 @@ async function mockCallAI(actionText, forceEnding, timeCtx){
 function snapshotForUndo(){
   state.snapshot = JSON.parse(JSON.stringify({
     age:state.age, stats:state.stats, happiness:state.happiness,
-    actionPoints:state.actionPoints, turnCount:state.turnCount,
+    turnCount:state.turnCount, // 十、10.3.1：行動點不放進快照——悔棋不退還已扣的點數
     characters:state.characters, chronicle:state.chronicle,
     log:state.log, choices:state.choices,
     anxiety:state.anxiety, avoidance:state.avoidance,
@@ -3107,22 +3583,27 @@ function restoreUndo(){
 
 async function takeTurn(actionText, cost){
   if(state.phase!=="playing") return;
-  if(state.actionPoints < cost){ renderPaywall(); return; }
+  refillDailyIfNeeded(state);
+  if(totalAP(state) < cost){ renderAPExhaustedModal(); render(); return; }
   snapshotForUndo();
-  state.actionPoints -= cost;
+  const apUsed = spendAP(state, cost);
   state.turnCount += 1;
 
   // 九、9.5.1轉系候選判定需要「考前實際累積的讀書次數」，必須在advanceStructuredTime把studyCountThisTerm歸零之前先存一份快照，
   // 否則applyResult()拿到的會是考試結算後已經歸零的值。這份快照(studyCountAtExam)同時也用來修正buildUserMessage()的
   // exam_score_hint/study_count_this_term計算順序bug（9/16修正，見2.4.1）
   const studyCountBeforeAdvance = state.studyCountThisTerm||0;
+  // 三、3.2.4（2026-09-23拍板）：才識拖累斜率需要「考前實際累積的選興趣路徑次數」，同一個時序理由，快照方式比照上面studyCountBeforeAdvance
+  const interestCountBeforeAdvance = state.interestCountThisTerm||0;
   // 二、2.5（9/16新增）：22歲以後改採加速曲線回合預算，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
   // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
   const adv = advanceStructuredTime(actionText);
   // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
   // （呼應7.1.5死亡機制精神，不讓AI自由裁量這個數字），期中考不受影響、維持原本hint範圍由AI自由發揮
   const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance) : null;
-  let timeCtx = { structured:true, label: adv.toLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow };
+  // 2026-09-23修正（時間標籤慢一拍bug）：這回合顯示/送給AI的標籤改用currentLabel(這回合實際所在的段落)，
+  // 不再用toLabel(換段後、下一回合才生效的段落)；jump提示(from/to)維持給跳過動作用，語意不變
+  let timeCtx = { structured:true, label: adv.currentLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, interestCountAtExam: interestCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow };
   render(true);
 
   // 七、7.1.5（9/16改版,測試參數）：取代原本state.age>=state.lifeExpectancy的固定壽命值判定，
@@ -3142,14 +3623,17 @@ async function takeTurn(actionText, cost){
       console.error("第一次呼叫失敗，重試一次：", firstErr);
       result = USE_MOCK ? await mockCallAI(actionText, forceEnding, timeCtx) : await callAI(actionText, forceEnding, timeCtx);
     }
-    applyResult(result, timeCtx, forceEnding);
+    applyResult(result, timeCtx, forceEnding, actionText);
   }catch(e){
     console.error("重試後仍失敗：", e);
     applySnapshot();
+    refundAP(state, apUsed); // 十、10.3.1：API呼叫失敗/斷線不扣點
     state.log.push({age:state.age, timeLabel:null, text:"（旁白剛剛恍神了一下，這回合沒講清楚，稍後再試一次看看。）"});
   }
   saveGame();
   render();
+  // 十、10.3.8：用掉最後1點時，這回合照常生成顯示、自動存檔後才跳出提示（死亡結局那回合不用提示）
+  const apJustExhausted = cost>0 && state.phase==="playing" && totalAP(state)===0;
   if(examCheck){ renderExamCheckModal(examCheck); }
   if(state.mealJustUnlocked){ state.mealJustUnlocked = false; renderMealUnlockModal(); }
   if(state.pendingSideBusinessCardId){ const cid = state.pendingSideBusinessCardId; state.pendingSideBusinessCardId = null; renderSideBusinessModal(cid); }
@@ -3165,18 +3649,21 @@ async function takeTurn(actionText, cost){
   // 七、7.6（2026-09-20新增）：婚姻危機優先於關係投入節點(較急迫)，兩者互斥避免同回合疊兩個彈窗
   if(state.pendingMarriageCrisis){ const mc = state.pendingMarriageCrisis; state.pendingMarriageCrisis = null; renderMarriageCrisisModal(mc); }
   else if(state.pendingRelationshipInvestment){ const ri = state.pendingRelationshipInvestment; state.pendingRelationshipInvestment = null; renderRelationshipInvestmentModal(ri); }
+  else if(state.pendingCohabitationOffer){ const co = state.pendingCohabitationOffer; state.pendingCohabitationOffer = null; renderCohabitationOfferModal(co); }
   // 十二、職涯系統（2026-09-20新增）：六個彈窗互斥，一次只處理一個，優先序為求職＞升遷＞職涯岔路＞創業啟動＞創業存續＞退休
   if(state.pendingJobSearch){ const js = state.pendingJobSearch; state.pendingJobSearch = null; renderJobSearchModal(js); }
   else if(state.pendingPromotionOffer){ const po = state.pendingPromotionOffer; state.pendingPromotionOffer = null; renderPromotionOfferModal(po); }
   else if(state.pendingCareerForkOffer){ state.pendingCareerForkOffer = null; renderCareerForkModal(); }
-  else if(state.pendingBusinessLaunch){ state.pendingBusinessLaunch = null; renderBusinessLaunchModal(); }
+  else if(state.pendingBusinessLaunch){ const bl = state.pendingBusinessLaunch; state.pendingBusinessLaunch = null; renderBusinessLaunchModal(bl); }
+  else if(state.pendingFamilyBusinessOffer){ const fb = state.pendingFamilyBusinessOffer; state.pendingFamilyBusinessOffer = null; renderFamilyBusinessOfferModal(fb); }
   else if(state.pendingBusinessContinuation){ state.pendingBusinessContinuation = null; renderBusinessContinuationModal(); }
   else if(state.pendingRetirementOffer){ const ro = state.pendingRetirementOffer; state.pendingRetirementOffer = null; renderRetirementOfferModal(ro); }
   // 十三、13.5.2（2026-09-20新增）：照顧年邁父母的決策節點
   if(state.pendingEldercareDecision){ const ec = state.pendingEldercareDecision; state.pendingEldercareDecision = null; renderEldercareDecisionModal(ec); }
+  if(apJustExhausted) renderAPExhaustedModal(); // 最後才疊上去，確保在其他彈窗之上
 }
 
-function applyResult(r, timeCtx, forceEnding){
+function applyResult(r, timeCtx, forceEnding, actionText){
   const s = state;
   // 九、大學科系系統：university_recent_event只給AI看這一回合，用過就清掉，不然會被下一回合重複讀到
   s.universityEventLog = null;
@@ -3188,6 +3675,8 @@ function applyResult(r, timeCtx, forceEnding){
   s.relationshipInvestmentEventLog = null;
   s.marriageCrisisEventLog = null;
   s.divorceEventLog = null;
+  // 七、7.6.1.1（2026-09-22新增）：cohabitation_event_now只給AI看這一回合，用過就清掉
+  s.cohabitationEventLog = null;
   // 十二、職涯系統（2026-09-20新增）：career_event_now只給AI看這一回合，用過就清掉
   s.careerEventLog = null;
   // 十三、健康衰退與老年階段（2026-09-20新增）：以下event log只給AI看這一回合，用過就清掉
@@ -3226,8 +3715,9 @@ function applyResult(r, timeCtx, forceEnding){
   const teamKnowledgeMult = clamp(1+(50-s.conscientiousness.teamSolo)*0.01, 0.5, 1.5);
   const wisdomMult = 0.5 + (s.wisdom/200);
   const logicBonus = 1 + (s.logicAbility/400);
+  const disciplineMult = getDisciplineMultiplier(s); // 3.7.3（2026-09-23拍板）：自律乘數，接在邏輯加成之後、團隊倍率之前
   const knowledgeRawValue = rollKnowledgeRawValue(r.event_type, r.event_id, s); // 3.2.2（9/16修正）：AI只給標籤，程式查表+計數把關
-  let knowledgeDelta = knowledgeRawValue * wisdomMult * logicBonus * teamKnowledgeMult;
+  let knowledgeDelta = knowledgeRawValue * wisdomMult * logicBonus * disciplineMult * teamKnowledgeMult;
   knowledgeDelta = applyMarginalDiminish(knowledgeDelta, s.stats.knowledge); // 3.5.3邊際遞減
   s.stats.knowledge = clamp(s.stats.knowledge + knowledgeDelta, 0, 100);
 
@@ -3264,6 +3754,9 @@ function applyResult(r, timeCtx, forceEnding){
 
   // 健康連續偏低追蹤（呼應3.5.1過勞/憂鬱觸發門檻，僅供AI參考，不強制觸發）
   s.lowHealthStreak = s.stats.health<30 ? s.lowHealthStreak+1 : 0;
+  // 3.5.1（2026-09-23拍板）：連續回合數達自律門檻(burnoutStreakThreshold)時，額外給AI一個明確的門檻制訊號，
+  // 取代原本只送lowHealthStreak原始數字讓AI自行判斷「夠不夠久」的模糊做法
+  s.burnoutSignalNow = s.lowHealthStreak>0 && s.lowHealthStreak>=burnoutStreakThreshold(s);
 
   const as = r.attachment_shift||{};
   s.anxiety = clamp(s.anxiety + (as.anxiety||0), 0, 100);
@@ -3301,11 +3794,20 @@ function applyResult(r, timeCtx, forceEnding){
   // 七、7.1.5（9/16改版）：deathForeshadowed現在由rollAnnualDeathCheck()在advanceStructuredTime裡直接設定，
   // 不再讀AI回傳的foreshadow_death（AI不再自行判斷要不要埋前兆，這個欄位已從schema移除）
 
+  // 七、7.3.3（2026-09-23修正）：fertilityJourney先前從未被寫入(QA手冊34.3已記錄)，AI無輸出管道回寫進度，
+  // 導致7.6.2「不孕症走到第四階段」這個婚姻危機觸發條件永遠無法成立。四階段的節奏由AI敘事決定(7.3.2)，
+  // 所以改為讀AI新回傳的fertility_stage_update當作AI輸出管道，程式只負責記錄目前階段+偵測「剛進入第四階段」
+  if(typeof r.fertility_stage_update === "number"){
+    const prevStage = s.fertilityJourney ? s.fertilityJourney.stage : 0;
+    s.fertilityJourney = { stage: r.fertility_stage_update, updatedTurn: s.turnCount };
+    if(r.fertility_stage_update===4 && prevStage!==4) s.justReachedFertilityStage4 = true;
+  }
+
   // 財富真實金額制：先用「跨過的月份數」結算舊的月收支，再套用這回合新的職業/支出/一次性交易
   const monthsCrossed = structured ? (timeCtx.monthsCrossed||0) : Math.round((r.age_advance||0)*12);
   if(monthsCrossed>0){
     // 十二、12.12（2026-09-20新增）：tenure_months隨月份邊界累加，供12.5升遷年資門檻／12.3薪資年資加成使用
-    if(s.careerStatus==="在職") s.tenureMonths = (s.tenureMonths||0) + monthsCrossed;
+    if(s.careerStatus===CAREER_STATUS.EMPLOYED) s.tenureMonths = (s.tenureMonths||0) + monthsCrossed;
     const totalExpenses = s.monthlyExpenses.reduce((sum,e)=>sum+e.amount,0);
     // 3.4.8 基本生活開銷：所有人生階段皆適用，依居住狀態決定，不再以occupationCategory為開關
     const livingCost = computeBaseLivingCost(s); // 3.4.11：已內含household共同生活分攤係數與子女扶養費
@@ -3409,15 +3911,18 @@ function applyResult(r, timeCtx, forceEnding){
     // 四、4.2.2（9/19新增）：is_child是既有結構化訊號，生育/領養自動判定完成
     if(nc.is_child && s.milestones.first_child!=="completed") s.milestones.first_child = "completed";
   });
-  // 4.1.1顯示規則（9/16新增）：先記錄這回合開始前的關係值/戀愛狀態，跟可見數值變化顯示同一套「先snapshot後diff」邏輯，
-  // 用來算出方向性提示（不精確報數字），見下方relationshipHints
-  const beforeRelationship = new Map(s.characters.map(c=>[c.name, { affinity:c.affinity, romanceStatus:c.romanceStatus||null }]));
-  const relationshipHints = [];
+  // 4.1.1顯示規則（2026-09-22改版，取代原本「每次互動只要有變就跳」的洗版式做法）：三層優先序——
+  // 第1層戀愛狀態轉換／第2層關係狀態文字級距改變，當回合必定提示；第3層一般關係值增減，每位NPC累積尚未提示過的
+  // 變化量（relationshipHintAccum），累積絕對值達RELATIONSHIP_HINT_ACCUM_THRESHOLD才提示一次並歸零。
+  // 每回合最多顯示RELATIONSHIP_HINT_MAX_PER_TURN則，依tier排序取前幾則，沒被選中的（tier3的累積值）繼續保留，不丟棄
+  const beforeRelationship = new Map(s.characters.map(c=>[c.name, { romanceStatus:c.romanceStatus||null, label:relationshipStatusLabel(c) }]));
+  const relationshipHintCandidates = [];
   (r.character_updates||[]).forEach(cu=>{
     const c = s.characters.find(x=>x.name===cu.name);
     if(!c) return;
-    const before = beforeRelationship.get(cu.name) || { affinity:c.affinity, romanceStatus:c.romanceStatus||null };
-    c.affinity = clamp(c.affinity + (cu.affinity_delta||0),0,100);
+    const before = beforeRelationship.get(cu.name) || { romanceStatus:c.romanceStatus||null, label:relationshipStatusLabel(c) };
+    const delta = cu.affinity_delta||0;
+    c.affinity = clamp(c.affinity + delta,0,100);
     appendNpcSharedMemory(c, cu.summary_add);
     c.lastTurn = s.turnCount; c.active = true;
     applyRomanceSignal(s, c, cu.romantic_signal); // 四、4.4：AI只給positive/negative分類，狀態機轉換由客戶端判斷
@@ -3429,11 +3934,20 @@ function applyResult(r, timeCtx, forceEnding){
         stable:`你和${c.name}的感情穩定了下來`,
         breakup:`你和${c.name}，分開了`
       }[nowStatus];
-      if(transitionText) relationshipHints.push(transitionText);
-    } else if(c.affinity > before.affinity){
-      relationshipHints.push(`和${c.name}的關係更近了一些`);
-    } else if(c.affinity < before.affinity){
-      relationshipHints.push(`和${c.name}的關係有點疏遠了`);
+      if(transitionText){ relationshipHintCandidates.push({ tier:1, text:transitionText }); return; }
+    }
+    const nowLabel = relationshipStatusLabel(c);
+    if(nowLabel !== before.label){
+      relationshipHintCandidates.push({ tier:2, text:`和${c.name}的關係好像不一樣了，現在更像是「${nowLabel}」` });
+      return;
+    }
+    if(delta!==0){
+      c.relationshipHintAccum = (c.relationshipHintAccum||0) + delta;
+      if(Math.abs(c.relationshipHintAccum) >= RELATIONSHIP_HINT_ACCUM_THRESHOLD){
+        const positive = c.relationshipHintAccum > 0;
+        relationshipHintCandidates.push({ tier:3, text: positive ? `和${c.name}的關係更近了一些` : `和${c.name}的關係有點疏遠了` });
+        c.relationshipHintAccum = 0;
+      }
     }
   });
   // 四、4.3事件狀態機制：先依這回合最新的age刷新鎖定狀態，AI的回報才不會被「上一輪」的舊locked狀態誤擋
@@ -3453,9 +3967,11 @@ function applyResult(r, timeCtx, forceEnding){
     if(s.milestones[mu.id]==="completed") return; // 已結構化完成的不可被事後改回skipped
     s.milestones[mu.id] = mu.status;
     if(mu.id==="marriage_decision" && mu.status==="completed") applyMarriageDecisionCompletion(s);
+    // 十二、12.11.1（2026-09-22補充）：家長退休是接手家業的第二個觸發來源
+    if(mu.id==="parent_retirement" && mu.status==="completed") checkFamilyBusinessOnParentRetirement(s);
   });
 
-  demoteStaleCharacters();
+  demoteStaleCharacters(relationshipHintCandidates); // 四、4.1.1：同住緩降造成的級距改變併入同一批候選一起排序/限額
 
   // 四、4.5（2026-09-20修正，QA手冊34.2「人生階段邊界回合的chronicle條目歸屬誤植」）：
   // updateLifeTrajectory()（內含ensureStageTransition的段落切換偵測）必須在這回合的chronicle.push()之前執行，
@@ -3490,6 +4006,8 @@ function applyResult(r, timeCtx, forceEnding){
   // 七、7.6（2026-09-20新增）：關係投入節點＋婚姻危機候選檢查
   checkRelationshipInvestmentNode(s);
   sweepMarriageCrisisCandidate(s);
+  // 七、7.6.1.1（2026-09-22新增）：同居觸發入口檢查
+  checkCohabitationOffer(s, actionText);
 
   // 可見數值變化顯示（9/15新增）：算出這回合實際變化量（含所有倍率/邊際遞減/衰退後的最終結果），四捨五入後只保留真的有變化的項目
   const statChanges = {};
@@ -3499,6 +4017,13 @@ function applyResult(r, timeCtx, forceEnding){
     if(diff!==0) statChanges[k] = diff;
   });
 
+  // 四、4.1.1：候選依tier排序（1戀愛狀態轉換／2級距改變／3一般累積），每回合最多顯示RELATIONSHIP_HINT_MAX_PER_TURN則；
+  // Array.prototype.sort為穩定排序，同tier內維持原本互動發生的順序
+  const relationshipHints = relationshipHintCandidates
+    .slice()
+    .sort((a,b)=>a.tier-b.tier)
+    .slice(0, RELATIONSHIP_HINT_MAX_PER_TURN)
+    .map(h=>h.text);
   // 四、4.2.1.1（9/19新增）：AI每回合順便回傳turn_summary（1-2句話），供這則日記日後被擠出「最近3回合」視窗時使用，不用另外呼叫API生成
   s.log.push({age:tagAge, timeLabel:tagLabel, text:r.narrative, turnSummary:r.turn_summary||"", settlement:s.lastSettlement, statChanges, relationshipHints});
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
@@ -3516,17 +4041,27 @@ function applyResult(r, timeCtx, forceEnding){
   }
 }
 
-function startLife(){
+async function startLife(){
+  // 十、10.3.4：全新人生在正式開始這一刻才領新手禮包（開場建角7步不扣點，反覆重骰也不會重複領）
+  const ap = ensureAP(state);
+  if(ap.giftPending){
+    ap.giftPending = false;
+    const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+    if(key && await claimNewLifeGift(key)) ap.gift = AP_NEW_LIFE_GIFT;
+  }
   state.phase = "playing";
   render(true);
-  takeTurn("（人生正式開始：15歲的你，站在高中入學前的暑假尾聲。）", 0);
+  // 二、2.2（2026-09-23修正）：原本這句文字含「暑假」二字，會被detectTimeSkipIntent()誤判成跳過指令，
+  // 導致第一回合就隨機跳2~4段；改用timeState.prologue旗標讓這一回合完全不經過跳過判定/段落推進
+  takeTurn("（人生正式開始：15歲的你，在高中開學前的暑假最後一天。）", 0);
 }
 
 function reincarnate(){
   const bonusStat = pick(["health","knowledge","network","expression","savings"]);
   const carry = { reincarnations:(state.reincarnations||0)+1,
     chronicleCarry: `前世走完了一生${state.ending?.epitaph ? "，最後留下一句：「"+state.ending.epitaph+"」" : ""}，帶著一絲餘蔭轉生。`,
-    name: state.name, gender: state.gender };
+    name: state.name, gender: state.gender,
+    ap: ensureAP(state) }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
   if(bonusStat==="savings") carry.savingsCarry = 5; else carry[bonusStat] = 8; // 9/19：5000是9/14學生零用錢改遊戲幣單位制時漏改的殘留NT$量級數字，一併換算(÷1000)避免轉生後現金爆量失真
   state = newRoll(carry, null);
   saveGame();
@@ -3558,7 +4093,9 @@ function succeedAsChild(childName){
   const prev = state;
   const child = prev.characters.find(c=>c.name===childName && c.isChild);
   if(!child) return;
-  const spouse = prev.characters.find(c=>/配偶|伴侶|先生|太太|老公|老婆/.test(c.relation||""));
+  // 2026-09-22修正：配偶認定改用romanceStatus==="married"（比照7.6.2sweepMarriageCrisisCandidate既有寫法），
+  // 不再用relation字串regex比對——離婚後的「前配偶」relation仍含「配偶」兩字，regex會誤判成現任配偶
+  const spouse = prev.characters.find(c=>c.romanceStatus==="married" && c.active!==false);
   const otherKids = prev.characters.filter(c=>c.isChild && c.name!==childName);
 
   const deceasedRelation = prev.gender==="男" ? "父親" : "母親";
@@ -3566,22 +4103,32 @@ function succeedAsChild(childName){
   characters.push({
     name: prev.name, relation: deceasedRelation,
     traits: deriveParentTraitFromAffinity(child.affinity, child.summary),
-    affinity: child.affinity, summary: child.summary||"", lastTurn:0, active:true, isChild:false,
-    origin: "父母，從出生起", cohabiting: true, // 四、4.1（9/19新增）：世代傳承後從新主角視角重新寫，不沿用上一世「怎麼認識」的舊故事
+    affinity: child.affinity, summary: child.summary||"", lastTurn:0,
+    // 2026-09-22修正（bug回報：世代傳承後上一代主角被當成活著的父母）：
+    // 上一代主角在傳承當下已經過世，標記deceased/active:false/healthStage:4(過世)、cohabiting:false，
+    // 並直接視為estateSettled(遺產已經透過下面econ=rollEconomicTierForced(...prev.cash)在傳承流程內一次結算完畢)，
+    // 這樣13.5 rollParentHealthStageAdvance()的過濾條件(active!==false && !deceased)會自然跳過這張角色卡，
+    // 不會再被判定「需要協助/失能長照/再過世一次」
+    active:false, deceased:true, healthStage:4, estateSettled:true, isChild:false,
+    origin: "父母，從出生起", cohabiting: false, // 四、4.1（9/19新增）：世代傳承後從新主角視角重新寫，不沿用上一世「怎麼認識」的舊故事
     age: prev.age // 十三、13.5.1：沿用上一世死亡當下的年齡，比隨機骰更準確
   });
   let familyStructure;
   if(spouse){
     characters.push({
       name: spouse.name, relation: deceasedRelation==="父親" ? "母親" : "父親",
+      // 2026-09-22修正（bug回報：在世配偶被當成新角色重新產生）：年齡/健康階段/同住狀態/關係值一律沿用傳承前資料，不重新骰——
+      // married的配偶在目前架構下不會有獨立死亡判定，傳承當下必然還在世，也不會被finalizeDivorce解除同住，cohabiting因此必為true
       traits: spouse.traits||"忙碌但關心家裡", affinity: spouse.affinity, summary: spouse.summary||"",
-      lastTurn:0, active:true, isChild:false, origin: "父母，從出生起", cohabiting: true,
-      age: rnd(25,35)+15 // 【已知簡化】配偶年齡沒有結構化紀錄可承接，比照開局公式重新估算
+      lastTurn:0, active:true, isChild:false, origin: "父母，從出生起",
+      cohabiting: spouse.cohabiting!==false, healthStage: spouse.healthStage||1,
+      age: spouse.age // 沿用傳承前的實際年齡，不再重新骰
     });
-    familyStructure = "雙親同住";
-  } else {
-    familyStructure = "單親－喪親";
   }
+  // 2026-09-22修正（bug回報：家庭結構被寫死成「雙親同住」）：上一代主角在傳承當下必然已過世，
+  // 不可能是「雙親同住」；依實際是否還有一位在世同住家長，對應到既有分類裡最貼近的「單親－喪親」
+  // （目前架構沒有「兩位家長皆已不在」的既有分類，沒有配偶時沿用原本就有的單親－喪親判斷）
+  familyStructure = "單親－喪親";
   otherKids.forEach(k=>{
     // bug修正（9/14）：手足稱謂要跟這個孩子原本的性別(由k.relation「兒子」/「女兒」推得)一致，不能亂配
     const kidIsMale = k.relation==="兒子" ? true : k.relation==="女兒" ? false : Math.random()<0.5;
@@ -3616,8 +4163,9 @@ function succeedAsChild(childName){
     age:15, luckHidden,
     family: econ.tier, familyMonthlyIncome: econ.familyMonthlyIncome, familySavings: econ.familySavings, familyStructure, isPoliticianChild:false,
     collegeLocation:null,
-    timeState:{ stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0 },
-    studyCountThisTerm: 0,
+    // 二、2.2（2026-09-23新增）：世代傳承的新主角一律從15歲高中入學前重新開始，同樣要有一次prologue開場段落
+    timeState:{ stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0, prologue:true },
+    studyCountThisTerm: 0, interestCountThisTerm: 0,
     anxiety:attach.anxiety, avoidance:attach.avoidance, peerPosition, peerPositionSpecial:null,
     anxietyBaseline: attach.anxiety, avoidanceBaseline: attach.avoidance, peerPositionBaseline: peerPosition, // 六、6.2：世代傳承視為全新一世，基準線重新起算
     keyEvent:null,
@@ -3630,7 +4178,8 @@ function succeedAsChild(childName){
     happiness:50, happinessBaseline:50, happinessRegressionCounter:0, milestoneSkipReason:{},
     // 四、4.5：世代傳承視為全新一世，軌跡紀錄不繼承上一世
     lifeTrajectory: [], stageAccum: null,
-    actionPoints:20, maxActionPoints:20, turnCount:0,
+    // 十、10.3.6：世代傳承不算新人生，上一代的每日池/禮包點/購買點全部由下一代繼承，不另發禮包
+    ap: { ...ensureAP(prev), giftPending:false }, turnCount:0,
     characters,
     chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`],
     log:[], choices:[], reincarnations:(prev.reincarnations||0)+1,
@@ -3661,27 +4210,51 @@ function succeedAsChild(childName){
     pendingLeaveOffer: null,
     leaveResumeCountdown: 0,
     universityEventLog: null,
-    lastExamPerformanceLog: null
+    lastExamPerformanceLog: null,
+    halfYearCarry: 0
   };
   saveGame();
   render();
 }
 
-function refillDemo(){
-  state.actionPoints = state.maxActionPoints;
-  document.getElementById("paywall-modal")?.remove();
-  saveGame(); render();
-}
 
-function hardReset(){
-  // 十、10.1（9/19補充）：清空存檔重來只清「這個slot」的資料，不動復原金鑰本身——玩家還是同一個人，
-  // 只是這一段人生重來，下次saveGame()存進同一個slot時會自然覆蓋掉Worker上的舊資料，不需要另外呼叫刪除API
+// 十、10.3.6／10.3.7（2026-09-23新增，取代原本hardReset()「清空這個slot、同格重新取名」）：
+// 「就此闔卷」(死亡且不傳承,reason="ended")與「刪除這段人生」(reason="deleted")都讓這條人生結束——
+// 移到唯讀的人生回顧區、空出格子；禮包點消失，購買點全部移到金鑰錢包（由Worker在/archive裡加總）
+async function endLife(reason){
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
+  const ap = ensureAP(state);
+  const endedAt = Date.now();
+  const id = endedAt.toString(36) + Math.random().toString(36).slice(2,8);
+  const meta = { name:state.name, age:state.age, stage:stageLabel(state.age), reincarnations:state.reincarnations||0, reason, endedAt };
+  const purchased = ap.purchased;
+  const archivedState = JSON.parse(JSON.stringify(state));
+  archivedState.snapshot = null;
+  archivedState.ap = { daily:0, gift:0, purchased:0, lastRefillDate:ap.lastRefillDate };
   try{ localStorage.removeItem(STORAGE_KEY+(slot!==null?":"+slot:"")); }catch(e){}
   try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} // 相容改版前沒有slot後綴的殘留資料
-  state = slot!==null ? { phase:"identity", name:"", gender:"男" } : { phase:"keyChoice" };
-  render();
+  try{ localStorage.removeItem(ACTIVE_SLOT_STORAGE_NAME); }catch(e){}
+  cloudSyncStatus = null;
+  if(!key || slot===null){ state = { phase:"keyChoice" }; render(); return; } // 防呆：理論上進得了遊戲畫面一定有金鑰+slot
+  let archivedOnCloud = false;
+  try{
+    const res = await fetch(WORKER_URL+"archive", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ key, slot, id, meta, purchased, state: archivedState })
+    });
+    const data = await res.json();
+    archivedOnCloud = res.ok && data && data.success===true;
+  }catch(e){ console.warn("雲端封存人生失敗，改存本機", e); }
+  if(!archivedOnCloud){
+    try{
+      const list = JSON.parse(localStorage.getItem(ARCHIVE_LOCAL_PREFIX+key) || "[]");
+      list.push({ id, meta, state: archivedState });
+      localStorage.setItem(ARCHIVE_LOCAL_PREFIX+key, JSON.stringify(list));
+    }catch(e){ console.warn("本機封存也失敗（可能超過瀏覽器容量）", e); }
+  }
+  await showSlotPicker(key);
 }
 
 // ---------- RENDER ----------
@@ -3696,6 +4269,10 @@ function render(loadingTurn){
   if(state.phase==="setup"){ app.innerHTML = renderSetupRoll(); bindSetupRoll(); ensureDebugUI(); return; }
   if(state.phase==="lifestyle"){ app.innerHTML = renderLifestyleChoice(); bindLifestyleChoice(); ensureDebugUI(); return; }
   if(state.phase==="ending"){ app.innerHTML = renderEnding(); bindEnding(); ensureDebugUI(); return; }
+  if(state.phase==="archiveList"){ app.innerHTML = renderArchiveList(); bindArchiveList(); ensureDebugUI(); return; }
+  if(state.phase==="archiveView"){ app.innerHTML = renderArchiveView(); bindArchiveView(); ensureDebugUI(); return; }
+  // 十、10.3.5：進入遊戲畫面時檢查台灣日期，跨日才補每日池（不用排程）
+  if(refillDailyIfNeeded(state)) saveGame();
   app.innerHTML = renderPlaying(loadingTurn);
   bindPlaying();
   const j = document.querySelector(".journal");
@@ -3773,24 +4350,30 @@ function bindKeyInput(){
 function renderSlotPicker(){
   const s = state;
   const cards = s.slots.map((slot, i)=>{
+    // 十、10.1補充（2026-09-22新增）：同一瀏覽器內切換人生進來時，currentSlot標記玩家剛離開的那一段
+    const activeTag = (s.currentSlot!==null && s.currentSlot!==undefined && i===s.currentSlot)
+      ? `　<b style="color:var(--stamp);">（進行中）</b>` : ``;
     if(slot && slot.meta){
       const m = slot.meta;
       return `<button class="ghost-btn slot-btn" data-slot="${i}" data-action="load" style="display:block;width:100%;text-align:left;margin:6px 0;">
-        第${i+1}段人生：${escapeHtml(m.name||"")}・${m.age||"?"}歲・${escapeHtml(m.stage||"")}
+        第${i+1}段人生：${escapeHtml(m.name||"")}・${m.age||"?"}歲・${escapeHtml(m.stage||"")}${activeTag}
       </button>`;
     }
     return `<button class="ghost-btn slot-btn" data-slot="${i}" data-action="new" style="display:block;width:100%;text-align:left;margin:6px 0;opacity:.6;">
-      第${i+1}段人生：（空白，點擊開始新的一段人生）
+      第${i+1}段人生：（空白，點擊開始新的一段人生）${activeTag}
     </button>`;
   }).join("");
   return `
   <div class="center-screen">
     <h2>選擇要繼續的人生</h2>
-    <p style="color:var(--ink-soft);font-size:12.5px;">這組金鑰底下最多可以累積3段人生</p>
+    <p style="color:var(--ink-soft);font-size:12.5px;">這組金鑰最多可以同時進行3段人生；已結束的人生收在「人生回顧」，不佔格子</p>
     <div style="text-align:left;">${cards}</div>
+    ${s.wallet>0 ? `<p style="font-size:12.5px;">👛 金鑰錢包：${s.wallet} 點</p>` : ``}
+    <button class="ghost-btn" id="btn-archive-list" style="margin-top:10px;">📚 人生回顧</button>
   </div>`;
 }
 function bindSlotPicker(){
+  document.getElementById("btn-archive-list").onclick = ()=>showArchiveList(localStorage.getItem(RECOVERY_KEY_STORAGE_NAME));
   document.querySelectorAll(".slot-btn").forEach(btn=>{
     btn.onclick = async ()=>{
       const slot = Number(btn.dataset.slot);
@@ -3800,11 +4383,91 @@ function bindSlotPicker(){
         const ok = await tryLoadSlot(key, slot, true);
         if(!ok){ state = { phase:"identity", name:"", gender:"男" }; render(); } // 讀取失敗防呆：至少讓玩家能重新開始，不要卡死
       } else {
+        cloudSyncStatus = null; // 十、10.1補充：開新的一段人生，上一段的同步狀態顯示沒有意義了
         state = { phase:"identity", name:"", gender:"男" };
         render();
       }
     };
   });
+}
+
+// ---------- 十、10.3.7 人生回顧（唯讀）----------
+// 雲端(Worker /archives)＋本機後備副本(雲端封存失敗時才會有)合併顯示，依結束時間新到舊
+async function showArchiveList(key){
+  let items = [];
+  try{
+    const res = await fetch(WORKER_URL+"archives?key="+encodeURIComponent(key));
+    const data = await res.json();
+    if(data && data.success && Array.isArray(data.archives)) items = data.archives.map(a=>({ id:a.id, meta:a.meta||{}, source:"cloud" }));
+  }catch(e){ console.warn("讀取人生回顧清單失敗", e); }
+  try{
+    JSON.parse(localStorage.getItem(ARCHIVE_LOCAL_PREFIX+key) || "[]").forEach(a=>{
+      if(!items.some(x=>x.id===a.id)) items.push({ id:a.id, meta:a.meta||{}, source:"local" });
+    });
+  }catch(e){}
+  items.sort((a,b)=>(b.meta.endedAt||0)-(a.meta.endedAt||0));
+  state = { phase:"archiveList", items };
+  render();
+}
+function renderArchiveList(){
+  const rows = state.items.map(a=>{
+    const m = a.meta;
+    const d = m.endedAt ? new Date(m.endedAt) : null;
+    const dateText = d ? `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}` : "";
+    return `<button class="ghost-btn archive-btn" data-id="${escapeHtml(a.id)}" data-source="${a.source}" style="display:block;width:100%;text-align:left;margin:6px 0;">
+      ${escapeHtml(m.name||"")}・第${(m.reincarnations||0)+1}世・${m.age||"?"}歲・${m.reason==="deleted"?"中途放下":"走完一生"}　<span style="font-size:11px;color:var(--ink-soft);">${dateText}</span>
+    </button>`;
+  }).join("");
+  return `
+  <div class="center-screen">
+    <h2>人生回顧</h2>
+    <p style="color:var(--ink-soft);font-size:12.5px;">已結束的人生只能翻閱，不能繼續玩</p>
+    <div style="text-align:left;">${rows || `<p style="color:var(--ink-soft);">還沒有已結束的人生。</p>`}</div>
+    <button class="ghost-btn" id="btn-archive-back" style="margin-top:10px;">← 回到人生選擇</button>
+  </div>`;
+}
+function bindArchiveList(){
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  document.getElementById("btn-archive-back").onclick = ()=>showSlotPicker(key);
+  document.querySelectorAll(".archive-btn").forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.id;
+      let archived = null;
+      if(btn.dataset.source==="cloud"){
+        try{
+          const res = await fetch(WORKER_URL+"archive?key="+encodeURIComponent(key)+"&id="+encodeURIComponent(id));
+          const data = await res.json();
+          if(data && data.success) archived = data.state;
+        }catch(e){ console.warn("讀取人生回顧失敗", e); }
+      } else {
+        try{ archived = (JSON.parse(localStorage.getItem(ARCHIVE_LOCAL_PREFIX+key) || "[]").find(a=>a.id===id) || {}).state || null; }catch(e){}
+      }
+      if(!archived) return;
+      state = { phase:"archiveView", archived, backItems: state.items };
+      render();
+    };
+  });
+}
+function renderArchiveView(){
+  const a = state.archived;
+  const segs = a.ending ? (a.ending.segments || (a.ending.summary ? [{label:"", text:a.ending.summary}] : [])) : [];
+  const endingHtml = segs.map(seg=>`
+    <div style="margin-bottom:12px;">
+      ${seg.label ? `<div class="k" style="margin-bottom:4px;">${escapeHtml(seg.label)}${seg.age_from!=null?`（${seg.age_from}－${seg.age_to}歲）`:""}</div>` : ``}
+      <p style="font-size:14px;margin:0;">${escapeHtml(seg.text||"")}</p>
+    </div>`).join("");
+  const logHtml = (a.log||[]).map(e=>`<div class="entry"><div class="age-tag">${e.timeLabel ? escapeHtml(e.timeLabel) : (e.age+'歲・'+stageLabel(e.age))}</div>${renderParagraphs(e.text)}</div>`).join("");
+  return `
+  <div class="center-screen" style="text-align:left;">
+    <h2 style="text-align:center;">${escapeHtml(a.name||"")}・第${(a.reincarnations||0)+1}世・${a.age}歲</h2>
+    ${endingHtml}
+    ${a.ending?.epitaph ? `<div class="end-title" style="font-size:17px;line-height:1.7;margin:14px 0;text-align:center;">${escapeHtml(a.ending.epitaph)}</div>` : ``}
+    <div class="journal" style="max-height:none;">${logHtml || `<p style="color:var(--ink-soft);">沒有留下紀錄。</p>`}</div>
+    <button class="ghost-btn" id="btn-archive-view-back" style="margin-top:10px;">← 回到人生回顧</button>
+  </div>`;
+}
+function bindArchiveView(){
+  document.getElementById("btn-archive-view-back").onclick = ()=>{ state = { phase:"archiveList", items: state.backItems||[] }; render(); };
 }
 
 function renderIdentityForm(){
@@ -3910,13 +4573,20 @@ function bindLifestyleChoice(){
   };
 }
 
+// 十、10.3.10：滑鼠停在行動點上時顯示的明細
+function apTooltipText(s){
+  const ap = ensureAP(s);
+  return `每日池 ${ap.daily}／${AP_DAILY_REFILL}、永久池 ${ap.gift+ap.purchased}｜每日台灣時間 00:00 補到 ${AP_DAILY_REFILL} 點`;
+}
 function renderPlaying(loadingTurn){
   const s = state;
+  const apOut = totalAP(s)===0; // 十、10.3.8：點數歸零時選項/自由輸入都停用，直到補回來
   const active = activeCharacters();
   const bg = s.characters.filter(c=>!c.active);
   return `
   <div class="cover">
-    <div><h1>人生草稿</h1><div class="sub">${escapeHtml(s.name)} · 第 ${s.reincarnations+1} 世 · 第 ${s.turnCount} 頁</div>
+    <div><h1>人生草稿</h1><div class="sub">${escapeHtml(s.name)} · 第 ${s.reincarnations+1} 世</div>
+    <div class="sub ap-bar"><span id="ap-total" title="${apTooltipText(s)}">⚡ 行動點 ${totalAP(s)}</span>　第 ${s.turnCount} 回合</div>
     ${USE_MOCK?`<div class="sub" style="color:var(--stamp);margin-top:2px;">⚠ 示範模式：目前用規則模擬旁白，非真AI生成</div>`:``}</div>
     <div class="stamp"><b>${s.age}</b>歲・${stageLabel(s.age)}</div>
   </div>
@@ -3929,23 +4599,24 @@ function renderPlaying(loadingTurn){
     ${ledgerRow("表達力", s.stats.expression)}
     ${ledgerRow("外表", s.appearance)}
     ${ledgerRow("人脈", s.stats.network)}
-    <div class="pips">${Array.from({length:s.maxActionPoints}).map((_,i)=>`<span class="pip ${i<s.actionPoints?'on':''}"></span>`).join("")}</div>
   </div>
   <div class="journal">
     ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${e.timeLabel ? escapeHtml(e.timeLabel) : (e.age+'歲・'+stageLabel(e.age))}</div>${renderParagraphs(e.text)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("")}
     ${loadingTurn ? `<div class="loading">旁白正在幫你寫下這一頁…</div>` : ""}
   </div>
   ${!loadingTurn ? `
+  ${apOut ? `<div class="input-error" style="display:block;margin:0 20px;">行動點已用完，下次補點：台灣時間 00:00（每日池補到 ${AP_DAILY_REFILL} 點）</div>` : ``}
   <div class="choices">
-    ${(s.choices||[]).map((c,i)=>`<button class="choice-btn" data-choice="${i}">${escapeHtml(c)}</button>`).join("")}
+    ${(s.choices||[]).map((c,i)=>`<button class="choice-btn" data-choice="${i}" ${apOut?"disabled":""}>${escapeHtml(c)}</button>`).join("")}
     ${(s.snapshot && s.undosLeft>0) ? `<button class="choice-btn" id="btn-undo" style="color:var(--stamp);">↺ 反悔上一步（剩 ${s.undosLeft} 次）</button>` : ""}
   </div>
   <div class="custom-row">
-    <input id="custom-input" placeholder="或者，自己寫下你想做的事…（消耗2點，最多${CUSTOM_INPUT_MAX_CHARS}字）">
-    <button id="btn-custom">行動</button>
+    <input id="custom-input" placeholder="或者，自己寫下你想做的事…" ${apOut?"disabled":""}>
+    <span id="custom-input-count" style="font-size:11px;color:var(--ink-soft);white-space:nowrap;align-self:center;">0／${CUSTOM_INPUT_MAX_CHARS}</span>
+    <button id="btn-custom" ${apOut?"disabled":""}>行動</button>
   </div>
   <div id="custom-input-error" class="input-error"></div>
-  <div class="hint">選項消耗 1 點行動點；自訂行動消耗 2 點（自由輸入最多${CUSTOM_INPUT_MAX_CHARS}字）</div>
+  <div class="hint">每回合消耗 1 點行動點，選項或自己寫都一樣（自由輸入最多${CUSTOM_INPUT_MAX_CHARS}字，標點也算）</div>
   ` : ""}
   <div class="roster">
     <div class="roster-title">通訊錄・羈絆（${active.length} 位在場${bg.length? ` · ${bg.length} 位漸行漸遠`:""}）</div>
@@ -3955,11 +4626,12 @@ function renderPlaying(loadingTurn){
       ${active.length+bg.length===0 ? `<div style="font-size:12px;color:var(--ink-soft);">目前故事裡還沒有其他重要的人。</div>` : ""}
     </div>
   </div>
+  <div id="cloud-sync-status-wrap" style="padding:0 20px;font-size:11px;color:var(--ink-soft);text-align:right;">${cloudSyncStatusHTML()}</div>
   <div class="footer-actions">
-    <span>行動點不足時可示範儲值</span>
     <a id="link-memoir">📖 回憶錄（${s.log.length}則）</a>
     <a id="link-view-key">🔑 我的復原金鑰</a>
-    <a id="link-reset">清空存檔重來</a>
+    <a id="link-switch-life">🔄 切換其他人生</a>
+    <a id="link-reset">刪除這段人生</a>
   </div>`;
 }
 // 介面：現階段進度條（9/16新增）——顯示目前細顆粒時間標籤(如「大二・期中準備期」)+這個小段落跑了幾回合
@@ -4018,7 +4690,7 @@ function bindPlaying(){
     btn.onclick = ()=>{
       const idx = +btn.dataset.choice;
       const text = state.choices[idx];
-      takeTurn(text, 1);
+      takeTurn(text, AP_COST_PER_TURN);
     };
   });
   const undoBtn = document.getElementById("btn-undo");
@@ -4027,22 +4699,29 @@ function bindPlaying(){
   const input = document.getElementById("custom-input");
   const inputError = document.getElementById("custom-input-error");
   if(input){
-    input.oninput = ()=>{ if(inputError) inputError.style.display="none"; };
+    // 十、10.3.2：即時字數（例如「37／100」），超過上限時不能送出（不截斷，讓玩家自己改）
+    const counter = document.getElementById("custom-input-count");
+    input.oninput = ()=>{
+      if(inputError) inputError.style.display="none";
+      const n = countInputChars(input.value.trim());
+      if(counter){ counter.textContent = `${n}／${CUSTOM_INPUT_MAX_CHARS}`; counter.style.color = n>CUSTOM_INPUT_MAX_CHARS ? "var(--stamp)" : "var(--ink-soft)"; }
+      if(customBtn && totalAP(state)>0) customBtn.disabled = n>CUSTOM_INPUT_MAX_CHARS;
+    };
   }
   if(customBtn){
     customBtn.onclick = ()=>{
       const val = input.value.trim();
       if(!val) return;
-      if(val.length > CUSTOM_INPUT_MAX_CHARS){
+      if(countInputChars(val) > CUSTOM_INPUT_MAX_CHARS){
         if(inputError){
-          inputError.textContent = `這段行動描述太長了（目前${val.length}字，上限${CUSTOM_INPUT_MAX_CHARS}字），請稍微縮短後再送出`;
+          inputError.textContent = `這段行動描述太長了（目前${countInputChars(val)}字，上限${CUSTOM_INPUT_MAX_CHARS}字），請稍微縮短後再送出`;
           inputError.style.display = "block";
         }
         return;
       }
       if(inputError) inputError.style.display="none";
       input.value="";
-      takeTurn(val, 2);
+      takeTurn(val, AP_COST_PER_TURN);
     };
   }
   const resetLink = document.getElementById("link-reset");
@@ -4051,6 +4730,9 @@ function bindPlaying(){
   if(memoirLink) memoirLink.onclick = renderMemoirModal;
   const viewKeyLink = document.getElementById("link-view-key");
   if(viewKeyLink) viewKeyLink.onclick = renderKeyViewModal;
+  const switchLifeLink = document.getElementById("link-switch-life");
+  if(switchLifeLink) switchLifeLink.onclick = switchLife;
+  updateCloudSyncStatusUI(); // 十、10.1補充：確保「重試同步」連結每次完整render()後也有被重新綁定
   // 四、4.1.1顯示規則（9/16新增）：點擊NPC卡片（含已降級為背景的）叫出詳細頁
   document.querySelectorAll(".rcard[data-npc]").forEach(card=>{
     card.onclick = ()=> renderNpcDetailModal(card.dataset.npc);
@@ -4101,29 +4783,31 @@ function renderConfirmReset(){
   div.className = "modal-backdrop";
   div.innerHTML = `
     <div class="modal">
-      <h3>清空存檔重來？</h3>
-      <p>這會刪掉目前這份草稿，重新從取名開始。此動作無法復原。</p>
-      <button class="primary-btn" id="btn-confirm-reset" style="background:var(--stamp);">確定清空</button>
+      <h3>刪除這段人生？</h3>
+      <p>剩餘的購買點會移到錢包，禮包點會消失。</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);">這段人生會結束並收進「人生回顧」（只能翻閱，不能繼續玩），空出一個人生格子。</p>
+      <button class="primary-btn" id="btn-confirm-reset" style="background:var(--stamp);">確定刪除</button>
       <button class="ghost-btn" id="btn-cancel-reset">再想想</button>
     </div>`;
   document.body.appendChild(div);
-  document.getElementById("btn-confirm-reset").onclick = ()=>{ div.remove(); hardReset(); };
+  document.getElementById("btn-confirm-reset").onclick = ()=>{ div.remove(); endLife("deleted"); };
   document.getElementById("btn-cancel-reset").onclick = ()=>{ div.remove(); };
 }
 
-function renderPaywall(){
+// 十、10.3.8：行動點用完的提示。開放付費後再在這裡加入購買選項
+function renderAPExhaustedModal(){
+  if(document.getElementById("ap-exhausted-modal")) return;
   const div = document.createElement("div");
-  div.id = "paywall-modal";
+  div.id = "ap-exhausted-modal";
   div.className = "modal-backdrop";
   div.innerHTML = `
     <div class="modal">
-      <h3>行動點用盡</h3>
-      <p>今天的因果暫時推演不動了。真正上線的版本這裡會是儲值／訂閱畫面；現在先示範性地幫你補滿，讓你能繼續測試玩法。</p>
-      <button class="primary-btn" id="btn-refill">（示範）補滿行動點</button>
-      <div class="demo-note">＊這是原型階段的假按鈕，尚未串接真實金流</div>
+      <h3>行動點已用完</h3>
+      <p>這段人生今天先寫到這裡。下次補點時間：台灣時間 00:00，每日池會補到 ${AP_DAILY_REFILL} 點。</p>
+      <button class="primary-btn" id="btn-ap-exhausted-ok">知道了</button>
     </div>`;
   document.body.appendChild(div);
-  document.getElementById("btn-refill").onclick = refillDemo;
+  document.getElementById("btn-ap-exhausted-ok").onclick = ()=>div.remove();
 }
 
 // 五、5.5 三餐解決方式解鎖後，讓玩家重新選一次（9/14新增）
@@ -4323,6 +5007,7 @@ function renderTransferOfferModal(){
         }).join("")}
       </div>
       <button class="primary-btn" id="btn-transfer-confirm" style="margin-top:14px;">確定</button>
+      <div id="transfer-stage2" style="display:none;"></div>
     </div>`;
   document.body.appendChild(div);
   let mainChoice = "stay", targetKey = null;
@@ -4343,21 +5028,35 @@ function renderTransferOfferModal(){
     };
   });
   document.getElementById("btn-transfer-confirm").onclick = ()=>{
-    resolveTransferOffer(s, mainChoice, targetKey);
-    div.remove();
-    saveGame(); render();
+    const result = resolveTransferOffer(s, mainChoice, targetKey);
+    // 十一、11.4（2026-09-23新增）：轉系申請結果收錄為明牌檢定節點，申請後先揭曉骰值+門檻對比，格式比照renderPromotionOfferModal
+    if(result){
+      document.getElementById("btn-transfer-confirm").style.display = "none";
+      const stage2 = document.getElementById("transfer-stage2");
+      stage2.style.display = "block";
+      stage2.innerHTML = `
+        <p style="font-size:13px;">骰值：擲出${result.roll}（1-100），門檻${result.probPct}%</p>
+        <p style="font-size:16px;margin-top:6px;"><strong>${result.success ? `轉系成功：${escapeHtml(result.majorLabel)}` : "這次沒有成功"}</strong></p>
+        <button class="primary-btn" id="btn-transfer-confirm2" style="margin-top:10px;">知道了</button>`;
+      document.getElementById("btn-transfer-confirm2").onclick = ()=>{ div.remove(); saveGame(); render(); };
+    } else {
+      div.remove();
+      saveGame(); render();
+    }
   };
 }
 // 9.5.1 轉系結果判定：抽出成純函式方便測試，不依賴DOM。mainChoice: "stay"/"apply"/"wait"；targetKey僅在apply時需要
+// 十一、11.4（2026-09-23新增）：收錄為明牌檢定節點，回傳{success,roll,probPct,majorLabel}供UI揭曉骰值細節，取代原本直接Math.random()判定不現骰值的做法
 function resolveTransferOffer(s, mainChoice, targetKey){
   s.transferCooldown = TRANSFER_COOLDOWN_TURNS;
   s.examBelowExpectationStreak = 0;
   if(mainChoice==="apply" && targetKey){
     const cat = findMajorCategory(targetKey);
-    if(!cat) return;
+    if(!cat) return null;
     // 9.5.1【定案】結果判定複用2.4考試成績算法精神：知識值+自律程度換算成功機率，不另設新公式
-    const successProb = clamp(0.3 + (s.stats.knowledge/100)*0.5 + (s.conscientiousness.selfDiscipline-50)/200, 0.1, 0.95); // 【測試參數】
-    const success = Math.random() < successProb;
+    const probPct = Math.round(clamp(0.3 + (s.stats.knowledge/100)*0.5 + (s.conscientiousness.selfDiscipline-50)/200, 0.1, 0.95) * 100); // 【測試參數】
+    const roll = rnd(1,100);
+    const success = roll <= probPct;
     if(success){
       const isFive = cat.isFiveYearEligible && isTransferFeasible(s.age,5,s.collegeDelayYearsUsed);
       assignStudentMajor(s, targetKey, isFive);
@@ -4366,9 +5065,11 @@ function resolveTransferOffer(s, mainChoice, targetKey){
     } else {
       s.universityEventLog = { type:"transfer_failed", major: cat.label };
     }
+    return { success, roll, probPct, majorLabel: cat.label };
   } else if(mainChoice==="stay"){
     s.universityEventLog = { type:"transfer_declined" };
   }
+  return null;
 }
 function renderDualMajorOfferModal(){
   const s = state;
@@ -4439,8 +5140,8 @@ function renderWithdrawalOfferModal(reason){
   div.id = "withdrawal-offer-modal";
   div.className = "modal-backdrop";
   const reasonText = reason==="health" ? "健康狀況已經連續一段時間亮紅燈" : "手頭已經連續一段時間很緊";
-  // 9.8：休學要消耗delay_years同一個額度（跟延畢共用上限，不可各自獨立），額度用完就不能再選休學，只能肄業或硬撐
-  const leaveAvailable = (s.collegeDelayYearsUsed||0) < COLLEGE_DELAY_CAP;
+  // 9.8.1（2026-09-22修正）：休學可用條件改為兩項都要成立，不再只看delay_years上限（見isAnotherLeaveFeasible()）
+  const leaveAvailable = isAnotherLeaveFeasible(s);
   div.innerHTML = `
     <div class="modal">
       <h3>該喘口氣了嗎？</h3>
@@ -4464,10 +5165,10 @@ function renderWithdrawalOfferModal(reason){
 }
 // 9.5.3 休學/肄業決定：choice = "leave"/"withdraw"/"stay"
 function resolveWithdrawalOffer(s, choice){
-  // 9.8：休學跟延畢共用同一個delay_years額度、不可各自獨立上限，額度用完時「休學」直接視同無效選擇（防呆，UI也會先擋，這裡是程式層再把關一次）
-  if(choice==="leave" && (s.collegeDelayYearsUsed||0)>=COLLEGE_DELAY_CAP) return;
+  // 9.8.1（2026-09-22修正）：休學可用條件改為兩項都要成立，不再只看delay_years上限（防呆，UI也會先擋，這裡是程式層再把關一次）
+  if(choice==="leave" && !isAnotherLeaveFeasible(s)) return;
   if(choice==="leave"){
-    // 9.8：delay_years最小粒度0.5年對應休一學期，記一次0.5年代價
+    // 9.8：delay_years最小粒度0.5年對應休一學期，記一次0.5年代價（只作帳本用途，不再加進畢業門檻，見9.8.1）
     s.collegeDelayYearsUsed = clamp((s.collegeDelayYearsUsed||0)+0.5, 0, COLLEGE_DELAY_CAP);
     // 9.5.3（9/16補充）：記錄休學當下正在哪個學期（上學期0~6段 or 下學期7~13段），供復學時重置回該學期開頭，該學期視為未完成不計入進度
     s.leaveSemesterHalfIndex = (s.timeState.segmentIndex||0) < SEMESTER_PHASES.length ? 0 : SEMESTER_PHASES.length;
@@ -4476,8 +5177,9 @@ function resolveWithdrawalOffer(s, choice){
     s.lowHealthStreak = 0; s.lowCashStreak = 0; // 復學視為重新開始，不然同樣的低點會立刻再次觸發候選
     s.universityEventLog = { type:"leave_of_absence" };
   } else if(choice==="withdraw"){
-    s.studentStatus = "withdrawn";
-    s.timeState.stageMode = "career"; s.timeState.adultTurnsInYear = 0; // 9.5.3：跳轉至22歲以後曲線起點，肄業不代表人生卡死
+    s.studentStatus = "withdrawn"; // 九、9.5.3（2026-09-22定案）：肄業後不可重新入學，本函式與其他任何地方都不會把studentStatus從withdrawn改回enrolled
+    s.timeState.stageMode = "career";
+    applyHalfYearCarryOnCareerEntry(s); // 9.8.1：帶著halfYearCarry=1肄業時，當年度回合預算設為一半
     s.universityEventLog = { type:"withdrawn" };
   }
 }
@@ -4539,6 +5241,31 @@ function renderRelationshipInvestmentModal(pending){
   });
   document.getElementById("btn-ri-confirm").onclick = ()=>{
     resolveRelationshipInvestment(s, pending.partnerName, chosen);
+    div.remove();
+    saveGame(); render();
+  };
+}
+// 七、7.6.1.1（2026-09-22新增）：同居觸發入口彈窗
+function renderCohabitationOfferModal(pending){
+  const s = state;
+  const div = document.createElement("div");
+  div.id = "cohabitation-offer-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>要不要一起住？</h3>
+      <p>跟${escapeHtml(pending.partnerName)}穩定交往一段時間了，最近聊到「要不要乾脆搬去一起住」這件事。</p>
+      <button class="ghost-btn coh-btn" data-key="move_in" style="display:block;width:100%;text-align:left;margin:4px 0;">搬去一起住</button>
+      <button class="ghost-btn coh-btn" data-key="stay_separate" style="display:block;width:100%;text-align:left;margin:4px 0;">先維持各自住</button>
+      <button class="primary-btn" id="btn-coh-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosen = "stay_separate";
+  div.querySelectorAll(".coh-btn").forEach(btn=>{
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".coh-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+  });
+  document.getElementById("btn-coh-confirm").onclick = ()=>{
+    resolveCohabitationOffer(s, pending.partnerName, chosen);
     div.remove();
     saveGame(); render();
   };
@@ -4634,7 +5361,7 @@ function renderJobSearchModal(pending){
     btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".job-search-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
   });
   document.getElementById("btn-job-search-apply").onclick = ()=>{
-    const result = resolveJobApplication(s, chosen, pending.isTransfer);
+    const result = resolveJobApplication(s, chosen, pending.isTransfer, { isOverseas: pending.isOverseas, foreshadowLine: pending.foreshadowLine, creativeBonusPct: pending.creativeBonusPct });
     document.getElementById("job-search-stage1").style.display = "none";
     const stage2 = document.getElementById("job-search-stage2");
     stage2.style.display = "block";
@@ -4702,11 +5429,11 @@ function renderCareerForkModal(){
     div.remove();
     saveGame(); render();
     if(s.pendingJobSearch){ const js = s.pendingJobSearch; s.pendingJobSearch = null; renderJobSearchModal(js); }
-    else if(s.pendingBusinessLaunch){ s.pendingBusinessLaunch = null; renderBusinessLaunchModal(); }
+    else if(s.pendingBusinessLaunch){ const bl = s.pendingBusinessLaunch; s.pendingBusinessLaunch = null; renderBusinessLaunchModal(bl); }
   };
 }
 // 12.8.1／12.14明牌檢定：創業啟動門檻檢查——現金是否≥啟動資金，明牌呈現具體門檻與現有現金
-function renderBusinessLaunchModal(){
+function renderBusinessLaunchModal(pending){
   const s = state;
   const capital = computeStartupCapitalRequired();
   const div = document.createElement("div");
@@ -4722,7 +5449,38 @@ function renderBusinessLaunchModal(){
     </div>`;
   document.body.appendChild(div);
   document.getElementById("btn-business-launch-confirm").onclick = ()=>{
-    if(affordable) launchBusiness(s);
+    const launched = affordable && launchBusiness(s);
+    // 十二、12.11.1（2026-09-22新增）：若這次創業候選來自職涯伏筆的創業線，結算候選狀態(接受/拒絕)
+    if(pending && pending.foreshadowLine) closeForeshadowCandidate(s, pending.foreshadowLine, launched);
+    div.remove(); saveGame(); render();
+  };
+}
+// 十二、12.11.1（2026-09-22新增）：接手家業候選彈窗
+function renderFamilyBusinessOfferModal(pending){
+  const s = state;
+  const parent = s.characters.find(c=>c.name===pending.parentName);
+  const parentRelation = parent ? parent.relation : "家人";
+  const bodyText = pending.foreshadowLine
+    ? `家裡經營的生意一直需要人手，最近似乎在認真問你要不要回來接手。`
+    : `${escapeHtml(parentRelation)}最近打算退休，問你要不要接手家裡經營的事業。`;
+  const div = document.createElement("div");
+  div.id = "family-business-offer-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>要回家接手家裡的事業嗎？</h3>
+      <p>${bodyText}</p>
+      <button class="ghost-btn fb-btn" data-key="accept" style="display:block;width:100%;text-align:left;margin:4px 0;">回家接手</button>
+      <button class="ghost-btn fb-btn" data-key="decline" style="display:block;width:100%;text-align:left;margin:4px 0;">還是先不要</button>
+      <button class="primary-btn" id="btn-fb-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosen = "decline";
+  div.querySelectorAll(".fb-btn").forEach(btn=>{
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".fb-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+  });
+  document.getElementById("btn-fb-confirm").onclick = ()=>{
+    resolveFamilyBusinessOffer(s, pending, chosen);
     div.remove(); saveGame(); render();
   };
 }
@@ -4855,7 +5613,7 @@ function renderEnding(){
 }
 function bindEnding(){
   document.getElementById("btn-reincarnate").onclick = reincarnate;
-  document.getElementById("btn-reset-end").onclick = hardReset;
+  document.getElementById("btn-reset-end").onclick = ()=>endLife("ended");
   document.querySelectorAll(".choice-btn[data-child]").forEach(btn=>{
     btn.onclick = ()=> succeedAsChild(btn.dataset.child);
   });
@@ -4931,7 +5689,9 @@ function debugFieldGroups(){
       ["團隊vs單打","conscientiousness.teamSolo", s.conscientiousness.teamSolo],
     ]},
     { title:"其他", fields:[
-      ["行動點","actionPoints", s.actionPoints],
+      ["每日池","ap.daily", ensureAP(s).daily],
+      ["禮包點","ap.gift", ensureAP(s).gift],
+      ["購買點","ap.purchased", ensureAP(s).purchased],
       ["反悔卡剩餘","undosLeft", s.undosLeft],
     ]},
   ];
@@ -4978,7 +5738,7 @@ function renderDebugPanelContent(){
     <div style="max-height:56vh;overflow-y:auto;padding-right:4px;">${toggles}${body}</div>
     <button id="debug-apply" style="width:100%;margin-top:8px;padding:9px;background:var(--teal,#3e6b5c);color:#fff;border:none;cursor:pointer;font-family:inherit;">套用變更並刷新畫面</button>
     <button id="debug-dump" style="width:100%;margin-top:6px;padding:7px;background:#444;color:#fff;border:none;cursor:pointer;font-family:inherit;">印出完整 state 到 Console</button>
-    <p style="color:#888;font-size:10.5px;margin-top:12px;line-height:1.6;">＊此面板只在 USE_MOCK=true 時出現，正式模式（USE_MOCK=false）完全不會建立這個按鈕。<br>＊目前程式碼還沒有「事件狀態（completed/skipped/locked）」追蹤機制，所以還無法在此指定觸發特定里程碑或查詢事件完成紀錄。<br>＊數值故意不做範圍限制，方便測試極端角色（例如全部設100或全部設0）。</p>
+    <p style="color:#888;font-size:10.5px;margin-top:12px;line-height:1.6;">＊此面板只在 USE_MOCK=true 時出現，正式模式（USE_MOCK=false）完全不會建立這個按鈕。<br>＊四、4.3事件狀態（available/active/completed/skipped/locked）追蹤機制本身早已實作(見state.milestones)，但這個面板還沒有專屬UI可以直接勾選觸發特定里程碑或查詢完成紀錄，想確認的話用上面「印出完整state到Console」按鈕查state.milestones即可。<br>＊數值故意不做範圍限制，方便測試極端角色（例如全部設100或全部設0）。</p>
   `;
 }
 function bindDebugPanelContent(){

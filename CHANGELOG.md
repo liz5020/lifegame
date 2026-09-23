@@ -10,6 +10,459 @@
 
 ---
 
+## 2026-09-23（十、10.3行動點經濟實作）
+
+**〔開發部〕〔測試部〕依設計文件十、10.3.1～10.3.10實作行動點經濟，前端＋Worker**
+- 對應設計文件：十、10-存檔與帳號系統.md 10.3（同日新增）
+- 使用者實作前另確認的對應：轉世丹＝restart_item（點數全保留、回合歸零、不發禮包）；選孩子接續＝世代傳承（點數全繼承）；「就此闔卷」＝死亡且不傳承；遊玩中「清空存檔重來」改名「刪除這段人生」，確認視窗照10.3.6寫「剩餘的購買點會移到錢包，禮包點會消失。」；後兩者都讓人生結束、移入人生回顧、空出格子
+
+**index.html**
+- 移除`actionPoints/maxActionPoints`(20點圓點)、`renderPaywall()`/`refillDemo()`示範儲值；改為每條人生一個`state.ap={daily,gift,purchased,lastRefillDate}`
+- 新增`taipeiDateString()`(一律換算UTC+8日期)、`refillDailyIfNeeded()`(跨台灣日期才補到5點，不累加；在`render()`進入遊戲畫面時、`takeTurn()`開頭檢查；點數歸零時另有每分鐘檢查，跨午夜自動解鎖)、`spendAP()`(每日池→禮包點→購買點)、`refundAP()`
+- `takeTurn()`：選項與自由輸入一律扣1點(原本自訂行動扣2點)；AI呼叫含重試仍失敗時退回本回合扣的點；`snapshotForUndo()`不再包含點數，悔棋不退點；開場prologue回合維持cost 0
+- 新手禮包55點：`startLife()`時才領(開場建角7步重骰不會重複領)，`claimNewLifeGift()`優先問Worker計次(每把金鑰3次)，連不上才用本機計數
+- 用掉最後1點：回合照常生成、存檔後才跳`renderAPExhaustedModal()`(疊在其他彈窗之上)，畫面顯示提示並停用選項/自由輸入；悔棋鍵不受影響
+- 上方列改為「⚡ 行動點 N　第 X 回合」(原「第 X 頁」)，滑鼠停在行動點顯示每日池X／5、永久池X與補點說明；自由輸入加即時字數「n／200」，超過上限停用送出(字數以Unicode字元計，標點也算)
+- `hardReset()`改為`endLife(reason)`：封存到Worker `/archive`(失敗時存本機後備副本)、清本機slot快取、回到人生選擇畫面；新增人生回顧清單/唯讀頁(`archiveList`/`archiveView`兩個phase)；人生選擇畫面加「📚 人生回顧」入口與金鑰錢包顯示(>0才顯示)
+- Debug面板「行動點」改為每日池/禮包點/購買點三欄
+- 註：自由輸入上限本日由另一個協作對話改為200字(見下一筆)，本實作直接讀`CUSTOM_INPUT_MAX_CHARS`常數
+
+**worker/worker.js**（⚠️需要手動重新部署到Cloudflare才會生效）
+- 新增`POST /claim-gift`、`POST /archive`、`GET /archives`、`GET /archive`；`GET /slots`多回傳`wallet`
+- 封存用KV metadata存摘要，清單不用逐筆讀完整存檔；購買點目前信任前端數字(封測永遠是0)，開放付費前須改以伺服器端紀錄為準
+- `RATE_LIMIT_PER_HOUR`由30改為200(使用者同意)：每回合打2次(AI＋存檔)，原本每小時只夠玩約15回合，新手禮包55點會很快撞牆，共用Wi-Fi的玩家也共享同一額度。開放付費前的長期做法：以伺服器端行動點餘額擋AI呼叫，IP計數器只當最後保險
+
+**驗證**（USE_MOCK=true，Node vm載入整份script＋真的worker.js搭配記憶體版KV，46項斷言全過）
+- 台灣日期邊界(UTC 15:59/16:00)、扣點順序、自由輸入同樣扣1點、悔棋不退點、API失敗不扣點且不計回合、跨日補到5不累加、已有5點不多補
+- 歸零後回合照常完成＋提示＋無法再行動＋歸零狀態有存檔；世代傳承/轉世丹點數保留、不重複發禮包
+- 同一金鑰第4條新人生不發禮包(刪除的人生仍計次)、刪除後購買點進錢包、闔卷/刪除都空出格子並出現在回顧、封存副本禮包/購買點歸零；Worker離線時本機計數同樣限3次、本機封存可在回顧看到
+- 畫面render：上方列/tooltip、字數計數、歸零停用、選擇畫面、回顧清單與唯讀頁
+- 語法檢查通過(`<script>`抽出用node --check)
+- **會讓舊存檔跑不動的部分**：舊存檔沒有`ap`欄位，`ensureAP()`會補一個只有當日5點、沒有禮包的點數池，不會壞掉，但舊存檔拿不到55點禮包——建議清空重來
+
+## 2026-09-23（佇列批次A：婚姻危機兩個永遠無法成立的觸發條件修正）
+
+**〔開發部〕〔測試部〕使用者透過`queue.md`批次佇列貼回claude.ai網頁版討論結論與給Code的修改文字，依WORKFLOW.md第6節批次規則處理**
+- 對應設計文件：七、07-無限發展與世代傳承系統.md 7.3.3／7.6.2
+
+**一、career_status常數化＋justLostJob旗標（修正失業觸發條件bug）**
+- 新增`CAREER_STATUS`常數物件(`EMPLOYED/JOB_SEARCHING/UNEMPLOYED/BUSINESS/SEMI_RETIRED/RETIRED/NOT_EMPLOYED`)，取代全檔案原本18處直接寫死的中文字串比對/賦值
+- 根因：`sweepMarriageCrisisCandidate()`原本比對`s.careerStatus==="unemployed"`(英文)，但career_status所有寫入點實際寫的都是中文"失業"，條件永遠不成立
+- 新增`s.justLostJob`旗標，在兩個把career_status寫成失業的寫入點同時設定：`rollAnnualLayoffCheck()`裁員、`resolveBusinessContinuation()`收攤(choice==="close")
+- `sweepMarriageCrisisCandidate()`改讀`justLostJob`，只在剛失業那一回合觸發；函式結尾一律重設為false(含無配偶提早return分支)，故若剛失業那回合婚姻危機正處於冷卻期，直接放掉不觸發、也不會等冷卻結束後補觸發
+
+**二、fertility_stage_update欄位＋justReachedFertilityStage4旗標（修正不孕症第四階段觸發條件bug）**
+- 根因：`state.fertilityJourney`從未被賦值(QA手冊34.3已記錄)，AI原本沒有任何輸出管道回寫不孕症四階段進度
+- 新增AI回應schema欄位`fertility_stage_update`(數字1~4或null)，system prompt同步補充說明：只在這回合敘事涉及7.3.3不孕症四階段時回傳對應階段，不涉及則null
+- `applyResult()`新增解析：收到數字時寫入`s.fertilityJourney={stage, updatedTurn}`，若新階段為4且前一階段不是4，設`s.justReachedFertilityStage4=true`
+- `sweepMarriageCrisisCandidate()`同樣讀取並在結尾重設此旗標，行為與justLostJob一致
+
+**驗證**
+- `node -e`抽出`<script>`內容做語法檢查，通過
+- Node vm沙箱直接跑`sweepMarriageCrisisCandidate()`：justLostJob單獨觸發危機✓、justReachedFertilityStage4單獨觸發危機✓、兩者在冷卻期內都不觸發且不延後補觸發✓、無配偶時三個旗標都正確重設不crash✓
+- 尚無法驗證：AI是否真的會依新的prompt說明穩定回報`fertility_stage_update`（需要真實API測試才能確認AI敘事層表現，MOCK模式只驗證了client端邏輯本身）
+
+**待真實API測試清單**
+- `fertility_stage_update`欄位：AI是否會在生育/不孕症敘事線推進時正確回報1~4的階段數字、且不會每回合重複回報同一數字；預期AI在敘事明確走到某階段時回傳對應數字，其餘回合回null
+
+**待確認清單**
+- 無（本批次两項修正皆直接對照佇列給的程式碼判斷與既有設計文件精神，未遇到需自行判斷的模糊點）
+
+**影響**：新增`justLostJob`／`justReachedFertilityStage4`兩個旗標欄位與`fertility_stage_update`schema欄位，皆用`!!`/`typeof`防呆讀取，**不影響舊存檔**（舊存檔沒有這些欄位時視為false/undefined，行為等同從未觸發過）
+
+---
+
+## 2026-09-23（自由輸入字數上限100字→200字＋新增1.2.10玩家輸入=意圖規則）
+
+**〔開發部〕〔測試部〕使用者貼回claude.ai網頁版討論結論，依單一定案標準流程處理**
+- 對應設計文件：十、10-存檔與帳號系統.md 10.3.2、一、01-敘事生成規則.md 1.1.3（交叉引用更新）／1.2.10（新增）
+
+**一、自由輸入字數上限100→200字**
+- `CUSTOM_INPUT_MAX_CHARS`從100改為200，`10.3.2`同步更新（本欄位同一天內已改過兩次：9/16原版200-300字建議 → 稍早改為100字定案 → 本次改為200字，均已在文件裡明講取代關係）
+
+**二、新增1.2.10「玩家輸入＝意圖，結果由系統判定」**
+- `buildSystemPrompt()`新增規則段落：玩家自由輸入若順手寫了結果（"她答應了"、"我考第一名"），AI只能當成角色的期待/預想，不能直接當既定事實；真正成立與否交給既有的數值/機率/好感度系統判定；一回合塞多個行動時依時間長度合理分配，放不下的可以留到後續回合
+- 與既有1.1.3（管「能不能發生」）互補，1.2.10管「誰決定結果」
+
+**驗證**
+- `node -e`抽出`<script>`內容做語法檢查，通過
+- 純prompt文字與常數數字調整，邏輯無新增判斷分支，不需額外Node vm單元測試
+
+**待真實API測試清單**
+- 1.2.10新規則：AI是否真的不會把玩家寫的「結果」當成既定事實直接採用，需要真實API觀察敘事輸出才能驗證
+
+**待確認清單**：無
+
+**影響**：純數字與prompt文字調整，不影響存檔資料結構，不影響舊存檔
+
+---
+
+## 2026-09-23（1.2.9.1字數分級拍板實作＋修正monthsCrossed校準bug）
+
+**〔開發部〕〔測試部〕使用者針對敘事字數規則的待確認事項給出明確答覆，並要求順便檢查時間節奏，依單一定案標準流程處理（讀文件→改代碼→USE_MOCK驗證）**
+- 對應設計文件：一、01-敘事生成規則.md 1.2.1（取代）／1.2.9.1
+
+**一、敘事字數改為依單回合時間長度分級，取代1.2.1固定250-350字**
+- 新增`narrativeLengthTier(monthsCrossed)`：≤0.5個月(兩週)→short(400-500字，單一核心場景，不需轉場句)；≤1個月→medium(450-600字)；>1個月→long(500-700字，完整三段結構)
+- `buildUserMessage()`新增payload欄位`narrative_length_guide`，帶入該回合的`timeCtx.monthsCrossed`算出的級距/字數/結構說明
+- `buildSystemPrompt()`把原本寫死的「每次敘事約250-350字」句子，改寫成說明依`narrative_length_guide`分級寫作的規則，全年齡適用、不分人生階段
+
+**二、順帶發現並修正：學生時期`monthsCrossed`校準bug（使用者要求「順便檢查」找出的既有問題）**
+- 根因：`advanceStructuredTime()`高中/大學分支的`monthsCrossed`原本寫死`1.5`（每回合），54回合（一整年）累加＝81個月（6.75年），跟「54回合＝年齡+1歲」的既有結構（`advanceStageYear`）完全脫節；休學分支同樣寫死`monthsCrossed:1`，7回合＝7個月，跟9.5.3定義的「一次休學＝delay_years+0.5＝半年（6個月）」對不上
+- 修正：新增`STUDENT_MONTHS_PER_ROUND = 12 / YEAR_SEGMENTS.reduce((sum,seg)=>sum+seg.budget,0)`（12個月平均分攤到一整年54回合，動態計算不寫死54）取代`1.5`；新增`LEAVE_MONTHS_PER_ROUND = 6 / LEAVE_OF_ABSENCE_TURNS`取代休學分支的`1`
+- career模式（22歲以後）原本就用`12/該年齡帶budget`正確計算（每個年齡帶的budget回合數乘上對應月數，總和必為12），未受此bug影響，不需修改
+- **這個bug是使用者最初提出「一回合過了一到兩個月，體感可能對不上」疑慮的根本原因**：修正前，即使是最短的學生日常回合也被記成1.5個月，遠超實際節奏；修正後，一般學生回合約0.22個月（6-7天），自然落在narrative_length_guide的「兩週以內」級距
+
+**驗證**
+- `node -e`抽出`<script>`內容做語法檢查，通過
+- Node vm沙箱直接模擬：從開局跑到年齡首次+1，統計`monthsCrossed`累加總量——修正前81（bug已確認存在），修正後11.88（≈12，殘差為`toFixed(2)`精度捨入，符合預期）
+- `narrativeLengthTier()`邊界值測試：0.22→short、0.5→short、0.8→medium、2→long，皆符合設計
+
+**待真實API測試清單**
+- `narrative_length_guide`：AI是否會依三個級距實際調整敘事長度與結構（是否加轉場句/次要片段），需要真實API才能驗證AI敘事層表現
+- 核心場景「約450字為基準」的份量感是否符合預期，需搭配內容組提供的參考範例（使用者原文提到「以參考範例為基準」，本次未附上具體範例文字，待補）
+
+**待確認清單**
+- 無新增（本次兩項工作皆依使用者明確指示的規則與檢查要求直接實作，未遇到需自行判斷的模糊點）
+
+**影響**：新增`STUDENT_MONTHS_PER_ROUND`/`LEAVE_MONTHS_PER_ROUND`常數與`narrativeLengthTier()`函式，修改`monthsCrossed`計算方式（會讓同一回合的財務結算金額變小，因為原本被錯誤放大6.75倍/7倍）。**這是行為修正，不是新增欄位，不影響存檔資料結構本身，但正在進行中的存檔如果剛好卡在學生時期，接下來的月結算金額會比修正前小很多（因為monthsCrossed從1.5降到0.22）——這是預期中的修正結果，不是bug，但需要在回覆裡明講，避免使用者誤以為存檔壞掉**
+
+---
+
+## 2026-09-23（批次D後續：編號撞號改號整理＋補寫三則先前保留的範例）
+
+**〔整理〕使用者在批次A~E完成後，針對批次D記錄的「編號撞號」與「這次沒寫、之後可能需要」兩項待辦，明確要求動手處理**
+
+**一、14-內容範例庫編號撞號改號整理**
+- 五個子檔全數改名並重新編號：`12.1-開局個性.md`→`14.1-開局個性.md`、`12.2-國高中.md`→`14.2-國高中.md`、`12.3-大學技職.md`→`14.3-大學技職.md`、`12.4-破格時刻.md`→`14.4-破格時刻.md`、`12.5-職涯.md`→`14.5-職涯.md`
+- 各檔內部所有章節編號（`## 12.N`頂層標題、`### 12.N.M`子節標題）同步改為`14.N`/`14.N.M`；子檔彼此間的交叉引用也同步修正（例：原`14.4.7`引用`12.2.1`已改為引用`14.2.1`）
+- 子檔內文裡引用第十二章職涯系統本身既有編號的地方（`12.7`裁員、`12.8.1`/`12.8.2`創業、`12.11`職涯伏筆、`12.13`責任邊界、`12.16`本節）**刻意保留不變**——這些是第十二章自己的章節號，不屬於本次改號範圍，混著改會造成新的錯誤
+- 同步修正外部交叉引用：`14-內容範例庫/00-說明.md`（檔名清單、新增已結案說明）、六、06-防壓抑機制設計.md 6.2、九、09-大學科系系統.md 9.5.2/9.6、十二、12-職涯系統.md 12.16、五、05-開局個性生成系統.md（4處）、`協作流程說明-共同基準.md`（folder結構描述）
+- **技術判斷**：`00-總覽.md`/`CHANGELOG.md`/QA手冊裡記錄批次D當時工作內容的歷史條目（提到舊檔名`12.x`）維持原樣不改——那些是「當時做了什麼」的歷史記錄，符合這幾份文件一貫「只增不減」的慣例，不因後續改名就回頭改寫歷史
+
+**二、補寫批次D保留未寫的三則範例（原本因「不在queue.md原始A~E範圍」而擱置，這次使用者明確要求動手）**
+- `14-內容範例庫/14.3-大學技職.md`新增14.3.10「休學學期生活」（呼應9.5.3要求的生活/打工/家庭/自我探索敘事，財務型/健康型/單純想暫停三則）
+- `14-內容範例庫/14.5-職涯.md`新增14.5.7「求職保底offer」（呼應12.4連續3次失敗後第4次必定錄取的保底機制）、14.5.8「被迫退休與半退休」（呼應12.10健康低於門檻直接觸發的被迫退休分支、半退休兼職/接案/志工選項）
+- **重要提醒**：這三則與本檔案其餘範例性質不同——其餘範例都是網頁版討論確認後原文寫入，這三則是Claude Code依既有程式規則（9.5.3/12.4/12.10）直接新寫的內容，**未經使用者或網頁版逐字確認**，已在各自檔案內加註說明，方便日後內容組覆蓋重寫時能一眼辨識
+
+**驗證**：純文件改動（改名+編號+新增範例文字），不涉及`index.html`代碼，`node -e`語法檢查不受影響；已用`grep`全文掃描`life-sim-design/`確認沒有遺漏的舊檔名/舊編號交叉引用（歷史記錄條目除外）
+
+**待真實API測試清單**：無
+
+**待確認清單**：
+- 新補寫的三則範例（14.3.10、14.5.7、14.5.8）文字本身未經網頁版確認，若之後要調整語氣/措辭，內容組可直接覆蓋這幾節，不影響其他章節結構
+
+**影響**：純設計文件檔名/編號/內容變動，不影響`index.html`與舊存檔
+
+---
+
+## 2026-09-23（佇列批次E：文件整理與一致性——CLAUDE.md節奏數字過期/QA手冊34.2矛盾條目/index.html過期程式註解）
+
+**〔整理〕使用者透過`queue.md`批次佇列貼回claude.ai網頁版討論結論，依WORKFLOW.md第6節批次規則處理**
+
+**一、CLAUDE.md節奏描述過期**
+- 「已知的架構決定」一條把回合預算數字從過期的「40回合/年降到81歲以後10回合/年」訂正為現行v2.1數字「32回合/年降到80歲以後5回合/年」，對照`index.html`的`LIFE_STAGE_ROUND_BUDGET`（22-29歲32、30-39歲28、40-49歲15、50-59歲12、60-69歲10、70-79歲7、80+歲5）與`life-sim-design/02-時間軸與節奏設計.md`既有正確表格
+- 查核`WORKFLOW.md`與`life-sim-design/02-時間軸與節奏設計.md`，兩者都沒有這個過期數字，只有`CLAUDE.md`需要修正
+
+**二、QA手冊34.2重複/矛盾條目**
+- 移除「first_child／home_purchase／moved_out的skipped入口」重複且矛盾的過期條目：這項早於2026-09-20完成並已列在34.1，34.2同時保留一份未實作版本互相矛盾，已移除34.2那筆，只留34.1的完成記錄
+- 查核「社團參與／職涯認同重複列兩次」的說法：全文只找到一筆（34.2第一項），沒有發現第二筆重複，維持原樣不動
+
+**三、index.html三處過期程式註解**
+- `collegeYearsRequired`/`collegeDelayYearsUsed`欄位註解原本寫「尚未實作科系選擇機制」「尚未實作延畢觸發機制」，但這兩套機制（9.2/9.4選科系、9.5.3休學延畢）早已實作，改寫成準確描述目前實際的資料來源（`assignStudentMajor()`/`sweepUniversityState()`）
+- 雙主修相關代碼註解原本寫「雙主修相關代碼（尚未實作）」，但`renderDualMajorOfferModal()`/`renderDualMajorAbandonModal()`等已存在，同步修正
+- Debug面板底部說明原本寫「還沒有事件狀態（completed/skipped/locked）追蹤機制」，但四、4.3機制（`state.milestones`）本身早已實作，只是這個面板沒有專屬UI可以直接勾選/查詢，改寫成準確描述（可用既有的「印出完整state到Console」按鈕查）
+
+**技術判斷**：佇列報的原始行號（849/1810~1814/2138）因當天已有A/B/C三批次改動而位移，實際依內容比對定位，不是逐行號修改；行849那處（婚姻危機`careerStatus==="unemployed"`判斷旁的舊註解）已在同日批次A修正時一併處理，這裡不重複記錄
+
+**驗證**：`node -e`語法檢查通過；純文件/註解修正，不涉及邏輯變動，不需要`USE_MOCK`驗證
+
+**待真實API測試清單**：無
+
+**待確認清單**：無（三項都是對照現行程式碼/文件直接訂正過期描述，未遇到需自行判斷的模糊點）
+
+**影響**：純文件與程式註解修正，不影響任何遊戲邏輯，不影響舊存檔
+
+---
+
+## 2026-09-23（佇列批次D：補齊6.2破格時刻/九章大學/十二章職涯範例庫，純文件整理）
+
+**〔整理〕使用者透過`queue.md`批次佇列貼回已在claude.ai網頁版確認過的範例文字，依WORKFLOW.md第6節批次規則處理，不動`index.html`**
+
+**新增/修改檔案清單**
+- 新增`life-sim-design/14-內容範例庫/12.4-破格時刻.md`：六、6.2九種性格破格時刻各一則（12.4.1~12.4.9，依附四原型×同儕位置五類）
+- 新增`life-sim-design/14-內容範例庫/12.5-職涯.md`：十二、職涯系統六則（12.5.1面試現場、12.5.2第一份薪水入帳、12.5.3被裁員、12.5.4創業第一年、12.5.5收攤、12.5.6退休前最後一天）
+- `life-sim-design/14-內容範例庫/12.2-國高中.md`：新增12.2.6科系類別選擇
+- `life-sim-design/14-內容範例庫/12.3-大學技職.md`：新增12.3.7交換學生、12.3.8社團深化、12.3.9打工深化
+- `life-sim-design/14-內容範例庫/00-說明.md`：子檔清單補上12.4/12.5兩項，編號撞號的待確認說明同步更新提及新檔案
+- `life-sim-design/06-防壓抑機制設計.md`：6.2最後一條【待補充】→【已補充】，並更正佇列討論原文對breakthrough_events實作狀態的錯誤前提
+- `life-sim-design/09-大學科系系統.md`：9.6【待補充】→【已補充】
+- `life-sim-design/12-職涯系統.md`：12.16【待補充】→【已補充】
+
+**重要發現（技術判斷，更正佇列討論原文的前提）**
+- 佇列貼回的討論文字認為「破格範例寫完，`breakthrough_events`還是空陣列，客戶端的光譜位移觸發點還沒實作」。查核`index.html`（`checkBreakthroughMilestones()`，第425行起）與QA手冊34.1發現這條判定**已於2026-09-20實作完成**（依附兩軸/同儕位置偏離開局基準線達門檻觸發，終身最多2次/軸），且QA手冊34.2早已把這項移到34.1完成清單——網頁版討論當時顯然沒有對照到這次更新後的repo狀態。已在06-防壓抑機制設計.md 6.2條目下更正記錄，避免誤以為這裡還有未實作的判定邏輯需要排進度
+
+**任務4：檢查system prompt是否直接嵌入內容範例庫文字（純檢查，未改代碼）**
+- 檢查結果：**沒有**。搜尋`index.html`的system prompt區塊，只找到幾句獨立寫成的短範例（例如「你數了數口袋裡的錢」這類格式示範句），這些是為了說明prompt規則本身而寫的短例句，不是直接貼進`14-內容範例庫/`檔案裡的完整敘事段落。範例庫目前只是給人看的內容庫，不是AI呼叫時的few-shot輸入
+
+**驗證**：純文件整理，不涉及代碼邏輯，不需要`USE_MOCK`驗證；已確認新增的兩個範例檔格式（標題層級、引用區塊、選項列表）比照既有子檔慣例
+
+**待真實API測試清單**
+- 無（純文件範例補充，不涉及AI輸出邏輯變動）
+
+**待確認清單**
+- 編號撞號問題（`14-內容範例庫/`子檔仍沿用`12.x`舊編號，與第十二章職涯系統撞號）：本次沿用舊編號延續補入，改號列為獨立整理任務，已記錄在`00-說明.md`
+- 這次沒寫、但之後可能需要的範例（不在本次範圍，先記著）：休學學期的生活敘事（9.5.3有提到需要）、求職保底offer、被迫退休與半退休
+
+**影響**：純設計文件新增/修改，不影響`index.html`與舊存檔
+
+---
+
+## 2026-09-23（佇列批次C：11.4明牌檢定白名單補齊/3.2.2/3.2.4/3.7.3/8.1數值公式拍板）
+
+**〔開發部〕〔測試部〕使用者透過`queue.md`批次佇列貼回claude.ai網頁版討論結論與給Code的修改文字，依WORKFLOW.md第6節批次規則處理**
+- 對應設計文件：十一、11-高張力抉擇機率判定.md 11.4、三、03-核心數值系統.md 3.2.2／3.2.4／3.5.1／3.7.3、八、08-興趣系統.md 8.1、二、02-時間軸與節奏設計.md 2.4.1
+
+**一、十一、11.4明牌檢定白名單補齊其餘八項候選**
+- 轉系申請結果（9.5.1）收錄：`resolveTransferOffer()`改為回傳`{success,roll,probPct,majorLabel}`（原本機率轉成百分點、`roll=rnd(1,100)`），`renderTransferOfferModal()`新增stage2揭曉骰值/門檻對比，比照`renderPromotionOfferModal()`的兩階段呈現
+- 買房貸款核准（7.5.3）收錄但**不實作**：一、1.2.6客戶端機率區間尚未補齊，現行代碼只有頭期款/現金確定性門檻檢查，沒有貸款核准機率，維持現狀
+- 轉職不另立節點：確認`renderJobSearchModal()`/`resolveJobApplication()`本來就同時處理求職與轉職（`isTransfer`參數已存在），不需修改
+- 期中考、雙主修/休學候選判定、告白/求婚結婚決定、生育嘗試結果四項明確排除，不需改代碼
+
+**二、三、3.2.2 milestone學習值區間定案**
+- `KNOWLEDGE_EVENT_VALUES.milestone=[10,15]`維持不變（原本已是這個數字），文件補上定案標記；三種標籤均勻隨機取整數的規則同步寫入文件
+
+**三、三、3.2.4 才識拖累斜率**
+- 新增`EXAM_INTEREST_DRAG_PER_CHOICE=2`、`computeExamInterestDragMultiplier(knowledge)`（拖累倍率＝1-(才識-50)×1%，範圍0.5~1.5）
+- 新增`s.interestCountThisTerm`欄位，`applyInterestEvent()`收到有效`interest_event`時累加，與`studyCountThisTerm`同時歸零（考試結算時、休學復學時）；`takeTurn()`新增`interestCountBeforeAdvance`快照，比照`studyCountBeforeAdvance`避免考試回合讀到已歸零的值
+- `exam_score_hint`公式改為`clamp(才識 + 讀書次數×3 − 興趣路徑次數×2×拖累倍率, 0, 100)`；新增`interest_count_this_term`payload欄位（對稱於既有`study_count_this_term`），system prompt同步補充說明
+
+**四、三、3.7.3自律加成＋3.5.1過勞門檻**
+- 新增`getDisciplineMultiplier(s)`（自律乘數＝1+(自律-50)×0.5%，範圍0.75~1.25），接上三處：①才識成長鏈（`knowledgeDelta`公式新增`disciplineMult`因子，順序為智慧×邏輯×自律×團隊）②8.3興趣投入度原始值（`raw*getDisciplineMultiplier(s)`再套邊際遞減）③3.5.1過勞門檻
+- 新增`burnoutStreakThreshold(s)`（自律≥60回傳6，否則回傳5）與`s.burnoutSignalNow`旗標（`lowHealthStreak>=門檻`時為true），新增`burnout_signal_now`payload欄位；**技術判斷**：3.5.1文件本身沒有獨立的過勞里程碑機制，`lowHealthStreak`原本只是原始數字讓AI自行判斷，這次新增的是明確訊號而非強制觸發的系統事件，也沒有更動九、9.7另一個獨立機制`WITHDRAWAL_STREAK_TRIGGER`（休學候選門檻，二者概念不同不能混用）
+- 發現並修正一個附帶的既有缺口：`low_health_streak`欄位存在於payload多時，但system prompt從未解釋這個欄位的意義，這次一併補上說明（與新欄位`burnout_signal_now`寫在同一條)
+
+**五、八、8.1候選興趣淡出／正式興趣卡降階**
+- `INTEREST_CANDIDATE_FADE_TURNS`從6改為12、`INTEREST_ACTIVE_DORMANT_TURNS`從10改為24
+- 欄位`lastTouchTurn`改名為`lastEngagedRound`；重置規則改為：候選階段positive或neutral皆重置，正式階段只有positive重置，negative兩階段都不重置（取代原本「任何reaction都重置」的舊寫法）
+
+**驗證**
+- `node -e`抽出`<script>`內容做語法檢查，通過
+- Node vm沙箱直接測試：`getDisciplineMultiplier`/`burnoutStreakThreshold`/`computeExamInterestDragMultiplier`數值全對；候選興趣12回合淡出、positive/neutral在candidate階段重置計時、negative不重置；正式興趣卡24回合降階為dormant、只有positive重置計時；`burnoutSignalNow`在discipline=40時第5回合觸發、discipline≥60時第6回合觸發；`resolveTransferOffer()`回傳roll/probPct；`applyResult()`端到端測試discipline=90比discipline=20的才識成長量更多（disciplineMult確實接進knowledge chain）
+
+**待真實API測試清單**
+- `burnout_signal_now`／`interest_count_this_term`：AI是否會依新增的system prompt說明，在對應情境下自然帶出過勞徵兆敘事、或呼應興趣路徑對成績的影響（需要真實API才能驗證AI敘事層表現）
+
+**待確認清單**
+- 無新增（本批次三項白名單收錄/排除決定、四項數值公式皆直接對照佇列給的建議與現行程式碼實作，未遇到需自行判斷的模糊點；買房貸款核准的「不實作」是佇列文字本身明講的前提，不是我方判斷）
+
+**影響**：新增`s.interestCountThisTerm`／`s.burnoutSignalNow`欄位、`interestCandidates[].lastEngagedRound`（取代`lastTouchTurn`）。**舊存檔沒有`lastEngagedRound`時**：`sweepInterestDecay()`用`card.lastEngagedRound ?? s.turnCount`防呆，舊存檔的候選/興趣卡會被視為「剛互動過」，不會立刻被判定淡出，之後照新規則正常累計，不影響可玩性
+
+---
+
+## 2026-09-23（佇列批次B：隔代教養祖父母卡/13.9拍板/時間軸標籤與跳過判定修正）
+
+**〔開發部〕〔測試部〕使用者透過`queue.md`批次佇列貼回claude.ai網頁版討論結論與給Code的修改文字，依WORKFLOW.md第6節批次規則處理**
+- 對應設計文件：十三、13-健康衰退與老年階段.md 13.5.1／13.9、五、05-開局個性生成系統.md 5.2.6、十一、11-高張力抉擇機率判定.md 11.4、二、02-時間軸與節奏設計.md 2.2／2.2.1／2.2.2
+
+**一、隔代教養祖父母卡套用十三、13.5父母健康狀態機**
+- 祖父母卡新增`age`欄位：玩家年齡＋兩次`PARENT_CHILD_AGE_GAP_MIN/MAX`落差（兩代各套一次，開局時玩家15歲）
+- `rollParentHealthStageAdvance()`篩選條件從只認`origin==="父母，從出生起"`擴大為同時納入`"隔代教養，從出生起"`，長照決策/過世/遺產自動沿用既有`resolveEldercareDecision()`/`finalizeParentDeath()`（皆按角色名查找，與origin無關，不需修改）
+- 學生時期只靠既有的`ageChildren()`增齡（在highschool/college與career兩種模式都會執行），健康階段推進只在career模式的年度檢查裡才會跑到，兩者天然分開，不需要額外程式碼防呆
+- 世代傳承（`succeedAsChild()`）本來就只延續spouse/otherKids，不會延續舊主角的祖父母卡，自然滿足「移出健康系統」的要求，不需修改
+- **待確認**：網頁版討論假設13.5.1的父母年齡落差是「25～35歲」，但實際程式碼（2026-09-22已修正）是`PARENT_CHILD_AGE_GAP_MIN/MAX`＝22～38歲；本次祖父母年齡計算依現行程式碼為準（玩家＋22~38再+22~38＝玩家+44~76歲），未採用討論原文假設的65~85歲區間，已記錄於此
+
+**二、十三、13.9三項待確認拍板為定案**
+- 疾病最低年齡門檻30歲：定案，程式`ILLNESS_MIN_AGE=30`不需修改
+- 13.7.2老年比重表維持年齡帶為單位不細分前後期：定案，13.7.2本身尚未實作，本次只改文件
+- 重大疾病治療結果不納入十一、11.4明牌檢定白名單：定案，已在11.4白名單條目同步加註排除；程式不需修改（目前白名單僅期末考成績公布一項）
+
+**三、時間軸兩個bug修正＋新增開場段落**
+- 新增`timeState.prologue`旗標：`newRoll()`與`succeedAsChild()`建立新角色時皆設為true；`advanceStructuredTime()`與`computeTimeLabel()`最前面加早期return，prologue回合固定顯示「高一開學前・暑假最後一天」、不做跳過判定/不推進段落/不累計讀書次數，回合結束後設為false
+- `startLife()`開局文字改為「（人生正式開始：15歲的你，在高中開學前的暑假最後一天。）」——原文字含「暑假」二字，配合舊版過寬的跳過判定會讓第一回合就隨機跳2~4段，改用prologue旗標從根本避開判定，不只是換字面
+- **時間標籤慢一拍修正**：`advanceStructuredTime()`新增`currentLabel`欄位，非跳過回合＝這回合開始時所在的段落（fromLabel），跳過回合＝跳過後落點；`takeTurn()`的`timeCtx.label`改讀`adv.currentLabel`取代原本永遠讀`adv.toLabel`（換段後、下一回合才生效的段落）。修正後標示「期中考」的回合就是真正考試的那一回合，不會延後到下一段才顯示
+- **跳過判定收窄**：`detectTimeSkipIntent()`從「跳過|直接|快轉|之後|畢業後|下學期|寒假|暑假|一段時間後|過了」收窄為「跳過|快轉|直接跳到|一段時間後」或「跳到」+「寒假|暑假|下學期|期中|期末」；新增`resolveTimeSkipTarget()`解析有指定目標的跳過、`findNextSegmentGlobalIdx()`往後找目標段落；跳過邏輯改為：無目標＝只結束目前段落進下一段（取代原本`rnd(2,4)`大跳段），有目標＝跳到下一次出現該段落的位置；兩者都會掃描途中是否經過考試段，經過就停在考試段本身（`examType`維持null，下一回合才真的考）；`currentSeg.isExam`時強制`skip=false`（站在考試段上，跳過語意失效）；career模式沿用同一個收窄後的函式，行為（跳過＝跳完當年剩餘回合）不變，只是不會再被「之後」「直接」等一般用語誤觸發
+- 移除已不再使用的`detectExamCrossed()`（舊版跳過邏輯用來偵測跳過區間內是否經過考試，新邏輯改用「途中遇到考試段就停下」取代，不再需要這個函式）
+
+**驗證**
+- `node -e`抽出`<script>`內容做語法檢查，通過
+- Node vm沙箱直接跑`advanceStructuredTime()`模擬60回合不跳過：標籤序列＝暑假最後一天×1→開學初×3→期中準備期×6→期中考×1[EXAM]→期中後放鬆×2→期末準備期×6→期末考×1[EXAM]→寒假×8→下學期同序×27→暑假×8→高二上學期開學初，與設計文件驗收清單逐項吻合
+- `detectTimeSkipIntent()`：「放學之後直接去打工」「過了一陣子覺得很累」→false；「跳到寒假」「跳過這學期」「一段時間後回來」→true
+- 從期中準備期輸入「跳到寒假」→停在期中考（不觸發考試）；下一回合再輸入任何行動（含跳過關鍵字）→強制觸發期中考（`skip`被`currentSeg.isExam`擋下）
+- career模式：`age:25, stageMode:"career"`，輸入「之後直接去找朋友聊聊」→`bigJump:false`，不再整年跳過
+- 隔代教養祖父母卡：1萬次`newRoll()`模擬（約12%命中隔代教養），30歲時取樣1138筆、在世比例86.8%、健康階段分布{1:517,2:357,3:211,4:53}；40歲時取樣1206筆、在世比例59.7%、健康階段分布{1:258,2:366,3:452,4:130}——先回報數據，未依此調整任何測試參數
+
+**待真實API測試清單**
+- 無（本批次三項皆為client端結構化邏輯，不涉及AI輸出）
+
+**待確認清單（2026-09-23使用者確認採用Claude Code建議，已結案）**
+- 祖父母年齡落差區間：確認維持現行程式`PARENT_CHILD_AGE_GAP_MIN/MAX`(22~38)，不改用網頁版討論原文假設的13.5.1「25~35歲」——該假設本身是2026-09-22修正前的舊數字，22~38才是目前13.5.1的定案值，祖孫兩代沿用同一組區間不另訂新參數。程式與13.5.1文件皆已是這個狀態，本次不需要再改代碼
+
+**影響**：新增`timeState.prologue`旗標與祖父母卡`age`/`healthStage`欄位，皆用`||`/存在性防呆讀取；移除`detectExamCrossed()`函式（確認已無其他呼叫點）。**舊存檔沒有`timeState.prologue`欄位時視為false（等同已跳過開場段落，不會被硬塞回開場，直接照舊存檔記錄的段落位置繼續），不影響舊存檔可玩性**
+
+---
+
+## 2026-09-22（六項落差修正批次，代碼實作）
+
+**〔開發部〕承接同日稍早寫入`life-sim-design/`的六項【定案】，實作進`index.html`（接手家業一項使用者已口頭確認保留）**
+- 對應設計文件：九、9.5.3／9.8.1、二、2.2／2.3（純文件，代碼原已是8不需改）、四、4.1.1、七、7.6.1.1、三、3.4.11、十二、12.11.1
+- 背景：使用者要求先進行實作，這次全部在Node vm沙箱裡直接跑實際`index.html`抽出的程式碼驗證（非重新實作邏輯），不涉及USE_MOCK端到端瀏覽器測試
+
+**一、九、9.5.3／9.8.1：肄業不可重新入學、半年延畢與學期結構對應**
+- 確認`studentStatus`全檔案只有3處賦值(enrolled/graduated/withdrawn)，沒有任何路徑能從withdrawn改回enrolled，符合9.5.3定案
+- 新增`s.halfYearCarry`欄位；`sweepUniversityState()`復學分支每次+1，滿2時歸零並`age+=1`(同步呼叫`ageChildren()`)
+- 移除`collegeTotalYearsRequired()`(改動後已無呼叫者)；`advanceStageYear()`畢業判定改為`yearInStage>(collegeYearsRequired||4)`，不再疊加delay
+- 新增`isAnotherLeaveFeasible()`取代原本「只看delay_years<2」的休學可用條件，改為同時檢查「加上這次休學半年後的預計畢業年齡」是否超過畢業年齡上限；`computeExpectedGraduationAge()`同步修正為「基礎年限−目前年級+1+halfYearCarry×0.5」，不再用`collegeTotalYearsRequired()`(原公式在halfYearCarry生效後會把同一段延畢重複算兩次)
+- `collegeYearLabel()`不再輸出「延畢第N年」，改為「大四・已延畢0.5年」這種附註格式
+- 過程中發現的實作細節（非文件明文規定，記錄供之後查證）：`computeExpectedGraduationAge()`與`isTransferFeasible()`用途不同——前者已修正為避免與halfYearCarry造成的age提前重複計算；後者(9.4既有函式，用於轉系當下的可行性判斷)沿用原本就有的`collegeDelayYearsUsed`原始公式，9.4文件本身已經把這個函式標記【待驗證】(轉系+休學疊加的邊界情境)，這次不在範圍內一併處理，若之後要校準需連同halfYearCarry一起考慮
+- 驗證：Node vm跑實際函式，4年制休學0/1/2/3/4次，`computeExpectedGraduationAge()`依序算出22/22.5/23/23.5/24歲(47項斷言全過)；額外驗證原始bug回報情境(轉系到剩0緩衝的角色，`isAnotherLeaveFeasible()`正確擋下第一次休學，取代舊版「還能再休4次」的漏洞)
+- **影響**：新增`halfYearCarry`欄位，讀取皆用`||0`防呆，**不會讓舊存檔跑不動**，舊存檔角色視為0（尚未使用過半年延畢機制）
+
+**二、二、2.2／2.3：純文件修正，代碼確認本來就是8回合，這次不需要改`index.html`**
+
+**三、四、4.1.1：關係變化提示三層優先序**
+- `applyResult()`裡的提示建構邏輯改寫為三層候選(`relationshipHintCandidates`)：tier1戀愛狀態轉換／tier2 `relationshipStatusLabel()`文字級距改變／tier3一般增減累積(新增`c.relationshipHintAccum`欄位，達`RELATIONSHIP_HINT_ACCUM_THRESHOLD`(8)才提示一次並歸零)
+- 每回合依tier排序取前`RELATIONSHIP_HINT_MAX_PER_TURN`(2)則；`demoteStaleCharacters()`新增選填參數，讓4.1.2同住緩降也能推入tier2候選(只在級距改變時，不產生tier3提示)
+- 驗證：Node vm跑實際函式，9項斷言全過，含「5位NPC同時互動，提示不超過2則」「累積5+4=9達門檻才觸發」「同住緩降只在跨級距時給tier2提示」等情境
+- **影響**：新增`c.relationshipHintAccum`欄位，`||0`防呆，**不影響舊存檔**
+
+**四、七、7.6.1.1／三、3.4.11：同居觸發入口**
+- 新增`checkCohabitationOffer()`：被動條件(穩定交往≥8回合、已搬出且租屋/自有房、無配偶、無其他同居對象)全部成立才排入彈窗；主動偵測同居關鍵字比照`detectJobChangeIntent()`模式
+- 新增`renderCohabitationOfferModal()`／`resolveCohabitationOffer()`：接受設`cohabiting=true`，拒絕設12回合冷卻(`cohabitationOfferCooldownUntilTurn`)
+- 配偶/伴侶進入`stable`時記錄`c.stableSinceTurn`；分手(`negative`訊號累積到`ROMANCE_BREAKUP_STREAK`)時呼叫既有`releaseCohabiting()`解除同住標記
+- `HOUSEHOLD_SHARED_LIVING_MULTIPLIER`(1.6倍)拆分出`HOUSEHOLD_COHABITING_LIVING_MULTIPLIER`(0.8倍)，`computeBaseLivingCost()`依`household_status`分流；新增`cohabitation_event_now` payload欄位＋system prompt說明
+- 驗證：Node vm跑實際函式，14項斷言全過(另1項因測試腳本本身沒有模擬「dispatch清空pending欄位」這個既有前置動作而誤判，已用獨立debug腳本確認冷卻機制本身正確)，含「同居後生活開銷確實比單身基準更低」(對應bug回報「同居比單身更貴」)
+- **已知限制**：舊存檔裡「這次更新前就已經是穩定交往」的NPC沒有`stableSinceTurn`，被動(持續回合數)判斷會讀到0，需要玩家用自由輸入講出同居意圖才能主動觸發一次補上；之後的NPC走正常流程不受影響
+- **影響**：新增`s.pendingCohabitationOffer`／`s.cohabitationOfferCooldownUntilTurn`／`s.cohabitationEventLog`／`c.stableSinceTurn`欄位，**不影響舊存檔**(全部lazy-init，未觸發前不存在)
+
+**五、十二、12.11.1：職涯伏筆觸發後的候選化與後續效果**
+- `s.careerForeshadowLines`資料形狀改變：原本純字串陣列改為`{line,hitAge,hitTurn,status}`物件陣列，status依序鋪陳中(brewing)/候選(candidate)/已接受(accepted)/已拒絕(declined)
+- `rollCareerForeshadow()`改用`shuffledForeshadowLines()`(Fisher-Yates)每次打亂判定順序，不再固定創業線優先；每條線只要曾經有記錄就不再命中第二次
+- 新增`sweepCareerForeshadowCandidates()`(掛進每回合都會跑的`checkCareerTriggers()`)：鋪陳滿`FORESHADOW_CANDIDATE_DELAY_TURNS`(6)回合才接回既有機制——創業線接`pendingBusinessLaunch`(已在創業中則直接declined)；自由接案/演藝圈線接`pendingJobSearch`並給「自由/創作類」+10個百分點(`FORESHADOW_CREATIVE_OFFER_BONUS_PP`，`buildJobSearchOffers()`/`computeHireProbability()`新增`creativeBonusPct`參數)；海外線接`pendingJobSearch`並補上12.6.1原本未實作的現金門檻(6個月基本生活開銷，不足則declined不扣款)；接手家業檢查5.2.5前置條件(父母角色卡`occupation==="自營業者"`且仍在世，`addNormalParent()`同步新增`occupation`欄位持久化到角色卡)，不成立則declined
+- `resolveJobApplication()`新增`opts`參數(`isOverseas`/`foreshadowLine`/`creativeBonusPct`)：海外線一律視為跨類別轉職子情境，即使選了同一類別也強制job_level降級/tenure歸零，不比照一般同類別轉職保留；候選結算(接受/拒絕)接回對應的`careerForeshadowLines`entry
+- 新增`renderFamilyBusinessOfferModal()`／`resolveFamilyBusinessOffer()`／`acceptFamilyBusinessOffer()`：接受後`occupation_category`轉自營/家庭事業類、`business_status`經營中，免啟動資金、不計入`first_startup`里程碑
+- 新增`career_foreshadow` payload欄位(列出目前鋪陳中的線)＋system prompt說明，讓AI在正式成為候選前能自然埋人事物鋪陳
+- 過程中的實作判斷（非文件逐字規定）：自由接案/演藝圈線、海外線的「接受/拒絕」判定沒有獨立的彈窗按鈕(沿用既有求職彈窗，只能選類別＋投遞)，改為「解析出的求職彈窗resolve後，依是否命中該線對應的目標路徑(自由接案/演藝圈線需錄取到自由/創作類；海外線只要錄取即算)」判斷已接受/已拒絕；求職失敗(骰輸)也視為已拒絕，不會保留候選資格重試——這點跟「玩家主動拒絕」在文字上不完全對應，但每條線本來就只給一次候選機會，效果上不影響設計文件的驗收標準
+- 驗證：Node vm跑實際函式，32項斷言全過，含判定順序隨機性(200次調用出現5種不同的第一個元素)、延遲6回合才候選化、創業線already-in-business即時declined、海外線現金門檻擋下、接手家業前置條件(無父母/父母過世/父母在世且自營三種情境)、接受不扣啟動資金不記里程碑等；額外用獨立腳本強制骰中確認海外線同類別仍強制job_level/tenure歸零
+- **影響**：`careerForeshadowLines`資料形狀改變是這批裡**風險最高的一項**——舊存檔如果已經有舊格式(純字串)的紀錄，不會造成程式崩潰(所有讀取都用`e.line`/`e.status`存取物件屬性，字串沒有這些屬性只會讀到`undefined`，各處判斷式都設計成「讀不到就當作沒有這筆記錄」)，但效果上等於**舊存檔裡任何已經命中過的伏筆線資料會變成不再被系統辨識的死資料**，該角色的這幾條線可能會重新有機會命中一次。不是存檔會壞掉/跑不動的等級，但玩家可能會注意到「原本鋪陳過的線好像重新開始了」——若想完全避免這個情況需要清空重來，一般情況下不清空也能正常繼續玩
+- 新增`s.pendingFamilyBusinessOffer`欄位與父母角色卡`occupation`欄位：後者只在**新建立**的角色卡才會寫入，舊存檔既有的父母角色卡不會回溯補上，代表這些角色的「接手家業」線永久不會成立(不影響其他四條線，也不是錯誤，只是這個特定分支對舊存檔的父母角色卡沒有作用)
+
+**五之一、十二、12.11.1補充（同日稍晚，使用者貼回claude.ai討論結論後追加）：接手家業改為兩個觸發來源共用同一個交棒動作**
+- 對應設計文件：十二、12-職涯系統.md 12.11.1「接手家業」子項補充定案
+- 背景：使用者確認接手家業定案細節——接受後的轉換不另立路徑，改與12.10「自營/家庭事業類退休可觸發交棒分支」共用同一個交棒動作，差別只在觸發來源（伏筆候選／家長退休）；家長職業一旦標記已交棒，兩個來源都不再重複詢問同一位家長
+- 做了什麼：
+  - `isFamilyBusinessAvailable()`改寫為`findFamilyBusinessParent()`，回傳具體的父母角色卡而非布林值，並把判斷條件加上`!c.familyBusinessOfferUsed`（新欄位，兩個觸發來源共用同一份防重複判斷）
+  - 新增`checkFamilyBusinessOnParentRetirement(s)`：掛在`applyResult()`既有的`milestone_updates`處理迴圈裡，比照`marriage_decision`的既有寫法——`parent_retirement`里程碑(9.8既有的AI回報里程碑,`auto:false`)被AI回報`completed`時觸發，若還有符合條件的自營業者家長就排入同一個`pendingFamilyBusinessOffer`
+  - `resolveFamilyBusinessOffer(s, pending, choice)`簽名改為接收整個`pending`物件（原本只接`foreshadowLine`）：不論接受或拒絕都標記該家長`familyBusinessOfferUsed=true`（兩個來源合計只問一次）；只有實際接受才額外標記`handedOver=true`（對應12.11.1「該家長職業標記為已交棒」）
+  - `renderFamilyBusinessOfferModal()`依`pending.foreshadowLine`是否為null切換敘事文字（伏筆候選版本 vs 家長退休版本，後者帶出家長稱謂）
+  - 12.8經營風險是否該比新創失敗率低，設計文件當下標記【待驗證】，這次先不改`rollAnnualBusinessCheck()`，接手家業沿用12.8既有公式（後續處理見下一條「五之二」）
+- 驗證：Node vm跑實際函式，新增13項斷言全過，含：`parent_retirement`里程碑觸發正確建立候選(自營/非自營各一組)、接受後`handedOver`+`familyBusinessOfferUsed`皆為true且`findFamilyBusinessParent()`不再找到這位家長(防止伏筆線之後再重複命中同一人)、透過伏筆線拒絕後`familyBusinessOfferUsed`同樣為true且家長退休路徑不會再問一次(驗證「共用同一個機會」)、過世家長兩個來源皆不觸發
+- **影響**：新增`c.familyBusinessOfferUsed`／`c.handedOver`欄位，`resolveFamilyBusinessOffer()`簽名變更但呼叫端(彈窗)已同步更新，**不影響舊存檔**(新欄位皆為未定義時視為false的防呆寫法)
+
+**五之二、十二、12.11.1／12.8.2（同日稍晚）：接手家業的經營風險加成——使用者直接詢問Claude Code建議並要求直接修正**
+- 對應設計文件：十二、12-職涯系統.md 12.11.1「接手家業」子項，撤銷【待驗證】標記，改為【定案,Claude Code建議判斷,可覆寫】
+- 背景：使用者針對上一批「沒動的部分」直接追問「你建議怎麼改？直接修正」。判斷依據：接手家業已有既有客源/品牌/營運模式，起跑點比從零開始的新創更穩，用單一成功率加成反映這個差異最簡單直接，不動12.8.2既有公式其餘部分(三態切分、收攤門檻、虧損扣款比例都不變)，避免規則複雜化；加成量級(+10個百分點)比照12.8.2既有才識/人脈修正(各自約±10)同一數量級，不是隨意數字
+- 做了什麼：
+  - 新增`s.businessOrigin`欄位(`"startup"`／`"inherited"`／`null`)：`launchBusiness()`(12.8.1一般創業)設為`"startup"`，`acceptFamilyBusinessOffer()`(接手家業)設為`"inherited"`，`resolveBusinessContinuation()`的收攤分支歸零為`null`
+  - `rollAnnualBusinessCheck()`(12.8.2)新增`INHERITED_BUSINESS_SUCCESS_BONUS_PP`(10)修正項，只在`businessOrigin==="inherited"`時疊加進probPct計算，其餘公式(基礎45%＋成就傾向＋才識＋人脈＋興趣投入度、`clamp(...,5,95)`上下限、成長/持平/虧損三態切分)完全不變
+- 驗證：Node vm跑實際函式，新增5項斷言全過，含「其餘條件相同時，inherited比startup的probPct剛好高10」「`launchBusiness()`/`acceptFamilyBusinessOffer()`/收攤各自正確設定`businessOrigin`」「疊加所有加成上限仍正確被clamp在95」
+- **影響**：新增`s.businessOrigin`欄位，`||`/`===`比對皆對undefined安全，**不影響舊存檔**——舊存檔如果已經在經營自營/家庭事業類(不論當初怎麼開始的)，`businessOrigin`會是`undefined`，效果等同`"startup"`(不套用接手家業加成)，不會誤判成inherited
+
+**六、語法檢查**：`node -e`抽出`<script>`跑`new Function()`，全部修改完成後一次性檢查通過(270079字元，無語法錯誤)
+
+## 2026-09-22（續，同日稍早完成的其他四批獨立修正：bug回報×2／worker.js安全性／USE_MOCK切換方式／10.1補充）
+
+**〔開發部〕修正兩個bug回報：世代傳承後上一代主角被當成活著的父母、父母年齡沒有上限**
+- 對應設計文件：十三、13.5（照顧年邁父母）／13.6（父母過世）、七、7.4.2（世代傳承）——bug回報直接點名既有邏輯的問題，非新規則
+- 背景：使用者回報兩個問題，皆附上具體現象與驗收標準，要求先找出實際對應的函式再改，不要自創欄位名稱
+
+**問題一：世代傳承後，已過世的上一代主角被當成活著的父母**（`succeedAsChild()`）
+- 根因：`succeedAsChild()`把上一代主角(`prev`)推進新角色列表時完全沒有標記過世狀態(`active:true`、沒有`deceased`欄位)，導致`rollParentHealthStageAdvance()`的既有過濾條件(`active!==false`)攔不住，會把上一代主角當成正常在世父母，重新跑一次13.5/13.6的長照決策→過世→遺產流程；同時配偶年齡被`rnd(25,35)+15`整個重骰，家庭結構被寫死成`"雙親同住"`
+- 修正內容：
+  - 上一代主角標記`active:false, deceased:true, healthStage:4(過世), estateSettled:true, cohabiting:false`——遺產已經透過`econ = rollEconomicTierForced(economicTierForSavingsAmount(prev.cash))`在傳承流程內一次結算完畢，不需要再讓13.6的`finalizeParentDeath()`重複發一次
+  - `rollParentHealthStageAdvance()`的過濾條件加上`&& !c.deceased`（原本只查`active!==false`），雙重防呆
+  - `finalizeParentDeath()`加上`estateSettled`旗標防重複：已結算過的角色卡直接return，不會再被判定過世、再發一次遺產（不只保護世代傳承這個情境，任何理論上的重複觸發都擋得住）
+  - 配偶認定改用`c.romanceStatus==="married"`（比照既有的`sweepMarriageCrisisCandidate()`寫法），取代原本`/配偶|伴侶|先生|太太|老公|老婆/`這個regex——原regex會誤判離婚後`relation`變成「前配偶」的角色卡(字串裡仍含「配偶」兩字)，這次一併修掉
+  - 在世配偶的年齡/健康階段/同住狀態/關係值全部改成沿用傳承前的角色卡資料(`spouse.age`/`spouse.healthStage`/`spouse.cohabiting`/`spouse.affinity`)，不再重新骰年齡
+  - 家庭結構改為依實際資料推導：上一代主角在傳承當下必然已過世，不可能是「雙親同住」；不論有沒有在世配偶，既有分類(`雙親同住`/`單親－離異`/`單親－喪親`/`隔代教養`/`一方服刑中`)裡語意最貼近的固定是「單親－喪親」，取代原本依「配偶是否存在」二分成"雙親同住"/"單親－喪親"的寫法
+  - 原主角的父母(新主角視角的祖父母輩)：確認`succeedAsChild()`本來就沒有把`prev.characters`裡的父母輩角色卡複製進新的`characters`陣列，這部分不需要額外修正
+- 驗證方式：用Node vm在沙箱環境跑實際`index.html`抽出的程式碼（非重新實作），針對`succeedAsChild`/`rollParentHealthStageAdvance`/`finalizeParentDeath`寫21項斷言，全數✅：
+  - 傳承後上一代主角`active/deceased/healthStage/estateSettled/cohabiting`五個欄位都正確
+  - 傳承後立刻呼叫`rollParentHealthStageAdvance()`，上一代主角healthStage不變、`cash`不變（沒有被再判一次過世、沒有再發一次遺產）；直接呼叫`finalizeParentDeath()`對已結算角色卡同樣無效
+  - 在世配偶的年齡/healthStage/cohabiting/affinity五項全部沿用傳承前數值，不是重骰結果
+  - 家庭結構在「有配偶」與「無配偶」兩種情境下都正確算出「單親－喪親」，不再出現「雙親同住」
+  - 離婚前配偶(`relation:"前配偶", romanceStatus:"divorced"`)與現任配偶同時存在時，正確只挑到現任配偶
+
+**問題二：父母年齡沒有上限**（`rollParentHealthStageAdvance()`／`newRoll()`）
+- 根因：`PARENT_HEALTH_STAGE_ANNUAL_PROBABILITY`是不分年齡的單一5%，且沒有任何硬上限，導致父母可能無限期停留在低健康階段、活到超過110歲；另外`newRoll()`裡父母初始年齡`rnd(25,35)+15`換算下來親子年齡差只有25~35歲，比回報要求的22~38歲窄
+- 修正內容：
+  - 新增`PARENT_HEALTH_STAGE_ADVANCE_PROBABILITY_BY_AGE`分級表，集中管理方便之後調整，取代原本單一常數；初版依使用者給的數字（59歲以下2%／60-69歲5%／70-79歲10%／80-89歲18%／90-99歲30%／100歲以上50%），因60歲存活率模擬結果偏離目標，二次修正為（59歲以下2%／60-69歲5%／70-79歲6%／80-89歲9%／90-99歲30%／100歲以上50%），細節見下方「二次修正」
+  - 最後一個在世階段(3失能長照)另加`PARENT_HEALTH_LAST_STAGE_DEATH_PROBABILITY`每年獨立死亡機率，初版30%、二次修正後22%，避免長期卡在同一階段
+  - 新增`PARENT_HEALTH_HARD_CAP_AGE=105`硬上限，父母年齡達到105歲時該年直接強制進入過世流程
+  - 新增`PARENT_CHILD_AGE_GAP_MIN/MAX`(22~38)，`newRoll()`兩處骰父母初始年齡(一般家庭／一方服刑中)都改用「主角年齡(開局固定15歲)＋rnd(22,38)」
+- 驗證方式：20萬次模擬（直接呼叫實際`rollParentHealthStageAdvance()`逐年推進，非重新實作機率邏輯）：
+
+  | 指標 | 目標 | 實際結果 |
+  |---|---|---|
+  | 主角40歲時父母至少一位在世比例 | 約80%~90% | **83.44%**✅ |
+  | 主角60歲時父母至少一位在世比例 | 約25%~40% | **17.86%**⚠️偏低，未達目標下限 |
+  | 主角80歲時父母在世比例 | 低於2% | **0.05%**✅ |
+  | 超過105歲的父母人數 | 0 | **0**✅ |
+  | 父母死亡年齡上限 | ≤105 | 平均79.8歲，最大105歲✅ |
+
+  機率表邊界值(0/59/60/69/70/79/80/89/90/99/100/150歲共12個點)全數對應到正確的分級機率；父母初始年齡與主角年齡落差20000次抽樣全部落在22~38區間內
+- **二次修正（使用者確認要調整）**：60歲在世比例17.86%偏離目標後，先用純JS（非直接改`index.html`）跑了多組候選機率表20萬次模擬比較，選定改動幅度較小的一組——只調降70-79歲(10%→6%)、80-89歲(18%→9%)、最後階段(失能長照)獨立死亡機率(30%→22%)，60-69歲維持使用者原本給的5%不變。改完後用同一套Node vm跑實際`index.html`程式碼重新驗證：
+  - 40歲在世比例86.43%（目標80~90%）✅
+  - 60歲在世比例35.84%（目標25~40%）✅
+  - 80歲在世比例0.22%（目標<2%）✅
+  - 超過105歲人數0、死亡年齡最大105歲 ✅
+  - 全部39項斷言（含問題一21項）皆✅
+- 影響：**不影響存檔相容性**——`estateSettled`是新欄位但用`if(parent.estateSettled)`判斷，舊存檔沒有這個欄位時視為`undefined`(falsy)，行為等同修正前；父母年齡的新分級機率只影響「這次修正生效之後」的健康狀態機推進判定，不會回溯修改舊存檔裡已經骰定的父母年齡或已經發生過的健康階段
+
+**〔開發部〕`worker/worker.js`加上來源白名單、model/max_tokens鎖死、頻率限制三項安全防護**
+- 對應設計文件：無規則變更，屬部署基礎設施/安全性修正
+- 背景：原本的Worker轉發AI請求時完全信任前端送來的內容（model、max_tokens不設限）、CORS對任何來源都放行（`Access-Control-Allow-Origin: "*"`）、也沒有任何頻率限制——只要有人知道Worker網址就能無限制打真實API、或竄改request換模型/加大token數，費用風險不受控。討論定案於claude.ai網頁版，使用者把完整程式碼貼過來，這裡只需把其中`ALLOWED_ORIGINS`的TODO換成實際網址
+- 做了什麼：整份`worker/worker.js`改版（照使用者貼的內容原樣寫入，僅代填`ALLOWED_ORIGINS`的值）
+  - **來源白名單**：新增`ALLOWED_ORIGINS`陣列（目前填`https://lifegamepage.smile80275.workers.dev`），`isAllowedOrigin()`檢查請求的`Origin` header；OPTIONS/其他所有請求只要來源不在清單內一律回403，CORS header也從萬用字元`*`改成回傳實際比對過的origin
+  - **AI代理鎖死model/max_tokens**：`handleAIProxy()`改成先解析body再覆寫`body.model = ALLOWED_MODEL`（"claude-sonnet-5"）、`body.max_tokens`用`Math.min(...,MAX_ALLOWED_TOKENS)`（3000）夾住上限，不管前端傳什麼都會被強制改寫，避免被竄改成更貴的參數
+  - **頻率限制**：新增`checkRateLimit()`，用請求的`CF-Connecting-IP`＋小時桶當key，借用既有的`SAVES`這個KV命名空間存計數（`expirationTtl:3600`自動過期），超過`RATE_LIMIT_PER_HOUR`（30）回429；存檔三支API（`/save`/`/slots`/`/load`）跟AI代理共用同一組白名單/頻率限制檢查，順序在路由判斷之前
+  - 存檔三支API本身的邏輯（`handleSave`/`handleSlots`/`handleLoad`）未變更，只是統一多帶一個`origin`參數用於回應的CORS header
+- 驗證方式：
+  - `node --check`語法檢查✅（複製到暫存目錄改副檔名`.mjs`過`node --check`，因為原始檔用ESM的`export default`語法，`.js`會被當CommonJS解析失敗，改副檔名後語法正確）
+  - 這份檔案是貼到Cloudflare Worker線上編輯器手動部署、不是`index.html`裡USE_MOCK跑得到的路徑，沒有另外做USE_MOCK端到端驗證
+  - **需要使用者自行確認**：`ALLOWED_ORIGINS`目前只填了`https://lifegamepage.smile80275.workers.dev`這一個值（使用者提供），如果之後前端`index.html`實際部署的Cloudflare Pages網址不是這個、或有多個環境（正式/預覽）要打這支Worker，需要使用者自己在`worker.js`裡補齊清單，這裡不會自己猜
+- ⚠️ **部署動作待辦**：這份檔案改動只存在版本庫裡，還沒真的部署——使用者需要自己把新內容貼到Cloudflare Worker線上編輯器並按Deploy，這份異動才會實際生效
+
+**〔開發部〕`USE_MOCK`從寫死常數改成讀localStorage，消除「忘記改回true被commit出去」的風險**
+- 對應設計文件：無規則變更，純安全性/流程修正，呼應CLAUDE.md「費用控制鐵律」
+- 背景：9/16那次使用者授權的真實API測試後，`const USE_MOCK = false`這行留在`index.html`裡沒改回來，直接被commit進版本庫——意味著只要這份`index.html`被部署，正式版玩家會用真實API金鑰，持續產生費用。使用者在claude.ai網頁版討論後直接貼了改法過來
+- 做了什麼：
+  - `index.html`第2874行原本的`const USE_MOCK = false;`（含9/16授權的說明註解）改為：新增`FORCE_REAL_API_KEY`常數＋一個IIFE，讀`localStorage.getItem(FORCE_REAL_API_KEY) !== "yes"`決定`USE_MOCK`，讀取失敗（localStorage不可用）時安全預設回傳`true`（mock）
+  - 版本庫裡的`index.html`從此不再含有任何「切換成真實API」的硬編碼開關；要測真實API改成在瀏覽器主控台手動下`localStorage.setItem("lifegame_force_real_api","yes")`，只影響下指令那台瀏覽器，不影響其他玩家、不會被commit
+  - Debug面板（🛠）、`mockCallAI`/`callAI`分派邏輯完全沒動，兩者都是讀`USE_MOCK`這個變數本身，不管它背後怎麼算出來的，行為不變
+- 驗證方式：
+  - `node -e`語法檢查✅（抽出`<script>`內容跑`new Function()`，1個script block、250172字元，無語法錯誤）
+  - 純靜態改動，不涉及遊戲邏輯分支，未另外跑USE_MOCK端到端模擬
+- 影響：**不影響存檔相容性**，純前端開關讀取方式變更，不動任何遊戲狀態欄位
+- 後續效果：CLAUDE.md「費用控制鐵律」裡「不能自己把USE_MOCK改成false」這條的執行範圍縮小——這個常數以後不會再出現在會被commit的原始碼裡，測真實API完全是使用者自己在瀏覽器端操作
+
+**〔開發部〕十、10.1補充：同一瀏覽器內切換人生、雲端同步狀態顯示**
+- 對應設計文件：十、10.1補充(2026-09-22新增)兩條【定案】——規則定案討論發生在claude.ai網頁版，使用者把定案文字貼過來後先寫進`life-sim-design/10-存檔與帳號系統.md`並經使用者確認，這裡才開始改代碼
+- 做了什麼：
+  - 新增`switchLife()`：只清除本機`ACTIVE_SLOT_STORAGE_NAME`（目前使用中slot）記錄，不動任何存檔本身，呼叫`showSlotPicker(key, prevSlot)`帶著玩家剛離開的那個slot編號，回到三段人生選擇畫面
+  - `showSlotPicker()`新增`currentSlot`參數、`state.currentSlot`欄位；`renderSlotPicker()`在對應那段人生的按鈕文字後面加上「（進行中）」標籤，只有從`switchLife()`進來才會有這個標記，換裝置輸入金鑰進來的路徑（`currentSlot`為`null`）維持原樣不顯示
+  - 遊戲畫面footer新增「🔄 切換其他人生」連結，緊接在「🔑 我的復原金鑰」旁邊
+  - 修正`saveGame()`原本只看fetch有沒有拋網路例外的判斷邏輯，改成明確檢查`res.ok`＋回傳body的`success`欄位，Worker回傳403/429/500等HTTP錯誤狀態時現在會被正確判定為失敗（原本會被誤判成同步成功）
+  - 新增全域變數`cloudSyncStatus`（純本次session的UI顯示用，不存進`state`/`localStorage`）＋`cloudSyncStatusHTML()`／`updateCloudSyncStatusUI()`：成功顯示「☁️ 已同步：HH:MM」，失敗顯示「⚠️ 雲端同步失敗，這段進度目前只存在本機」＋「重試同步」連結（點擊重新呼叫`saveGame()`）；狀態列放在`playing`畫面roster下方、footer-actions上方單獨一行、靠右對齊——不是字面上緊貼在「🔑 我的復原金鑰」四個字旁邊，而是同一塊footer區域的正上方一行，判斷這樣比較不會讓footer那排連結因為動態長度的失敗訊息而跑版
+  - `updateCloudSyncStatusUI()`刻意只更新`#cloud-sync-status-wrap`這個小容器、不呼叫完整`render()`——因為`saveGame()`是fire-and-forget呼叫（呼叫端不await，緊接著呼叫`render()`），如果雲端fetch非同步結束時才呼叫完整`render()`，可能會蓋掉玩家當下正在輸入的自訂行動文字框內容
+  - 切slot（`tryLoadSlot()`）、開新的一段人生時都會重置`cloudSyncStatus = null`，避免顯示上一段人生的同步狀態
+- 驗證方式：用Node vm在沙箱環境跑實際`index.html`抽出的程式碼（非重新實作），mock `fetch`模擬「存檔成功→HTTP 500失敗→重試成功」三段序列＋`switchLife()`流程：
+  - 三次`saveGame()`呼叫後`cloudSyncStatus.success`依序為`true`/`false`/`true`，確認HTTP狀態碼判斷邏輯正確（原本的網路例外判斷法在這個mock情境下會誤判第二次也成功）
+  - `switchLife()`後`state.phase`變成`slotPicker`、`state.currentSlot`正確帶入切換前的slot編號、`ACTIVE_SLOT_STORAGE_NAME`確實被清除、`cloudSyncStatus`重置為`null`
+  - `renderSlotPicker()`輸出的HTML裡，「（進行中）」標籤正確只出現在`currentSlot`對應的那個按鈕，其他兩個slot沒有
+  - `node -e`語法檢查✅（1個script block，無語法錯誤）
+- 影響：**不影響存檔相容性**，`cloudSyncStatus`是session內記憶體變數，`currentSlot`只存在畫面用的`state`裡、不會被`saveGame()`存進雲端或本機存檔
+
 ## 2026-09-20
 
 **〔開發部〕六塊獨立修正：9項機械編號修正、L3人生履歷改分階段配額、7.5.3措辭收斂、3.4.6切換依據對齊9.8、6.2破格對象改版、2.2.1標記撤銷**
