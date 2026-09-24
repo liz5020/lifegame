@@ -1,10 +1,7 @@
-// 這段程式碼是要貼到 Cloudflare Worker 的線上編輯器裡，不是自己執行的檔案。
-// 步驟：Cloudflare Dashboard → Workers & Pages → 你的Worker → Edit code
-// 把裡面原本的內容全部刪掉，貼上這一整份，然後 Deploy。
-//
-// 記得另外去 Settings → Variables and Secrets，確認有一筆Secret：
-//   名稱：ANTHROPIC_API_KEY
-//   值：你在 console.anthropic.com 建立的那組金鑰
+// 【2026-09-24起改用wrangler部署，不再貼到Cloudflare線上編輯器】
+// 原因：一、1.2.9.14簡轉繁要用到OpenCC(約1.1MB)，線上編輯器貼不進去。部署步驟見worker/README.md：
+//   cd worker && npm install && npx wrangler login && npx wrangler deploy
+// API金鑰用 `npx wrangler secret put ANTHROPIC_API_KEY` 存放(Cloudflare端加密保存)，絕對不要寫進程式碼或wrangler.toml
 //
 // 需要KV綁定（跨裝置存檔功能用）：
 //   Cloudflare Dashboard → Workers & Pages → 你的Worker → Settings → Bindings → Add binding
@@ -30,6 +27,8 @@
 //   GET  /archive?key=...&id=...  單一段已結束人生的完整state（唯讀）
 //   GET  /slots 回傳值多一個 wallet 欄位（金鑰錢包點數）
 //   ⚠️購買點目前信任前端送來的數字——封測未開放購買所以永遠是0；開放付費前要改成以伺服器端(D1)紀錄為準
+
+import { convertAnthropicResponse } from "./s2t.js";
 
 const MAX_SLOTS = 3;
 const MAX_KEY_LENGTH = 100;
@@ -222,6 +221,13 @@ async function handleAIProxy(request, env, origin) {
       body: JSON.stringify(body)
     });
     const text = await upstream.text();
+    // 一、1.2.9.14（2026-09-24新增）：成功的回應先把AI輸出裡的簡體字轉成繁體再回傳；解析失敗或錯誤回應原樣轉發
+    if (upstream.ok) {
+      try {
+        const data = convertAnthropicResponse(JSON.parse(text));
+        return new Response(JSON.stringify(data), { status: upstream.status, headers: corsHeaders(origin) });
+      } catch (e) { /* 不是合法JSON就原樣轉發，由前端既有的錯誤處理接手 */ }
+    }
     return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
   } catch (err) {
     return jsonResponse(origin, { error: { message: String(err) } }, 500);

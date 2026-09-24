@@ -1,0 +1,16 @@
+{
+  "name": "life-game-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:big5": "node scripts/build-big5-chars.mjs",
+    "test:s2t": "node scripts/test-s2t.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "opencc-js": "1.4.2"
+  },
+  "devDependencies": {
+    "wrangler": "^3"
+  }
+}

@@ -118,6 +118,10 @@
   }
   .entry p{margin:0 0 10px;font-size:15.5px;line-height:1.7;}
   .entry p:last-child{margin-bottom:0;}
+  /* 一、1.2.9.4（2026-09-24實作）文件框：成績單/薪資單/訊息等正式資訊，左側色條、斜體、與正文區隔 */
+  .entry .doc-box{border-left:3px solid var(--stamp);padding:6px 12px;margin:0 0 10px;font-style:italic;background:rgba(156,59,46,0.05);}
+  .entry .doc-box .doc-title{font-size:12px;color:var(--stamp);letter-spacing:1px;margin-bottom:4px;font-style:normal;}
+  .entry .doc-box p{font-size:14.5px;margin:0 0 4px;}
   .entry.chronicle{
     font-family:"Noto Sans TC",sans-serif;
     font-size:12px;color:var(--ink-soft);
@@ -360,6 +364,8 @@ function pick(arr){ return arr[rnd(0,arr.length-1)]; }
 // 3.5.3 核心數值的邊際遞減與人脈閒置衰退（9/14整併QA 60局測試後定案，係數皆為【測試參數】未定案）
 // 可切換開關，方便回歸比較（呼應開發參數規格「十五、開發完成標準」）
 let ENABLE_MARGINAL_DIMINISH = true;
+// 一、1.2.9.11.4（2026-09-24新增，僅mock測試用）：模擬AI回傳違規場景日期的機率，用來測自動重新生成流程
+let MOCK_SCENE_DATE_VIOLATION_RATE = 0.1;
 let ENABLE_NETWORK_IDLE_DECAY = true;
 const NETWORK_IDLE_THRESHOLD = 6; // 連續N回合沒有人脈經營行為才開始衰退（測試參數）
 const NETWORK_IDLE_DECAY_INTERVAL = 3; // 門檻觸發後，每隔幾回合衰退一次（測試參數）
@@ -784,7 +790,11 @@ function applyInterestEvent(s, interestEvent){
     card.investment = clamp(card.investment+grown, 0, 100);
     card.positiveStreak++;
     card.candidateProgress = (card.candidateProgress||0) + 1; // 8.2：候選進度+1，不設上限
-    if(card.status==="candidate" && card.candidateProgress>=INTEREST_CANDIDATE_TO_ACTIVE_STREAK) card.status="active";
+    if(card.status==="candidate" && card.candidateProgress>=INTEREST_CANDIDATE_TO_ACTIVE_STREAK){
+      card.status="active";
+      // 一、1.2.8.6（2026-09-24拍板）：興趣卡由候選正式成形，由程式比對前後狀態偵測，下一回合語氣軌套用回望軌(retrospect/low)
+      s.interestFormedEventLog = { category: card.category };
+    }
     if(card.status==="dormant") card.status="active"; // 8.6：久未投入後重新投入，視為喚醒
     // 3.7.2（9/16新增）自律成長：僅「持續投入」計入，由程式計數連續正向次數，非AI給值
     if(!card.selfDisciplineAwarded3 && card.positiveStreak>=SELF_DISCIPLINE_INTEREST_STREAK_1){
@@ -1650,10 +1660,14 @@ const SIBLING_RELATIONS_MALE = ["哥哥","弟弟"];
 const SIBLING_RELATIONS_FEMALE = ["姊姊","妹妹"];
 const SIBLING_NAMES_MALE = ["阿翔","家豪","柏勳","彥廷"];
 const SIBLING_NAMES_FEMALE = ["小雨","詩涵","佳蓉","雨潔"];
-function rollSibling(){
+// 一、1.2.9.13（2026-09-24修正bug：「彥廷」同時被建成弟弟與哥哥）：原本兩個手足各自從4個名字裡重複抽取、互不檢查，
+// 改成排除已用過的名字(玩家本人/其他家人/前一個手足)
+function rollSibling(usedNames){
   const isMale = Math.random()<0.5;
+  const pool = isMale ? SIBLING_NAMES_MALE : SIBLING_NAMES_FEMALE;
+  const free = pool.filter(n=>!(usedNames && usedNames.has(n)));
   return {
-    name: pick(isMale ? SIBLING_NAMES_MALE : SIBLING_NAMES_FEMALE),
+    name: pick(free.length ? free : pool),
     relation: pick(isMale ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE)
   };
 }
@@ -1859,7 +1873,7 @@ function newRoll(carry, identity){
     const aff = clamp(rnd(style.affinityRange[0],style.affinityRange[1]) + rnd(-8,8), 0, 100);
     characters.push({
       name: relationLabel==="父親" ? "爸爸" : "媽媽",
-      relation: relationLabel,
+      relation: relationLabel, dialogueStyle: rollDialogueStyle(), // 一、1.2.8.4.2：家人卡開局時同樣設定
       traits: style.parentTrait + "；" + occ.trait,
       affinity: aff, summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "父母，從出生起", // 四、4.1（9/19新增）：家人是先天既有關係，不是AI敘事中新認識的
@@ -1878,7 +1892,7 @@ function newRoll(carry, identity){
     const gp = pick([["阿公","爺爺"],["阿嬤","奶奶"]]);
     presentParentStyles.push("隔代教養");
     characters.push({
-      name: gp[0], relation: gp[1],
+      name: gp[0], relation: gp[1], dialogueStyle: rollDialogueStyle(),
       traits:"疼愛藏在生活提醒裡，用詞偏舊式，很少直接過問交友或行程",
       affinity: rnd(55,75), summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "隔代教養，從出生起", cohabiting: true,
@@ -1893,7 +1907,7 @@ function newRoll(carry, identity){
     presentParentStyles.push("服刑家長");
     characters.push({
       name: incarcerated==="父親" ? "爸爸" : "媽媽",
-      relation: incarcerated+"（服刑中）",
+      relation: incarcerated+"（服刑中）", dialogueStyle: rollDialogueStyle(),
       traits:"透過書信或有限探視保持聯繫，內容報喜不報憂，關係停留在某個時間點",
       affinity: rnd(30,50), summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "父母，從出生起", age: 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX)
@@ -1948,10 +1962,12 @@ function newRoll(carry, identity){
   // 手足（獨立骰，不受以上影響）
   const sibRoll = rnd(1,100);
   const sibCount = sibRoll<=40 ? 0 : sibRoll<=80 ? 1 : 2;
+  const usedFamilyNames = new Set([identity?.name || carry?.name || "無名氏", ...characters.map(c=>c.name)]);
   for(let i=0;i<sibCount;i++){
-    const sib = rollSibling();
+    const sib = rollSibling(usedFamilyNames);
+    usedFamilyNames.add(sib.name);
     characters.push({
-      name: sib.name, relation: sib.relation,
+      name: sib.name, relation: sib.relation, dialogueStyle: rollDialogueStyle(),
       traits: pick(SIBLING_TRAITS), affinity: rnd(45,75),
       summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "手足，從出生起", cohabiting: true
@@ -1966,6 +1982,7 @@ function newRoll(carry, identity){
     name: identity?.name || carry?.name || "無名氏",
     gender: identity?.gender || carry?.gender || "男",
     age:15, luckHidden,
+    birthday: rollBirthday(), // 一、1.2.9.11.1.1（2026-09-24定案）：開局隨機給一個生日，只作為行事曆事件，不改變年齡(年齡依學年增加)
     family: economicTier, familyMonthlyIncome, familySavings, familyStructure, isPoliticianChild,
     collegeLocation: null,
     // 二、2.2（2026-09-23新增）：prologue開場段落只出現這一次，見startLife()/advanceStructuredTime()
@@ -2065,7 +2082,124 @@ const YEAR_SEGMENTS = [
 // 已用Node vm模擬驗證：55回合(含開場段落)跑滿一整年，累加monthsCrossed=81，不是預期的12。
 // 對照career模式既有的12/budget算法(12個月平均分攤到該年齡帶的budget回合數，兩者相除必為12)，
 // 改用同一種算法：12個月平均分攤到一整年的54回合，讓總量正確等於12，不分段落類型(exam/prep/假期等份量差異留待之後細分，見1.2.9.1備註)
-const STUDENT_MONTHS_PER_ROUND = 12 / YEAR_SEGMENTS.reduce((sum,seg)=>sum+seg.budget,0);
+// 【2026-09-24取代】STUDENT_MONTHS_PER_ROUND已移除，改由下方行事曆依每回合實際推進天數換算月數(1.2.9.11.5)，一整年加總仍是12個月
+// ===== 一、1.2.9.11（2026-09-24新增）遊戲內行事曆：日期由程式掌管，AI不自行決定時間 =====
+// 絕對日(absDay)：0＝高一開學前一天8/29(開場段落)，之後每天+1，不分年份(遊戲沒有西元年，只用月/日)。
+// 學生時期每個段落對應固定的月/日區間(1.2.9.11.1.1，對照台灣高中大致時程，測試參數)，回合在段落內平均分配天數；
+// 出社會後每回合天數＝365÷該年齡帶每年回合預算。每回合的「本回合範圍」＝[起始日,結束日]，起始日至少是上一回合場景的隔天。
+const CAL_DAYS_IN_MONTH = [31,28,31,30,31,30,31,31,30,31,30,31];
+function calMdToDoy(m,d){ let n=0; for(let i=0;i<m-1;i++) n+=CAL_DAYS_IN_MONTH[i]; return n+d-1; }
+function calDoyToMd(doy){
+  let m=0; doy=((doy%365)+365)%365;
+  while(doy>=CAL_DAYS_IN_MONTH[m]){ doy-=CAL_DAYS_IN_MONTH[m]; m++; }
+  return { m:m+1, d:doy+1 };
+}
+const CAL_EPOCH_DOY = calMdToDoy(8,29); // absDay 0 = 8/29
+function calAbsToMd(abs){ return calDoyToMd(CAL_EPOCH_DOY+abs); }
+function calFormat(abs){ const {m,d}=calAbsToMd(abs); return `${m}/${d}`; }
+// 各段落起始月/日，順序對應YEAR_SEGMENTS(上學期7段＋下學期7段)，一學年從8/30開學起算、合計365天
+const SCHOOL_SEGMENT_START_MD = [
+  [8,30],[9,20],[10,14],[10,17],[10,31],[1,13],[1,16], // 上學期：開學初/期中準備期/期中考/期中後放鬆/期末準備期/期末考/寒假
+  [2,11],[3,4],[4,7],[4,10],[4,24],[6,24],[6,27]      // 下學期：開學初/期中準備期/期中考/期中後放鬆/期末準備期/期末考/暑假
+];
+const SCHOOL_YEAR_START_DOY = calMdToDoy(8,30);
+const SCHOOL_SEGMENT_OFFSET = SCHOOL_SEGMENT_START_MD.map(([m,d])=>(calMdToDoy(m,d)-SCHOOL_YEAR_START_DOY+365)%365);
+const SCHOOL_SEGMENT_LENGTH = SCHOOL_SEGMENT_OFFSET.map((off,i)=>(i+1<SCHOOL_SEGMENT_OFFSET.length ? SCHOOL_SEGMENT_OFFSET[i+1] : 365)-off);
+const LEAVE_OF_ABSENCE_DAYS = 182; // 休學一學期＝半年，平均分攤到LEAVE_OF_ABSENCE_TURNS回合
+const DAYS_PER_MONTH = 365/12;
+// 固定事件(1.2.9.11.2第5項)：國曆節日照實際日期；農曆節日遊戲沒有年份，用固定近似日期並標approx(prompt註明「約在這段時間前後」)
+const CAL_FIXED_HOLIDAYS = [
+  { m:1, d:1, name:"元旦" }, { m:2, d:1, name:"春節", approx:true }, { m:2, d:28, name:"和平紀念日" },
+  { m:4, d:4, name:"兒童節／清明節" }, { m:6, d:15, name:"端午節", approx:true }, { m:8, d:8, name:"父親節" },
+  { m:9, d:25, name:"中秋節", approx:true }, { m:9, d:28, name:"教師節" }, { m:10, d:10, name:"國慶日" },
+  { m:12, d:25, name:"聖誕節" }, { m:12, d:31, name:"跨年夜" }
+];
+function rollBirthday(){ const doy = rnd(0,364); return calDoyToMd(doy); }
+function isStudentCalendarMode(s){ const m=s.timeState.stageMode; return m==="highschool"||m==="college"; }
+// 學生時期：第idx段第t回合的起始絕對日
+function schoolAnchor(cal, idx, t){
+  const seg = YEAR_SEGMENTS[idx];
+  return cal.yearBase + SCHOOL_SEGMENT_OFFSET[idx] + Math.floor(t*SCHOOL_SEGMENT_LENGTH[idx]/seg.budget);
+}
+function careerAnchor(cal, t, budget){ return cal.careerYearBase + Math.floor(t*365/budget); }
+// 舊存檔/新人生第一次用到行事曆時補上cal欄位(timeState.cal，跟著timeState進反悔快照，反悔時日期一併還原)
+function ensureCalendar(s){
+  if(!s.birthday) s.birthday = rollBirthday();
+  const ts = s.timeState;
+  if(ts.cal) return ts.cal;
+  const cal = { yearBase:1, careerYearBase:null, leaveBase:null, leaveRound:0, lastSceneDay:0, lastRoundEnd:0, lastSceneSummary:null };
+  ts.cal = cal;
+  if(ts.prologue) return cal;
+  // 舊存檔(2026-09-24以前)：沒有日期紀錄，依目前所在的段落/年度進度推一個對應的日期，之後照常推進
+  if(isStudentCalendarMode(s)){
+    cal.yearBase = 1 + 365*10;
+    const start = schoolAnchor(cal, ts.segmentIndex % YEAR_SEGMENTS.length, ts.turnsInSegment||0);
+    if(s.leaveStatus==="onLeave"){ cal.leaveBase = start; cal.leaveRound = Math.max(0, LEAVE_OF_ABSENCE_TURNS-(s.leaveResumeCountdown||LEAVE_OF_ABSENCE_TURNS)); }
+    cal.lastRoundEnd = cal.lastSceneDay = start-1;
+  } else {
+    const budget = roundsPerYearForAge(s.age);
+    cal.careerYearBase = 365*20;
+    cal.lastRoundEnd = cal.lastSceneDay = careerAnchor(cal, ts.adultTurnsInYear||0, budget)-1;
+  }
+  return cal;
+}
+// 給定錨點區間[anchorStart,anchorEnd]，算出本回合範圍：起始日至少是上一回合場景的隔天(1.2.9.11.1第2項)，跨度至少一天
+function buildRoundWindow(cal, anchorStart, anchorEnd){
+  const start = Math.max(anchorStart, cal.lastSceneDay+1);
+  const end = Math.max(start, anchorEnd);
+  const daysAdvanced = Math.max(0, end - cal.lastRoundEnd);
+  cal.lastRoundEnd = end;
+  return { start, end, daysAdvanced };
+}
+function calSpanText(days){
+  if(days<=1) return "一天";
+  if(days<=4) return `約${days}天`;
+  if(days<=10) return "約一週";
+  if(days<=17) return "約兩週";
+  if(days<=24) return "約三週";
+  if(days<=45) return "約一個月";
+  return `約${Math.round(days/DAYS_PER_MONTH)}個月`;
+}
+// 本回合範圍內的固定事件：開學日/段考/寒暑假開始(學生時期)、節日、玩家生日
+function collectFixedEvents(s, win){
+  const events = [];
+  const student = isStudentCalendarMode(s) && s.leaveStatus!=="onLeave";
+  const cal = s.timeState.cal;
+  const maxDays = Math.min(win.end-win.start, 400);
+  for(let abs=win.start; abs<=win.start+maxDays; abs++){
+    const {m,d} = calAbsToMd(abs);
+    const date = `${m}/${d}`;
+    if(student){
+      const off = ((abs - cal.yearBase)%365+365)%365;
+      const idx = SCHOOL_SEGMENT_OFFSET.indexOf(off);
+      if(idx>=0){
+        const seg = YEAR_SEGMENTS[idx];
+        if(seg.key==="開學初") events.push({ date, name: seg.half+"開學日" });
+        else if(seg.isExam) events.push({ date, name: seg.half+seg.examType+"開始" });
+        else if(seg.key==="假期") events.push({ date, name: segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry)+"開始" });
+      }
+    }
+    CAL_FIXED_HOLIDAYS.forEach(h=>{ if(h.m===m && h.d===d) events.push({ date, name:h.name, approx: !!h.approx }); });
+    if(s.birthday && s.birthday.m===m && s.birthday.d===d) events.push({ date, name:"你的生日" });
+  }
+  return events;
+}
+// AI回傳的新場景日期檢查(1.2.9.11.4)：scene_day_offset是相對本回合起始日的天數，須落在本回合範圍內
+function validateSceneDate(r, win){
+  if(!win) return { ok:true };
+  const off = r && r.scene_day_offset;
+  const maxOff = win.end - win.start;
+  if(typeof off!=="number" || !Number.isInteger(off)) return { ok:false, reason:`scene_day_offset沒有回傳整數（收到${JSON.stringify(off)}）` };
+  if(off<0) return { ok:false, reason:`新場景日期早於本回合起始日（offset=${off}），等於停在上一回合的時間點` };
+  if(off>maxOff) return { ok:false, reason:`新場景日期超出本回合範圍（offset=${off}，上限${maxOff}）` };
+  return { ok:true };
+}
+// 違規二次仍違規時記入待確認清單(1.2.9.11.4)，🛠面板可檢視，也跟著存檔
+function addReviewFlag(s, kind, detail){
+  s.reviewFlags = s.reviewFlags || [];
+  s.reviewFlags.push({ turn:s.turnCount, age:s.age, kind, detail });
+  if(s.reviewFlags.length>100) s.reviewFlags.shift();
+}
 
 // 二、2.5（9/16新增，9/16-v2.1下修數字+年齡帶改左閉右開）：22歲以後加速曲線，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
 // 邊界採10年一段、左閉右開（以生日為界，22-29歲＝22歲起滿30歲生日前），取代v2.1之前22-30/31-40等不對稱分段
@@ -2243,9 +2377,7 @@ function checkWithdrawalCandidate(s){
 // 正常學期結構（見advanceStructuredTime的onLeave分支）；復學時該學期視為未完成，segmentIndex重置回休學當下那個學期
 // （上/下學期）的開頭重新跑一次，不從中斷點續接
 const LEAVE_OF_ABSENCE_TURNS = 7; // 【測試參數】
-// 一、1.2.9.1（2026-09-23修正,同monthsCrossed校準bug）：休學一學期對應delay_years+=0.5(半年=6個月)，
-// 平均分攤到LEAVE_OF_ABSENCE_TURNS回合，取代原本advanceStructuredTime onLeave分支寫死monthsCrossed:1的做法(7回合×1=7個月，跟6個月對不上)
-const LEAVE_MONTHS_PER_ROUND = 6 / LEAVE_OF_ABSENCE_TURNS;
+// 【2026-09-24取代】LEAVE_MONTHS_PER_ROUND已移除，休學回合改用行事曆LEAVE_OF_ABSENCE_DAYS(半年)依實際天數換算
 // 每回合college狀態下都要跑的維護：冷卻倒數、財務floor連續低值streak、休學復學倒數、雙主修/休學候選檢查
 function sweepUniversityState(s){
   if(s.timeState?.stageMode!=="college" || s.studentStatus!=="enrolled") return;
@@ -2363,17 +2495,32 @@ function advanceStructuredTime(actionText){
   const s = state;
   // 二、2.2（2026-09-23新增）：開場段落只出現這一次，不做跳過判定/不推進段落/不累計讀書次數，
   // 系統自動產生的行動文字（例如開局那句）本來就不該被拿去做跳過判定，這個早期return涵蓋了這個情況
+  // 一、1.2.9.11（2026-09-24新增）：每回合都要算出本回合的日期範圍(window)，舊存檔第一次進來時補上行事曆
+  const cal = ensureCalendar(s);
   if(s.timeState.prologue){
     const label = computeTimeLabel(s);
     s.timeState.prologue = false;
-    return { bigJump:false, fromLabel:label, toLabel:label, currentLabel:label, monthsCrossed:0, examTriggered:false, examType:null };
+    // 開場段落固定在absDay 0(8/29，開學前一天)
+    cal.lastSceneDay = 0; cal.lastRoundEnd = 0;
+    return { bigJump:false, fromLabel:label, toLabel:label, currentLabel:label, monthsCrossed:0, examTriggered:false, examType:null, window:{ start:0, end:0, daysAdvanced:0 } };
   }
   const mode = s.timeState.stageMode;
   // 九、9.5.3（9/16補充）：休學期間學期引擎完全凍結，不套用SEMESTER_PHASES/YEAR_SEGMENTS，
   // segmentIndex/turnsInSegment/考試判定一律不動；回合預算另外由sweepUniversityState()的leaveResumeCountdown計數
   if(mode==="college" && s.leaveStatus==="onLeave"){
     const label = computeTimeLabel(s);
-    return { bigJump:false, fromLabel:label, toLabel:label, currentLabel:label, monthsCrossed:+LEAVE_MONTHS_PER_ROUND.toFixed(2), examTriggered:false, examType:null };
+    // 1.2.9.11：休學半年(LEAVE_OF_ABSENCE_DAYS)平均分攤到休學回合，取代原本固定LEAVE_MONTHS_PER_ROUND
+    if(cal.leaveBase==null){ cal.leaveBase = cal.lastRoundEnd+1; cal.leaveRound = 0; }
+    const k = cal.leaveRound++;
+    const win = buildRoundWindow(cal,
+      cal.leaveBase + Math.floor(k*LEAVE_OF_ABSENCE_DAYS/LEAVE_OF_ABSENCE_TURNS),
+      cal.leaveBase + Math.floor((k+1)*LEAVE_OF_ABSENCE_DAYS/LEAVE_OF_ABSENCE_TURNS) - 1);
+    return { bigJump:false, fromLabel:label, toLabel:label, currentLabel:label, monthsCrossed:+(win.daysAdvanced/DAYS_PER_MONTH).toFixed(2), examTriggered:false, examType:null, window:win };
+  }
+  // 復學(sweepUniversityState已把segmentIndex重置回休學前那個學期的開頭)：行事曆從休學結束那天接續，重新對齊學期段落
+  if(cal.leaveBase!=null && isStudentCalendarMode(s)){
+    cal.yearBase = (cal.leaveBase + LEAVE_OF_ABSENCE_DAYS) - SCHOOL_SEGMENT_OFFSET[s.timeState.segmentIndex % YEAR_SEGMENTS.length];
+    cal.leaveBase = null; cal.leaveRound = 0;
   }
   if(detectStudyIntent(actionText)) s.studyCountThisTerm = (s.studyCountThisTerm||0)+1;
   if(mode==="highschool" || mode==="college"){
@@ -2388,6 +2535,7 @@ function advanceStructuredTime(actionText){
     let monthsCrossed;
     let currentLabel = fromLabel;
     let toLabel = fromLabel;
+    let win;
     if(skip){
       // 二、2.2（2026-09-23修正）：沒指定目標時只結束目前段落、進下一段第1回合，不再是原本的rnd(2,4)大跳段；
       // 有指定目標(跳到+寒假/暑假/下學期/期中/期末)時找下一次出現該段落的位置
@@ -2400,24 +2548,32 @@ function advanceStructuredTime(actionText){
       s.timeState.segmentIndex = toGlobalIdx % YEAR_SEGMENTS.length;
       s.timeState.turnsInSegment = 0;
       const yearsToAdd = Math.floor(toGlobalIdx/YEAR_SEGMENTS.length) - Math.floor(fromGlobalIdx/YEAR_SEGMENTS.length);
-      monthsCrossed = +((toGlobalIdx-fromGlobalIdx)*STUDENT_MONTHS_PER_ROUND).toFixed(2);
-      if(yearsToAdd>0) advanceStageYear(s, mode, yearsToAdd);
+      if(yearsToAdd>0){ cal.yearBase += 365*yearsToAdd; advanceStageYear(s, mode, yearsToAdd); }
+      // 1.2.9.11：跳過的回合，本回合範圍＝目標段落第1回合的日期區間；結算月數依實際推進天數(1.2.9.11.5)
+      const toIdx = toGlobalIdx % YEAR_SEGMENTS.length;
+      win = buildRoundWindow(cal, schoolAnchor(cal, toIdx, 0), schoolAnchor(cal, toIdx, 1)-1);
+      monthsCrossed = +(win.daysAdvanced/DAYS_PER_MONTH).toFixed(2);
       toLabel = computeTimeLabel(s);
       currentLabel = toLabel; // 跳過本身就是這回合的行動，這回合的敘事就是「跳到了X」
     } else {
       // 一般行動：這個段落的turnsInSegment+1，滿了budget才進下一段(下一段從下一回合才開始生效)
-      s.timeState.turnsInSegment = (s.timeState.turnsInSegment||0)+1;
-      monthsCrossed = +STUDENT_MONTHS_PER_ROUND.toFixed(2); // 修正版：12個月平均分攤到一整年54回合，見上方STUDENT_MONTHS_PER_ROUND說明
+      // 1.2.9.11（2026-09-24）：本回合範圍＝這個段落第t回合分到的日期區間，結算月數改依實際推進天數，
+      // 取代原本每回合固定STUDENT_MONTHS_PER_ROUND(寒假回合天數少、期末準備期回合天數多，一整年加總仍是365天)
+      const t = s.timeState.turnsInSegment||0;
+      const curIdx = fromGlobalIdx % YEAR_SEGMENTS.length;
+      win = buildRoundWindow(cal, schoolAnchor(cal, curIdx, t), schoolAnchor(cal, curIdx, t+1)-1);
+      monthsCrossed = +(win.daysAdvanced/DAYS_PER_MONTH).toFixed(2);
+      s.timeState.turnsInSegment = t+1;
       if(s.timeState.turnsInSegment >= currentSeg.budget){
         if(currentSeg.isExam) examType = currentSeg.examType;
         s.timeState.turnsInSegment = 0;
         const toGlobalIdx = fromGlobalIdx + 1;
         s.timeState.segmentIndex = toGlobalIdx % YEAR_SEGMENTS.length;
         const yearsToAdd = Math.floor(toGlobalIdx/YEAR_SEGMENTS.length) - Math.floor(fromGlobalIdx/YEAR_SEGMENTS.length);
-        if(yearsToAdd>0) advanceStageYear(s, mode, yearsToAdd);
+        if(yearsToAdd>0){ cal.yearBase += 365*yearsToAdd; advanceStageYear(s, mode, yearsToAdd); }
       }
     }
-    const result = { bigJump: skip, fromLabel, toLabel, currentLabel, monthsCrossed, examTriggered: !!examType, examType };
+    const result = { bigJump: skip, fromLabel, toLabel, currentLabel, monthsCrossed, examTriggered: !!examType, examType, window: win };
     if(examType){ s.studyCountThisTerm = 0; s.interestCountThisTerm = 0; } // 考試結算後歸零，重新累積下一次備考的讀書次數/興趣路徑次數
     return result;
   }
@@ -2431,19 +2587,27 @@ function advanceStructuredTime(actionText){
     const budget = roundsPerYearForAge(s.age);
     let yearsToAdd = 0;
     let monthsCrossed;
+    // 1.2.9.11（2026-09-24）：出社會後每回合天數＝365÷該年齡帶每年回合預算，第一次進入career模式時從上一回合結束日接續
+    if(cal.careerYearBase==null) cal.careerYearBase = cal.lastRoundEnd + 1 - Math.floor((s.timeState.adultTurnsInYear||0)*365/budget);
+    let win;
     if(skip){
       // 跳過語意：直接跳完當年剩餘回合，進入下一年（實作假設：比照學生時期"跳過至少跨一段"的精神，此處對應"至少跨完當年"）
       s.timeState.adultTurnsInYear = 0;
       yearsToAdd = 1;
-      monthsCrossed = 12;
+      cal.careerYearBase += 365;
+      const nextBudget = roundsPerYearForAge(s.age+1);
+      win = buildRoundWindow(cal, careerAnchor(cal, 0, nextBudget), careerAnchor(cal, 1, nextBudget)-1);
     } else {
-      s.timeState.adultTurnsInYear = (s.timeState.adultTurnsInYear||0) + 1;
-      monthsCrossed = +(12/budget).toFixed(2); // 每回合粗估幾個月，隨年齡區間的budget不同而不同
+      const t = s.timeState.adultTurnsInYear||0;
+      win = buildRoundWindow(cal, careerAnchor(cal, t, budget), careerAnchor(cal, t+1, budget)-1);
+      s.timeState.adultTurnsInYear = t + 1;
       if(s.timeState.adultTurnsInYear >= budget){
         s.timeState.adultTurnsInYear = 0;
         yearsToAdd = 1;
+        cal.careerYearBase += 365;
       }
     }
+    monthsCrossed = +(win.daysAdvanced/DAYS_PER_MONTH).toFixed(2); // 1.2.9.11.5：結算月數依實際推進天數
     let deathCheck = { justForeshadowed:false, deathTriggered:false };
     if(yearsToAdd>0){
       s.age += yearsToAdd;
@@ -2453,7 +2617,7 @@ function advanceStructuredTime(actionText){
       rollAnnualHealthChecks(s); // 十三、13.2/13.3/13.5：健康cap收斂/疾病判定/父母健康狀態機推進，同樣每滿一年才判定一次
     }
     const toLabel = computeTimeLabel(s);
-    return { bigJump: skip, fromLabel, toLabel, currentLabel:toLabel, monthsCrossed, examTriggered:false, examType:null, deathForeshadowNow: deathCheck.justForeshadowed, deathTriggered: deathCheck.deathTriggered };
+    return { bigJump: skip, fromLabel, toLabel, currentLabel:toLabel, monthsCrossed, examTriggered:false, examType:null, deathForeshadowNow: deathCheck.justForeshadowed, deathTriggered: deathCheck.deathTriggered, window: win };
   }
   return { bigJump:false, fromLabel:null, toLabel:null, currentLabel:null, monthsCrossed:0, examTriggered:false, examType:null };
 }
@@ -2480,6 +2644,7 @@ function advanceStageYear(s, mode, yearsToAdd){
   if(mode==="highschool" && s.timeState.yearInStage>3){
     s.timeState.stageMode="college"; s.timeState.yearInStage=1;
     s.milestones.graduation_highschool = "completed"; // 4.3事件狀態機制：客戶端結構化判斷，不假手AI
+    s.graduationEventLog = { type:"highschool" }; // 一、1.2.8.6（2026-09-24拍板）：畢業事件log，這回合語氣軌套用回望軌
     s.studentStatus = "enrolled"; s.pendingMajorSelection = true; // 九、9.1：進大學觸發選科系流程
   } else if(mode==="college" && s.timeState.yearInStage>(s.collegeYearsRequired||4)){
     // 9.8.1（2026-09-22修正）：畢業判定改為只看科系基礎修業年限，不疊加delay_years——
@@ -2487,6 +2652,7 @@ function advanceStageYear(s, mode, yearsToAdd){
     s.timeState.stageMode="career";
     applyHalfYearCarryOnCareerEntry(s);
     s.milestones.graduation_college = "completed";
+    s.graduationEventLog = { type:"college" }; // 一、1.2.8.6（2026-09-24拍板）
     s.studentStatus = "graduated"; // 九、9.8：畢業後用studentStatus判斷已出社會，不是只看年齡
     // 9.5.2：畢業時若雙主修仍在active狀態（未經由renderDualMajorAbandonModal()中途放棄），直接結算為completed
     if(s.dualMajorStatus==="active") s.dualMajorStatus = "completed";
@@ -2668,10 +2834,72 @@ function resolveCohabitationOffer(s, partnerName, choice){
 function buildSystemPrompt(){
   return `你是「人生草稿」的敘事引擎。這是一款寫實的現代人生模擬文字遊戲，玩家在台灣現代社會中從15歲的高中生一路活到老年。
 
-規則：
-- 第二人稱「你」，日記體語氣，繁體中文。【一、1.2.9.1，2026-09-23取代原本固定「每次敘事約250-350字」的規則，全年齡適用，不分人生階段】字數依這回合實際涵蓋的遊戲內時間長度分級，payload的narrative_length_guide已經幫你算好這回合屬於哪一級（tier短/中/長、word_range建議字數、structure該用什麼結構），直接照著寫即可，不用自己換算週期：兩週以內(short)寫400-500字，只寫一個核心場景，不需要轉場句；兩週到一個月(medium)寫450-600字，核心場景為主可加一點次要片段；一個月以上(long)寫500-700字，用完整三段結構(核心場景+次要片段0-2個+轉場句)。核心場景本身的份量以約450字的單一場景為基準，字數往上加的部分主要用在次要片段與轉場句，不是把核心場景本身拉更長。篇幅拉長不是單純堆字數，而是多容納一點環境/氛圍的感官細節、內心想法多鋪陳一點。
+【寫作規則（一、1.2.4/1.2.8.3/1.2.9，2026-09-24整併，優先於下方其他條目裡任何跟寫法有關的說法）】
+A. 基本
+- 第二人稱「你」，一律使用台灣繁體中文與台灣用語，全文不得出現任何簡體字（例：之後/然後/最後/後來，不寫成「后」；軟體不寫軟件、影片不寫視頻、訊息不寫信息、品質不寫質量、網路不寫網絡、螢幕不寫屏幕）。
+- 敘事以外在觀察為主：以看得到、聽得到、發生了什麼為核心，像鏡頭記錄。
+- 內心描寫額度：一般回合最多1-2句，而且要簡短、直接（例：「你不記得辦過這張證件。」）；tone_track是mutter或retrospect的回合最多3句，而且必須集中在同一處，不得分散在各段；retrospect回合的問句堆疊限一組，放在結尾。
+- 禁止：念頭的流水帳（「你想著……又想著……念頭東飄西飄」）；替主角解釋動機（「其實你更想知道……怕顯得太在意」）；情緒命名（「心裡有點落空」「說不清的躁動」「你很難過」「她感到焦慮」）；自問自答（「是嗎，也不一定」）。情緒改由動作、環境、他人反應來表現：用具體物件、聲音或身體細節的反常暗示情緒；壓抑或欲近又止的情感用「意圖動作→中斷→收回」。
+B. 場景
+- 開場用感官或具體動作切入，不用概括句開場。
+- 劇情線索盡量交給一個具體小物件承載（訊息、筆跡、物品上的痕跡）；可以用「缺少了什麼」來定義處境（剛上大學時「早上沒有人叫你起床」）。
+- 可把payload裡1-2個具體數值寫進敘事（存款、分數、時間），數值必須來自payload，不得自己編；主角的屬性不以數字出現，改由NPC的反應暗示（才識高→老師多看了考卷一眼）。
+- 挫折場景至少出現一個具體的生活小物件（飲料、交通卡、鑰匙、手機電量等）。大情緒可以落在小事上。
+- 回合結尾停在未完成的動態瞬間或一個畫面，留給玩家行動空間，不把場景收乾淨；不要每段結尾都用總結或感悟收尾。
+- 禁止摘要式句子取代場景（「你們聊了很多，感情更好了」）；禁止報告腔（「值得注意的是」「這讓人意識到」「不難看出」）。
+- 一回合裡比喻（「像……」「彷彿……」）最多2個；不要為顯文采刻意替換同義詞，重複使用同一個情緒詞是允許的；不要濫用「不是A，是B」這種對比句型。
+- 環境細節不重複：同一個聲音、物件、畫面，recent_turns_full（最近3回合）裡出現過就不要再用；除非是刻意的呼應，而且要有變化（例：蟬聲在秋天消失，本身就是時間流逝的表現）。
+- 家境、外貌、天資這類設定資訊不要直接點名等級，見下方【背景資訊要暗示】。
+C. 人物與對話
+- 多人場景中，每個出場NPC最多一句描寫，而且必須是一個具體動作或反應，不寫形容詞式介紹。可以出現未命名的背景人物（「一個穿灰外套的男生」）讓世界顯得熱鬧，未命名背景人物不建角色卡；只有玩家之後主動跟他互動（追問、多次提及、明確表態想認識）時，才讓他有名字並透過new_characters建卡。
+- NPC初登場用「外貌＋氣質＋一個比喻」一句定調，之後不再重複描述外貌。
+- 不要替每個NPC的行為補上明確動機；角色可以說不清自己的動機，或自欺而旁白用行為看穿。
+- NPC台詞一律用{{名字|台詞}}標記（名字要跟角色卡一字不差），畫面會自動顯示成「台詞」。句數上限看角色卡的dialogue_style：terse 1-2句（允許只有動作、沒有台詞，由旁白或主角解讀沉默）、normal最多4句、talkative最多8句（允許一段連續碎念），超過會被程式截斷。動作可以直接嵌在台詞前面：（把書包甩上肩）{{阿翔|走了啦。}}。主角「你」說的話、未命名背景人物的話不用標記，直接用「」。
+- 單段對話最多帶出一項新的關鍵資訊，避免資訊一次傾倒。
+- 句子節奏：同一段落長短句要不對稱，至少有一句5字以內的極短句；各段落長度與密度不要一致；以短段落為主，一段不超過3-4句，允許並鼓勵單句成段作為節奏上的停頓；段落之間用\\n\\n分隔。
+- 對話技巧：呈現反差或對比時用一句平述帶過，不解釋成因；角色有所隱瞞、迴避時，用沉默或岔開話題呈現，但如果只是單純辯論、抬槓，要用直球對話，每句話精確回應上一句；具體、甚至略顯瑣碎的道具/品牌/暱稱細節比形容詞更有真實感；角色說話可以中途自我修正、改口，可以有專屬的說話癖好；俚語、流行語、口頭禪依角色的年齡/性格/背景個別設計，不能所有角色共用一套；同一天內瑣碎的場景切換可以直接跳接。碎念軌可以用語氣詞、反問、自我打斷，句子可以不工整——但反問只能出現在對話與語氣詞裡，不能用在內心自問自答。
+- 好感度變化不直接講，用台詞或動作的微小變化呈現（原本一律回「沒事」的人，第一次多說了半句）。重要共同記憶寫成具體物件、地點或瞬間（「高三那年一起排隊吃過的那間豆花店」），character_updates的summary_add也照這個寫，不寫成「兩人曾一起度過愉快時光」這種摘要。
+D. 資訊呈現
+- 成績單、錄取通知、薪資單、帳戶餘額、訊息內容等正式資訊，用「〔文件:標題〕」換行、內容、換行「〔/文件〕」包起來，畫面會渲染成獨立文件框；框內數值一律取自payload，不得編造。
+- 必須讓玩家知道的狀態變化（好感度、屬性、考試結果、新角色）由畫面UI負責呈現，敘事專注於場景，不需要在文中重複摘要這些變化。
+- chapter_subtitle：這回合的章節副標，含蓄、不劇透。畫面會顯示成「時期標籤｜副標」，時期標籤由系統產生，你只寫副標。
+
+【語氣軌 tone_track 與張力 tension（一、1.2.8.2，由系統依事件類別指定，你照著寫，不得自行改判）】
+- restrained（克制軌）：物件反常代替情緒詞、動作卡在半途、身體細節洩漏情緒、話說一半、摘要與場景交錯（摘要只能用在轉場，不能取代核心場景）。
+- mutter（碎念軌）：吐槽式用字、自嘲不賣慘、衰事清單、短句急促與自己打斷自己的節奏、小事映照大事、角色自欺而旁白看穿（用行為呈現，不靠內心戲）。
+- retrospect（回望軌）：從生活瞬間切入、自我推翻的弧線（「你原本覺得這只是打發時間，直到……」）、問句堆疊不作答（限一組，放在結尾）、允許記憶與事實有落差。
+- 語氣軌的個性以節奏與用字表現為主，不以內心戲份量表現，內心描寫一律遵守上面的額度。
+- tension為high：展開成完整場景，包含感官細節、對話與動作。tension為low：新場景可以較短（narrative_length_guide已經取字數下限），但仍須是一個具體的日常片刻場景，不得以摘要呈現。
+- 人生階段校正：國高中——碎念較幼稚、直接，情緒起伏大；克制軌裡小事就能構成巨大失落。大學/初入社會——碎念厭世、自嘲、黑色幽默；克制軌出現「事後才明白」的領悟。中年——碎念較疲憊、吐槽減少；責任感壓過個人情緒。老年——少用碎念；克制軌與回望軌融合。
+- tone_category是系統判定的事件類別，給你參考為什麼是這個語氣軌。
+- 例外（一、1.2.8.7）：以下兩種事件系統事前無法完全預知，這回合真的發生時，你可以自行切換成克制軌、高張力來寫，並用tone_switch回報：①你在這回合揭露key_event（同時照舊把revealed_key_event設為true）→填"key_event_reveal"；②這回合寫到告白/表態、分手/關係破裂、結婚，但系統給的不是restrained/high→填"relationship_turning"。其他情況一律填null，不能自己改語氣軌。
+- 以下兩種情況由你自己判斷語氣：①寫履歷式的回顧段落時用回望軌；②玩家自由輸入出現超能力、魔法、一夕暴富等超出現實生活的內容時，不能照單全收當成寫實事件，優先用碎念軌的幽默在敘事中吸收（例如寫成一場很真實的夢，醒來發現鬧鐘已經響了第三次），不打破寫實感、也不讓玩家覺得被系統拒絕；吸收後不產生任何數值或劇情效果（不反映在stat_deltas、milestone_updates、character_updates等任何欄位）。如果這回合tone_track是restrained，改成安靜帶過。
+- 其他寫法：高張力明牌檢定（例如期末考成績公布）之前，用身體細節、話說一半建立張力，不直述緊張；失敗分支用自嘲或遲來的領悟書寫，不寫成懲罰通知；成功分支同樣克制，成功可以只是名單上的一個名字，或某人看過來的一眼。期中/期末準備期每回合至少放一個具體生活細節，用衰事清單或小事映照大事維持質感，避免重複的「你讀了書」。興趣拖累成績時用「角色自欺、旁白看穿」（嘴上說只畫一下，旁白讓玩家發現已經過了三個小時）。41歲以後單回合跨越的時間變長，新場景用「一句話快轉＋一個放大瞬間」，不要寫成年度流水帳。
+- 開場回合（time_context.is_prologue為true）是開局家庭背景：不直述性格或依附風格（不寫「你是個缺乏安全感的人」），改以2-3個家中重複發生的日常畫面呈現（餐桌上多出來的碗筷、只談成績的晚餐、放學回家的空玄關）。
+
+【時間與敘事結構（一、1.2.9.11，2026-09-24新增，務必遵守）】
+- 遊戲內日期由系統掌管，你不自行決定時間，age_advance一律填0。payload的time_context給你：previous_scene（上一回合新場景的日期與一句摘要）、round_start_date/round_end_date（本回合範圍）、round_days、span_text（本回合跨度）、stage_label（本回合的階段標籤，由系統判定，跟current_time_label相同）、fixed_events（本回合期間內的固定事件，例如開學日、段考、節日、你的生日；approximate為true的是農曆節日，遊戲裡只有約略日期，敘事上當作「約在這段時間前後」，不要寫死是哪一天）。時期標籤不用在敘事裡逐字報出來，畫面會顯示。
+- 每回合敘事分成兩部分，依序呈現：
+  (1) action_result「行動結果」：寫出玩家這回合選擇的選項（或自由輸入）實際發生了什麼，以及當下的直接結果。這部分可以發生在上一回合場景的同一時間點，是唯一允許接續上一回合場景的部分。要寫成完整的小片段（有動作、對話或他人反應），不得只用一句話交代，約1-2段，字數約narrative_length_guide.action_result_words。結果要符合系統的判定（exam_final_score、各種*_event_now、payload裡的數值），也不得跟你這回合回傳的stat_deltas等數值變化矛盾。
+  (2) narrative「時間推進後的新場景」：從行動結果結束後推進到至少隔天，核心場景必須發生在round_start_date到round_end_date之間。開頭要有一句時間錨點讓玩家知道現在是什麼時候（「開學第三天的早上」「段考前一週」），用自然的方式寫出，不寫成日期公告。核心場景以外的時間用轉場句帶過，用環境變化（季節、天氣、衣著、校園或街景的改變）表現時間流逝，禁止「一個月過去了」「時間過得很快」這種直述。新場景要延續行動結果的影響，讓玩家感覺選擇有後果（例：選擇傳訊息約雅涵吃飯→新場景裡兩人已經開始固定一起吃午餐，或雅涵因此介紹了新朋友），影響不用每次都很大，但不能完全無關。不得寫出屬於後續階段的事件（stage_label還沒進入期中考，就不能寫考試當天）。
+- 字數：narrative_length_guide.target_total_words是兩部分合計的目標，行動結果約占1/4-1/3，其餘給新場景；structure說明新場景該用什麼結構（核心場景＋次要片段＋轉場句依級距取捨，核心場景厚度以約450字的單一場景為基準，較長回合多出的字數用在次要片段與轉場）。
+- 回傳scene_day_offset（新場景日期＝round_start_date往後第幾天，0起算，必須在0到round_days-1之間）與scene_summary（新場景的一句話摘要，含時段與地點，例如「晚上，在房間整理書包」，不含行動結果）。系統會檢查：新場景跟上一回合同一天、或超出本回合範圍，都算違規，會要求你重寫；time_context.retry_note不是null時，代表你上一次回傳違規，這次務必修正。
+- 開場回合（is_prologue為true）：沒有上一回合，action_result填空字串，只寫新場景，場景就在round_start_date當天（高一開學前一天），scene_day_offset填0。
+- time_jump不是null時（玩家這回合跳過了一段時間，從time_jump.from跳到time_jump.to），新場景開頭先用一兩句話交代這段被跳過的空白裡發生了什麼變化，再寫這一刻，不能假裝時間沒有跳躍。
+
+【伏筆（一、1.2.9.7，由系統記錄）】
+- 你可以在敘事裡埋下伏筆，但每個伏筆都要透過foreshadow_new回報一句話描述，數量不得超過foreshadow_slots_left（是0就不要再埋新的伏筆）。
+- open_foreshadows是目前還沒回收的伏筆。這回合回收了哪一個，就用foreshadow_updates回報{id, status:"resolved"}；overdue為true的伏筆請優先回收，或讓它自然淡出並回報{id, status:"faded"}。伏筆狀態由系統記錄，不用你記。
+- auto_faded_foreshadows不是null時，代表這些伏筆開了太久（20回合）仍未回收，已被系統自動標為淡出、釋出名額；除非情節自然帶到，否則之後不要再提起。
+- 這跟career_foreshadow（職涯伏筆線）是兩套不同的機制，career_foreshadow不用透過foreshadow_new回報。
+
+【角色名字（一、1.2.9.13）】
+- all_character_names是所有既有角色的名字（含玩家本人、不活躍與已過世的角色），新角色的名字不得與其中任何一個重複。
+- renamed_characters不是null時，代表上一回合你建立的新角色因為跟既有角色撞名，已被系統改名（original→renamed_to）。從這回合起請用新名字稱呼那位新角色，原本的名字仍然是原來那位角色。
+- new_characters每一筆都要帶dialogue_style（terse/normal/talkative），依角色性格一次設定，之後固定不變。
+
+其他規則：
 - 【誰在場原則】：父母的互動應該低頻但情感權重高，不要每回合都出現；日常高頻互動應該交給同儕、老師、老闆、同事這些人負責，父母只在真正合適的時機才登場。
-- 【避免AI感的寫作提醒】：(1) 不要濫用「不是A，是B」這種對比句型，那是講解機制方便理解用的，直接寫進敘事會讓內心話變得像在做心理測驗解說；(2) 不是每一段內心獨白都要收在一個「頓悟」或「發現」上，真實的人常常想到一半就被打斷、或根本沒有結論；(3) 避免把不同情境寫成同一種「畫面→動作→內心一句話」的固定結構，節奏要雜亂不對稱；(4) 適度加入一些「不重要的細節」——真實的內心話會岔題、講廢話、想到不相干的事，不必每一句都在為劇情或性格服務。
 - 【一、1.2.10，2026-09-23新增，務必遵守】玩家自由輸入的內容一律視為角色的意圖與行動，不是既定事實：成功與否、NPC如何反應，都由既有的數值/機率/好感度系統判定，不是玩家說了算。如果玩家在輸入裡順便替NPC寫了反應、或替自己寫了結果（例如「她答應了」「我考了第一名」），那只算是角色心裡的期待/預想，不直接成立——敘事可以自然呈現「期待」與「系統判定出來的現實」之間的落差（不論落差方向是更好還是更差），但不要用旁白直接指出「你猜錯了」這種點破的講法，順著故事自然帶過就好。玩家一回合輸入了不只一件事時，依這回合實際涵蓋的時間長度合理分配，放不下的部分可以寫成還沒做到、或留到後續回合自然接續，不用勉強把玩家寫的每件事都在這回合做完。（呼應1.1.3自由輸入合理性邊界——1.1.3管「這件事在現實裡能不能發生」，本條管「發生的結果由誰決定」，兩者互相補充。）
 - 數值：健康、才識、表達力、人脈、外表（0-100，可見），存款/月收入/月支出（遊戲幣單位金額，可見），以及隱藏的智慧、邏輯能力、幸福感、人格魅力風格、做事態度光譜（自律/審慎/成就傾向/責任感/團隊vs單打獨鬥，各0-100，開局都是50中性值，純靠選擇累積）。
 - 【財富改遊戲幣具體金額制，9/19改版取代原本真實台幣金額制】：不要用0-100分數描述財富，一律使用 payload 裡的 savings（存款）、monthly_income（月收入）、monthly_expenses（月支出項目列表）、financial_health（財務健康度0-100，內部換算好給你參考機率用，不用讓玩家看到這個數字）。**全人生階段(不分學生或出社會)的savings/monthly_income/one_time_transaction等金額欄位，一律是遊戲幣單位，不是新台幣，敘事裡不要講「NT$」「元」這種真實幣值字眼，只講「錢」「存款」這種抽象講法即可，例如「你數了數口袋裡的錢」而不是「你數了數口袋裡的300元」**。日常小額開銷不用你計算，系統會在回合之間自動結算月收支（滿一個月份邊界才結算，你完全不用管這個算術）。你只需要在下列情況回傳對應欄位：
@@ -2687,11 +2915,9 @@ function buildSystemPrompt(){
 - 隨機性採「兩層骰」：大方向要合理反映玩家目前的數值（數值高的人成功機率自然較高），但具體情節細節可以有意外驚喜，不必每次都溫吞可預期。
 - 人生里程碑（升學、就業、感情、成家等）到了年紀就自然帶出選項，但玩家永遠可以選擇「跳過／不做」，且要給出跳過後的合理後果，不強迫走傳統路線。
 - 【職涯/感情不設終身鎖死】：30歲以後，玩家隨時可以轉職、創業失敗重來、進入新的感情關係，不要因為玩家選定過某個職業或穩定關係，就假設劇情從此定型不再變化。
-- 角色卡：只有在敘事中真正出現「一個新的、有名字、有互動的人物」時才透過 new_characters 建立新角色卡；提到已存在角色的互動時用 character_updates 更新好感度與一句話補述。不要濫發角色。【四、4.1，9/19補充】summary_add 只保留最近2則，系統會自動捨棄較舊的，你不用擔心會不會太長或該不該精簡，正常寫就好。【四、4.1，9/19新增】new_characters 的 origin 欄位要簡短交代這個人是怎麼認識的、大概什麼時候（例如「國小同班同學，五年級認識」「打工時認識的同事」），供多年後這個角色重新出現時，你能參照這個來源寫出合理的重逢情境，不用自己編造或猜測。
+- 角色卡：只有在敘事中真正出現「一個新的、有名字、有互動的人物」時才透過 new_characters 建立新角色卡（未命名背景人物不建卡，見【寫作規則】C）；提到已存在角色的互動時用 character_updates 更新好感度與一句話補述。不要濫發角色。【四、4.1，9/19補充】summary_add 只保留最近2則，系統會自動捨棄較舊的，你不用擔心會不會太長或該不該精簡，正常寫就好。【四、4.1，9/19新增】new_characters 的 origin 欄位要簡短交代這個人是怎麼認識的、大概什麼時候（例如「國小同班同學，五年級認識」「打工時認識的同事」），供多年後這個角色重新出現時，你能參照這個來源寫出合理的重逢情境，不用自己編造或猜測。
 - 【戀愛系統 romantic_signal，四、4.4，9/16新增】：如果玩家這回合的行動明顯是跟某個既有NPC之間帶有戀愛/曖昧意味的互動（曖昧試探、告白、約會、親密對話，或反過來的冷淡回應、爭吵、拒絕），在對應的 character_updates[i] 裡加一個 romantic_signal 欄位：互動偏正向（曖昧升溫、更親密、順利）填"positive"，偏負向（冷淡、爭吵、拒絕）填"negative"，沒有戀愛/曖昧意味的一般互動就不要填這個欄位（或填null）。**你只負責分類這次互動的正負向，不要自己判斷「現在算不算在交往」「該不該進入曖昧中/交往中/穩定交往/分手」，這些狀態一律由系統依次數計算，你只需要參照 payload 裡每個 active_characters 項目的 romance_status（如果不是null）自然接續對應的語氣即可**；NPC卡的「關係類別」在系統判定為曖昧對象/戀愛對象時會自動反映，你不用也不能自己在 new_characters/character_updates 裡把 relation 手動設成「戀愛對象」。穩定交往中的對象(romance_status為"stable")是後續結婚劇情自然的敘事對象。
 - 【NPC姓名與性別一致性，務必仔細檢查】：生成任何新角色時，姓名必須符合其設定性別（不要給男性角色一個普遍認知是女性的名字，反之亦然）。實測發現過的錯誤範例：把「柏勳」這種普遍認知是男性的名字，標註成「姊姊」（女性親屬關係）——這類錯誤絕對要避免，下筆前先在心裡確認這個名字通常對應哪個性別，再確認跟你要設定的relation/性別欄位一致。一旦生成就是既定事實，後續回合引用該角色時姓名與性別不可再變動或矛盾。
-- 【時間推進速度，二、2.2/2.5，9/16改版：全年齡都已經由系統算好】：從15歲到終老，每回合要推進多少時間都已經由系統依目前人生階段的回合預算算好（學生時期依學期段落，22歲以後依年齡區間的加速曲線，越後面的人生單一回合代表的時間跨度越長），age_advance 欄位一律填0，不要自己推進年齡，也不用管「30歲以後自己判斷」這種說法（舊規則，已取代）。
-- 【current_time_label 與 time_jump（全年齡適用）】：current_time_label 是系統已經算好、這一刻故事所在的確切時間點（例如「高二・上學期・期末」「入職第2年」「45歲」），你不需要、也不應該自己推算現在是哪一天/哪個學期/哪一年，直接參照這個時間點的季節感/氛圍去寫即可，不用在敘事文字裡逐字報出這個標籤本身（畫面會自動幫玩家顯示）。如果 time_jump 不是 null（代表這回合跳過了一段時間，從 time_jump.from 跳到 time_jump.to），這回合的敘事開頭必須先用一兩句話簡短交代這段被跳過的空白時間裡發生了什麼變化，再繼續往下寫這一刻的劇情，不能無縫接軌假裝時間沒有跳躍過去。
 - 【事件狀態機制，四、4.3，務必遵守】：payload的milestone_status會列出13個一次性里程碑事件目前的狀態(available未觸發/completed已完成/skipped已跳過/locked鎖定中)。狀態是completed或skipped的事件，**絕對不能再當作新鮮事重新觸發**（例如已經completed的「第一張信用卡」，不能再讓劇情出現「要不要辦第一張信用卡」這種選項；已經skipped的，可以在特定情境提起「你當初沒有選擇辦卡」，但不能重新當成一個懸而未決的選擇再問一次）。狀態是locked的，代表前置條件還沒到，不要主動帶出這個選項。以下4個里程碑由你自己判斷完成/跳過後透過milestone_updates回傳{id, status:"completed"或"skipped"}：first_credit_card(第一張信用卡)、first_part_time_job(第一次打工)、marriage_decision(結婚或明確決定不婚)、parent_retirement(父母退休，9/19新增)——只有這4個需要你回報，沒發生變化就不用回傳。first_startup(第一次創業，2026-09-20起改為系統自動判斷，不在這4個裡面)見下方唯一例外說明。- 【六、6.2性格破格里程碑，2026-09-20新增，務必遵守】：payload的breakthrough_event_now不是null時，代表系統剛判定玩家的依附風格或同儕位置光譜出現一次「打破底色」的重大偏移，這回合請寫一段比平常更長、更慢、更聚焦情緒的加重敘事，讓玩家清楚感覺到「我打破了原本的樣子」，不是日常流水帳；是否成立、多久成立一次由系統判斷，你不用也不能自己決定要不要觸發。
 另外9個（畢業高中/畢業大學、第一次正職、買房、搬出家裡、第一次戀愛first_romance、第一次轉職first_job_change、生育或領養first_child、第一次創業first_startup）是系統自動判斷，你不用管，milestone_status裡看到它們變成completed是系統自己更新的（first_romance是9/16改版，玩家關係第一次進入「交往中」時系統自動判定；first_job_change/first_child是9/19新增，分別由求職結果非首次觸發、new_characters的is_child判斷；first_startup是2026-09-20新增，由business_status轉為經營中時判定，一律不由你回報），你只需要讀取參考，不用也不能透過milestone_updates去改它們——**唯一例外（2026-09-20新增）**：這9個裡的home_purchase(買房)、moved_out(搬出家裡)、first_child(生育或領養)、first_startup(第一次創業)四項，如果玩家的自由輸入明確表達「決定不買房」「決定不搬出去住」「決定不生小孩」「決定不創業」這類明確不做的意圖，你可以（也只能）透過milestone_updates回傳{id, status:"skipped"}，讓這個決定被系統記錄下來；但你不能對這四項回傳"completed"，達成與否永遠由系統自動判斷，不由你決定
 - 【十三、健康衰退與老年階段，2026-09-20新增，務必遵守】：30歲以後每年有機率生病(急性/慢性/重大疾病三種)，60歲以後父母可能進入需要協助/失能/過世的狀態，全部由系統結構化判定並透過payload的illness_event_now／major_illness_event_now／parent_health_event_now／eldercare_event_now／parent_death_event_now告訴你剛發生了什麼，你只要自然帶進敘事即可，不要自己判斷玩家或NPC「該不該生病」「該不該過世」；疾病與長照題材允許沉重，但要保留旁白喘息空間(呼應六、6.3)與正向意外機率(呼應六、6.1)，不要連續好幾回合都是壞消息。60歲以後的敘事主題可以多圍繞健康/醫療、關係(老友/伴侶/子女角色反轉)、自我與意義回顧、事務交代這四個方向，年紀越大，事務性與回顧性的比例可以越高。
@@ -2712,15 +2938,13 @@ function buildSystemPrompt(){
   - 40歲以前（國高中/大學/初入社會/找方向期前段）forceEnding 與 death_foreshadow_now 都不會是 true，這個階段完全不用考慮死亡相關的敘事。
 - 【世代傳承（死亡結局時，如果玩家有小孩）】：如果 payload 的 has_children 是 true 且這回合觸發死亡結局（無論哪種死法），在 life_summary 之外，額外透過 succession_available 設為 true 告知系統可以提供轉生選項；不用你自己處理繼承細節，那是系統的事。如果沒有小孩，succession_available 設為 false。
 - 【情緒份量 emotional_tone（三、3.8，9/20新增，取代原本的 happiness_delta）】：你不再給幸福感數值，只回報這一回合對玩家而言的情緒份量，四選一：uplifting（明確的好事、鬆一口氣、被看見）、warm（平靜的暖意、日常的小確幸）、unsettling（隱隱不安、卡住、被忽略）、heavy（明確的打擊、失去、長期壓在身上的事）。多數平淡回合落在 warm 或 unsettling，兩端不要濫用。這四個字串以外的值系統一律當作中性處理，所以不要自創分類，也不要寫成「有點warm」這種模糊描述。幸福感的長期水準由系統依五條來源管道自己計算，不需要你操心。
-- 【人生總結 life_summary（七、7.1.4，9/20新增，取代原本的 ending_title／ending_summary）】：只有 forceEnding 是 true 的那一回合才要填。這一生不給標籤、不給分數、不做總評、不跟別人比較，只回顧「經歷過什麼、後來變成什麼樣子」。payload 會給你 life_summary_material，裡面已經由系統挑好、排好素材：
+- 【人生總結 life_summary（七、7.1.4，9/20新增，取代原本的 ending_title／ending_summary）】：只有 forceEnding 是 true 的那一回合才要填。【一、1.2.8.6，2026-09-24】這回合的主文（死亡場景）照tone_track的克制軌寫，life_summary整段則用回望軌的語氣寫。這一生不給標籤、不給分數、不做總評、不跟別人比較，只回顧「經歷過什麼、後來變成什麼樣子」。payload 會給你 life_summary_material，裡面已經由系統挑好、排好素材：
   - segments：每個人生階段一筆，帶 stage（照抄當作 key）、stage_label、age_from/age_to、tone（釋然／平穩／惋惜／沉重，這是系統算好的敘事溫度，你照著寫，不要自己改判）、resume_entries（這段人生的履歷條目）、key_npcs（這段身邊的人）。每一筆寫一段回顧：當時的處境、這些履歷條目、這些人，語氣依 tone。不要寫成流水帳，也不要補系統沒給的事件。
   - transitions：階段與階段之間的光譜位移，帶 after_stage（照抄當作 key）、axis_label、from、to、direction。每一筆寫**一句**行為對比，只描述行為怎麼變了，不評價好壞、不說是進步或退步、不要出現「焦慮軸」「自律」這類機制詞彙。寫法參考：「你從一進教室就往牆邊走的人，變成會先問別人作業寫完了沒」。transitions 是空陣列時就不要寫。
   - epitaph：墓誌銘，一至兩句，依整段人生軌跡寫，不是這一回合的感想。
-- 【段落切分】：narrative 內容不要寫成單一區塊，要依「畫面轉換」或「心理轉折」切成2-3個小段落，段落之間用一個換行符號分隔（在JSON字串裡就是 \\n\\n）。參考結構：第一段場景/動作 → 第二段內心想法 → 第三段（如果有）對話或選項前導。
-- 【九條敘事技巧】：(1) 同一段落內長短句要不對稱，至少有一句5字以內的極短句，避免每句話都工整等長；(2) 內心自問可以連續發問、不必收斂成一個結論，情緒本身在滾動比"想清楚"更真實（尤其焦慮軸偏高時）；(3) 呈現角色反差或對比時，用一句平述帶過就好，不用解釋成因；(4) 角色有所隱瞞、迴避、內心波動時，優先用沉默或岔開話題呈現，不要讓角色直接說出感受或動機——但如果情境是單純辯論、抬槓、交換意見（沒有隱瞞成分），要用直球對話，每句話精確回應上一句，不要閃躲；(5) 同一天內瑣碎的場景切換可以不用過渡句直接跳接（這條跟「強制過渡回合」不衝突，那條只管跨里程碑的明顯時間跳躍）；(6) 具體、甚至外人聽起來略顯瑣碎的道具/品牌/暱稱細節，比形容詞更能建立真實感；(7) 角色的動作可以用「（動作）台詞」的格式直接嵌在對話裡，不用另外拆一句旁白動作描述；(8) 角色說話可以中途自我修正、改口，這種不完美的痕跡才真實；角色可以有專屬的說話癖好，不用旁白解釋；(9) 俚語、流行語、口頭禪要依角色的年齡/性格/背景個別設計，不能所有角色共用同一套。
-- 【防壓抑機制】：(1) 兩層骰的細節層不能只服務負面驚喜——玩家數值明顯偏低時，仍要保留機率給正向意外（陌生人的善意、意外的機會、被低估的能力被看見），不要每次都往更慘的方向發揮；(2) 玩家某次選擇明顯違反自己的依附軸底色時（例如迴避軸很高的人主動求助、焦慮軸很高的人罕見地表現得從容），這是「性格破格時刻」，值得用比平常更長、更聚焦情緒的一段敘事給予份量，最好能連動到某個角色卡的好感度變化，不要讓依附軸變成貫穿一生的宿命感；(3) 旁白可以在連續兩三個負面事件之後，或人生階段轉場時，保留一點點抽離、自嘲的語氣調劑，不用每次都很沉重；(4) 玩家選擇跳過傳統路線（不成家、不追求事業高峰）時，emotional_tone 不能暗中被懲罰——不要因為「他沒結婚」「他沒升遷」就把語氣往 unsettling／heavy 壓，跳過傳統路線的玩家在友情、自我實現、興趣、自己做主這些方向上一樣該讀到 uplifting／warm 的回合，不能有「不跳過才是正確人生」的隱藏傾向（幸福感的長期水準由系統依五條來源管道自己算，你只負責這一回合的情緒份量）。
+- 【防壓抑機制】：(1) 兩層骰的細節層不能只服務負面驚喜——玩家數值明顯偏低時，仍要保留機率給正向意外（陌生人的善意、意外的機會、被低估的能力被看見），不要每次都往更慘的方向發揮；(2) 玩家某次選擇明顯違反自己的依附軸底色時（例如迴避軸很高的人主動求助、焦慮軸很高的人罕見地表現得從容），這是「性格破格時刻」，值得用比平常更長的一段敘事給予份量（用動作與場景放大，內心描寫仍遵守【寫作規則】的額度），最好能連動到某個角色卡的好感度變化，不要讓依附軸變成貫穿一生的宿命感；(3) 旁白可以在連續兩三個負面事件之後，或人生階段轉場時，保留一點點抽離、自嘲的語氣調劑，不用每次都很沉重；(4) 玩家選擇跳過傳統路線（不成家、不追求事業高峰）時，emotional_tone 不能暗中被懲罰——不要因為「他沒結婚」「他沒升遷」就把語氣往 unsettling／heavy 壓，跳過傳統路線的玩家在友情、自我實現、興趣、自己做主這些方向上一樣該讀到 uplifting／warm 的回合，不能有「不跳過才是正確人生」的隱藏傾向（幸福感的長期水準由系統依五條來源管道自己算，你只負責這一回合的情緒份量）。
 - 【背景資訊要暗示，不要宣告】：像家境、外貌、天資這類設定資訊，禁止用旁白直接點名等級（例如「你家境富裕」「你天資聰穎」這種講法），一律透過場景細節、物品、他人的反應與對話去間接透露，讓玩家自己感受到，而不是被告知一個標籤。
-- 【依附風格 attachment_axes：焦慮軸 anxiety、迴避軸 avoidance，各0-100】：這是貫穿全程的敘事語氣濾鏡，不是某個時間點要「揭露」的資訊——玩家每一句內心話、每一次反應的預設方式都被這兩軸底色染過，但永遠不要用「焦慮」「迴避」「依附」這類詞彙直接講給玩家聽，只能透過語氣、選擇的猶豫程度、對親密/衝突情境的反應方式去呈現。數值越低代表這個軸越健康／越不明顯。
+- 【依附風格 attachment_axes：焦慮軸 anxiety、迴避軸 avoidance，各0-100】：這是貫穿全程的敘事語氣濾鏡，不是某個時間點要「揭露」的資訊——玩家每一次反應的預設方式（動作、猶豫、說話方式）都被這兩軸底色染過，但永遠不要用「焦慮」「迴避」「依附」這類詞彙直接講給玩家聽，只能透過語氣、選擇的猶豫程度、對親密/衝突情境的反應方式去呈現。數值越低代表這個軸越健康／越不明顯。
 - 【同儕位置 peer_position：獨行俠／邊緣觀察者／小圈子黏著者／核心人氣圈／照顧者型】：這條適合在遊戲很早期（turn數很小、還在高中階段）透過「進教室」「分組」這類社交情境自然帶出，之後才視情況再提；一樣不要直接講出分類名稱本身，要用行為描寫（誰主動找誰說話、你習慣坐哪裡、下課都在做什麼）去呈現。
 - 【人格魅力風格 personality_style】：這是玩家的人設風格標籤（陽光開朗/溫柔婉約/天真爛漫/高冷神秘/幹練俐落/幽默風趣），與性別脫鉤，任何性別都可以是任何風格，用行為/說話方式自然呈現，不要直接說出標籤名稱。
 - 【做事態度光譜 conscientiousness：自律/審慎/成就傾向/責任感/團隊vs單打獨鬥，各0-100】：這是行為模式的慣性，不是情緒濾鏡，主要影響選項的傾向性描述，不強求每次都伴隨強烈情緒；開局都是中性50分，完全靠學生時期起的具體選擇（準時交作業、多想想再決定、力求更好、對承諾的實踐、找人合作或自己扛）慢慢累積偏向。可以透過 conscientiousness_shift 回傳小幅位移（-3到+3，多數回合是0）。責任感、團隊vs單打獨鬥這兩條已經由系統自動換算成人脈/才識成長的倍率，你不用管；但下面兩條需要你在敘事判斷時實際套用：
@@ -2755,7 +2979,14 @@ const TURN_RESULT_TOOL = {
   input_schema: {
     type: "object",
     properties: {
-      narrative: { type: "string", description: "這回合的敘事本文，第二人稱日記體、繁體中文，依規則切成2-3小段，段落間用\\n\\n分隔" },
+      action_result: { type: "string", description: "（1.2.9.11.3）第一部分「行動結果」：玩家這回合的選擇實際發生了什麼、當下的直接結果，完整小片段1-2段，可接續上一回合場景的同一時間點。開場回合(time_context.is_prologue為true)填空字串" },
+      narrative: { type: "string", description: "（1.2.9.11.3）第二部分「時間推進後的新場景」：推進到至少隔天，開頭一句自然的時間錨點，核心場景落在本回合範圍內。第二人稱、繁體中文，段落間用\\n\\n分隔。NPC台詞用{{名字|台詞}}標記，文件框用〔文件:標題〕…〔/文件〕" },
+      scene_day_offset: { type: "integer", description: "（1.2.9.11.4）新場景的日期＝time_context.round_start_date往後第幾天(0起算)，必須在0到round_days-1之間" },
+      scene_summary: { type: "string", description: "（1.2.9.11.4）新場景的一句話摘要(含時段與地點，例如「晚上，在房間整理書包」)，下一回合會當作上一回合場景傳回給你。不含行動結果" },
+      chapter_subtitle: { type: "string", description: "（1.2.9.6）這回合的章節副標，含蓄、不劇透，約4-12字" },
+      tone_switch: { type: ["string","null"], enum: ["key_event_reveal","relationship_turning",null], description: "（1.2.8.7）只有這回合你揭露了key_event、或寫到告白/表態/分手/關係破裂/結婚而系統給的tone_track不是restrained/high時才填，其餘填null" },
+      foreshadow_new: { type: "array", items: { type: "string" }, description: "（1.2.9.7）這回合新埋下的伏筆(每個一句話描述)，數量不得超過payload的foreshadow_slots_left，沒有就給空陣列" },
+      foreshadow_updates: { type: "array", items: { type: "object", properties: { id:{type:"string"}, status:{type:"string", enum:["resolved","faded"]} } }, description: "（1.2.9.7）open_foreshadows裡這回合被回收(resolved)或讓它自然淡出(faded)的伏筆，沒有就給空陣列" },
       turn_summary: { type: "string", description: "1-2句話摘要這回合實際發生的事，必填，不能省略" },
       age_advance: { type: "number", description: "一律填0，年齡推進已由系統結構化計算" },
       stat_deltas: {
@@ -2809,7 +3040,8 @@ const TURN_RESULT_TOOL = {
           type: "object",
           properties: {
             name:{type:"string"}, relation:{type:"string"}, traits:{type:"string"},
-            initial_affinity:{type:"number"}, is_child:{type:"boolean"}, origin:{type:"string"}
+            initial_affinity:{type:"number"}, is_child:{type:"boolean"}, origin:{type:"string"},
+            dialogue_style:{type:"string", enum:["terse","normal","talkative"], description:"（1.2.8.4.2）依角色性格一次設定，之後固定不變"}
           }
         }
       },
@@ -2842,7 +3074,7 @@ const TURN_RESULT_TOOL = {
       },
       succession_available: { type: "boolean" }
     },
-    required: ["narrative","turn_summary","age_advance","stat_deltas","emotional_tone","attachment_shift","peer_position_shift","conscientiousness_shift","choices","is_ending"]
+    required: ["action_result","narrative","scene_day_offset","scene_summary","chapter_subtitle","turn_summary","age_advance","stat_deltas","emotional_tone","attachment_shift","peer_position_shift","conscientiousness_shift","choices","is_ending"]
   }
 };
 
@@ -3127,17 +3359,207 @@ const RECENT_FULL_TEXT_TURNS = 3; // 【定案,9/19,見4.2.1.1】
 const RECENT_SUMMARY_TURNS = 6; // 【測試參數,Claude Code判斷,呼應L3履歷摘要同樣抓6則】
 // 一、1.2.9.1（2026-09-23取代原本固定250-350字規則）：敘事字數依這回合monthsCrossed(這回合涵蓋的遊戲內時間長度)分級，
 // 程式直接算好級距+建議字數告訴AI，不讓AI自己換算週期。三個級距的分界(2週=0.5個月/1個月)與各級字數皆為【測試參數,暫定,待驗證】
-function narrativeLengthTier(monthsCrossed){
+// 2026-09-24：①tension為low時取該級距下限(1.2.8.4.3定案)；②字數含行動結果＋新場景兩部分，行動結果約占1/4-1/3(1.2.9.11.3)
+function narrativeLengthTier(monthsCrossed, tension){
   const m = monthsCrossed||0;
-  if(m<=0.5) return { tier:"short", word_range:"400-500字", structure:"只寫一個核心場景(約450字為基準)，不需要轉場句" };
-  if(m<=1) return { tier:"medium", word_range:"450-600字", structure:"核心場景為主，可視情況加0-1個次要片段，多出的字數優先用在片段/轉場，不要拉長核心場景本身" };
-  return { tier:"long", word_range:"500-700字", structure:"完整三段結構：核心場景(約450字為基準)＋次要片段0-2個(各1-3句)＋轉場句1-2句" };
+  let g;
+  if(m<=0.5) g = { tier:"short", min:400, max:500, structure:"新場景只寫一個核心場景，不需要轉場句" };
+  else if(m<=1) g = { tier:"medium", min:450, max:600, structure:"新場景以核心場景為主，可視情況加0-1個次要片段，多出的字數優先用在片段/轉場，不要拉長核心場景本身" };
+  else g = { tier:"long", min:500, max:700, structure:"新場景用完整三段結構：核心場景＋次要片段0-2個(各1-3句)＋轉場句1-2句" };
+  const total = tension==="low" ? g.min : Math.round((g.min+g.max)/2);
+  return {
+    tier:g.tier, word_range:`${g.min}-${g.max}字`, target_total_words: total,
+    action_result_words: `${Math.round(total/4)}-${Math.round(total/3)}字`,
+    structure: g.structure
+  };
+}
+// ===== 一、1.2.9.13（2026-09-24新增）角色卡同名衝突 =====
+// 家人稱謂正規化：只看relation開頭(例如「父親（服刑中）」→父親、「前配偶」→配偶)，避免「同學的哥哥」這類非家人被誤判
+const FAMILY_ROLE_PATTERNS = [
+  ["父親",/^(父親|爸爸)/], ["母親",/^(母親|媽媽)/], ["繼父",/^繼父/], ["繼母",/^繼母/],
+  ["哥哥",/^哥哥/], ["弟弟",/^弟弟/], ["姊姊",/^(姊姊|姐姐)/], ["妹妹",/^妹妹/],
+  ["祖父",/^(爺爺|阿公|外公|祖父)/], ["祖母",/^(奶奶|阿嬤|外婆|祖母)/],
+  ["兒子",/^兒子/], ["女兒",/^女兒/], ["配偶",/^(前)?(配偶|丈夫|妻子|老公|老婆)/]
+];
+const FAMILY_ROLE_GENDER = { 父親:"男", 繼父:"男", 哥哥:"男", 弟弟:"男", 祖父:"男", 兒子:"男", 母親:"女", 繼母:"女", 姊姊:"女", 妹妹:"女", 祖母:"女", 女兒:"女" };
+function familyRoleOf(relation){
+  const r = String(relation||"").trim();
+  const hit = FAMILY_ROLE_PATTERNS.find(([,re])=>re.test(r));
+  return hit ? hit[0] : null;
+}
+// 衝突判斷(1.2.9.13定案)：家人稱謂不同，或一方是家人、一方不是家人，才算衝突；非家人稱謂的差異視為同一人
+function isCharacterNameConflict(existingRelation, newRelation){
+  const a = familyRoleOf(existingRelation), b = familyRoleOf(newRelation);
+  if(!a && !b) return false;
+  return a!==b;
+}
+const RENAME_GIVEN_NAMES_MALE = ["冠宇","承翰","宥辰","子豪","柏宇","品睿","俊傑","宇軒","哲瑋","文彬"];
+const RENAME_GIVEN_NAMES_FEMALE = ["品妍","宜蓁","思妤","芷晴","欣怡","語彤","佳穎","郁婷","宛瑜","筱涵"];
+const RENAME_SURNAMES = ["陳","林","黃","張","李","王","吳","劉","蔡","楊","許","鄭","謝","郭","洪"];
+function allUsedNames(s){
+  const set = new Set((s.characters||[]).map(c=>c.name));
+  if(s.name) set.add(s.name);
+  return set;
+}
+// 改名方式(1.2.9.13定案)：新卡是家人→改名字、不加姓氏；新卡不是家人→加姓氏區分(原本已帶姓氏就換一個姓)
+function renameForConflict(s, name, newRelation){
+  const used = allUsedNames(s);
+  const role = familyRoleOf(newRelation);
+  if(role){
+    const g = FAMILY_ROLE_GENDER[role];
+    const pool = g==="男" ? RENAME_GIVEN_NAMES_MALE : g==="女" ? RENAME_GIVEN_NAMES_FEMALE : RENAME_GIVEN_NAMES_MALE.concat(RENAME_GIVEN_NAMES_FEMALE);
+    const free = pool.filter(n=>!used.has(n));
+    if(free.length) return pick(free);
+    return name+"二"; // 防呆：名單用盡時的最後手段
+  }
+  const base = (name.length>=3 && RENAME_SURNAMES.includes(name[0])) ? name.slice(1) : name;
+  const free = RENAME_SURNAMES.map(sn=>sn+base).filter(n=>n!==name && !used.has(n));
+  return free.length ? pick(free) : base+"（二）";
+}
+
+// ===== 一、1.2.8.4.2（2026-09-24實作）NPC台詞長度上限 dialogue_style =====
+const DIALOGUE_STYLE_LIMITS = { terse:2, normal:4, talkative:8 };
+function rollDialogueStyle(){ return weightedPick([["terse",30],["normal",50],["talkative",20]]); } // 【測試參數】家人卡開局隨機
+// AI以{{名字|台詞}}標記NPC台詞；程式依該角色dialogue_style截斷，顯示時換成「台詞」。
+// 截斷在上限內最後一個句號/問號/驚嘆號處，不在句子中間硬切；找不到標點則保留整句並回報(1.2.8.4.2定案)
+function truncateDialogueLine(line, limit){
+  const ends = [];
+  const re = /[。？！?!]+|…+|\.{3,}/g; let m;
+  while((m = re.exec(line))){ ends.push({ idx:m.index+m[0].length, strong:/[。？！?!]/.test(m[0]) }); }
+  // 最後一句沒有結尾標點時也算一句
+  const lastEnd = ends.length ? ends[ends.length-1].idx : 0;
+  const count = ends.length + (line.slice(lastEnd).trim() ? 1 : 0);
+  if(count<=limit) return { text:line, truncated:false };
+  const within = ends.slice(0, limit).filter(e=>e.strong);
+  if(!within.length) return { text:line, truncated:false, noPunctuation:true };
+  return { text:line.slice(0, within[within.length-1].idx), truncated:true };
+}
+function processDialogueMarkup(s, text){
+  const notes = [];
+  const out = String(text||"").replace(/「?\s*\{\{([^|{}]+)\|([^{}]*)\}\}\s*」?/g, (all, rawName, rawLine)=>{
+    const name = rawName.trim();
+    let line = rawLine.trim().replace(/^「/,"").replace(/」$/,"");
+    const c = (s.characters||[]).find(x=>x.name===name);
+    const limit = c ? DIALOGUE_STYLE_LIMITS[c.dialogueStyle||"normal"] : null;
+    if(limit){
+      const t = truncateDialogueLine(line, limit);
+      if(t.truncated) notes.push(`${name}的台詞超過${c.dialogueStyle||"normal"}上限${limit}句，已在句尾截斷`);
+      if(t.noPunctuation) notes.push(`${name}的台詞超過上限${limit}句，但上限內找不到句號/問號/驚嘆號，保留整句`);
+      line = t.text;
+    }
+    return "「"+line+"」";
+  });
+  return { text: out, notes };
+}
+
+// ===== 一、1.2.9.7（2026-09-24實作）伏筆追蹤(程式掌管) =====
+const FORESHADOW_MAX_OPEN = 3; // 【測試參數,暫定待實測】
+const FORESHADOW_REMIND_AFTER = 15; // 【測試參數,暫定待實測】
+const FORESHADOW_AUTO_FADE_AFTER = 20; // 1.2.9.7保底（2026-09-24定案）：提醒後再過5回合仍未回收，程式自動標為淡出並釋出名額
+function openForeshadows(s){ return (s.foreshadows||[]).filter(f=>f.status==="open"); }
+function applyForeshadowUpdates(s, r){
+  s.foreshadows = s.foreshadows || [];
+  (r.foreshadow_updates||[]).forEach(u=>{
+    const f = s.foreshadows.find(x=>x.id===u.id && x.status==="open");
+    if(f && (u.status==="resolved" || u.status==="faded")){ f.status = u.status; f.closedTurn = s.turnCount; }
+  });
+  (r.foreshadow_new||[]).forEach(text=>{
+    if(!text || typeof text!=="string") return;
+    if(openForeshadows(s).length>=FORESHADOW_MAX_OPEN){ console.warn("[伏筆] 已達上限，忽略新伏筆：", text); return; }
+    s.foreshadowSeq = (s.foreshadowSeq||0)+1;
+    s.foreshadows.push({ id:"f"+s.foreshadowSeq, text:text.slice(0,80), bornTurn:s.turnCount, status:"open" });
+  });
+  // 1.2.9.7保底（2026-09-24定案）：開啟滿FORESHADOW_AUTO_FADE_AFTER回合仍未回收→自動淡出，下一回合告知AI
+  s.foreshadowFadeNotices = s.foreshadowFadeNotices || [];
+  s.foreshadows.forEach(f=>{
+    if(f.status==="open" && s.turnCount - f.bornTurn >= FORESHADOW_AUTO_FADE_AFTER){
+      f.status = "faded"; f.closedTurn = s.turnCount; f.autoFaded = true;
+      s.foreshadowFadeNotices.push({ id:f.id, text:f.text });
+    }
+  });
+  // 已結束的伏筆只保留最近20筆，避免存檔無限變大
+  const closed = s.foreshadows.filter(f=>f.status!=="open");
+  if(closed.length>20){ const drop = new Set(closed.slice(0, closed.length-20)); s.foreshadows = s.foreshadows.filter(f=>!drop.has(f)); }
+}
+
+// ===== 一、1.2.8.2（2026-09-24實作）語氣軌tone_track／張力tension由程式指定 =====
+// 依1.2.8.2.5對照表，只用「呼叫AI之前就已經確定」的程式訊號判斷；優先序：強制克制軌＞回望軌＞一般克制軌＞碎念軌，tension任一high即high
+const MUTTER_STREAK_LIMIT = 3; // 1.2.8.2.3
+function detectRelationshipTurningIntent(actionText){ return /告白|表白|求婚|分手|提分手/.test(actionText||""); }
+function computeToneTrack(s, timeCtx, actionText, forceEnding){
+  const hits = []; // {track, forced, tension, category}
+  const add = (track, tension, category, forced)=>hits.push({ track, tension, category, forced:!!forced });
+  if(forceEnding) add("restrained","high","死亡相關(本人)",true);
+  if(timeCtx && timeCtx.deathForeshadowNow) add("restrained","high","死亡相關(前兆)",true);
+  if(s.divorceEventLog || s.parentDeathEventLog) add("restrained","high","家庭成員重大變故",true);
+  if(timeCtx && timeCtx.prologue) add("restrained","low","開局家庭背景描述",false);
+  if(timeCtx && timeCtx.examCheck) add("restrained","high","高張力明牌檢定(期末考成績公布)",false);
+  else if(timeCtx && timeCtx.examTriggered) add("restrained","low","期中考/期末考(考試當下)",false);
+  if(s.pendingSideBusinessCardId) add("restrained","high","副業觸發抉擇",false);
+  if(detectRelationshipTurningIntent(actionText) || s.marriageCrisisEventLog) add("restrained","high","告白/表態、分手/關係破裂、結婚",false);
+  if(s.careerEventLog){
+    if(s.careerEventLog.type==="retirement") add("retrospect","high","人生階段轉換(退休)",false);
+    else add("restrained","high","求職面試、轉職、升遷、創業啟動",false);
+  }
+  if(s.graduationEventLog) add("retrospect","high","人生階段轉換(畢業)",false);
+  if(s.interestFormedEventLog) add("retrospect","low","興趣卡由候選正式成形",false);
+  const mode = s.timeState.stageMode;
+  if((mode==="highschool"||mode==="college") && !(timeCtx && timeCtx.prologue) && !(timeCtx && timeCtx.examTriggered)){
+    const seg = YEAR_SEGMENTS[s.timeState.segmentIndex % YEAR_SEGMENTS.length];
+    add("mutter","low", /準備期/.test(seg.key) ? "期中/期末準備期" : "學期日常", false);
+  } else if(mode==="career" && s.careerStatus===CAREER_STATUS.EMPLOYED){
+    add("mutter","low","工作日常",false);
+  }
+  // 1.2.8.7（2026-09-24拍板）：戀愛日常——目前有交往對象，且本回合沒有其他重大事件(沒有強制克制軌/回望軌/高張力類別)時，指定碎念軌低張力
+  const hasPartner = (s.characters||[]).some(c=>c.active!==false && !c.deceased && ["dating","stable","married"].includes(c.romanceStatus));
+  if(hasPartner && !hits.some(h=>h.forced || h.track==="retrospect" || h.tension==="high")) add("mutter","low","戀愛、友情日常互動",false);
+  const rank = h => h.forced ? 0 : h.track==="retrospect" ? 1 : h.track==="restrained" ? 2 : 3;
+  let chosen = hits.slice().sort((a,b)=>rank(a)-rank(b))[0] || { track:"restrained", tension:"low", category:"其他未歸類" };
+  let tension = hits.some(h=>h.tension==="high") ? "high" : "low";
+  let track = chosen.track, category = chosen.category;
+  // 1.2.8.2.3：碎念軌最多連續3回合，第4回合改克制軌(低張力)，出現非碎念軌回合後重新計數
+  if(track==="mutter" && (s.mutterStreak||0)>=MUTTER_STREAK_LIMIT){
+    track = "restrained"; tension = "low"; category += "(碎念軌連續上限，改克制軌)";
+  }
+  return { tone_track:track, tension, category };
+}
+// 1.2.8.7（2026-09-24拍板）：關鍵事件揭露、告白/分手(關鍵字沒偵測到時的備援)，允許AI在事件發生時自行切換語氣軌，
+// 透過tone_switch回報，程式依事件換算成實際語氣軌並記錄；其他值一律忽略
+const TONE_SWITCH_EVENTS = {
+  key_event_reveal: { tone_track:"restrained", tension:"high", category:"關鍵事件池(AI揭露時自行切換)" },
+  relationship_turning: { tone_track:"restrained", tension:"high", category:"告白/表態、分手/關係破裂、結婚(AI回報)" }
+};
+function resolveEffectiveTone(planned, r){
+  const sw = r && r.tone_switch && TONE_SWITCH_EVENTS[r.tone_switch];
+  if(!sw) return { ...planned, switched:false };
+  return { ...sw, switched:true, planned_tone_track: planned.tone_track };
+}
+function commitToneTrack(s, tone){ s.mutterStreak = tone.tone_track==="mutter" ? (s.mutterStreak||0)+1 : 0; }
+
+// ===== 一、1.2.9.11.2（2026-09-24新增）每回合送給AI的時間資訊 =====
+function buildTimeContextPayload(s, timeCtx){
+  const win = timeCtx && timeCtx.window;
+  if(!win) return null;
+  const cal = ensureCalendar(s);
+  const prologue = !!timeCtx.prologue;
+  return {
+    is_prologue: prologue,
+    previous_scene: prologue ? null : { date: calFormat(cal.lastSceneDay), summary: cal.lastSceneSummary || "（沒有紀錄）" },
+    round_start_date: calFormat(win.start),
+    round_end_date: calFormat(win.end),
+    round_days: win.end - win.start + 1,
+    span_text: calSpanText(win.end - win.start + 1),
+    stage_label: timeCtx.label,
+    fixed_events: collectFixedEvents(s, win).map(e=>e.approx ? { date:e.date, name:e.name, approximate:true } : { date:e.date, name:e.name }),
+    retry_note: timeCtx.retryNote || null
+  };
 }
 function buildUserMessage(actionText, forceEnding, timeCtx){
   const s = state;
   const roster = activeCharacters().map(c=>({
     name:c.name, relation:c.relation, traits:c.traits,
     affinity:c.affinity, summary:c.summary, is_child:!!c.isChild,
+    dialogue_style: c.dialogueStyle||"normal", // 一、1.2.8.4.2（2026-09-24實作）：台詞句數上限，程式依{{名字|台詞}}標記截斷
     romance_status: c.romanceStatus||null // 四、4.4戀愛狀態機（9/16新增）：null/ambiguous/dating/stable/breakup，僅供你參考語氣，不可自行變更
   }));
   const financialHealth = computeFinancialHealthForState(s); // 9/16修正：學生時期改用家庭真實NT$數字，見3.4.6補充定案
@@ -3186,7 +3608,22 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, status:c.status, investment:Math.round(c.investment) })),
     pending_side_business_category: s.pendingSideBusinessCardId ? ((s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId)||{}).category || null : null,
     // 一、1.2.9.1（2026-09-23新增）：取代原本system prompt裡寫死的「每次敘事約250-350字」，改依這回合monthsCrossed分級給字數目標
-    narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed),
+    narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed, timeCtx && timeCtx.tone && timeCtx.tone.tension),
+    // 一、1.2.9.11（2026-09-24新增）：日期由程式掌管，本回合範圍/上一回合場景/固定事件，見system prompt【時間與敘事結構】
+    time_context: buildTimeContextPayload(s, timeCtx),
+    // 一、1.2.8.2（2026-09-24實作）：語氣軌與張力由程式依事件類別對照表指定，AI不得自行判斷
+    tone_track: timeCtx && timeCtx.tone ? timeCtx.tone.tone_track : "restrained",
+    tension: timeCtx && timeCtx.tone ? timeCtx.tone.tension : "low",
+    tone_category: timeCtx && timeCtx.tone ? timeCtx.tone.category : null,
+    graduation_event_now: s.graduationEventLog || null, // 1.2.8.6（2026-09-24拍板）：剛畢業的那回合，{type:"highschool"|"college"}
+    interest_formed_event_now: s.interestFormedEventLog || null, // 1.2.8.6（2026-09-24拍板）：上一回合興趣卡剛由候選正式成形，{category}
+    // 一、1.2.9.13（2026-09-24新增）：所有既有角色名字(含不活躍/已過世)，新角色不得重名；上一回合被系統改名的新角色另外告知
+    all_character_names: Array.from(allUsedNames(s)),
+    renamed_characters: (s.renameNotices && s.renameNotices.length) ? s.renameNotices : null,
+    // 一、1.2.9.7（2026-09-24實作）：未回收伏筆，超過FORESHADOW_REMIND_AFTER回合標overdue，請優先回收或讓它自然淡出
+    open_foreshadows: openForeshadows(s).map(f=>({ id:f.id, text:f.text, rounds_open: s.turnCount - f.bornTurn, overdue: (s.turnCount - f.bornTurn) >= FORESHADOW_REMIND_AFTER })),
+    foreshadow_slots_left: Math.max(0, FORESHADOW_MAX_OPEN - openForeshadows(s).length),
+    auto_faded_foreshadows: (s.foreshadowFadeNotices && s.foreshadowFadeNotices.length) ? s.foreshadowFadeNotices : null, // 1.2.9.7保底：上一回合被程式自動淡出的伏筆
     exam_triggered: !!(timeCtx && timeCtx.examTriggered),
     exam_type: (timeCtx && timeCtx.examType) || null,
     // 二、2.4.1（9/16修正執行順序bug）：exam_triggered這回合，studyCountThisTerm在advanceStructuredTime()裡已經歸零，
@@ -3460,6 +3897,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
     // 這裡只模擬「AI把挑好的素材寫成回顧語氣」這一步，不再有任何標題/標籤
     const material = buildLifeSummaryMaterial(s);
     return {
+      action_result:"", scene_day_offset:0, scene_summary:"（模擬）午後，在家裡", chapter_subtitle:"尋常的午後", foreshadow_new:[], foreshadow_updates:[],
       narrative:`很多年後的一個尋常午後，${s.name}闔上了眼睛。屋子裡有人輕聲說話，陽光照進來，像每一個平凡的下午一樣。`,
       turn_summary:`${s.name}離世`,
       age_advance:0, stat_deltas:{wealth:0,health:0,network:0}, event_type:null, event_id:null, interest_event:null,
@@ -3522,7 +3960,8 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
       relation: pick(["同學","同事","鄰居","網友"]),
       traits: pick(["直率","話少但可靠","愛開玩笑","有點神秘"]),
       initial_affinity: rnd(40,65),
-      origin: pick(["透過共同朋友介紹認識","同一堂課認識","打工時認識","網路上認識"]) // 四、4.1 mock版（9/19新增）
+      origin: pick(["透過共同朋友介紹認識","同一堂課認識","打工時認識","網路上認識"]), // 四、4.1 mock版（9/19新增）
+      dialogue_style: pick(["terse","normal","talkative"]) // 一、1.2.8.4.2 mock版（2026-09-24新增）
     });
   }
   const character_updates = [];
@@ -3540,8 +3979,26 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
   const structured = timeCtx?.structured;
 
   const turn_summary = narrative.length>20 ? narrative.slice(0,20)+"…" : narrative; // 四、4.2.1.1 mock版（9/19新增），純測試用簡易摘要
+  // 一、1.2.9.11（2026-09-24新增）mock版：兩段式敘事＋場景日期；依MOCK_SCENE_DATE_VIOLATION_RATE故意回傳違規日期測重生流程
+  // (重新生成那一次timeCtx.retryNote有值，mock一律回傳合法日期)
+  const win = timeCtx && timeCtx.window;
+  const maxOff = win ? win.end-win.start : 0;
+  let scene_day_offset = rnd(0, maxOff);
+  if(win && !timeCtx.retryNote && !timeCtx.prologue && Math.random()<MOCK_SCENE_DATE_VIOLATION_RATE) scene_day_offset = pick([-1, maxOff+rnd(1,5)]);
+  const sceneDate = win ? calFormat(win.start+clamp(scene_day_offset,0,maxOff)) : "";
+  const npcForLine = pick(activeCharacters().filter(c=>!c.isChild)) || null;
+  const mockLine = npcForLine ? `{{${npcForLine.name}|${pick(["嗯。","你今天怎麼這麼早？我還以為你會睡到中午。算了，早餐在桌上。記得吃。別又放到涼掉。","好啦好啦。"])}}}` : "";
+  const docBox = Math.random()<0.1 ? `\n\n〔文件:${pick(["成績單","存摺明細","訊息"])}〕\n（模擬文件內容）\n〔/文件〕` : "";
+  const action_result = (timeCtx && timeCtx.prologue) ? "" : `（模擬行動結果）你照著「${String(actionText||"").slice(0,20)}」做了，${npcForLine ? npcForLine.name+"看了你一眼，"+mockLine : "沒有人多說什麼。"}`;
+  const open = openForeshadows(s);
+  const foreshadow_new = (open.length<FORESHADOW_MAX_OPEN && Math.random()<0.1) ? [`（模擬伏筆）${s.age}歲時抽屜裡那封沒拆的信`] : [];
+  const foreshadow_updates = (open.length && Math.random()<0.1) ? [{ id:pick(open).id, status:pick(["resolved","faded"]) }] : [];
   return {
-    narrative, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
+    action_result, scene_day_offset, scene_summary:`（模擬）${sceneDate}，${pick(["在教室","在家裡","在路上","在打工的店裡"])}`,
+    chapter_subtitle: pick(["沒寄出的訊息","雨停之前","多出來的碗筷","第三節下課"]),
+    tone_switch: Math.random()<0.05 ? pick(["key_event_reveal","relationship_turning"]) : null, // 1.2.8.7 mock版
+    foreshadow_new, foreshadow_updates,
+    narrative: narrative + docBox, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
     stat_deltas: deltas, event_type, event_id, interest_event, emotional_tone,
     attachment_shift, peer_position_shift, revealed_key_event:false,
     college_location_choice:null, fertility_stage_update:null,
@@ -3575,7 +4032,11 @@ function snapshotForUndo(){
     // 三、3.8／四、4.5（9/20新增）：回上一步時這些也要一起還原，否則undo後幸福感基準線與軌跡累計會對不上
     happinessBaseline:state.happinessBaseline, happinessRegressionCounter:state.happinessRegressionCounter,
     milestoneSkipReason:state.milestoneSkipReason,
-    lifeTrajectory:state.lifeTrajectory, stageAccum:state.stageAccum
+    lifeTrajectory:state.lifeTrajectory, stageAccum:state.stageAccum,
+    // 一、1.2.8.2/1.2.9.7/1.2.9.13（2026-09-24新增）：碎念軌連續次數、伏筆、改名通知也要跟著還原；
+    // 遊戲內日期(timeState.cal)已經包在上面的timeState裡，反悔時一併回到上一回合的狀態(1.2.9.11.5)
+    mutterStreak:state.mutterStreak||0, foreshadows:state.foreshadows||[], foreshadowSeq:state.foreshadowSeq||0,
+    renameNotices:state.renameNotices||[], foreshadowFadeNotices:state.foreshadowFadeNotices||[]
   }));
 }
 function applySnapshot(){
@@ -3604,6 +4065,7 @@ async function takeTurn(actionText, cost){
   const studyCountBeforeAdvance = state.studyCountThisTerm||0;
   // 三、3.2.4（2026-09-23拍板）：才識拖累斜率需要「考前實際累積的選興趣路徑次數」，同一個時序理由，快照方式比照上面studyCountBeforeAdvance
   const interestCountBeforeAdvance = state.interestCountThisTerm||0;
+  const wasPrologue = !!state.timeState.prologue; // 一、1.2.9.11：開場回合沒有「上一回合場景」，也不需要行動結果段
   // 二、2.5（9/16新增）：22歲以後改採加速曲線回合預算，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
   // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
   const adv = advanceStructuredTime(actionText);
@@ -3612,7 +4074,7 @@ async function takeTurn(actionText, cost){
   const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance) : null;
   // 2026-09-23修正（時間標籤慢一拍bug）：這回合顯示/送給AI的標籤改用currentLabel(這回合實際所在的段落)，
   // 不再用toLabel(換段後、下一回合才生效的段落)；jump提示(from/to)維持給跳過動作用，語意不變
-  let timeCtx = { structured:true, label: adv.currentLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, interestCountAtExam: interestCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow };
+  let timeCtx = { structured:true, label: adv.currentLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, interestCountAtExam: interestCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow, window: adv.window||null, prologue: wasPrologue };
   render(true);
 
   // 七、7.1.5（9/16改版,測試參數）：取代原本state.age>=state.lifeExpectancy的固定壽命值判定，
@@ -3622,17 +4084,43 @@ async function takeTurn(actionText, cost){
   // 這樣buildUserMessage()/mockGenerateTurn()算出的life_summary_material才會是完整8段，AI才有機會
   // 寫到角色死亡的那一段（取代原本邊界只在applyResult()事後才凍結、AI永遠看不到最後一段的舊流程）
   if(forceEnding) freezeFinalLifeStageForEnding(state);
+  // 一、1.2.8.2（2026-09-24實作）：語氣軌/張力在呼叫AI之前由程式決定，重新生成時沿用同一組，成功套用結果後才計入碎念軌連續次數
+  timeCtx.tone = computeToneTrack(state, timeCtx, actionText, forceEnding);
   // bug修正（9/14，人生草稿0914測試.pdf）：技術錯誤/破碎原始文字絕對不能外洩給玩家；
   // 失敗先重試一次，重試仍失敗才顯示中性容錯敘事，不附帶任何e.message或原始內容
   try{
+    const callOnce = ()=> USE_MOCK ? mockCallAI(actionText, forceEnding, timeCtx) : callAI(actionText, forceEnding, timeCtx);
     let result;
     try{
-      result = USE_MOCK ? await mockCallAI(actionText, forceEnding, timeCtx) : await callAI(actionText, forceEnding, timeCtx);
+      result = await callOnce();
     }catch(firstErr){
       console.error("第一次呼叫失敗，重試一次：", firstErr);
-      result = USE_MOCK ? await mockCallAI(actionText, forceEnding, timeCtx) : await callAI(actionText, forceEnding, timeCtx);
+      result = await callOnce();
+    }
+    // 一、1.2.9.11.4（2026-09-24新增）：新場景日期檢查——與上一回合同一天或超出本回合範圍視為違規，
+    // 自動重新生成一次(不扣行動點，點數在上面已經只扣過一次)並記錄；重新生成仍違規就照常顯示、記入待確認清單，不再重試
+    const dateCheck = validateSceneDate(result, timeCtx.window);
+    if(!dateCheck.ok){
+      console.warn("[場景日期違規] 自動重新生成一次：", dateCheck.reason);
+      addReviewFlag(state, "scene_date_retry", "第一次生成違規，已自動重新生成："+dateCheck.reason);
+      timeCtx.retryNote = `你上一次回傳的新場景日期不合規則：${dateCheck.reason}。這次scene_day_offset必須是0到${timeCtx.window.end-timeCtx.window.start}之間的整數（${calFormat(timeCtx.window.start)}～${calFormat(timeCtx.window.end)}）。`;
+      try{
+        const retried = await callOnce();
+        const recheck = validateSceneDate(retried, timeCtx.window);
+        result = retried;
+        if(!recheck.ok) addReviewFlag(state, "scene_date_unresolved", "重新生成後仍違規，照常顯示："+recheck.reason);
+      }catch(retryErr){
+        console.error("重新生成失敗，沿用第一次的結果：", retryErr);
+        addReviewFlag(state, "scene_date_unresolved", "重新生成呼叫失敗，沿用第一次違規的結果："+dateCheck.reason);
+      }
+      timeCtx.retryNote = null;
     }
     applyResult(result, timeCtx, forceEnding, actionText);
+    // 1.2.8.7：AI在事件發生時自行切換語氣軌的話，以實際語氣軌計入碎念軌連續次數並記在這則日記上
+    const effectiveTone = resolveEffectiveTone(timeCtx.tone, result);
+    const lastEntry = state.log[state.log.length-1];
+    if(lastEntry) lastEntry.tone = { tone_track:effectiveTone.tone_track, tension:effectiveTone.tension, category:effectiveTone.category, switched:effectiveTone.switched };
+    commitToneTrack(state, effectiveTone);
   }catch(e){
     console.error("重試後仍失敗：", e);
     applySnapshot();
@@ -3694,6 +4182,11 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   s.parentHealthEventLog = null;
   s.eldercareEventLog = null;
   s.parentDeathEventLog = null;
+  // 一、1.2.8.6／1.2.9.13（2026-09-24新增）：以下只給AI看這一回合，用過就清掉
+  s.graduationEventLog = null;
+  s.interestFormedEventLog = null;
+  s.renameNotices = [];
+  s.foreshadowFadeNotices = [];
   // 可見數值變化顯示（9/15新增）：先記錄這回合開始前的可見數值，最後跟結算一起顯示變化量
   const beforeVisibleStats = { health:s.stats.health, knowledge:s.stats.knowledge, network:s.stats.network, expression:s.stats.expression, appearance:s.appearance };
   const structured = !!(timeCtx && timeCtx.structured);
@@ -3904,10 +4397,21 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 
   (r.new_characters||[]).forEach(nc=>{
     if(!nc.name) return;
-    const exists = s.characters.find(c=>c.name===nc.name);
-    if(exists){ exists.active=true; exists.lastTurn=s.turnCount; return; }
+    let name = String(nc.name).trim();
+    const exists = s.characters.find(c=>c.name===name);
+    if(exists){
+      // 一、1.2.9.13（2026-09-24定案）：同名但家人稱謂不同(或一方是家人一方不是)才算衝突→自動改名另建新卡，下一回合告知AI；
+      // 其餘(非家人稱謂的差異，例如「同學」對「高中同學」)視為同一人，沿用原本行為
+      if(!isCharacterNameConflict(exists.relation, nc.relation)){ exists.active=true; exists.lastTurn=s.turnCount; return; }
+      const renamed = renameForConflict(s, name, nc.relation);
+      s.renameNotices = s.renameNotices || [];
+      s.renameNotices.push({ original:name, renamed_to:renamed, relation:nc.relation||"", reason:`已經有一位叫「${name}」的角色（${exists.relation}）` });
+      console.warn(`[角色同名] ${name}（${nc.relation}）與既有角色（${exists.relation}）衝突，改名為${renamed}`);
+      name = renamed;
+    }
     s.characters.push({
-      name:nc.name, relation:nc.relation||"", traits:nc.traits||"",
+      name, relation:nc.relation||"", traits:nc.traits||"",
+      dialogueStyle: DIALOGUE_STYLE_LIMITS[nc.dialogue_style] ? nc.dialogue_style : "normal", // 一、1.2.8.4.2：建卡時設定一次，之後固定不變
       affinity: clamp(nc.initial_affinity ?? 50,0,100),
       summary:"", lastTurn:s.turnCount, active:true, isChild:!!nc.is_child,
       origin: nc.origin||"", // 四、4.1（9/19新增）：認識時間／來源，AI建立新角色卡時提供
@@ -4034,7 +4538,26 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     .slice(0, RELATIONSHIP_HINT_MAX_PER_TURN)
     .map(h=>h.text);
   // 四、4.2.1.1（9/19新增）：AI每回合順便回傳turn_summary（1-2句話），供這則日記日後被擠出「最近3回合」視窗時使用，不用另外呼叫API生成
-  s.log.push({age:tagAge, timeLabel:tagLabel, text:r.narrative, turnSummary:r.turn_summary||"", settlement:s.lastSettlement, statChanges, relationshipHints});
+  // 一、1.2.9.11.4（2026-09-24新增）：記下新場景日期與摘要，供下一回合的previous_scene使用；
+  // 違規兩次仍照常顯示時，日期夾回本回合範圍內，避免之後的回合被錯誤日期帶偏
+  let sceneDate = null;
+  if(timeCtx && timeCtx.window){
+    const win = timeCtx.window;
+    const off = Number.isInteger(r.scene_day_offset) ? clamp(r.scene_day_offset, 0, win.end-win.start) : 0;
+    s.timeState.cal.lastSceneDay = win.start + off;
+    s.timeState.cal.lastSceneSummary = String(r.scene_summary || r.turn_summary || "").slice(0,80);
+    sceneDate = calFormat(win.start + off);
+  }
+  // 一、1.2.9.7：伏筆狀態由程式記錄
+  applyForeshadowUpdates(s, r);
+  // 一、1.2.9.11.3（2026-09-24新增）：敘事分成「行動結果」＋「時間推進後的新場景」兩段依序呈現；
+  // 1.2.8.4.2：{{名字|台詞}}依角色dialogue_style截斷後換成「台詞」，沒用這個格式的文字照常顯示
+  const composedText = [r.action_result, r.narrative].map(t=>String(t||"").trim()).filter(Boolean).join("\n\n");
+  const dialogue = processDialogueMarkup(s, composedText);
+  dialogue.notes.forEach(n=>{ console.warn("[台詞上限]", n); addReviewFlag(s, "dialogue_limit", n); });
+  // 一、1.2.9.6：回合標題副標(AI產生)，畫面顯示「時期標籤｜副標」
+  const subtitle = r.chapter_subtitle ? String(r.chapter_subtitle).trim().slice(0,30) : "";
+  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:dialogue.text, turnSummary:r.turn_summary||"", settlement:s.lastSettlement, statChanges, relationshipHints});
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
   // 足夠涵蓋單一人生全程(~1200-1400回合)不流失；每世reincarnate/succeedAsChild時log都會重置為[]，不會跨世累積
   if(s.log.length>2000) s.log.shift();
@@ -4110,7 +4633,7 @@ function succeedAsChild(childName){
   const deceasedRelation = prev.gender==="男" ? "父親" : "母親";
   const characters = [];
   characters.push({
-    name: prev.name, relation: deceasedRelation,
+    name: prev.name, relation: deceasedRelation, dialogueStyle: rollDialogueStyle(),
     traits: deriveParentTraitFromAffinity(child.affinity, child.summary),
     affinity: child.affinity, summary: child.summary||"", lastTurn:0,
     // 2026-09-22修正（bug回報：世代傳承後上一代主角被當成活著的父母）：
@@ -4125,7 +4648,7 @@ function succeedAsChild(childName){
   let familyStructure;
   if(spouse){
     characters.push({
-      name: spouse.name, relation: deceasedRelation==="父親" ? "母親" : "父親",
+      name: spouse.name, relation: deceasedRelation==="父親" ? "母親" : "父親", dialogueStyle: spouse.dialogueStyle || rollDialogueStyle(),
       // 2026-09-22修正（bug回報：在世配偶被當成新角色重新產生）：年齡/健康階段/同住狀態/關係值一律沿用傳承前資料，不重新骰——
       // married的配偶在目前架構下不會有獨立死亡判定，傳承當下必然還在世，也不會被finalizeDivorce解除同住，cohabiting因此必為true
       traits: spouse.traits||"忙碌但關心家裡", affinity: spouse.affinity, summary: spouse.summary||"",
@@ -4142,7 +4665,7 @@ function succeedAsChild(childName){
     // bug修正（9/14）：手足稱謂要跟這個孩子原本的性別(由k.relation「兒子」/「女兒」推得)一致，不能亂配
     const kidIsMale = k.relation==="兒子" ? true : k.relation==="女兒" ? false : Math.random()<0.5;
     characters.push({
-      name:k.name, relation: pick(kidIsMale ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE),
+      name:k.name, relation: pick(kidIsMale ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE), dialogueStyle: k.dialogueStyle || rollDialogueStyle(),
       traits: (k.traits||"")+"（同樣是上一代留下的孩子）", affinity: clamp(k.affinity+rnd(-10,10),0,100),
       summary:k.summary||"", lastTurn:0, active:true, isChild:false, origin: "手足，從出生起", cohabiting: true
     });
@@ -4170,6 +4693,7 @@ function succeedAsChild(childName){
     version:4, phase:"setup",
     name: child.name, gender: childGender,
     age:15, luckHidden,
+    birthday: rollBirthday(), // 一、1.2.9.11.1.1（2026-09-24定案）
     family: econ.tier, familyMonthlyIncome: econ.familyMonthlyIncome, familySavings: econ.familySavings, familyStructure, isPoliticianChild:false,
     collegeLocation:null,
     // 二、2.2（2026-09-23新增）：世代傳承的新主角一律從15歲高中入學前重新開始，同樣要有一次prologue開場段落
@@ -4465,7 +4989,7 @@ function renderArchiveView(){
       ${seg.label ? `<div class="k" style="margin-bottom:4px;">${escapeHtml(seg.label)}${seg.age_from!=null?`（${seg.age_from}－${seg.age_to}歲）`:""}</div>` : ``}
       <p style="font-size:14px;margin:0;">${escapeHtml(seg.text||"")}</p>
     </div>`).join("");
-  const logHtml = (a.log||[]).map(e=>`<div class="entry"><div class="age-tag">${e.timeLabel ? escapeHtml(e.timeLabel) : (e.age+'歲・'+stageLabel(e.age))}</div>${renderParagraphs(e.text)}</div>`).join("");
+  const logHtml = (a.log||[]).map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text)}</div>`).join("");
   return `
   <div class="center-screen" style="text-align:left;">
     <h2 style="text-align:center;">${escapeHtml(a.name||"")}・第${(a.reincarnations||0)+1}世・${a.age}歲</h2>
@@ -4610,7 +5134,7 @@ function renderPlaying(loadingTurn){
     ${ledgerRow("人脈", s.stats.network)}
   </div>
   <div class="journal">
-    ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${e.timeLabel ? escapeHtml(e.timeLabel) : (e.age+'歲・'+stageLabel(e.age))}</div>${renderParagraphs(e.text)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("")}
+    ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("")}
     ${loadingTurn ? `<div class="loading">旁白正在幫你寫下這一頁…</div>` : ""}
   </div>
   ${!loadingTurn ? `
@@ -4690,9 +5214,23 @@ function rosterCard(c,isBg){
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 }
-function renderParagraphs(text){
-  return String(text).split(/\n{1,}/).map(p=>p.trim()).filter(Boolean)
+function renderPlainParagraphs(text){
+  // 1.2.8.4.2防呆：舊日記或沒被處理到的{{名字|台詞}}標記，一律當成「台詞」顯示
+  return String(text).replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」").split(/\n{1,}/).map(p=>p.trim()).filter(Boolean)
     .map(p=>`<p>${escapeHtml(p)}</p>`).join("");
+}
+// 一、1.2.9.4（2026-09-24實作）：〔文件:標題〕…〔/文件〕渲染成獨立文件框，其餘照一般段落顯示
+function renderParagraphs(text){
+  return String(text).split(/(〔文件[:：][^〕]*〕[\s\S]*?〔\/文件〕)/).map(part=>{
+    const m = part.match(/^〔文件[:：]([^〕]*)〕([\s\S]*?)〔\/文件〕$/);
+    if(!m) return renderPlainParagraphs(part);
+    return `<div class="doc-box"><div class="doc-title">${escapeHtml(m[1].trim())}</div>${renderPlainParagraphs(m[2])}</div>`;
+  }).join("");
+}
+// 一、1.2.9.6（2026-09-24實作）：回合標題＝程式產生的時期標籤｜AI產生的章節副標
+function renderEntryTag(e){
+  const label = e.timeLabel ? e.timeLabel : (e.age+'歲・'+stageLabel(e.age));
+  return escapeHtml(label) + (e.subtitle ? "｜"+escapeHtml(e.subtitle) : "");
 }
 function bindPlaying(){
   document.querySelectorAll(".choice-btn[data-choice]").forEach(btn=>{
@@ -4775,7 +5313,7 @@ function renderMemoirModal(){
   const div = document.createElement("div");
   div.id = "memoir-modal";
   div.className = "modal-backdrop";
-  const entriesHtml = s.log.map(e=>`<div class="entry"><div class="age-tag">${e.timeLabel ? escapeHtml(e.timeLabel) : (e.age+'歲・'+stageLabel(e.age))}</div>${renderParagraphs(e.text)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("");
+  const entriesHtml = s.log.map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("");
   div.innerHTML = `
     <div class="modal" style="max-width:560px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
       <h3>回憶錄</h3>
@@ -5766,6 +6304,17 @@ function renderDebugPanelContent(){
         <input type="number" step="0.1" id="input-living-cost-mult" value="${LIVING_COST_MULTIPLIER}" style="width:70px;background:#333;color:#fff;border:1px solid #555;padding:3px 5px;font-family:'Courier New',monospace;">
       </div>
     </div>`;
+  // 一、1.2.9.11.4（2026-09-24新增）：場景日期違規/台詞截斷的待確認清單，最新的在上面
+  const flags = (state.reviewFlags||[]).slice(-30).reverse();
+  const reviewHtml = `
+    <div style="margin-bottom:12px;border-bottom:1px solid #444;padding-bottom:10px;">
+      <div style="color:#e0a15c;margin-bottom:4px;">待確認清單（${(state.reviewFlags||[]).length}筆，顯示最近30筆）</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <label style="flex:1;color:#ccc;">模擬AI場景日期違規機率</label>
+        <input type="number" step="0.05" id="input-mock-date-violation" value="${MOCK_SCENE_DATE_VIOLATION_RATE}" style="width:70px;background:#333;color:#fff;border:1px solid #555;padding:3px 5px;">
+      </div>
+      ${flags.length ? flags.map(f=>`<div style="color:#bbb;font-size:11px;margin-bottom:3px;">第${f.turn}回合［${escapeHtml(f.kind)}］${escapeHtml(f.detail)}</div>`).join("") : `<div style="color:#777;font-size:11px;">目前沒有</div>`}
+    </div>`;
   const groups = debugFieldGroups();
   const body = groups.map(g=>`
     <div style="margin-bottom:12px;">
@@ -5778,7 +6327,7 @@ function renderDebugPanelContent(){
         </div>`).join("")}
     </div>`).join("");
   return header + `
-    <div style="max-height:56vh;overflow-y:auto;padding-right:4px;">${toggles}${body}</div>
+    <div style="max-height:56vh;overflow-y:auto;padding-right:4px;">${toggles}${reviewHtml}${body}</div>
     <button id="debug-apply" style="width:100%;margin-top:8px;padding:9px;background:var(--teal,#3e6b5c);color:#fff;border:none;cursor:pointer;font-family:inherit;">套用變更並刷新畫面</button>
     <button id="debug-dump" style="width:100%;margin-top:6px;padding:7px;background:#444;color:#fff;border:none;cursor:pointer;font-family:inherit;">印出完整 state 到 Console</button>
     <p style="color:#888;font-size:10.5px;margin-top:12px;line-height:1.6;">＊此面板只在 USE_MOCK=true 時出現，正式模式（USE_MOCK=false）完全不會建立這個按鈕。<br>＊四、4.3事件狀態（available/active/completed/skipped/locked）追蹤機制本身早已實作(見state.milestones)，但這個面板還沒有專屬UI可以直接勾選觸發特定里程碑或查詢完成紀錄，想確認的話用上面「印出完整state到Console」按鈕查state.milestones即可。<br>＊數值故意不做範圍限制，方便測試極端角色（例如全部設100或全部設0）。</p>
@@ -5791,6 +6340,8 @@ function bindDebugPanelContent(){
   if(idleToggle) idleToggle.onchange = ()=>{ ENABLE_NETWORK_IDLE_DECAY = idleToggle.checked; };
   const salaryScaleInput = document.getElementById("input-salary-scale");
   if(salaryScaleInput) salaryScaleInput.onchange = ()=>{ const v=Number(salaryScaleInput.value); if(!Number.isNaN(v)) SALARY_SCALE = v; };
+  const mockViolationInput = document.getElementById("input-mock-date-violation");
+  if(mockViolationInput) mockViolationInput.onchange = ()=>{ const v=Number(mockViolationInput.value); if(!Number.isNaN(v)) MOCK_SCENE_DATE_VIOLATION_RATE = clamp(v,0,1); };
   const livingCostMultInput = document.getElementById("input-living-cost-mult");
   if(livingCostMultInput) livingCostMultInput.onchange = ()=>{ const v=Number(livingCostMultInput.value); if(!Number.isNaN(v)) LIVING_COST_MULTIPLIER = v; };
   const applyBtn = document.getElementById("debug-apply");

@@ -10,6 +10,48 @@
 
 ---
 
+## 2026-09-24（續：伏筆保底、台灣用語對照表、語氣軌事先指定補強）
+
+**〔開發部〕〔測試部〕使用者拍板上一批三項待確認後實作**
+- 對應設計文件：一、1.2.9.7、1.2.9.14、1.2.8.7（同日修改）
+- **伏筆保底**：新增`FORESHADOW_AUTO_FADE_AFTER=20`，開滿20回合仍未回收自動標淡出(`autoFaded`)並釋出名額，下一回合payload`auto_faded_foreshadows`告知AI；反悔快照同步納入
+- **台灣用語**：`worker/s2t.js`新增`TW_VOCAB`對照表與`toTaiwanTraditional()`，簡轉繁前後各套一次(「网」在Big5字集裡不會被轉，需要比對簡體原形)；system prompt明寫台灣繁體與台灣用語並列出例子
+- **語氣軌**：`computeToneTrack()`新增戀愛日常(有交往對象且無重大事件→碎念軌低張力)；schema新增`tone_switch`(key_event_reveal/relationship_turning)，`resolveEffectiveTone()`換算實際語氣軌、記在日記`tone`欄位、以實際語氣軌計入碎念計數；prompt說明兩種例外情況
+- **生育/領養**：查核確認由AI決定，程式無事前狀態，列入設計文件1.2.8.7【待確認】與QA手冊34.5，本次不改
+- 驗證：Node vm新增10項全過(伏筆第15回合提醒/第20回合自動淡出/下一回合告知/名額釋出、戀愛日常3種、tone_switch 3種)；既有66項與500回合端到端重跑全過；Worker簡轉繁12項全過；語法檢查通過。不影響舊存檔
+
+---
+
+## 2026-09-24（敘事視角修正＋1.2.8/1.2.9一次性system prompt改寫＋遊戲內日期系統＋簡轉繁）
+
+**〔開發部〕〔測試部〕依一、1.2.8、1.2.9（含同日新增1.2.9.10～1.2.9.15）實作，前端＋Worker**
+- 對應設計文件：一、01-敘事生成規則.md 1.2.4.2（取代）、1.2.8.2.1／1.2.8.3.2／1.2.8.4.2／1.2.8.4.3／1.2.8.6（同日修改或拍板）、1.2.9.4／1.2.9.6／1.2.9.7、1.2.9.10～1.2.9.15（同日新增）
+
+**index.html**
+- **遊戲內日期(1.2.9.11)**：新增行事曆(`SCHOOL_SEGMENT_START_MD`等，對照台灣高中時程，測試參數)，`timeState.cal`記錄上一回合場景日期/摘要、本回合結束日；`advanceStructuredTime()`每回合算出本回合範圍(起始日至少是上一回合場景隔天，跨度至少一天)。學生時期每回合在段落內平均分配天數(3～13天)，出社會後＝365÷該年齡帶回合預算，休學7回合＝182天。**結算月數改依實際推進天數換算**，移除`STUDENT_MONTHS_PER_ROUND`/`LEAVE_MONTHS_PER_ROUND`(一整年加總仍是365天＝12個月)。固定事件：開學日/段考/寒暑假開始、國曆節日、農曆節日(固定近似日期，標approximate)、玩家生日(開局隨機，`rollBirthday()`，只當事件不改年齡——年齡依學年增加)。舊存檔第一次推進時由`ensureCalendar()`依目前段落推一個對應日期
+- **兩段式敘事**：AI回傳新增`action_result`(行動結果)、`scene_day_offset`/`scene_summary`(新場景日期與摘要)，畫面依序顯示兩段；`validateSceneDate()`檢查新場景不得與上一回合同一天或超出本回合範圍，違規自動重生一次(不扣點)，仍違規照常顯示並記入`state.reviewFlags`待確認清單(🛠面板可看)
+- **語氣軌(1.2.8.2)**：`computeToneTrack()`依1.2.8.2.5對照表、只用呼叫AI之前已確定的程式訊號判斷tone_track/tension，碎念軌連續3回合上限由`mutterStreak`計數；新增畢業事件log(`graduationEventLog`)與興趣卡成形偵測(`interestFormedEventLog`)
+- **NPC台詞上限(1.2.8.4.2)**：角色卡新增`dialogueStyle`(家人開局隨機，測試參數30/50/20)，AI用`{{名字|台詞}}`標記，`processDialogueMarkup()`在上限內最後一個句號/問號/驚嘆號截斷，找不到標點保留整句並記入待確認清單；沒用標記的文字照常顯示
+- **伏筆追蹤(1.2.9.7)**：`state.foreshadows`，上限3個，開啟15回合以上標overdue提醒AI回收或淡出
+- **文件框(1.2.9.4)／回合標題(1.2.9.6)**：`〔文件:標題〕…〔/文件〕`渲染成左側色條斜體框；日記標籤改為「時期標籤｜AI副標」
+- **角色同名(1.2.9.13)**：修正開局`rollSibling()`重複抽名的bug(「彥廷」同時是弟弟與哥哥的根因)；`new_characters`同名但家人稱謂不同(或一方家人一方非家人)時自動改名另建新卡(家人改名字、非家人加姓氏)，下一回合告知AI；每回合送`all_character_names`
+- **system prompt改寫**：最前面新增【寫作規則】【語氣軌】【時間與敘事結構】【伏筆】【角色名字】五段，整併1.2.4/1.2.8.3/1.2.8.4/1.2.9；刪除舊的「內心想法多鋪陳」「內心自問可以連續發問」【避免AI感】【段落切分】【九條敘事技巧】【時間推進速度】【current_time_label】等衝突或重複段落
+- 反悔快照新增`mutterStreak`/`foreshadows`/`renameNotices`，日期在`timeState`裡一併還原
+- mock新增兩段式敘事、場景日期(依`MOCK_SCENE_DATE_VIOLATION_RATE`故意違規，🛠面板可調)、台詞標記、文件框、伏筆
+
+**worker/**
+- 新增`s2t.js`：OpenCC(cn→twp)簡轉繁，**只轉Big5字集以外的字**(實測整段轉換會把「系上/里長/台灣」改成「繫上/裡長/臺灣」)，`handleAIProxy()`成功回應先轉換再回傳
+- 改用wrangler 3部署(OpenCC約1.1MB貼不進線上編輯器；wrangler 4需要Node 22，本機是Node 18)：新增`package.json`/`wrangler.toml`/`README.md`/`big5-chars.js`(由`scripts/build-big5-chars.mjs`產生)；打包後gzip約545KB，低於免費方案3MB上限。**2026-09-25已部署**：使用者執行`wrangler login`/`secret put ANTHROPIC_API_KEY`/`deploy`，KV id(`life-game-saves`)已填入`wrangler.toml`，Version ID `bca43a4a-8690-4b1f-9428-607713f85b9b`；部署後以白名單來源打`/slots`回傳success(KV正常)、非白名單來源回403。簡轉繁在真實AI回應上的效果仍待真實API測試
+
+**驗證（全部USE_MOCK=true）**
+- Node vm單元測試66項全過：行事曆30項(學年365天、各段起始日、跳過停在考試段、career一年365天/12個月/+1歲、休學182天與復學接續、日期檢查6種情況、舊存檔補行事曆、固定事件含生日/農曆約略)；其他29項(2萬次開局家人名字不重複、衝突判斷5種、改名3種、台詞截斷與無標點保留、未用標記照常顯示、文件框/標題渲染、語氣軌7種含碎念上限、伏筆上限/overdue/回收、低張力取下限字數、payload新欄位)；端到端7項(500回合從高中跑到76歲，無失敗回合、場景日期每回合都往後、每回合都有副標、違規重生56次後全部合法、反悔後日期還原)
+- Worker簡轉繁測試7項全過(`npm run test:s2t`)；`wrangler deploy --dry-run`打包成功
+- `node -e`語法檢查通過
+- **會讓舊存檔跑不動嗎**：不會。新欄位(行事曆、生日、dialogueStyle、伏筆)都在第一次用到時自動補上，舊角色卡沒有dialogueStyle時當normal
+- **prompt改寫的實際效果需真實API測試**，已列入QA手冊34.5
+
+---
+
 ## 2026-09-23（開發者專用：模擬/真實API切換鈕）
 
 **〔開發部〕〔測試部〕使用者要求測試真實API時能在畫面上直接切換，不用每次開Console打指令**

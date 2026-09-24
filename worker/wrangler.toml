@@ -1,0 +1,14 @@
+# 一、1.2.9.14（2026-09-24新增）：改用wrangler部署(簡轉繁需要OpenCC，線上編輯器貼不進去)，步驟見README.md
+name = "life-game"            # 對應 https://life-game.smile80275.workers.dev/
+main = "worker.js"
+compatibility_date = "2025-06-01"
+keep_vars = true              # 保留Cloudflare後台既有的變數設定
+
+# 跨裝置存檔用的KV(程式碼裡的env.SAVES)。⚠️第一次部署前要把id換成實際值：
+#   npx wrangler kv namespace list   → 找到目前綁定在這個Worker上的那個namespace(例如life-game-saves)，複製它的id
+# 不填或填錯，部署後存檔/讀檔/行動點功能會壞掉
+[[kv_namespaces]]
+binding = "SAVES"
+id = "37cd1995c1d14cc983237952adb5b667"
+
+# ANTHROPIC_API_KEY不寫在這裡，用 npx wrangler secret put ANTHROPIC_API_KEY 設定
