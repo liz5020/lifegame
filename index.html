@@ -3337,6 +3337,15 @@ function isMalformedTurnResult(input){
 
 // ---------- 離線模擬旁白（不呼叫AI，純規則模擬，供沒有API時測試用） ----------
 const FORCE_REAL_API_KEY = "lifegame_force_real_api";
+// 開發者切換鈕（見ensureApiToggleUI）：?dev=1記住並顯示按鈕，?dev=0關閉並清掉真實API旗標；必須在USE_MOCK計算之前處理
+const DEV_TOOLS_KEY = "lifegame_dev_tools";
+(function(){
+  try{
+    const dev = new URLSearchParams(location.search).get("dev");
+    if(dev==="1") localStorage.setItem(DEV_TOOLS_KEY, "yes");
+    if(dev==="0"){ localStorage.removeItem(DEV_TOOLS_KEY); localStorage.removeItem(FORCE_REAL_API_KEY); }
+  }catch(e){}
+})();
 const USE_MOCK = (function(){
   try { return localStorage.getItem(FORCE_REAL_API_KEY) !== "yes"; }
   catch(e){ return true; } // localStorage不可用時安全預設mock
@@ -5620,7 +5629,41 @@ function bindEnding(){
 }
 
 // ---------- DEBUG 測試面板（僅 USE_MOCK=true 時出現，正式模式完全不會被建立）----------
+// ---------- 開發者專用：模擬/真實API切換鈕（2026-09-23新增）----------
+// 一般玩家看不到：網址加?dev=1打開過一次，這台瀏覽器才會記住並顯示按鈕；?dev=0關閉。
+// 保護程度跟原本「在Console手動設定localStorage」相同，只是操作方便；切換後重新整理頁面，USE_MOCK才會重算
+// DEV_TOOLS_KEY與?dev=參數處理放在USE_MOCK計算之前（見FORCE_REAL_API_KEY旁），?dev=0才能當次就切回模擬
+function ensureApiToggleUI(){
+  let on = false;
+  try{ on = localStorage.getItem(DEV_TOOLS_KEY)==="yes"; }catch(e){}
+  if(!on || document.getElementById("api-toggle-btn")) return;
+  const btn = document.createElement("button");
+  btn.id = "api-toggle-btn";
+  btn.textContent = USE_MOCK ? "🔌 模擬模式（點我切換真實API）" : "💸 真實API中（點我切回模擬）";
+  btn.style.cssText = `position:fixed;bottom:16px;left:16px;z-index:300;padding:8px 12px;border-radius:18px;border:none;font-size:12px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);color:#fff;background:${USE_MOCK?"#555":"#b8860b"};`;
+  btn.onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ try{ localStorage.removeItem(FORCE_REAL_API_KEY); }catch(e){} location.reload(); };
+  document.body.appendChild(btn);
+}
+// 切到真實API前一定要再確認一次：每回合都會真的花錢（切回模擬不用確認）
+function renderConfirmRealApi(){
+  if(document.getElementById("confirm-real-api-modal")) return;
+  const div = document.createElement("div");
+  div.id = "confirm-real-api-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>切換成真實API？</h3>
+      <p>切換後每玩一回合都會真的呼叫Anthropic API並產生費用。頁面會重新整理，目前進度已自動存檔。</p>
+      <button class="primary-btn" id="btn-confirm-real-api" style="background:var(--stamp);">確定切換</button>
+      <button class="ghost-btn" id="btn-cancel-real-api">取消</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-confirm-real-api").onclick = ()=>{ try{ localStorage.setItem(FORCE_REAL_API_KEY, "yes"); }catch(e){} location.reload(); };
+  document.getElementById("btn-cancel-real-api").onclick = ()=>div.remove();
+}
+
 function ensureDebugUI(){
+  ensureApiToggleUI();
   if(!USE_MOCK) return;
   let btn = document.getElementById("debug-toggle-btn");
   if(!btn){
