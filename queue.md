@@ -4,7 +4,7 @@
 - [x] 1：鎖住AI代理——system prompt與工具搬到worker/prompt.js，Worker驗證messages並自己組請求；測試20項全過（真實API項目未測試）
 - [x] 2：行動點改由Worker端檢查——worker/ap.js伺服器端紀錄、402擋下、turn_nonce同回合只扣一次；測試39項全過（真實部署未測試）
 - [x] 3：成本遙測——worker/usage.js記錄token、/usage-summary(密碼secret USAGE_ADMIN_TOKEN)、開發者面板顯示上一回合用量；測試26項全過（真實API未測試）
-- [ ] 4：數值與金錢的單回合上限
+- [x] 4：單回合上限——一次性收入學生期50、出社會月收入×3(下限50)；stat_deltas health −10～+5／network −8～+5／expression −5～+5；設計文件3.9定案草稿待確認；測試16項全過
 - [ ] 5：等待畫面加上動態效果
 - [ ] 6：章節成書——人生之書
 - [ ] 7：草擬公測「已知狀況」公告

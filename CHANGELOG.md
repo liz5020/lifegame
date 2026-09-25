@@ -10,6 +10,25 @@
 
 ---
 
+## 2026-09-25（佇列批次4：數值與金錢的單回合上限）
+
+**〔開發部〕〔測試部〕依使用者佇列批次第4項實作，對應設計文件三、3.9（同日新增，【定案草稿】待確認）**
+- **index.html**：新增`WINDFALL_CAP_STUDENT=50`、`WINDFALL_CAP_INCOME_MULTIPLIER=3`、`WINDFALL_CAP_ADULT_FLOOR=50`、`STAT_DELTA_LIMITS`(health −10～+5／network −8～+5／expression −5～+5)，皆為測試參數；`computeMaxWindfall()`、`capWindfallTransactions()`、`clampStatDeltas()`
+- `applyResult()`：stat_deltas先截斷再進既有乘數/遞減計算；one_time_transaction正數收入合計超過上限的部分不入帳，記入`state.reviewFlags`(`windfall_capped`，🛠面板可看)；支出不受影響
+- payload新增`max_windfall_this_turn`、`stat_delta_limits`
+- **worker/prompt.js**：one_time_transaction段落新增「單回合收入上限」規則(意外之財寫成落空/小額/夢)；新增「stat_deltas單回合範圍」規則；工具schema描述同步
+- 查核：賣房(housing_choice)、遺產、離婚財產分配都不走one_time_transaction，不需要另開例外
+
+**驗證（USE_MOCK=true＋假上游，未呼叫真實API）**：`tests/test-4-caps.mjs` 16項
+- 通過：payload帶上限值與範圍；學生期AI回傳+500萬只入帳50並留紀錄；多筆收入合計截斷；上限內完整入帳；支出不受影響
+- 通過：stat_deltas +50/−50被截在範圍內、範圍內數值不變；有工作後上限＝月收入×3、無收入下限50
+- 通過：正常回合(+20紅包)不被截斷；mock連續300回合回歸正常
+- 未測試（需要真實API）：AI看到max_windfall_this_turn後，面對「我中樂透了」這類輸入是否真的寫成落空而不是寫出大筆金額
+- **會讓舊存檔跑不動嗎**：不會
+- ⚠️prompt有改，需要重新部署Worker
+
+---
+
 ## 2026-09-25（佇列批次3：每回合token用量紀錄／成本遙測）
 
 **〔開發部〕〔測試部〕依使用者佇列批次第3項實作，對應設計文件十、10.5（同日新增）**

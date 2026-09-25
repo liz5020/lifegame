@@ -251,6 +251,40 @@ const CUSTOM_INPUT_MAX_CHARS = 200; // 十、10.3.2（2026-09-23取代同日稍�
 // 字數一律用Array.from計算（依Unicode字元，不是UTF-16長度），避免emoji等被算成2字
 function countInputChars(str){ return Array.from(str||"").length; }
 
+// ---------- 三、3.9 單回合變動上限（2026-09-25新增，【定案草稿】待使用者確認數字）----------
+// AI若被玩家說服(「我中了樂透」「撿到一袋錢」)會直接在one_time_transaction回報大筆收入；stat_deltas也只有0-100總範圍。
+// 上限值放進payload讓AI事先知道範圍，程式端再硬性截斷當保險。賣房(housing_choice)、遺產、離婚結算等程式管理的大額來源
+// 不走one_time_transaction，不受這個上限影響
+const WINDFALL_CAP_STUDENT = 50;            // 【測試參數,3.9.1】學生期(還沒有職業)單回合一次性收入合計上限，遊戲幣單位(約一個月零用錢的量級)
+const WINDFALL_CAP_INCOME_MULTIPLIER = 3;   // 【測試參數,3.9.1】有工作後：月收入×3(約年終獎金的量級)
+const WINDFALL_CAP_ADULT_FLOOR = 50;        // 【測試參數,3.9.1】出社會但月收入很低/為0(待業、退休)時的下限
+// 【測試參數,3.9.2】stat_deltas單回合上下限。system prompt原本沒有給這三項建議幅度，比照既有attachment_shift「-5到+5」的精神訂出；
+// 負向幅度略大(受傷、過勞、吵架可以一次掉比較多)，正向成長較慢。大病/慢性病走十三章程式判定，不靠這裡
+const STAT_DELTA_LIMITS = { health:[-10,5], network:[-8,5], expression:[-5,5] };
+function computeMaxWindfall(s){
+  // 學生期判斷比照chronicleLifeStageKey()：studentStatus還沒轉為graduated/withdrawn就算學生，不看年齡
+  if(s.studentStatus!=="graduated" && s.studentStatus!=="withdrawn") return WINDFALL_CAP_STUDENT;
+  return Math.max(WINDFALL_CAP_ADULT_FLOOR, Math.round((s.monthlyIncome||0) * WINDFALL_CAP_INCOME_MULTIPLIER));
+}
+// 回傳截斷後的交易陣列與被擋下的金額；支出(負數)不受影響
+function capWindfallTransactions(txs, cap){
+  let remaining = cap, blocked = 0;
+  const out = (txs||[]).map(tx=>{
+    if(!tx || typeof tx.amount!=="number" || tx.amount<=0) return tx;
+    const allowed = Math.max(0, Math.min(tx.amount, remaining));
+    remaining -= allowed; blocked += tx.amount - allowed;
+    return { ...tx, amount: allowed };
+  });
+  return { txs: out, blocked };
+}
+function clampStatDeltas(d){
+  const out = { ...(d||{}) };
+  for(const [k,[lo,hi]] of Object.entries(STAT_DELTA_LIMITS)){
+    if(typeof out[k]==="number") out[k] = clamp(out[k], lo, hi);
+  }
+  return out;
+}
+
 // ---------- 十、10.3 行動點經濟（2026-09-23新增）----------
 // 每條人生各自一個ap物件：daily=每日池、gift=禮包點、purchased=購買點(封測未開放購買，欄位先預留)、lastRefillDate=上次補點的台灣日期
 const AP_DAILY_REFILL = 5;        // 【定案,10.3.5】每天補到5點，不累加
@@ -3359,6 +3393,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     achievement_probability_modifier_pp: +((s.conscientiousness.achievement-50)*0.3).toFixed(1),
     achievement_health_cost_multiplier: clamp(1+(s.conscientiousness.achievement-50)*0.01, 0.5, 1.5),
     savings: s.cash, monthly_income: s.monthlyIncome, monthly_expenses: s.monthlyExpenses,
+    max_windfall_this_turn: computeMaxWindfall(s), // 三、3.9.1（2026-09-25）：本回合one_time_transaction正數收入合計上限
+    stat_delta_limits: STAT_DELTA_LIMITS,          // 三、3.9.2（2026-09-25）：stat_deltas單回合上下限
     financial_health: financialHealth,
     can_afford_medical: { 低: financialHealth>=20, 中: financialHealth>=50, 高: financialHealth>=75 },
     is_student: !s.occupationCategory,
@@ -3993,7 +4029,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     s.age = clamp(s.age + (r.age_advance||0), s.age, 130);
   }
   // structured=true 時，s.age 在呼叫AI之前就已經由 advanceStructuredTime() 算好了，這裡不再套用 r.age_advance
-  const d = r.stat_deltas||{};
+  // 三、3.9.2（2026-09-25）：AI回報的stat_deltas先截在單回合上下限內，再進入下面既有的乘數/遞減計算
+  const d = clampStatDeltas(r.stat_deltas);
   // 十三、13.3.3（2026-09-20新增）：慢性病命中機率×0.85（每項疊乘），不封鎖選項本身，只是這次健康加分沒有生效；
   // 同時追蹤「連續健康經營行為」讓慢性病轉為控制良好狀態(控制良好後移除此機率折扣，保留支出與cap影響)
   let healthDelta = d.health||0;
@@ -4144,8 +4181,12 @@ function applyResult(r, timeCtx, forceEnding, actionText){
       else s.monthlyExpenses.push({ label:ec.label, amount: ec.monthly_amount||0 });
     }
   });
-  (r.one_time_transaction||[]).forEach(tx=>{
-    if(typeof tx.amount !== "number") return;
+  // 三、3.9.1（2026-09-25）：單回合一次性收入合計不超過max_windfall_this_turn，超過的部分不入帳(支出不受影響)
+  const windfallCap = computeMaxWindfall(s);
+  const cappedTx = capWindfallTransactions(r.one_time_transaction, windfallCap);
+  if(cappedTx.blocked>0) addReviewFlag(s, "windfall_capped", `一次性收入超過本回合上限${windfallCap}，${Math.round(cappedTx.blocked)}未入帳`);
+  cappedTx.txs.forEach(tx=>{
+    if(!tx || typeof tx.amount !== "number") return;
     // 5.5存款下限保護（9/14新增）：學生時期消費若超過目前存款，這筆消費「不會發生」，不是扣成負值
     if(!s.occupationCategory && tx.amount<0 && Math.abs(tx.amount) > s.cash) return;
     s.cash += tx.amount;
