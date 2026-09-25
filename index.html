@@ -298,22 +298,46 @@ function refundAP(s, used){
   ap.daily += used.daily; ap.gift += used.gift; ap.purchased += used.purchased;
 }
 // 新手禮包：跟著金鑰計次，優先問Worker（跨裝置、清瀏覽器資料也不會重置），連不上才退回本機計數
-async function claimNewLifeGift(key){
+// 2026-09-25（十、10.3.11）：改帶slot，Worker同時把禮包點記進伺服器端這條人生的點數紀錄，回傳{granted, ap}；
+// ap為伺服器端餘額(非mock模式以它為準)，Worker連不上時ap為null
+async function claimNewLifeGift(key, slot){
   const localName = GIFT_CLAIMS_LOCAL_PREFIX + key;
   let localCount = 0;
   try{ localCount = Number(localStorage.getItem(localName)) || 0; }catch(e){}
   try{
-    const res = await fetch(WORKER_URL+"claim-gift", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ key }) });
+    const res = await fetch(WORKER_URL+"claim-gift", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ key, slot }) });
     const data = await res.json();
     if(res.ok && data && data.success){
       try{ localStorage.setItem(localName, String(Math.max(localCount, data.claimed||0))); }catch(e){}
-      return !!data.granted;
+      return { granted: !!data.granted, ap: data.ap || null };
     }
   }catch(e){ console.warn("禮包領取改用本機計數", e); }
-  if(localCount >= AP_GIFT_CLAIMS_PER_KEY) return false;
+  if(localCount >= AP_GIFT_CLAIMS_PER_KEY) return { granted:false, ap:null };
   try{ localStorage.setItem(localName, String(localCount+1)); }catch(e){}
-  return true;
+  return { granted:true, ap:null };
 }
+// 十、10.3.11（2026-09-25新增）：非mock模式下，行動點以Worker回傳的伺服器端餘額為準，前端只負責顯示
+function syncServerAP(s, ap){
+  if(!s || !ap) return;
+  const a = ensureAP(s);
+  a.daily = ap.daily; a.gift = ap.gift; a.purchased = ap.purchased;
+  if(ap.lastRefillDate) a.lastRefillDate = ap.lastRefillDate;
+}
+async function refreshServerAP(){
+  if(USE_MOCK || !state || state.phase!=="playing") return;
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  if(!key || slotRaw===null) return;
+  try{
+    const res = await fetch(WORKER_URL+"ap?key="+encodeURIComponent(key)+"&slot="+Number(slotRaw));
+    const data = await res.json();
+    if(res.ok && data && data.success && data.ap){ syncServerAP(state, data.ap); render(); }
+  }catch(e){ console.warn("讀取伺服器端行動點失敗，暫時顯示本機數字", e); }
+}
+// 每條人生一個id（遙測與免費開場回合判定用），newRoll/世代傳承時換新
+function newLifeId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function ensureLifeId(s){ if(!s.lifeId) s.lifeId = newLifeId(); return s.lifeId; }
+function newTurnNonce(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,10); }
 
 const STAGE_LABELS = [
   [0,14,"孩提"],[15,17,"高中"],[18,22,"大學／技職"],
@@ -1525,6 +1549,7 @@ async function tryLoadSlot(key, slot, allowLocalFallback){
       state = data.state;
       try{ localStorage.setItem(STORAGE_KEY+":"+slot, JSON.stringify(state)); }catch(e){}
       render();
+      refreshServerAP(); // 10.3.11：行動點以伺服器端為準，讀檔後同步一次
       return true;
     }
   }catch(e){ console.warn("從雲端讀取存檔失敗，嘗試本機快取", e); }
@@ -2018,6 +2043,7 @@ function newRoll(carry, identity){
     stageAccum: null,
     // 十、10.3：restart_item(轉世丹)沿用同一格子，禮包點/購買點全部保留、不另發禮包；全新人生才標giftPending，startLife()時領禮包
     ap: carry?.ap ? { ...carry.ap, giftPending:false } : newLifeAP(),
+    lifeId: newLifeId(), // 2026-09-25：每一世都換新id(轉世丹也是新的一世)
     turnCount,
     characters,
     chronicle: carry?.chronicleCarry ? [carry.chronicleCarry] : [],
@@ -3442,8 +3468,11 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
 }
 
 const WORKER_URL = "https://life-game.smile80275.workers.dev/";
+let lastTurnServerInfo = null; // Worker回傳的lifegame欄位(行動點、遙測)，開發者面板顯示用
+let lastCallServerAP = null;    // 這一次callAI收到的伺服器端行動點(失敗時takeTurn用它校正本機退點)
 
 async function callAI(actionText, forceEnding, timeCtx){
+  lastCallServerAP = null;
   let res;
   try{
     res = await fetch(WORKER_URL, {
@@ -3453,7 +3482,14 @@ async function callAI(actionText, forceEnding, timeCtx){
       },
       // 2026-09-25（十、10.4）：只送messages。model/max_tokens/output_config/tools/tool_choice/system全部改由Worker決定
       // (見worker/prompt.js與worker.js的buildTurnRequest)，前端就算送了也會被忽略
+      // 十、10.3.11（2026-09-25）：附帶金鑰/slot/這回合的turn_nonce，Worker以伺服器端行動點餘額決定能不能呼叫AI；
+      // 同一回合的重試與重新生成沿用同一個turn_nonce，不會重複扣點。ap_hint只在Worker還沒有這條人生的紀錄(舊存檔)時用來建立紀錄
       body: JSON.stringify({
+        key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME),
+        slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
+        turn_nonce: timeCtx && timeCtx.turnNonce,
+        life_id: ensureLifeId(state),
+        ap_hint: timeCtx && timeCtx.apBefore,
         messages: [{ role:"user", content: buildUserMessage(actionText, forceEnding, timeCtx) }]
       })
     });
@@ -3474,6 +3510,14 @@ async function callAI(actionText, forceEnding, timeCtx){
   try{ data = JSON.parse(text); }
   catch(parseErr){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）內容前2000字：「"+text.slice(0,2000)+"」"); }
 
+  // 十、10.3.11：Worker回傳的伺服器端餘額(成功或失敗都有)，一律以它為準
+  if(data && data.lifegame && data.lifegame.ap){ syncServerAP(state, data.lifegame.ap); lastCallServerAP = data.lifegame.ap; }
+  if(data && data.lifegame) lastTurnServerInfo = data.lifegame;
+  if(res.status===402 || res.status===429){
+    const err = new Error(res.status===402 ? "行動點不足（伺服器端）" : "這一回合重新生成次數已達上限");
+    err.noRetry = true; err.apInsufficient = res.status===402;
+    throw err;
+  }
   if(!res.ok){
     throw new Error("API錯誤 "+res.status+"："+(data?.error?.message||JSON.stringify(data)));
   }
@@ -3798,6 +3842,7 @@ async function takeTurn(actionText, cost){
   refillDailyIfNeeded(state);
   if(totalAP(state) < cost){ renderAPExhaustedModal(); render(); return; }
   snapshotForUndo();
+  const apBefore = { ...ensureAP(state) }; // 10.3.11：舊存檔第一次打Worker時，給Worker建立伺服器端紀錄用(扣點前的數字)
   const apUsed = spendAP(state, cost);
   state.turnCount += 1;
 
@@ -3828,6 +3873,9 @@ async function takeTurn(actionText, cost){
   if(forceEnding) freezeFinalLifeStageForEnding(state);
   // 一、1.2.8.2（2026-09-24實作）：語氣軌/張力在呼叫AI之前由程式決定，重新生成時沿用同一組，成功套用結果後才計入碎念軌連續次數
   timeCtx.tone = computeToneTrack(state, timeCtx, actionText, forceEnding);
+  // 十、10.3.11（2026-09-25）：同一回合(含失敗重試、場景日期重新生成)共用一個turn_nonce，Worker只扣一次點
+  timeCtx.turnNonce = newTurnNonce();
+  timeCtx.apBefore = apBefore;
   // bug修正（9/14，人生草稿0914測試.pdf）：技術錯誤/破碎原始文字絕對不能外洩給玩家；
   // 失敗先重試一次，重試仍失敗才顯示中性容錯敘事，不附帶任何e.message或原始內容
   try{
@@ -3836,6 +3884,7 @@ async function takeTurn(actionText, cost){
     try{
       result = await callOnce();
     }catch(firstErr){
+      if(firstErr && firstErr.noRetry) throw firstErr; // 10.3.11：伺服器端行動點不足/重新生成達上限，重試也沒用
       console.error("第一次呼叫失敗，重試一次：", firstErr);
       result = await callOnce();
     }
@@ -3867,6 +3916,12 @@ async function takeTurn(actionText, cost){
     console.error("重試後仍失敗：", e);
     applySnapshot();
     refundAP(state, apUsed); // 十、10.3.1：API呼叫失敗/斷線不扣點
+    // 10.3.11：真實模式下callAI已經把Worker回傳的伺服器端餘額寫回state.ap，本機退點後再以伺服器端為準
+    if(!USE_MOCK && lastCallServerAP) syncServerAP(state, lastCallServerAP);
+    if(e && e.apInsufficient){
+      saveGame(); render(); renderAPExhaustedModal();
+      return;
+    }
     state.log.push({age:state.age, timeLabel:null, text:"（旁白剛剛恍神了一下，這回合沒講清楚，稍後再試一次看看。）"});
   }
   saveGame();
@@ -4321,7 +4376,13 @@ async function startLife(){
   if(ap.giftPending){
     ap.giftPending = false;
     const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
-    if(key && await claimNewLifeGift(key)) ap.gift = AP_NEW_LIFE_GIFT;
+    const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+    if(key){
+      const claim = await claimNewLifeGift(key, slotRaw!==null ? Number(slotRaw) : 0);
+      // 10.3.11（2026-09-25）：真實模式以Worker回傳的伺服器端餘額為準；mock模式或Worker連不上時維持本機計算
+      if(!USE_MOCK && claim.ap) syncServerAP(state, claim.ap);
+      else if(claim.granted) ap.gift = AP_NEW_LIFE_GIFT;
+    }
   }
   state.phase = "playing";
   render(true);
@@ -4455,6 +4516,7 @@ function succeedAsChild(childName){
     lifeTrajectory: [], stageAccum: null,
     // 十、10.3.6：世代傳承不算新人生，上一代的每日池/禮包點/購買點全部由下一代繼承，不另發禮包
     ap: { ...ensureAP(prev), giftPending:false }, turnCount:0,
+    lifeId: newLifeId(), // 2026-09-25：世代傳承是新的一世，換新id
     characters,
     chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`],
     log:[], choices:[], reincarnations:(prev.reincarnations||0)+1,

@@ -10,6 +10,40 @@
 
 ---
 
+## 2026-09-25（佇列批次2：行動點改由Worker端檢查）
+
+**〔開發部〕〔測試部〕依使用者佇列批次第2項實作，對應設計文件十、10.3.1～10.3.10（執行位置改變）與10.3.11（同日新增）**
+
+**worker/**
+- 新增`ap.js`：伺服器端點數紀錄`ap:<金鑰>:<slot>`(KV)、台灣日期換算(伺服器時間)、每日補點不累加、扣點順序、退點、`preCharge()`/`postCharge()`、`isUsableTurnResponse()`(比照前端`isMalformedTurnResult`)
+- `POST /`：必須帶`key/slot/turn_nonce`(缺少回400)。呼叫Anthropic前先扣(預留)1點並存回KV，失敗或回傳格式壞掉就退回；點數不足回402(`insufficient_action_points`)不呼叫AI；同一turn_nonce重試/重新生成不重複扣，第4次回429。成功回應多一個`lifegame:{ap, charged}`
+- 開場回合免費：同一life_id只一次、每slot每台灣日最多3次
+- 舊存檔：第一次呼叫時依`ap_hint`建立紀錄(每日≤5、禮包≤55、購買點0)
+- `POST /claim-gift`改為必須帶slot，禮包點直接記進該slot的伺服器端紀錄，回傳`ap`；重複呼叫不會把每日池補滿
+- 新增`GET /ap?key&slot`；`POST /archive`一併刪除該slot的點數紀錄
+- **購買點仍信任前端**(`/archive`的`purchased`，封測為0)——⚠️開放付費前要改成以伺服器端付款紀錄為準
+
+**index.html**
+- `claimNewLifeGift(key, slot)`回傳`{granted, ap}`；真實模式開新人生以伺服器端餘額為準
+- `callAI()`多送`key/slot/turn_nonce/life_id/ap_hint`，收到`lifegame.ap`一律寫回`state.ap`(`syncServerAP()`)；402/429不重試，直接跳行動點用完提示
+- `takeTurn()`每回合產生一個`turnNonce`，重試與場景日期重新生成共用；失敗時本機退點後再以伺服器端數字校正
+- 讀檔後`refreshServerAP()`同步一次；state新增`lifeId`(newRoll/世代傳承時換新)
+- mock模式維持本機扣點(不打Worker)
+
+**驗證（USE_MOCK=true＋假上游，未呼叫真實API）**：`tests/test-2-action-points.mjs` 39項
+- 通過：禮包(沒帶slot擋下、60點、第4次不發、重複呼叫不補滿每日池)、扣點順序三段、同turn_nonce只扣1點＋第4次429、Anthropic失敗不扣、失敗後重試成功只扣1點、格式壞掉不扣
+- 通過：**繞過前端直接打Worker、點數為0時被擋(402且沒有呼叫AI)**、沒帶金鑰/slot/nonce擋下、有紀錄時ap_hint謊報無效
+- 通過：台灣日期邊界(UTC 15:59不補/16:00補)、補點不累加、已有5點不多補、各slot獨立
+- 通過：開場免費一次/同life_id第二次照扣/每日3次上限、舊存檔轉移上限、人生結束刪紀錄且購買點進錢包、同格子新人生重新建立
+- 通過：前端真實路徑——開新人生60點、3回合後57、竄改本機點數被校正、悔棋不退點、AI連續失敗不扣點＋容錯文字、伺服器0點時被擋不呼叫AI並跳提示、用掉最後1點後才提示、轉世丹點數保留
+- 通過：mock模式本機扣點回歸；批次1的20項重跑全過；語法檢查
+- 註：09-23 CHANGELOG提到的「行動點46項斷言」當時沒有存進版本庫，這次無法直接改接；改為依10.3.1～10.3.10重新寫成上述Worker端測試
+- 未測試（需要真實API）：真實Worker＋KV部署後的扣點/402(本機是記憶體版KV)
+- **會讓舊存檔跑不動嗎**：不會，舊存檔第一次打Worker時自動建立伺服器端紀錄
+- ⚠️Worker與index.html必須一起更新：新版Worker要求key/slot/turn_nonce，舊版index.html打新Worker會全部400
+
+---
+
 ## 2026-09-25（佇列批次0：測試回報三態規則）
 
 **〔整理〕依使用者佇列批次第0項**

@@ -20,7 +20,7 @@
 //   3. 簡單頻率限制：同一IP每小時請求次數上限，用SAVES這個KV存計數
 //
 // 2026-09-23新增（設計文件十、10.3行動點經濟）：
-//   POST /claim-gift        body: {key}  新手禮包：每把金鑰一輩子最多領3次，回傳 {granted, claimed}
+//   POST /claim-gift        body: {key, slot}(2026-09-25起要帶slot)  新手禮包：每把金鑰一輩子最多領3次，回傳 {granted, claimed, ap}
 //   POST /archive           body: {key, slot, id, meta, purchased, state}
 //                           人生結束（闔卷/刪除）：存進人生回顧、清掉原slot空出格子、購買點加進金鑰錢包
 //   GET  /archives?key=...  人生回顧清單（只有meta）
@@ -32,9 +32,19 @@
 //   AI代理(POST /)不再轉送前端送來的system/tools/tool_choice/model等任何欄位。Worker只取messages，
 //   驗證結構後自己組出完整請求：system＝prompt.js的TURN_SYSTEM_PROMPT(含cache_control)、強制submit_turn_result工具。
 //   ⚠️system prompt的唯一來源是worker/prompt.js，改prompt後必須重新部署Worker
+//
+// 2026-09-25新增（佇列批次2：行動點改由Worker端檢查，設計文件十、10.3.11，細節見ap.js）：
+//   POST / 的body必須帶 {key, slot, turn_nonce, life_id, messages}；Worker先讀KV的行動點餘額，不足回402不呼叫AI
+//   POST /claim-gift body改為 {key, slot}：領禮包時同時建立/更新這條人生的伺服器端點數紀錄，回傳ap
+//   GET  /ap?key=...&slot=...  讀這條人生的點數(會先做每日補點)，前端進遊戲時同步顯示用
+//   POST /archive 會一併刪除這條人生的點數紀錄(禮包點消失)
 
 import { convertAnthropicResponse } from "./s2t.js";
 import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL } from "./prompt.js";
+import {
+  AP_NEW_LIFE_GIFT, loadRecord, saveRecord, apKvKey, preCharge, postCharge, publicAP,
+  isValidNonce, isValidLifeId, isUsableTurnResponse, freshRecord, taipeiDateString, nowMs
+} from "./ap.js";
 
 const MAX_SLOTS = 3;
 const MAX_KEY_LENGTH = 100;
@@ -132,13 +142,32 @@ async function handleClaimGift(request, env, origin) {
   let body;
   try { body = await request.json(); }
   catch (e) { return jsonResponse(origin, { success: false, error: "請求內容不是合法JSON" }, 400); }
-  const { key } = body || {};
+  const { key, slot } = body || {};
   if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
+  // 10.3.11（2026-09-25）：禮包點直接記進伺服器端這條人生的點數紀錄，所以一定要帶slot
+  if (!isValidSlot(slot)) return jsonResponse(origin, { success: false, error: "slot必須是0~2的整數" }, 400);
   const countKey = "giftclaims:" + key;
   const claimed = Number(await env.SAVES.get(countKey)) || 0;
-  if (claimed >= GIFT_CLAIMS_PER_KEY) return jsonResponse(origin, { success: true, granted: false, claimed });
-  await env.SAVES.put(countKey, String(claimed + 1));
-  return jsonResponse(origin, { success: true, granted: true, claimed: claimed + 1 });
+  const granted = claimed < GIFT_CLAIMS_PER_KEY;
+  if (granted) await env.SAVES.put(countKey, String(claimed + 1));
+  // 有舊紀錄(例如同一格子殘留)就沿用每日池與購買點，不會因為重複呼叫把每日池重新補滿
+  const { rec } = await loadRecord(env, key, slot, null);
+  if (granted) rec.gift += AP_NEW_LIFE_GIFT;
+  await saveRecord(env, key, slot, rec);
+  return jsonResponse(origin, { success: true, granted, claimed: granted ? claimed + 1 : claimed, ap: publicAP(rec) });
+}
+
+async function handleAPGet(request, env, origin) {
+  const url = new URL(request.url);
+  const key = url.searchParams.get("key");
+  const slot = Number(url.searchParams.get("slot"));
+  if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
+  if (!isValidSlot(slot)) return jsonResponse(origin, { success: false, error: "slot必須是0~2的整數" }, 400);
+  const raw = await env.SAVES.get(apKvKey(key, slot));
+  if (!raw) return jsonResponse(origin, { success: true, ap: null }); // 還沒有伺服器端紀錄(舊存檔)，第一次呼叫AI時才建立
+  const { rec } = await loadRecord(env, key, slot, null);
+  await saveRecord(env, key, slot, rec);
+  return jsonResponse(origin, { success: true, ap: publicAP(rec) });
 }
 
 async function handleArchive(request, env, origin) {
@@ -163,6 +192,7 @@ async function handleArchive(request, env, origin) {
   // KV metadata讓/archives清單不用逐筆讀完整存檔
   await env.SAVES.put(archiveKvKey(key, id), record, { metadata: safeMeta });
   await env.SAVES.delete(kvKey(key, slot));
+  await env.SAVES.delete(apKvKey(key, slot)); // 10.3.11：人生結束，這條人生的點數紀錄一起刪掉(禮包點消失)
   const add = Math.max(0, Math.floor(Number(purchased) || 0));
   if (add > 0) {
     const walletKey = "wallet:" + key;
@@ -262,28 +292,52 @@ async function callAnthropic(env, upstreamBody) {
 }
 
 async function handleAIProxy(request, env, origin) {
-  try {
-    let body;
-    try { body = await request.json(); }
-    catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
-    if (!body || typeof body !== "object") return jsonResponse(origin, { error: { message: "請求格式錯誤" } }, 400);
+  let body;
+  try { body = await request.json(); }
+  catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
+  if (!body || typeof body !== "object") return jsonResponse(origin, { error: { message: "請求格式錯誤" } }, 400);
 
-    const check = validateTurnMessages(body.messages);
-    if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
+  const check = validateTurnMessages(body.messages);
+  if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
 
-    const upstream = await callAnthropic(env, buildTurnRequest(body.messages));
-    const text = await upstream.text();
-    // 一、1.2.9.14（2026-09-24新增）：成功的回應先把AI輸出裡的簡體字轉成繁體再回傳；解析失敗或錯誤回應原樣轉發
-    if (upstream.ok) {
-      try {
-        const data = convertAnthropicResponse(JSON.parse(text));
-        return new Response(JSON.stringify(data), { status: upstream.status, headers: corsHeaders(origin) });
-      } catch (e) { /* 不是合法JSON就原樣轉發，由前端既有的錯誤處理接手 */ }
-    }
-    return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
-  } catch (err) {
-    return jsonResponse(origin, { error: { message: String(err) } }, 500);
+  // 10.3.11：AI請求必須附帶金鑰與slot，Worker以伺服器端餘額為準
+  const { key, slot, turn_nonce: nonce, life_id: lifeId, ap_hint: apHint } = body;
+  if (!isValidKey(key) || !isValidSlot(slot)) return jsonResponse(origin, { error: { type: "invalid_request", message: "AI請求必須附帶金鑰與slot" } }, 400);
+  if (!isValidNonce(nonce)) return jsonResponse(origin, { error: { type: "invalid_request", message: "缺少turn_nonce" } }, 400);
+  const safeLifeId = isValidLifeId(lifeId) ? lifeId : null;
+  const isPrologue = !!(check.payload.time_context && check.payload.time_context.is_prologue === true);
+
+  const { rec } = await loadRecord(env, key, slot, apHint);
+  const pre = preCharge(rec, { nonce, isPrologue, lifeId: safeLifeId });
+  if (!pre.ok) {
+    await saveRecord(env, key, slot, rec);
+    return jsonResponse(origin, { error: pre.error, lifegame: { ap: publicAP(rec) } }, pre.status);
   }
+  await saveRecord(env, key, slot, rec); // 先扣(預留)再呼叫，避免同時送很多請求都通過餘額檢查
+
+  let upstream, text, data = null;
+  try {
+    upstream = await callAnthropic(env, buildTurnRequest(body.messages));
+    text = await upstream.text();
+    if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
+  } catch (err) {
+    postCharge(rec, pre, false, safeLifeId);
+    await saveRecord(env, key, slot, rec);
+    return jsonResponse(origin, { error: { message: String(err) }, lifegame: { ap: publicAP(rec) } }, 502);
+  }
+  const usable = !!(upstream.ok && data && isUsableTurnResponse(data));
+  postCharge(rec, pre, usable, safeLifeId);
+  await saveRecord(env, key, slot, rec);
+  const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable) };
+
+  // 一、1.2.9.14（2026-09-24新增）：成功的回應先把AI輸出裡的簡體字轉成繁體再回傳；解析失敗或錯誤回應原樣轉發
+  if (upstream.ok && data) {
+    let out = data;
+    try { out = convertAnthropicResponse(data); } catch (e) { /* 轉換失敗就用原文 */ }
+    out.lifegame = lifegame;
+    return new Response(JSON.stringify(out), { status: upstream.status, headers: corsHeaders(origin) });
+  }
+  return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
 }
 
 export default {
@@ -314,6 +368,7 @@ export default {
     if (url.pathname === "/slots" && request.method === "GET") return handleSlots(request, env, origin);
     if (url.pathname === "/load" && request.method === "GET") return handleLoad(request, env, origin);
     if (url.pathname === "/claim-gift" && request.method === "POST") return handleClaimGift(request, env, origin);
+    if (url.pathname === "/ap" && request.method === "GET") return handleAPGet(request, env, origin);
     if (url.pathname === "/archive" && request.method === "POST") return handleArchive(request, env, origin);
     if (url.pathname === "/archives" && request.method === "GET") return handleArchives(request, env, origin);
     if (url.pathname === "/archive" && request.method === "GET") return handleArchiveLoad(request, env, origin);
