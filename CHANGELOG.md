@@ -10,6 +10,29 @@
 
 ---
 
+## 2026-09-25（佇列批次3：每回合token用量紀錄／成本遙測）
+
+**〔開發部〕〔測試部〕依使用者佇列批次第3項實作，對應設計文件十、10.5（同日新增）**
+
+**worker/**
+- 新增`usage.js`：單價常數`PRICE_PER_MTOK_USD`（Claude Sonnet 5：輸入$2、5分鐘快取寫入$2.5、快取讀取$0.2、輸出$10／每百萬token，**查詢日期2026-09-25**，來源Anthropic官網定價頁platform.claude.com/docs/en/about-claude/pricing）；`recordUsage()`寫入`usage:life:<金鑰>:<slot>:<life_id>`(每一世累計，分turn/chapter，metadata放數字供清單加總)與`usage:day:<台灣日期>`(每日全站合計)，整段try/catch吞錯；`buildUsageSummary()`讀取時才換算花費
+- `worker.js`：Anthropic回應後透過`ctx.waitUntil`記錄(不拖慢回應)，回應的`lifegame.usage`附上本次四種token數與估計花費；另記錄最大請求字數(`max_payload_chars`，供10.4字數上限調整)
+- 新增`GET /usage-summary`：Header「Authorization: Bearer <密碼>」或`?token=<密碼>`，不受來源白名單限制；回傳今日／近7日(各分turn/chapter/all)的呼叫數、回合數、token、花費、平均每回合花費、快取命中率，以及全期間平均每條人生回合數與花費
+- ⚠️**請到Cloudflare設定管理密碼secret，名稱`USAGE_ADMIN_TOKEN`**：`cd worker && npx wrangler secret put USAGE_ADMIN_TOKEN`（自己想一組長一點的隨機字串）。沒設定時`/usage-summary`回503
+
+**index.html**
+- 開發者面板（`?dev=1`才看得到）新增左下角用量框`#dev-usage-box`：顯示上一回合輸入／快取寫入／快取讀取／輸出token與估計花費；mock模式顯示「不產生費用」
+
+**驗證（假usage資料＋假上游，未呼叫真實API）**：`tests/test-3-usage.mjs` 26項
+- 通過：單價常數與換算、回應附帶本次花費、每一世累計(呼叫數/回合數/各token)、重新生成算呼叫不算回合、Anthropic失敗不記錄、格式壞掉記呼叫不算回合、每日合計、最大請求字數、chapter另計
+- 通過：遙測KV寫入失敗時回合照常成功並扣點
+- 通過：/usage-summary沒帶密碼401、密碼錯誤401、未設定secret 503、正確密碼200；今日花費/平均每回合/快取命中率/近7日範圍(含昨天不含8天前)/平均每條人生花費與回合數的換算
+- 通過：開發者面板顯示用量、一般玩家看不到、mock模式註明不產生費用；批次1、2重跑全過；語法檢查
+- 未測試（需要真實API）：真實回應的usage欄位寫入KV、`/usage-summary`在正式環境的數字
+- **會讓舊存檔跑不動嗎**：不會
+
+---
+
 ## 2026-09-25（佇列批次2：行動點改由Worker端檢查）
 
 **〔開發部〕〔測試部〕依使用者佇列批次第2項實作，對應設計文件十、10.3.1～10.3.10（執行位置改變）與10.3.11（同日新增）**

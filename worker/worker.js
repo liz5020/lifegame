@@ -38,6 +38,12 @@
 //   POST /claim-gift body改為 {key, slot}：領禮包時同時建立/更新這條人生的伺服器端點數紀錄，回傳ap
 //   GET  /ap?key=...&slot=...  讀這條人生的點數(會先做每日補點)，前端進遊戲時同步顯示用
 //   POST /archive 會一併刪除這條人生的點數紀錄(禮包點消失)
+//
+// 2026-09-25新增（佇列批次3：成本遙測，設計文件十、10.5，細節見usage.js）：
+//   每次Anthropic回應後把usage(四種token數)記進KV：每把金鑰＋slot＋這一世的累計、每日全站合計(分turn/chapter兩類)
+//   GET /usage-summary  需帶管理密碼(Header「Authorization: Bearer <密碼>」或網址?token=<密碼>)
+//     ⚠️密碼存在Worker secret「USAGE_ADMIN_TOKEN」：npx wrangler secret put USAGE_ADMIN_TOKEN
+//     回傳今日/近7日合計、平均每回合花費、平均每條人生花費、快取命中率；不受來源白名單限制(方便直接用瀏覽器或curl查)
 
 import { convertAnthropicResponse } from "./s2t.js";
 import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL } from "./prompt.js";
@@ -45,6 +51,7 @@ import {
   AP_NEW_LIFE_GIFT, loadRecord, saveRecord, apKvKey, preCharge, postCharge, publicAP,
   isValidNonce, isValidLifeId, isUsableTurnResponse, freshRecord, taipeiDateString, nowMs
 } from "./ap.js";
+import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual } from "./usage.js";
 
 const MAX_SLOTS = 3;
 const MAX_KEY_LENGTH = 100;
@@ -291,7 +298,7 @@ async function callAnthropic(env, upstreamBody) {
   });
 }
 
-async function handleAIProxy(request, env, origin) {
+async function handleAIProxy(request, env, origin, ctx) {
   let body;
   try { body = await request.json(); }
   catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
@@ -329,6 +336,17 @@ async function handleAIProxy(request, env, origin) {
   postCharge(rec, pre, usable, safeLifeId);
   await saveRecord(env, key, slot, rec);
   const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable) };
+  // 10.5：成本遙測。只要Anthropic有回應usage(就算內容格式壞掉也已經產生費用)就記；回應送出後才寫，失敗不影響回合
+  if (upstream.ok && data && data.usage) {
+    const tokens = extractUsage(data.usage);
+    lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
+    const job = recordUsage(env, {
+      key, slot, lifeId: safeLifeId, category: "turn", usage: data.usage,
+      countsAsTurn: usable && !!(pre.charge || pre.freePrologue), payloadChars: check.chars,
+      taipeiDate: taipeiDateString(nowMs(env))
+    });
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
+  }
 
   // 一、1.2.9.14（2026-09-24新增）：成功的回應先把AI輸出裡的簡體字轉成繁體再回傳；解析失敗或錯誤回應原樣轉發
   if (upstream.ok && data) {
@@ -340,9 +358,23 @@ async function handleAIProxy(request, env, origin) {
   return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
 }
 
+async function handleUsageSummary(request, env) {
+  const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+  if (!env.USAGE_ADMIN_TOKEN) return new Response(JSON.stringify({ success: false, error: "尚未設定USAGE_ADMIN_TOKEN" }), { status: 503, headers });
+  const url = new URL(request.url);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : (url.searchParams.get("token") || "");
+  if (!safeEqual(token, env.USAGE_ADMIN_TOKEN)) return new Response(JSON.stringify({ success: false, error: "密碼錯誤" }), { status: 401, headers });
+  const summary = await buildUsageSummary(env, taipeiDateString(nowMs(env)));
+  return new Response(JSON.stringify(summary, null, 2), { headers });
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
+    const reqUrl = new URL(request.url);
+    // 10.5：管理用的用量摘要，靠管理密碼保護，不走來源白名單
+    if (reqUrl.pathname === "/usage-summary" && request.method === "GET") return handleUsageSummary(request, env);
 
     if (request.method === "OPTIONS") {
       if (!isAllowedOrigin(origin)) return new Response(null, { status: 403 });
@@ -374,6 +406,6 @@ export default {
     if (url.pathname === "/archive" && request.method === "GET") return handleArchiveLoad(request, env, origin);
 
     if (request.method !== "POST") return new Response("Only POST is allowed", { status: 405 });
-    return handleAIProxy(request, env, origin);
+    return handleAIProxy(request, env, origin, ctx);
   }
 };

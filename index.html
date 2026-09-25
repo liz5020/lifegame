@@ -3955,6 +3955,7 @@ async function takeTurn(actionText, cost){
   // 十三、13.5.2（2026-09-20新增）：照顧年邁父母的決策節點
   if(state.pendingEldercareDecision){ const ec = state.pendingEldercareDecision; state.pendingEldercareDecision = null; renderEldercareDecisionModal(ec); }
   if(apJustExhausted) renderAPExhaustedModal(); // 最後才疊上去，確保在其他彈窗之上
+  updateDevUsageBox(); // 10.5：開發者面板的上一回合用量
 }
 
 function applyResult(r, timeCtx, forceEnding, actionText){
@@ -5985,6 +5986,27 @@ function ensureApiToggleUI(){
   btn.style.cssText = `position:fixed;bottom:16px;left:16px;z-index:300;padding:8px 12px;border-radius:18px;border:none;font-size:12px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);color:#fff;background:${USE_MOCK?"#555":"#b8860b"};`;
   btn.onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ try{ localStorage.removeItem(FORCE_REAL_API_KEY); }catch(e){} location.reload(); };
   document.body.appendChild(btn);
+  updateDevUsageBox();
+}
+// 十、10.5（2026-09-25新增）：開發者面板(?dev=1才看得到)顯示上一回合的token用量與估計花費，數字來自Worker回傳的lifegame.usage
+function devUsageText(){
+  if(USE_MOCK) return "上一回合用量：模擬模式不呼叫AI，不產生費用";
+  const u = lastTurnServerInfo && lastTurnServerInfo.usage;
+  if(!u) return "上一回合用量：還沒有資料";
+  return `上一回合用量｜輸入 ${u.input}｜快取寫入 ${u.cache_write}｜快取讀取 ${u.cache_read}｜輸出 ${u.output} token｜約 US$${Number(u.cost_usd).toFixed(4)}`;
+}
+function updateDevUsageBox(){
+  let on = false;
+  try{ on = localStorage.getItem(DEV_TOOLS_KEY)==="yes"; }catch(e){}
+  if(!on) return;
+  let box = document.getElementById("dev-usage-box");
+  if(!box){
+    box = document.createElement("div");
+    box.id = "dev-usage-box";
+    box.style.cssText = "position:fixed;bottom:56px;left:16px;z-index:300;max-width:300px;padding:6px 10px;border-radius:8px;background:rgba(40,40,40,.88);color:#eee;font-size:11px;line-height:1.5;font-family:'Courier New',monospace;";
+    document.body.appendChild(box);
+  }
+  box.textContent = devUsageText();
 }
 // 切到真實API前一定要再確認一次：每回合都會真的花錢（切回模擬不用確認）
 function renderConfirmRealApi(){

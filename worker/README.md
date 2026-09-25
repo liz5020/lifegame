@@ -16,6 +16,7 @@ npx wrangler kv namespace list          # 找到目前這個 Worker 用的 KV（
 
 ```bash
 npx wrangler secret put ANTHROPIC_API_KEY   # 貼上 console.anthropic.com 的金鑰（Cloudflare 端加密保存，不進程式碼）
+npx wrangler secret put USAGE_ADMIN_TOKEN   # 2026-09-25新增：查 /usage-summary 用的管理密碼，自己設一組長一點的隨機字串
 npx wrangler deploy
 ```
 
@@ -32,3 +33,18 @@ npm run test:s2t
 ```
 
 `big5-chars.js` 是用 `npm run build:big5` 產生的 Big5 字集，一般不需要重跑。
+
+## 檔案說明（2026-09-25起）
+
+- `worker.js`：路由與AI代理
+- `prompt.js`：**遊戲system prompt與submit_turn_result工具的唯一來源**，改完要重新部署
+- `ap.js`：伺服器端行動點（十、10.3.11）
+- `usage.js`：成本遙測與單價常數（十、10.5）
+
+## 查詢用量
+
+瀏覽器打開 `https://life-game.smile80275.workers.dev/usage-summary?token=你的管理密碼`，或：
+
+```bash
+curl -H "Authorization: Bearer 你的管理密碼" https://life-game.smile80275.workers.dev/usage-summary
+```

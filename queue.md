@@ -3,7 +3,7 @@
 - [x] 0：測試回報規則——已寫入CLAUDE.md「標準工作流程」、WORKFLOW.md第4節步驟4與6.1、協作流程說明-共同基準.md新增「測試回報規則」段落
 - [x] 1：鎖住AI代理——system prompt與工具搬到worker/prompt.js，Worker驗證messages並自己組請求；測試20項全過（真實API項目未測試）
 - [x] 2：行動點改由Worker端檢查——worker/ap.js伺服器端紀錄、402擋下、turn_nonce同回合只扣一次；測試39項全過（真實部署未測試）
-- [ ] 3：每回合token用量紀錄（成本遙測）
+- [x] 3：成本遙測——worker/usage.js記錄token、/usage-summary(密碼secret USAGE_ADMIN_TOKEN)、開發者面板顯示上一回合用量；測試26項全過（真實API未測試）
 - [ ] 4：數值與金錢的單回合上限
 - [ ] 5：等待畫面加上動態效果
 - [ ] 6：章節成書——人生之書
