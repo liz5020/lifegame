@@ -112,7 +112,8 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
       win.alert = () => {}; win.confirm = () => true;
       win.scrollTo = () => {};
       win.fetch = async (url, init = {}) => {
-        const h = Object.assign({}, init.headers || {}, { Origin: ORIGIN });
+        // 每個請求給不同的IP，避免長程模擬撞到Worker每小時200次的IP頻率限制(那是真實環境的保險，不是這裡要測的)
+        const h = Object.assign({}, init.headers || {}, { Origin: ORIGIN, "CF-Connecting-IP": "10.0." + Math.floor(Math.random() * 250) + "." + Math.floor(Math.random() * 250) });
         const req = new Request(String(url), { method: init.method || "GET", headers: h, body: init.body });
         const waits = [];
         const res = await worker.fetch(req, env, { waitUntil: (p) => waits.push(p) });

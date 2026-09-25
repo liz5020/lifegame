@@ -44,12 +44,18 @@
 //   GET /usage-summary  需帶管理密碼(Header「Authorization: Bearer <密碼>」或網址?token=<密碼>)
 //     ⚠️密碼存在Worker secret「USAGE_ADMIN_TOKEN」：npx wrangler secret put USAGE_ADMIN_TOKEN
 //     回傳今日/近7日合計、平均每回合花費、平均每條人生花費、快取命中率；不受來源白名單限制(方便直接用瀏覽器或curl查)
+//
+// 2026-09-25新增（佇列批次6：人生之書／章節成書，設計文件十五章）：
+//   POST / 的body帶 kind:"chapter" 時是章節成書：{kind, key, slot, life_id, chapter_id, messages}
+//   system/工具一樣由Worker決定(prompt.js的CHAPTER_SYSTEM_PROMPT/CHAPTER_TOOL)；不扣行動點，
+//   但每條人生每玩10回合才累積1章額度(ap.js的preChapter)；用量記為chapter類別
 
 import { convertAnthropicResponse } from "./s2t.js";
-import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL } from "./prompt.js";
+import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL, CHAPTER_SYSTEM_PROMPT, CHAPTER_TOOL } from "./prompt.js";
 import {
   AP_NEW_LIFE_GIFT, loadRecord, saveRecord, apKvKey, preCharge, postCharge, publicAP,
-  isValidNonce, isValidLifeId, isUsableTurnResponse, freshRecord, taipeiDateString, nowMs
+  isValidNonce, isValidLifeId, isUsableTurnResponse, taipeiDateString, nowMs,
+  addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse
 } from "./ap.js";
 import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual } from "./usage.js";
 
@@ -273,6 +279,72 @@ export function validateTurnMessages(messages) {
   return { ok: true, payload, chars };
 }
 
+// 十五、章節成書：payload驗證(素材只有每回合摘要與大事，不送完整敘事)
+const MAX_CHAPTER_PAYLOAD_CHARS = 60000;
+const MAX_CHAPTER_TOKENS = 6000; // 正文約1500-2500中文字，加上low effort的思考預留
+export function validateChapterMessages(messages) {
+  if (!Array.isArray(messages) || messages.length !== 1) return { ok: false, error: "messages必須剛好1則" };
+  const m = messages[0];
+  if (!m || typeof m !== "object" || m.role !== "user" || typeof m.content !== "string") return { ok: false, error: "messages[0]格式錯誤" };
+  if (Object.keys(m).some(k => k !== "role" && k !== "content")) return { ok: false, error: "messages[0]含有不允許的欄位" };
+  const chars = m.content.length;
+  if (chars > MAX_CHAPTER_PAYLOAD_CHARS) return { ok: false, error: "請求內容過長", chars };
+  let p;
+  try { p = JSON.parse(m.content); } catch (e) { return { ok: false, error: "content不是章節素材" }; }
+  if (!p || typeof p !== "object" || Array.isArray(p)) return { ok: false, error: "content不是章節素材" };
+  if (typeof p.player_name !== "string" || typeof p.stage_label !== "string" || typeof p.chapter_index !== "number" || typeof p.age_from !== "number" || typeof p.age_to !== "number") return { ok: false, error: "章節素材缺少必要欄位" };
+  if (!Array.isArray(p.turn_summaries) || p.turn_summaries.length === 0 || p.turn_summaries.length > 200) return { ok: false, error: "turn_summaries數量不正確" };
+  if (p.turn_summaries.some(x => !x || typeof x !== "object" || typeof x.s !== "string" || x.s.length > 400)) return { ok: false, error: "turn_summaries格式錯誤" };
+  if (!Array.isArray(p.major_events) || p.major_events.length > 60 || p.major_events.some(x => typeof x !== "string" || x.length > 200)) return { ok: false, error: "major_events格式錯誤" };
+  return { ok: true, payload: p, chars };
+}
+export function buildChapterRequest(messages) {
+  return {
+    model: ALLOWED_MODEL,
+    max_tokens: MAX_CHAPTER_TOKENS,
+    output_config: { effort: "low" },
+    tools: [CHAPTER_TOOL],
+    tool_choice: { type: "tool", name: CHAPTER_TOOL.name },
+    system: [{ type: "text", text: CHAPTER_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: messages[0].content }]
+  };
+}
+
+async function handleChapter(body, env, origin, ctx) {
+  const check = validateChapterMessages(body.messages);
+  if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
+  const { key, slot, life_id: lifeId, chapter_id: chapterId } = body;
+  if (!isValidKey(key) || !isValidSlot(slot)) return jsonResponse(origin, { error: { type: "invalid_request", message: "AI請求必須附帶金鑰與slot" } }, 400);
+  if (!isValidChapterId(chapterId)) return jsonResponse(origin, { error: { type: "invalid_request", message: "缺少chapter_id" } }, 400);
+  const safeLifeId = isValidLifeId(lifeId) ? lifeId : null;
+  const { rec } = await loadRecord(env, key, slot, null);
+  const pre = preChapter(rec, chapterId);
+  await saveRecord(env, key, slot, rec);
+  if (!pre.ok) return jsonResponse(origin, { error: pre.error }, pre.status);
+  let upstream, text, data = null;
+  try {
+    upstream = await callAnthropic(env, buildChapterRequest(body.messages));
+    text = await upstream.text();
+    if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
+  } catch (err) {
+    return jsonResponse(origin, { error: { message: String(err) } }, 502);
+  }
+  const lifegame = { usable: !!(upstream.ok && data && isUsableChapterResponse(data)) };
+  if (upstream.ok && data && data.usage) {
+    const tokens = extractUsage(data.usage);
+    lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
+    const job = recordUsage(env, { key, slot, lifeId: safeLifeId, category: "chapter", usage: data.usage, countsAsTurn: false, payloadChars: 0, taipeiDate: taipeiDateString(nowMs(env)) });
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
+  }
+  if (upstream.ok && data) {
+    let out = data;
+    try { out = convertAnthropicResponse(data); } catch (e) { /* 轉換失敗就用原文 */ }
+    out.lifegame = lifegame;
+    return new Response(JSON.stringify(out), { status: upstream.status, headers: corsHeaders(origin) });
+  }
+  return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
+}
+
 // 10.4：Worker自己組完整的Anthropic請求，前端送來的system/tools/tool_choice/model/max_tokens/output_config一律不採用
 export function buildTurnRequest(messages) {
   return {
@@ -303,6 +375,7 @@ async function handleAIProxy(request, env, origin, ctx) {
   try { body = await request.json(); }
   catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
   if (!body || typeof body !== "object") return jsonResponse(origin, { error: { message: "請求格式錯誤" } }, 400);
+  if (body.kind === "chapter") return handleChapter(body, env, origin, ctx); // 十五、章節成書
 
   const check = validateTurnMessages(body.messages);
   if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
@@ -334,6 +407,7 @@ async function handleAIProxy(request, env, origin, ctx) {
   }
   const usable = !!(upstream.ok && data && isUsableTurnResponse(data));
   postCharge(rec, pre, usable, safeLifeId);
+  if (usable && (pre.charge || pre.freePrologue)) addChapterUnit(rec); // 十五、每成功一個新回合累積章節額度
   await saveRecord(env, key, slot, rec);
   const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable) };
   // 10.5：成本遙測。只要Anthropic有回應usage(就算內容格式壞掉也已經產生費用)就記；回應送出後才寫，失敗不影響回合

@@ -134,3 +134,35 @@ export function isUsableTurnResponse(data) {
   try { if (/<\/narrative>|<parameter\s+name=/.test(JSON.stringify(input))) return false; } catch (e) { return false; }
   return true;
 }
+
+// ========== 十五、人生之書：章節成書的額度（2026-09-25新增，佇列批次6） ==========
+// 章節成書不扣行動點(玩家獎勵)，但要防止被拿來當免費AI用：每條人生每玩成功10回合累積1章的額度(最多存10章)，
+// 新章節用掉1章額度；同一章(chapter_id)重試不再扣額度，但最多呼叫5次
+export const CHAPTER_TURN_UNITS = 10;
+export const CHAPTER_UNITS_CAP = 100;
+export const MAX_CALLS_PER_CHAPTER = 5;
+export function isValidChapterId(id) { return typeof id === "string" && /^[a-z0-9]{4,40}$/.test(id); }
+export function addChapterUnit(rec) {
+  rec.chapterUnits = Math.min(CHAPTER_UNITS_CAP, (Number(rec.chapterUnits) || 0) + 1);
+}
+export function preChapter(rec, chapterId) {
+  if (!rec.chapterCalls || typeof rec.chapterCalls !== "object") rec.chapterCalls = {};
+  const calls = rec.chapterCalls[chapterId];
+  if (calls !== undefined) {
+    if (calls >= MAX_CALLS_PER_CHAPTER) return { ok: false, status: 429, error: { type: "chapter_retry_limit", message: "這一章重試太多次了" } };
+    rec.chapterCalls[chapterId] = calls + 1;
+    return { ok: true };
+  }
+  if ((Number(rec.chapterUnits) || 0) < CHAPTER_TURN_UNITS) return { ok: false, status: 402, error: { type: "chapter_not_available", message: "這條人生還沒累積到可以成書的回合數" } };
+  rec.chapterUnits -= CHAPTER_TURN_UNITS;
+  rec.chapterCalls[chapterId] = 1;
+  const ids = Object.keys(rec.chapterCalls);
+  if (ids.length > 12) delete rec.chapterCalls[ids[0]]; // 只留最近幾章的重試次數
+  return { ok: true };
+}
+export function isUsableChapterResponse(data) {
+  const block = data && Array.isArray(data.content) && data.content.find(b => b.type === "tool_use" && b.name === "submit_chapter");
+  if (!block || !block.input) return false;
+  const { title, text } = block.input;
+  return typeof title === "string" && title.trim().length > 0 && typeof text === "string" && text.trim().length >= 300;
+}

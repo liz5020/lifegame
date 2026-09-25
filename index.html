@@ -221,6 +221,24 @@
   @keyframes ink-write{0%{stroke-dashoffset:150;opacity:1;}70%{stroke-dashoffset:0;opacity:1;}90%{stroke-dashoffset:0;opacity:0;}100%{stroke-dashoffset:150;opacity:0;}}
   @keyframes pen-move{0%{transform:translate(6px,0);}70%{transform:translate(108px,0);}85%{transform:translate(108px,-6px);}100%{transform:translate(6px,0);}}
   @keyframes dot-fade{0%,100%{opacity:.15;}40%{opacity:1;}}
+  /* 十五、人生之書（2026-09-25新增） */
+  .book-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--paper);
+    padding:10px 18px;font-size:13px;letter-spacing:1px;box-shadow:0 3px 10px rgba(0,0,0,.25);cursor:pointer;max-width:calc(100vw - 32px);}
+  .book-page{position:fixed;inset:0;z-index:55;background:var(--paper);overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .book-inner{max-width:520px;margin:0 auto;padding:24px 20px 40px;}
+  .book-cover{text-align:center;border-bottom:2px double var(--ink);padding-bottom:14px;margin-bottom:10px;}
+  .book-cover h2{margin:4px 0 0;font-size:24px;letter-spacing:4px;}
+  .book-cover-sub{font-size:12px;color:var(--ink-soft);letter-spacing:2px;}
+  .book-toc{list-style:none;padding:0;margin:0;}
+  .book-toc-item{padding:12px 2px;border-bottom:1px dotted var(--line);}
+  .book-toc-item.is-done{cursor:pointer;}
+  .book-toc-title{font-size:16px;margin-top:2px;}
+  .book-chapter-no{font-size:11.5px;color:var(--ink-soft);letter-spacing:1px;}
+  .book-chapter-head{text-align:center;margin:14px 0 18px;}
+  .book-chapter-head h2{margin:6px 0 0;font-size:21px;letter-spacing:2px;}
+  .book-text p{font-size:15px;line-height:1.95;margin:0 0 1em;}
+  .book-empty{font-size:13px;color:var(--ink-soft);}
+  .book-retry{margin-top:6px;padding:4px 12px;font-size:12px;}
   @media (prefers-reduced-motion: reduce){
     .loading .ink-line,.loading .ink-nib,.loading .dots i{animation:none;}
     .loading .ink-line{stroke-dashoffset:0;}
@@ -1601,6 +1619,7 @@ async function tryLoadSlot(key, slot, allowLocalFallback){
       try{ localStorage.setItem(STORAGE_KEY+":"+slot, JSON.stringify(state)); }catch(e){}
       render();
       refreshServerAP(); // 10.3.11：行動點以伺服器端為準，讀檔後同步一次
+      if(state.book){ ensureBook(state); processBookQueue(false); } // 十五：上次沒寫完的章節接著寫
       return true;
     }
   }catch(e){ console.warn("從雲端讀取存檔失敗，嘗試本機快取", e); }
@@ -3876,12 +3895,22 @@ function snapshotForUndo(){
     // 一、1.2.8.2/1.2.9.7/1.2.9.13（2026-09-24新增）：碎念軌連續次數、伏筆、改名通知也要跟著還原；
     // 遊戲內日期(timeState.cal)已經包在上面的timeState裡，反悔時一併回到上一回合的狀態(1.2.9.11.5)
     mutterStreak:state.mutterStreak||0, foreshadows:state.foreshadows||[], foreshadowSeq:state.foreshadowSeq||0,
-    renameNotices:state.renameNotices||[], foreshadowFadeNotices:state.foreshadowFadeNotices||[]
+    renameNotices:state.renameNotices||[], foreshadowFadeNotices:state.foreshadowFadeNotices||[],
+    // 十五、人生之書（2026-09-25）：反悔時目前這一章的素材也要回到上一回合；已經收成的章節另外處理(見applySnapshot)
+    bookDraft: state.book ? { draft: state.book.draft||null, chronicleSeen: state.book.chronicleSeen||0 } : null
   }));
 }
 function applySnapshot(){
   if(!state.snapshot) return;
-  Object.assign(state, JSON.parse(JSON.stringify(state.snapshot)));
+  const snap = JSON.parse(JSON.stringify(state.snapshot));
+  const bookDraft = snap.bookDraft; delete snap.bookDraft;
+  Object.assign(state, snap);
+  // 十五：被反悔掉的那一回合如果剛好收成了一章，那一章也撤掉(已經寫好的章節不受影響)
+  if(state.book && bookDraft!==undefined){
+    state.book.draft = bookDraft ? bookDraft.draft : null;
+    if(bookDraft) state.book.chronicleSeen = bookDraft.chronicleSeen;
+    state.book.chapters = state.book.chapters.filter(c=>c.createdTurn <= state.turnCount || c.status==="done");
+  }
 }
 function restoreUndo(){
   if(!state.snapshot) return;
@@ -3961,6 +3990,7 @@ async function takeTurn(actionText, cost){
       timeCtx.retryNote = null;
     }
     applyResult(result, timeCtx, forceEnding, actionText);
+    bookAfterTurn(state, result, forceEnding); // 十五、人生之書：收集這回合的摘要，換階段/滿5年/人生結束時收成一章
     // 1.2.8.7：AI在事件發生時自行切換語氣軌的話，以實際語氣軌計入碎念軌連續次數並記在這則日記上
     const effectiveTone = resolveEffectiveTone(timeCtx.tone, result);
     const lastEntry = state.log[state.log.length-1];
@@ -4010,6 +4040,7 @@ async function takeTurn(actionText, cost){
   if(state.pendingEldercareDecision){ const ec = state.pendingEldercareDecision; state.pendingEldercareDecision = null; renderEldercareDecisionModal(ec); }
   if(apJustExhausted) renderAPExhaustedModal(); // 最後才疊上去，確保在其他彈窗之上
   updateDevUsageBox(); // 10.5：開發者面板的上一回合用量
+  processBookQueue(true); // 十五、背景寫章節(不等它，不影響這回合)；失敗的章節每回合自動重試一次，最多3次
 }
 
 function applyResult(r, timeCtx, forceEnding, actionText){
@@ -4619,6 +4650,13 @@ function succeedAsChild(childName){
 // 「就此闔卷」(死亡且不傳承,reason="ended")與「刪除這段人生」(reason="deleted")都讓這條人生結束——
 // 移到唯讀的人生回顧區、空出格子；禮包點消失，購買點全部移到金鑰錢包（由Worker在/archive裡加總）
 async function endLife(reason){
+  // 十五、人生之書：封存前把還沒寫完的章節等完(最多90秒)，人生回顧裡才看得到完整的書；刪除人生不等
+  if(reason!=="deleted" && state && state.book && state.book.chapters.some(c=>c.status!=="done")){
+    state.book.chapters.forEach(c=>{ if(c.status==="failed") c.status = "pending"; }); // 失敗的章節封存前再試最後一次
+    document.getElementById("app").insertAdjacentHTML("afterbegin", `<div class="loading" id="book-finishing">正在把最後一章寫進人生之書…</div>`);
+    await waitForBook(90000);
+  }
+  closeBookPage();
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
@@ -4652,6 +4690,257 @@ async function endLife(reason){
     }catch(e){ console.warn("本機封存也失敗（可能超過瀏覽器容量）", e); }
   }
   await showSlotPicker(key);
+}
+
+// ========== 十五、人生之書：章節成書（2026-09-25新增，佇列批次6，【定案草稿】待使用者確認） ==========
+// 每換一個人生階段(高中→大學／技職→初入社會→職涯發展→中年→老年)成一章；同一階段超過5個遊戲年，每5年另成一章；
+// 人生結束(死亡)那一回合把最後一段也收成一章。素材只用每回合的turn_summary與重大事件，不送完整敘事(控制成本)。
+// 背景生成、不扣行動點、不影響任何遊戲數值；失敗可稍後重試，不影響遊玩
+const BOOK_MAX_YEARS_PER_CHAPTER = 5;        // 【定案草稿,十五、15.1】
+const BOOK_MAX_SUMMARIES_PER_CHAPTER = 150;  // 【測試參數,15.2】素材上限，超過就平均抽樣(有重大事件的回合一定保留)
+const BOOK_AUTO_RETRY_MAX = 3;               // 【測試參數,15.5】失敗後每回合結束自動重試一次，最多3次；之後只能手動重試
+let MOCK_CHAPTER_FAIL_RATE = 0;              // 🛠面板可調，測試失敗重試用
+let MOCK_CHAPTER_DELAY_MS = 600;
+let bookInFlight = null;                     // 目前正在生成的Promise(一次只生成一章)
+const CHINESE_NUMS = ["零","一","二","三","四","五","六","七","八","九","十"];
+function chineseNum(n){
+  if(n<=10) return CHINESE_NUMS[n];
+  if(n<20) return "十"+(n%10?CHINESE_NUMS[n%10]:"");
+  return CHINESE_NUMS[Math.floor(n/10)]+"十"+(n%10?CHINESE_NUMS[n%10]:"");
+}
+function bookStageOf(s){
+  const mode = s.timeState && s.timeState.stageMode;
+  if(mode==="highschool") return { key:"highschool", label:"高中" };
+  if(mode==="college") return { key:"college", label:"大學／技職" };
+  if(s.age<30) return { key:"adult-early", label:"初入社會" };
+  if(s.age<=45) return { key:"adult-career", label:"職涯發展" };
+  if(s.age<=60) return { key:"adult-middle", label:"中年" };
+  return { key:"adult-old", label:"老年" };
+}
+function ensureBook(s){
+  if(!s.book) s.book = { chapters:[], draft:null, unseen:0, seq:0 };
+  // 讀檔時上一次沒寫完的(頁面關掉)改回待寫
+  if(!bookInFlight) s.book.chapters.forEach(c=>{ if(c.status==="writing") c.status = "pending"; });
+  return s.book;
+}
+// 每回合成功套用結果後呼叫：先判斷要不要收成一章，再把這回合的摘要放進目前這一章的素材
+function bookAfterTurn(s, r, forceEnding){
+  const book = ensureBook(s);
+  const st = bookStageOf(s);
+  const d = book.draft;
+  if(d && (d.key!==st.key || s.age - d.startAge >= BOOK_MAX_YEARS_PER_CHAPTER)) closeBookDraft(s);
+  if(!book.draft){
+    book.draft = { key:st.key, label:st.label, startAge:s.age, endAge:s.age, startTurn:s.turnCount, items:[], events:[] };
+  }
+  const draft = book.draft;
+  const last = s.log[s.log.length-1] || {};
+  const summary = String(r.turn_summary||"").trim();
+  if(summary) draft.items.push({ t: last.timeLabel || (s.age+"歲"), s: summary.slice(0,200), d: last.sceneDate || null, ev: !!r.major_event_summary });
+  // 重大事件：取這回合新增的人生大事記(chronicle)——包含AI回報的major_event_summary，以及程式自己記的大事(重大疾病、父母過世等)
+  const chron = s.chronicle || [];
+  if(typeof book.chronicleSeen!=="number" || book.chronicleSeen > chron.length) book.chronicleSeen = Math.min(book.chronicleSeen||0, chron.length);
+  chron.slice(book.chronicleSeen).forEach(e=>draft.events.push(String(e).slice(0,120)));
+  book.chronicleSeen = chron.length;
+  draft.endAge = s.age;
+  if(!draft.dateFrom && last.sceneDate) draft.dateFrom = last.sceneDate;
+  if(last.sceneDate) draft.dateTo = last.sceneDate;
+  if(forceEnding || s.phase==="ending") closeBookDraft(s);
+}
+function closeBookDraft(s){
+  const book = ensureBook(s);
+  const d = book.draft;
+  book.draft = null;
+  if(!d || !d.items.length) return null;
+  book.seq = (book.seq||0) + 1;
+  const part = book.chapters.filter(c=>c.key===d.key).length + 1;
+  const ch = {
+    id: (s.lifeId||"life") .replace(/[^a-z0-9]/g,"").slice(0,20) + "c" + book.seq,
+    index: book.chapters.length + 1,
+    key: d.key, label: d.label, part,
+    ageFrom: d.startAge, ageTo: d.endAge, dateFrom: d.dateFrom||null, dateTo: d.dateTo||null,
+    items: d.items, events: d.events,
+    status: "pending", attempts: 0, lastAttemptTurn: null,
+    createdTurn: s.turnCount, title: null, text: null
+  };
+  book.chapters.push(ch);
+  return ch;
+}
+function sampleChapterItems(items){
+  if(items.length<=BOOK_MAX_SUMMARIES_PER_CHAPTER) return items;
+  const keep = new Set(items.map((it,i)=>it.ev?i:-1).filter(i=>i>=0));
+  const slots = Math.max(0, BOOK_MAX_SUMMARIES_PER_CHAPTER - keep.size);
+  for(let k=0;k<slots;k++) keep.add(Math.floor(k*items.length/slots));
+  return [...keep].sort((a,b)=>a-b).slice(0,BOOK_MAX_SUMMARIES_PER_CHAPTER).map(i=>items[i]);
+}
+function chapterStageText(ch){
+  return ch.label + (ch.part>1 ? `（${chineseNum(ch.part)}）` : "");
+}
+function buildChapterMaterial(s, ch){
+  const book = ensureBook(s);
+  const prev = book.chapters.filter(c=>c.index<ch.index && c.status==="done").slice(-1)[0];
+  return {
+    player_name: s.name, gender: s.gender,
+    chapter_index: ch.index, stage_label: chapterStageText(ch),
+    age_from: ch.ageFrom, age_to: ch.ageTo, date_from: ch.dateFrom, date_to: ch.dateTo,
+    turn_summaries: sampleChapterItems(ch.items).map(it=>({ t:it.t, s:it.s })),
+    major_events: (ch.events||[]).slice(-60),
+    characters: (s.characters||[]).slice(0,40).map(c=>({ name:c.name, relation:c.relation })),
+    previous_chapter_title: prev ? prev.title : null
+  };
+}
+async function callChapterAI(s, ch){
+  const res = await fetch(WORKER_URL, {
+    method:"POST", headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({
+      kind:"chapter",
+      key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME),
+      slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
+      life_id: ensureLifeId(s), chapter_id: ch.id,
+      messages: [{ role:"user", content: JSON.stringify(buildChapterMaterial(s, ch)) }]
+    })
+  });
+  const text = await res.text();
+  let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("章節回應不是合法JSON（HTTP "+res.status+"）"); }
+  if(!res.ok) throw new Error("章節生成失敗 "+res.status+"："+(data?.error?.message||""));
+  if(data && data.lifegame && data.lifegame.usage) lastChapterUsage = data.lifegame.usage;
+  const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_chapter");
+  if(!block || !block.input) throw new Error("回應裡沒有submit_chapter");
+  return block.input;
+}
+let lastChapterUsage = null;
+async function mockGenerateChapter(s, ch){
+  await new Promise(r=>setTimeout(r, MOCK_CHAPTER_DELAY_MS));
+  if(Math.random() < MOCK_CHAPTER_FAIL_RATE) throw new Error("模擬章節生成失敗");
+  const m = buildChapterMaterial(s, ch);
+  const paras = [];
+  paras.push(`〔模擬章節〕這是mock模式依素材拼出來的示意正文，真實API才會寫成小說。`);
+  m.turn_summaries.forEach(it=>paras.push(`${it.t}。${it.s}`));
+  m.major_events.forEach(e=>paras.push(e));
+  let text = paras.join("\n\n");
+  while(Array.from(text).length < 1500) text += "\n\n窗外的光慢慢移過桌面，你把杯子裡剩下的水喝完。";
+  return { title: `${m.stage_label}的日子`, text: Array.from(text).slice(0,2500).join("") };
+}
+async function generateChapter(s, ch){
+  ch.status = "writing"; ch.attempts = (ch.attempts||0)+1; ch.lastAttemptTurn = s.turnCount;
+  try{
+    const out = USE_MOCK ? await mockGenerateChapter(s, ch) : await callChapterAI(s, ch);
+    const title = String(out.title||"").replace(/^第.{1,4}章[\s　:：]*/,"").trim().slice(0,20);
+    const text = String(out.text||"").trim();
+    if(!title || Array.from(text).length < 300) throw new Error("章節內容過短或沒有章名");
+    ch.title = title; ch.text = text; ch.status = "done"; ch.error = null;
+    delete ch.items; delete ch.events; // 寫好後素材用不到了，減少存檔大小
+    const book = ensureBook(s);
+    if(!book.chapters.includes(ch)) return; // 這一章在生成途中被反悔撤掉了
+    book.unseen = (book.unseen||0) + 1;
+    if(state===s){ saveGame(); showBookToast(); refreshBookPage(); updateBookLink(); }
+  }catch(e){
+    console.warn("章節生成失敗，之後會再試：", e);
+    ch.status = "failed"; ch.error = String(e && e.message || e).slice(0,200);
+    if(state===s){ saveGame(); refreshBookPage(); }
+  }
+}
+// 依序把待寫的章節寫完。autoRetry=true時，失敗的章節(自動重試未滿3次、這回合還沒試過)也重試一次
+function processBookQueue(autoRetry){
+  const s = state;
+  if(!s || !s.book || bookInFlight) return bookInFlight;
+  const next = s.book.chapters.find(c=>c.status==="pending" ||
+    (autoRetry && c.status==="failed" && (c.attempts||0) < BOOK_AUTO_RETRY_MAX && c.lastAttemptTurn!==s.turnCount));
+  if(!next) return null;
+  const p = generateChapter(s, next).finally(()=>{ if(bookInFlight===p) bookInFlight = null; if(state===s) processBookQueue(false); });
+  bookInFlight = p;
+  return p;
+}
+function retryChapter(id){
+  const ch = state && state.book && state.book.chapters.find(c=>c.id===id);
+  if(!ch || ch.status!=="failed") return;
+  ch.status = "pending";
+  refreshBookPage();
+  processBookQueue(false);
+}
+// 人生結束前把還沒寫完的章節等完(最多等maxMs)，讓封存到人生回顧的是完整的書
+async function waitForBook(maxMs){
+  const deadline = Date.now() + (maxMs||90000);
+  while(Date.now() < deadline){
+    const p = processBookQueue(false);
+    if(!p) return;
+    await Promise.race([p, new Promise(r=>setTimeout(r, Math.max(0, deadline-Date.now())))]);
+  }
+}
+function showBookToast(){
+  if(!state || (state.phase!=="playing" && state.phase!=="ending")) return;
+  document.getElementById("book-toast")?.remove();
+  const div = document.createElement("div");
+  div.id = "book-toast";
+  div.className = "book-toast";
+  div.setAttribute("role","status");
+  div.textContent = "📚 新的一章已經寫好";
+  div.onclick = ()=>{ div.remove(); openBookPage(state.book, { owner: state.name }); };
+  document.body.appendChild(div);
+  setTimeout(()=>div.remove(), 6000);
+}
+function bookLinkText(s){
+  const b = s.book;
+  const done = b ? b.chapters.filter(c=>c.status==="done").length : 0;
+  return `📚 人生之書（${done}章${b && b.unseen ? `・${b.unseen}章新` : ""}）`;
+}
+function updateBookLink(){
+  const a = document.getElementById("link-book");
+  if(a && state) a.textContent = bookLinkText(state);
+}
+let bookPageCtx = null; // { book, readOnly, owner, openId }
+function openBookPage(book, opts){
+  bookPageCtx = { book, readOnly: !!(opts && opts.readOnly), owner: (opts && opts.owner) || "", openId: null };
+  if(!bookPageCtx.readOnly && book && book.unseen){ book.unseen = 0; saveGame(); updateBookLink(); }
+  refreshBookPage(true);
+}
+function closeBookPage(){ document.getElementById("book-page")?.remove(); bookPageCtx = null; }
+function refreshBookPage(create){
+  let page = document.getElementById("book-page");
+  if(!bookPageCtx || (!page && !create)) return;
+  if(!page){
+    page = document.createElement("div");
+    page.id = "book-page";
+    page.className = "book-page";
+    document.body.appendChild(page);
+  }
+  const { book, readOnly, owner, openId } = bookPageCtx;
+  const chapters = (book && book.chapters) || [];
+  const ch = openId ? chapters.find(c=>c.id===openId) : null;
+  if(ch && ch.status==="done"){
+    page.innerHTML = `
+      <div class="book-inner">
+        <button class="ghost-btn" id="btn-book-back" style="margin-top:0;">← 目錄</button>
+        <div class="book-chapter-head">
+          <div class="book-chapter-no">第${chineseNum(ch.index)}章・${escapeHtml(chapterStageText(ch))}・${ch.ageFrom===ch.ageTo?ch.ageFrom:ch.ageFrom+"－"+ch.ageTo}歲</div>
+          <h2>${escapeHtml(ch.title)}</h2>
+        </div>
+        <div class="book-text">${renderParagraphs(ch.text)}</div>
+        <button class="ghost-btn" id="btn-book-back2">← 回到目錄</button>
+      </div>`;
+    page.scrollTop = 0;
+    page.querySelectorAll("#btn-book-back,#btn-book-back2").forEach(b=>b.onclick = ()=>{ bookPageCtx.openId = null; refreshBookPage(); });
+    return;
+  }
+  const statusText = (c)=> c.status==="done" ? "" : c.status==="failed" ? (readOnly ? "這一章沒有寫成" : "這一章還沒寫成") : (readOnly ? "這一章沒有寫成" : "旁白正在寫這一章…");
+  const draft = book && book.draft;
+  page.innerHTML = `
+    <div class="book-inner">
+      <div class="book-cover">
+        <div class="book-cover-sub">${escapeHtml(owner||"")}</div>
+        <h2>人生之書</h2>
+      </div>
+      ${chapters.length ? `<ol class="book-toc">${chapters.map(c=>`
+        <li class="book-toc-item${c.status==="done"?" is-done":""}" ${c.status==="done"?`data-open="${c.id}"`:""}>
+          <div class="book-chapter-no">第${chineseNum(c.index)}章・${escapeHtml(chapterStageText(c))}・${c.ageFrom===c.ageTo?c.ageFrom:c.ageFrom+"－"+c.ageTo}歲</div>
+          <div class="book-toc-title">${c.status==="done" ? escapeHtml(c.title) : `<span style="color:var(--ink-soft);">${statusText(c)}</span>`}</div>
+          ${(!readOnly && c.status==="failed") ? `<button class="ghost-btn book-retry" data-retry="${c.id}">重試</button>` : ``}
+        </li>`).join("")}</ol>` : `<p class="book-empty">還沒有任何一章。每走完一個人生階段（或同一階段每5年），旁白會把這段日子整理成一章。</p>`}
+      ${(!readOnly && draft && draft.items && draft.items.length) ? `<p class="book-empty">現在這一章（${escapeHtml(draft.label)}）還在發生中。</p>` : ``}
+      <button class="ghost-btn" id="btn-book-close">關閉</button>
+    </div>`;
+  page.querySelectorAll("[data-open]").forEach(li=>li.onclick = ()=>{ bookPageCtx.openId = li.dataset.open; refreshBookPage(); });
+  page.querySelectorAll("[data-retry]").forEach(b=>b.onclick = (ev)=>{ ev.stopPropagation(); retryChapter(b.dataset.retry); });
+  document.getElementById("btn-book-close").onclick = closeBookPage;
 }
 
 // ---------- RENDER ----------
@@ -4891,11 +5180,14 @@ function renderArchiveView(){
     <h2 style="text-align:center;">${escapeHtml(a.name||"")}・第${(a.reincarnations||0)+1}世・${a.age}歲</h2>
     ${endingHtml}
     ${a.ending?.epitaph ? `<div class="end-title" style="font-size:17px;line-height:1.7;margin:14px 0;text-align:center;">${escapeHtml(a.ending.epitaph)}</div>` : ``}
+    ${(a.book && a.book.chapters && a.book.chapters.length) ? `<button class="ghost-btn" id="btn-archive-book" style="display:block;margin:0 auto 10px;">📚 人生之書（${a.book.chapters.filter(c=>c.status==="done").length}章）</button>` : ``}
     <div class="journal" style="max-height:none;">${logHtml || `<p style="color:var(--ink-soft);">沒有留下紀錄。</p>`}</div>
     <button class="ghost-btn" id="btn-archive-view-back" style="margin-top:10px;">← 回到人生回顧</button>
   </div>`;
 }
 function bindArchiveView(){
+  const bookBtn = document.getElementById("btn-archive-book");
+  if(bookBtn) bookBtn.onclick = ()=>openBookPage(state.archived.book, { readOnly:true, owner: state.archived.name });
   document.getElementById("btn-archive-view-back").onclick = ()=>{ state = { phase:"archiveList", items: state.backItems||[] }; render(); };
 }
 
@@ -5058,6 +5350,7 @@ function renderPlaying(loadingTurn){
   <div id="cloud-sync-status-wrap" style="padding:0 20px;font-size:11px;color:var(--ink-soft);text-align:right;">${cloudSyncStatusHTML()}</div>
   <div class="footer-actions">
     <a id="link-memoir">📖 回憶錄（${s.log.length}則）</a>
+    <a id="link-book">${bookLinkText(s)}</a>
     <a id="link-view-key">🔑 我的復原金鑰</a>
     <a id="link-switch-life">🔄 切換其他人生</a>
     <a id="link-reset">刪除這段人生</a>
@@ -5171,6 +5464,8 @@ function bindPlaying(){
   if(resetLink) resetLink.onclick = renderConfirmReset;
   const memoirLink = document.getElementById("link-memoir");
   if(memoirLink) memoirLink.onclick = renderMemoirModal;
+  const bookLink = document.getElementById("link-book");
+  if(bookLink) bookLink.onclick = ()=>openBookPage(ensureBook(state), { owner: state.name });
   const viewKeyLink = document.getElementById("link-view-key");
   if(viewKeyLink) viewKeyLink.onclick = renderKeyViewModal;
   const switchLifeLink = document.getElementById("link-switch-life");
@@ -6050,11 +6345,14 @@ function renderEnding(){
       <div class="k">延續下一世——選一位孩子接續</div>
       ${kids.map(k=>`<button class="choice-btn" data-child="${escapeHtml(k.name)}" style="padding-left:8px;">${escapeHtml(k.name)}（${escapeHtml(k.relation)}）</button>`).join("")}
     </div>` : ``}
+    <button class="ghost-btn" id="btn-ending-book">${bookLinkText(s)}</button>
     <button class="primary-btn" id="btn-reincarnate">服下轉世丹，重新投胎</button>
     <button class="ghost-btn" id="btn-reset-end">就此闔卷</button>
   </div>`;
 }
 function bindEnding(){
+  const endingBook = document.getElementById("btn-ending-book");
+  if(endingBook) endingBook.onclick = ()=>openBookPage(ensureBook(state), { owner: state.name });
   document.getElementById("btn-reincarnate").onclick = reincarnate;
   document.getElementById("btn-reset-end").onclick = ()=>endLife("ended");
   document.querySelectorAll(".choice-btn[data-child]").forEach(btn=>{
@@ -6227,6 +6525,10 @@ function renderDebugPanelContent(){
     <div style="margin-bottom:12px;border-bottom:1px solid #444;padding-bottom:10px;">
       <div style="color:#e0a15c;margin-bottom:4px;">待確認清單（${(state.reviewFlags||[]).length}筆，顯示最近30筆）</div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <label style="flex:1;color:#ccc;">模擬章節生成失敗機率(人生之書)</label>
+        <input type="number" step="0.1" id="input-mock-chapter-fail" value="${MOCK_CHAPTER_FAIL_RATE}" style="width:70px;background:#333;color:#fff;border:1px solid #555;padding:3px 5px;">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
         <label style="flex:1;color:#ccc;">模擬AI延遲毫秒(測等待畫面)</label>
         <input type="number" step="500" id="input-mock-delay" value="${MOCK_AI_DELAY_MS}" style="width:70px;background:#333;color:#fff;border:1px solid #555;padding:3px 5px;">
       </div>
@@ -6263,6 +6565,8 @@ function bindDebugPanelContent(){
   if(salaryScaleInput) salaryScaleInput.onchange = ()=>{ const v=Number(salaryScaleInput.value); if(!Number.isNaN(v)) SALARY_SCALE = v; };
   const mockViolationInput = document.getElementById("input-mock-date-violation");
   if(mockViolationInput) mockViolationInput.onchange = ()=>{ const v=Number(mockViolationInput.value); if(!Number.isNaN(v)) MOCK_SCENE_DATE_VIOLATION_RATE = clamp(v,0,1); };
+  const mockChapterFailInput = document.getElementById("input-mock-chapter-fail");
+  if(mockChapterFailInput) mockChapterFailInput.onchange = ()=>{ const v=Number(mockChapterFailInput.value); if(!Number.isNaN(v)) MOCK_CHAPTER_FAIL_RATE = clamp(v,0,1); };
   const mockDelayInput = document.getElementById("input-mock-delay");
   if(mockDelayInput) mockDelayInput.onchange = ()=>{ const v=Number(mockDelayInput.value); if(!Number.isNaN(v)) MOCK_AI_DELAY_MS = Math.max(0, v); };
   const livingCostMultInput = document.getElementById("input-living-cost-mult");

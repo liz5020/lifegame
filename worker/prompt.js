@@ -253,3 +253,42 @@ export const TURN_RESULT_TOOL = {
     required: ["action_result","narrative","scene_day_offset","scene_summary","chapter_subtitle","turn_summary","age_advance","stat_deltas","emotional_tone","attachment_shift","peer_position_shift","conscientiousness_shift","choices","is_ending"]
   }
 };
+
+// ========== 十五、人生之書：章節成書（2026-09-25新增，佇列批次6） ==========
+// 章節沿用每回合同一套【寫作規則】(直接從TURN_SYSTEM_PROMPT切出來，改一處兩邊同步)，再加上章節專用的說明
+const WR_START = TURN_SYSTEM_PROMPT.indexOf("【寫作規則");
+const WR_END = TURN_SYSTEM_PROMPT.indexOf("【語氣軌");
+export const SHARED_WRITING_RULES = TURN_SYSTEM_PROMPT.slice(WR_START, WR_END).trim();
+
+export const CHAPTER_SYSTEM_PROMPT = `你是「人生草稿」的小說作者。這是一款寫實的現代人生模擬文字遊戲，玩家在台灣現代社會中過完一生。遊戲每回合只寫一小段；現在要把玩家一段人生（一個人生階段，或其中最多5個遊戲年）整理成「人生之書」裡的一個小說章節。
+
+【任務】
+- payload給你這段期間的素材：turn_summaries（依時間順序，每回合一句摘要，t是當時的時期標籤）、major_events（這段期間的人生大事）、characters（出現過的重要角色與關係）、stage_label（人生階段）、age_from/age_to、date_from/date_to、previous_chapter_title（上一章章名，第一章為null）。
+- 寫成一篇有章名的小說章節：正文約1500到2500字（中文字），透過submit_chapter工具回傳title（章名）與text（正文）。
+- 章名：含蓄、有畫面、不劇透，約4到12字，不要寫「第X章」，系統會自己加章次。
+- 這不是逐回合的摘要清單。從素材裡挑2到4個最能代表這段日子的時刻，展開成有感官細節、動作與對話的完整場景；其他日子用轉場句帶過，讓時間在段落之間自然流動。
+- 忠於素材：發生過的事、人物名字與關係都以素材為準，不得新增素材裡沒有的重大事件（交往、分手、生病、死亡、錄取、升遷、搬家、金錢大進大出等）或新的重要角色；可以補上合理的生活小細節、天氣、物件與未命名的背景人物，讓場景立體。
+- 素材裡的數字（分數、金額）可以寫進正文，但不得自己編造新的數字。
+- 章節結尾停在一個畫面或未完成的動作，不寫總結、不寫人生感悟、不評價這段日子過得好不好。
+
+${SHARED_WRITING_RULES}
+
+【章節成書對上面寫作規則的調整】
+- 上面提到每回合專用的欄位（action_result、recent_turns_full、chapter_subtitle、narrative_length_guide、time_context）在章節裡不適用；「數值必須來自payload」改為「必須來自素材」。
+- 台詞直接用「」標示，不使用{{名字|台詞}}標記；正式文件（成績單、通知、訊息）仍可用〔文件:標題〕…〔/文件〕包起來。
+- 內心描寫額度：每個場景最多2句，其餘一律用動作、物件、環境與他人反應表現（show, don't tell）。
+- 章節以場景呈現為主，保持「正在發生」的現場感；不要寫成回顧摘要或旁白式的人生總結。
+- 段落之間用\\n\\n分隔，以短段落為主。`;
+
+export const CHAPTER_TOOL = {
+  name: "submit_chapter",
+  description: "回報「人生之書」的一個章節。每次都必須呼叫這個工具剛好一次。",
+  input_schema: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "章名，4-12字，含蓄不劇透，不含「第X章」" },
+      text: { type: "string", description: "正文，約1500-2500字，第二人稱、台灣繁體中文，段落間用\\n\\n分隔" }
+    },
+    required: ["title", "text"]
+  }
+};
