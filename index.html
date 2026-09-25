@@ -392,6 +392,7 @@ function syncServerAP(s, ap){
   a.daily = ap.daily; a.gift = ap.gift; a.purchased = ap.purchased;
   if(ap.lastRefillDate) a.lastRefillDate = ap.lastRefillDate;
 }
+let apRefreshAskedFor = null;
 async function refreshServerAP(){
   if(USE_MOCK || !state || state.phase!=="playing") return;
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
@@ -4990,7 +4991,12 @@ function render(loadingTurn){
   if(state.phase==="archiveList"){ app.innerHTML = renderArchiveList(); bindArchiveList(); ensureDebugUI(); return; }
   if(state.phase==="archiveView"){ app.innerHTML = renderArchiveView(); bindArchiveView(); ensureDebugUI(); return; }
   // 十、10.3.5：進入遊戲畫面時檢查台灣日期，跨日才補每日池（不用排程）
-  if(refillDailyIfNeeded(state)) saveGame();
+  // 10.3.11（2026-09-25）：真實模式由伺服器判斷日期與補點，本機跨日時向Worker重新讀一次餘額(每個日期只問一次，避免時鐘不一致時一直重問)
+  if(USE_MOCK){ if(refillDailyIfNeeded(state)) saveGame(); }
+  else if(ensureAP(state).lastRefillDate !== taipeiDateString() && apRefreshAskedFor !== taipeiDateString()){
+    apRefreshAskedFor = taipeiDateString();
+    refreshServerAP();
+  }
   app.innerHTML = renderPlaying(loadingTurn);
   bindPlaying();
   const j = document.querySelector(".journal");

@@ -47,9 +47,9 @@ const check = (name, ok, detail) => results.push({ name, ok: !!ok, detail });
   const t16 = await page.evaluate(() => ({ text: document.querySelector("#turn-loading .loading-text").textContent, anim: getComputedStyle(document.querySelector("#turn-loading .ink-line")).animationName }));
   check("超過15秒：文字換成安撫的話，動畫持續", t16.text === "這一頁比較長，旁白還在寫" && t16.anim === "ink-write", t16);
   await page.screenshot({ path: process.env.SHOT_DIR ? path.join(process.env.SHOT_DIR, "loading-16s.png") : "/tmp/loading-16s.png" });
-  await page.waitForTimeout(5000); // 約20.7秒，回合完成
+  await page.waitForTimeout(6500); // 約22秒，回合完成(留1秒多餘裕，避免機器忙時誤判)
   const done = await page.evaluate(() => ({ loading: !!document.getElementById("turn-loading"), turn: state.turnCount, timer: loadingSlowTimer }));
-  check("20秒後回合完成：等待動畫消失、回合數+1", !done.loading && done.turn === 2, done);
+  check("20秒延遲的回合完成後：等待動畫消失、回合數+1", !done.loading && done.turn === 2, done);
   // 下一回合重新計時(不會一開始就顯示安撫文字)
   await page.evaluate(() => { document.querySelectorAll(".modal-backdrop").forEach(m => m.remove()); MOCK_AI_DELAY_MS = 3000; takeTurn(state.choices[0], AP_COST_PER_TURN); });
   await page.waitForTimeout(500);

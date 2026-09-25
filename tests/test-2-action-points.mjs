@@ -110,8 +110,8 @@ r = await H.callWorker(env, { path: "/claim-gift", body: { key: "k3", slot: 0 } 
 A.check("同一格子開新人生：重新建立(每日5＋禮包55，舊禮包點不殘留)", r.json.ap.daily === 5 && r.json.ap.gift === 55, r.json.ap);
 
 // ================= 前端真實路徑 =================
-setNow("2026-09-25T03:00:00Z");
-const envF = H.makeEnv({ TEST_NOW_MS: String(UTC("2026-09-25T03:00:00Z")) });
+// 前端用的是瀏覽器真實時間，Worker這邊也用真實時間，兩邊的台灣日期才會一致
+const envF = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env: envF, key: "frontkey1", slot: 0 });
 await H.startNewLife(g);
 const sAP = async () => (await H.callWorker(envF, { method: "GET", path: "/ap?key=frontkey1&slot=0" })).json.ap;
@@ -148,6 +148,12 @@ g.ev("reincarnate()");
 g.ev("state.spendingHabit='普通'; state.mealArrangement=state.mealArrangement||'家裡煮';");
 await g.ev("startLife()"); await H.waitIdle(g, 20); H.clickModals(g.win);
 A.check("轉世丹：同一格子點數保留，開場回合不扣點", (await sAP()).total === 12 && g.ev("totalAP(state)") === 12, (await sAP()));
+// 真實模式跨台灣日期：畫面向Worker重新讀餘額(由伺服器補點)，不自己補
+await setRec("frontkey1", 0, { daily: 0, gift: 0, purchased: 0, lastRefillDate: "2000-01-01" }, envF);
+g.ev("state.ap.daily = 0; state.ap.gift = 0; state.ap.lastRefillDate = '2000-01-01'; apRefreshAskedFor = null; render();");
+await H.waitIdle(g, 30);
+const srvAfter = await sAP();
+A.check("真實模式跨日：畫面向Worker讀到伺服器補好的5點", g.ev("state.ap.daily") === 5 && srvAfter.total === 5, { client: g.ev("JSON.stringify(state.ap)"), srvAfter });
 // mock模式回歸：本機扣點照舊
 const gm = await H.loadGame({ useMock: true, env: H.makeEnv(), key: "mockkey1" });
 gm.ev("mockCallAI = async (a,f,t)=>mockGenerateTurn(a,f,t)");
