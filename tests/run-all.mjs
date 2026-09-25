@@ -2,6 +2,8 @@
 import { execFileSync } from "child_process";
 import fs from "fs";
 const files = ["check-syntax.mjs", ...fs.readdirSync(".").filter(f => /^test-.*\.mjs$/.test(f)).sort()];
+// 需要真的瀏覽器的測試(browser-*.cjs)：設定PW_MODULE(playwright模組路徑)或已安裝playwright時才跑
+if (process.env.PW_MODULE || process.env.RUN_BROWSER_TESTS) files.push(...fs.readdirSync(".").filter(f => /^browser-.*\.cjs$/.test(f)).sort());
 let failed = [];
 for (const f of files) {
   try { const out = execFileSync("node", [f], { encoding: "utf8", maxBuffer: 1 << 26 }); const head = out.split("\n").find(l => l.startsWith("===") || l.startsWith("語法")); console.log(head || f + " 完成"); }
