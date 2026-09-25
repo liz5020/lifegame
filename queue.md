@@ -1,3 +1,14 @@
+## 待處理佇列（2026-09-25，安全、成本與體驗批次）
+
+- [x] 0：測試回報規則——已寫入CLAUDE.md「標準工作流程」、WORKFLOW.md第4節步驟4與6.1、協作流程說明-共同基準.md新增「測試回報規則」段落
+- [x] 1：鎖住AI代理——system prompt與工具搬到worker/prompt.js，Worker驗證messages並自己組請求；測試20項全過（真實API項目未測試）
+- [ ] 2：行動點改由Worker端檢查
+- [ ] 3：每回合token用量紀錄（成本遙測）
+- [ ] 4：數值與金錢的單回合上限
+- [ ] 5：等待畫面加上動態效果
+- [ ] 6：章節成書——人生之書
+- [ ] 7：草擬公測「已知狀況」公告
+
 ## 待處理佇列（2026-09-23）
 
 - [x] A：已完成——career_status常數化+justLostJob旗標修正失業觸發bug；新增fertility_stage_update欄位+justReachedFertilityStage4旗標修正不孕症第四階段觸發bug（fertilityJourney原本從未被賦值）。Node vm測試4項情境全過，語法檢查通過。詳見CHANGELOG.md 2026-09-23。原文：<請直接給我建議，並提供文字讓我直接給code修改

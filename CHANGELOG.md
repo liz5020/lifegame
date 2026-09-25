@@ -10,6 +10,34 @@
 
 ---
 
+## 2026-09-25（佇列批次0：測試回報三態規則）
+
+**〔整理〕依使用者佇列批次第0項**
+- `CLAUDE.md`「標準工作流程」、`WORKFLOW.md`第4節步驟4與第6.1節、`協作流程說明-共同基準.md`（新增「測試回報規則」段落與版本記錄）同步寫入：「回報修正或實作完成時，每個測試項目一律標示『通過／未通過／未測試』三種之一。未實際執行的測試必須標『未測試』，不得以預期效果作為完成證據。需要真實API才能驗證的項目標『未測試』並列入『需要真實API測試』清單。」
+- 本批次之後各項的CHANGELOG驗證段落都照這個規則標示
+
+---
+
+## 2026-09-25（佇列批次1：鎖住AI代理，Worker不再轉送任意prompt）
+
+**〔開發部〕〔測試部〕依使用者佇列批次第1項實作，對應設計文件十、10.4（同日新增）**
+- **worker/prompt.js（新檔）**：把`index.html`的`buildSystemPrompt()`與`TURN_RESULT_TOOL`逐字搬過來（template literal原樣複製），搬移當下用Node比對兩邊內容完全相同。**之後system prompt的唯一來源是這個檔案，改prompt後必須重新部署Worker**
+- **worker/worker.js**：`handleAIProxy()`不再轉送前端的body。新增`validateTurnMessages()`（messages剛好1則、role=user、content是字串且能解析成遊戲payload、7個必要欄位型別正確、player_action≤300字、總字數≤`MAX_TURN_PAYLOAD_CHARS`=40,000）與`buildTurnRequest()`（Worker自己組model/max_tokens/effort/system含cache_control/強制工具）。不符合回400，不呼叫Anthropic
+- **index.html**：移除`buildSystemPrompt()`與`TURN_RESULT_TOOL`（mock模式本來就沒用到，不留副本）；`callAI()`只送`messages`
+- 新增`tests/`資料夾：`harness.mjs`（jsdom載入整份index.html、fetch導向真的worker.js＋記憶體版KV、Worker呼叫Anthropic導向假上游，全程不打真實API）、`check-syntax.mjs`、`test-1-ai-proxy.mjs`。執行方式：`cd tests && npm install && node test-1-ai-proxy.mjs`
+
+**驗證（USE_MOCK=true＋假上游，未呼叫真實API）**
+- 通過：mock模式連續40回合正常、沒有打到Anthropic、前端已無prompt副本
+- 通過：前端真實路徑（假上游）4回合正常，上游收到的system＝Worker的prompt且有cache_control、強制工具、model/max_tokens/effort為Worker設定值
+- 通過：直接打Worker送「自訂system prompt＋自訂tools/model/max_tokens」→全部被覆蓋；「不帶工具」→仍強制加上工具
+- 通過：「超長messages(>40,000字)」「兩則messages」「role=assistant」「一般聊天文字」「content陣列」「缺必要欄位」「player_action>300字」「沒有messages」都回400且沒有呼叫Anthropic；非白名單來源403
+- 通過：語法檢查（index.html `<script>`、worker.js、prompt.js）
+- 未測試（需要真實API）：正常遊玩一回合，敘事品質是否未變、`cache_read_input_tokens`>0
+- **會讓舊存檔跑不動嗎**：不會，存檔格式沒變
+- ⚠️需要手動重新部署Worker（`cd worker && npx wrangler deploy`），index.html也要重新上傳Pages——**兩邊要一起更新**：新版index.html不再送system，搭配舊Worker會變成沒有system prompt
+
+---
+
 ## 2026-09-24（續：伏筆保底、台灣用語對照表、語氣軌事先指定補強）
 
 **〔開發部〕〔測試部〕使用者拍板上一批三項待確認後實作**

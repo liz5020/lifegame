@@ -58,6 +58,9 @@
 6. 改完`index.html`務必做語法檢查（把`<script>`內容抽出來用`node -e`跑過一次）
 7. 大改動（尤其遊戲狀態結構有變動）要在回覆裡明講「這次會讓舊存檔跑不動，需要清空重來」
 
+**測試回報規則（2026-09-25新增，適用上面第3、4步與第6節批次回報）**：
+回報修正或實作完成時，每個測試項目一律標示『通過／未通過／未測試』三種之一。未實際執行的測試必須標『未測試』，不得以預期效果作為完成證據。需要真實API才能驗證的項目標『未測試』並列入『需要真實API測試』清單。
+
 ## 已知的架構決定（避免重新踩坑）
 
 - 財富分成三個獨立欄位：`cash`（現金）、`propertyValue`（房產淨值）、`mortgageBalance`（房貸剩餘本金），學生時期`cash`/`monthlyIncome`是遊戲內單位（不對應NT$），出社會後是真實新台幣
@@ -66,6 +69,8 @@
 - **（2026-09-16取代）**死亡機制改為機率判定型（`rollAnnualDeathCheck()`）：40歲以前完全不判定，40歲起每滿一年由client端算好機率（年齡基礎機率×健康修正倍率＋高風險行為加成，皆為測試參數）擲骰決定，AI不再自行判斷要不要觸發死亡——取代原本「意外死亡19歲以下不接受、沒有前兆不接受」的AI自由判斷+雙重防呆架構。前兆機制（`deathForeshadowed`）精神不變，但現在是client端算好的兩段式關卡（先中一次埋前兆、再中一次才真的觸發死亡），不是AI自行判斷
 - 審慎、成就傾向兩條做事態度光譜，是「算好倍率/修正值丟給AI參考」的架構，不是本地擲骰；責任感、團隊vs單打獨鬥、核心數值邊際遞減、人脈閒置衰退則是寫死在`applyResult()`的本地公式
 - `USE_MOCK`開關控制要不要真的呼叫AI（`false`時呼叫`WORKER_URL`，一個Cloudflare Worker中繼站，金鑰不在前端）
+- **（2026-09-25新增，十、10.4）system prompt的唯一來源是`worker/prompt.js`**（含`submit_turn_result`工具定義）。前端只送payload，Worker自己組system/tools並驗證messages結構與字數。**改prompt後必須重新部署Worker**（`cd worker && npx wrangler deploy`），只重新上傳index.html沒有用；舊文件裡提到「改`buildSystemPrompt()`」的地方，一律改成改`worker/prompt.js`
+- **（2026-09-25新增）測試**：`tests/`資料夾有共用的jsdom測試工具（`harness.mjs`，fetch導向真的worker.js＋記憶體KV＋假Anthropic上游，全程不打真實API），各批次測試檔`test-*.mjs`，`node run-all.mjs`全部跑一次
 - Debug面板（🛠）只在`USE_MOCK=true`時出現，可調整`ENABLE_MARGINAL_DIMINISH`／`ENABLE_NETWORK_IDLE_DECAY`／`SALARY_SCALE`／`LIVING_COST_MULTIPLIER`等測試參數
 - **（2026-09-20取代）**死亡結局不再有「結局標籤」這個東西：七、7.1.4整節改版為「人生總結」（三層結構：L1段落回顧／L2光譜變化句／L3墓誌銘），不輸出標籤、分數或排名，素材由客戶端從`life_trajectory`挑好、AI只負責寫成回顧語氣。舊版計分制（`ENDING_DEFINITIONS`+`computeEndingTitle()`）與QA手冊34.7的B7「必要資格制」草案**雙雙作廢**，都不再是待實作方向。同批新增三、3.8幸福感系統（五條來源管道取前三高加權、`emotional_tone`四選一enum、朝基準線回歸、自主感`skip_reason`）與四、4.5`life_trajectory`分階段軌跡紀錄，已於同日稍晚實作完成（見CHANGELOG 2026-09-20）
 - **（2026-09-20新增）**十二、職涯系統：`job_change`欄位（AI自由回報職業類別+薪資）已完全移除，出社會後的求職/升遷/轉職/裁員/創業/退休全部改由結構化彈窗處理（`checkCareerTriggers()`每回合檢查、`rollAnnualCareerChecks()`每滿一年檢查一次），薪資由`computeCareerSalary()`依才識/職級/年資查表計算，AI只透過`career_event_now` payload欄位取得敘事素材，不再能自己編造薪資或職業類別。`first_startup`里程碑同步從AI回報改為`business_status`轉為「經營中」時客戶端自動判定

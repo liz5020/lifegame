@@ -27,8 +27,14 @@
 //   GET  /archive?key=...&id=...  單一段已結束人生的完整state（唯讀）
 //   GET  /slots 回傳值多一個 wallet 欄位（金鑰錢包點數）
 //   ⚠️購買點目前信任前端送來的數字——封測未開放購買所以永遠是0；開放付費前要改成以伺服器端(D1)紀錄為準
+//
+// 2026-09-25新增（佇列批次1：鎖住AI代理，設計文件十、10.4）：
+//   AI代理(POST /)不再轉送前端送來的system/tools/tool_choice/model等任何欄位。Worker只取messages，
+//   驗證結構後自己組出完整請求：system＝prompt.js的TURN_SYSTEM_PROMPT(含cache_control)、強制submit_turn_result工具。
+//   ⚠️system prompt的唯一來源是worker/prompt.js，改prompt後必須重新部署Worker
 
 import { convertAnthropicResponse } from "./s2t.js";
+import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL } from "./prompt.js";
 
 const MAX_SLOTS = 3;
 const MAX_KEY_LENGTH = 100;
@@ -40,6 +46,13 @@ const ALLOWED_ORIGINS = [
 ];
 const ALLOWED_MODEL = "claude-sonnet-5";
 const MAX_ALLOWED_TOKENS = 3000;
+// 10.4（2026-09-25）：單次回合請求的payload字數上限。實測mock整條人生(1394回合，15～88歲)：一般回合最長6,277字、
+// 結局回合(送完整人生履歷)13,435字。真實AI的敘事比mock長很多(recent_turns_full會帶3回合完整原文)，保守估計一般回合
+// 約1.5萬字、結局回合約2.5萬字，上限抓40,000字留餘裕。真實遊玩的實際最大值會記在遙測(max_payload_chars)，之後可依實測下修
+const MAX_TURN_PAYLOAD_CHARS = 40000;
+const MAX_PLAYER_ACTION_CHARS = 300; // 前端自由輸入上限200字(10.3.2)，開場/系統產生的行動文字另留餘裕
+// buildUserMessage()一定會送的欄位，少任何一個就不是遊戲送的請求
+const REQUIRED_TURN_PAYLOAD_FIELDS = { player_name: "string", gender: "string", age: "number", turn: "number", stats: "object", player_action: "string", forceEnding: "boolean" };
 // 2026-09-23：30→200。每回合要打2次(AI＋存檔)，30次只夠玩約15回合/小時，新手禮包55點很快就會撞牆；
 // 共用Wi-Fi的多位玩家也共享同一個IP額度。200仍足以擋惡意狂打，開放付費前改以伺服器端行動點餘額擋AI呼叫
 const RATE_LIMIT_PER_HOUR = 200;
@@ -202,24 +215,63 @@ async function handleLoad(request, env, origin) {
   } catch (e) { return jsonResponse(origin, { success: false, error: "存檔資料損毀" }, 500); }
 }
 
+// 10.4（2026-09-25）：只接受遊戲實際會送的結構——messages剛好1則、role為user、content是字串且能解析成
+// buildUserMessage()產生的payload物件。回傳{ok, error, payload, chars}
+export function validateTurnMessages(messages) {
+  if (!Array.isArray(messages) || messages.length !== 1) return { ok: false, error: "messages必須剛好1則" };
+  const m = messages[0];
+  if (!m || typeof m !== "object" || m.role !== "user") return { ok: false, error: "messages[0]必須是user訊息" };
+  if (Object.keys(m).some(k => k !== "role" && k !== "content")) return { ok: false, error: "messages[0]含有不允許的欄位" };
+  if (typeof m.content !== "string") return { ok: false, error: "content必須是字串" };
+  const chars = m.content.length;
+  if (chars > MAX_TURN_PAYLOAD_CHARS) return { ok: false, error: "請求內容過長", chars };
+  let payload;
+  try { payload = JSON.parse(m.content); } catch (e) { return { ok: false, error: "content不是遊戲payload" }; }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return { ok: false, error: "content不是遊戲payload" };
+  for (const [k, t] of Object.entries(REQUIRED_TURN_PAYLOAD_FIELDS)) {
+    const v = payload[k];
+    if (t === "object" ? (!v || typeof v !== "object") : typeof v !== t) return { ok: false, error: "payload缺少或格式錯誤：" + k };
+  }
+  if (Array.from(payload.player_action).length > MAX_PLAYER_ACTION_CHARS) return { ok: false, error: "player_action過長" };
+  return { ok: true, payload, chars };
+}
+
+// 10.4：Worker自己組完整的Anthropic請求，前端送來的system/tools/tool_choice/model/max_tokens/output_config一律不採用
+export function buildTurnRequest(messages) {
+  return {
+    model: ALLOWED_MODEL,
+    max_tokens: MAX_ALLOWED_TOKENS,
+    output_config: { effort: "low" },
+    tools: [TURN_RESULT_TOOL],
+    tool_choice: { type: "tool", name: TURN_RESULT_TOOL.name },
+    system: [{ type: "text", text: TURN_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: [{ role: "user", content: messages[0].content }]
+  };
+}
+
+async function callAnthropic(env, upstreamBody) {
+  return fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify(upstreamBody)
+  });
+}
+
 async function handleAIProxy(request, env, origin) {
   try {
     let body;
     try { body = await request.json(); }
     catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
+    if (!body || typeof body !== "object") return jsonResponse(origin, { error: { message: "請求格式錯誤" } }, 400);
 
-    body.model = ALLOWED_MODEL;
-    body.max_tokens = Math.min(Number(body.max_tokens) || MAX_ALLOWED_TOKENS, MAX_ALLOWED_TOKENS);
+    const check = validateTurnMessages(body.messages);
+    if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
 
-    const upstream = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify(body)
-    });
+    const upstream = await callAnthropic(env, buildTurnRequest(body.messages));
     const text = await upstream.text();
     // 一、1.2.9.14（2026-09-24新增）：成功的回應先把AI輸出裡的簡體字轉成繁體再回傳；解析失敗或錯誤回應原樣轉發
     if (upstream.ok) {
