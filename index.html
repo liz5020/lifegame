@@ -519,6 +519,12 @@ function computeAutonomyRaw(s){
     if(st==="skipped"){ chosen++; encountered++; }
     else if(st==="completed" || st==="active"){ encountered++; }
   });
+  // 12.5【定案】拒絕升遷記為skip_reason:chosen推高自主感（2026-09-27接上）：升遷可重複出現，整段人生合併算一項可跳過事件，
+  // 遇過升遷候選即進分母、拒絕過至少一次即算chosen，避免升遷次數多寡稀釋其他里程碑
+  if((s.promotionOffersEncountered||0)>0){
+    encountered++;
+    if((s.promotionOffersDeclined||0)>0) chosen++;
+  }
   if(!encountered) return AUTONOMY_NEUTRAL_DEFAULT;
   return (chosen/encountered)*100;
 }
@@ -800,8 +806,12 @@ const MAJOR_EVENT_JUDGED_CAP_PER_STAGE = 2;
 // 不沿用timeState.stageMode（該欄位只有highschool/college/career三值，career涵蓋22-100+整段不夠細，
 // 會讓「每階段上限2則」在出社會後的六七十年裡只算一次，違背分階段配額的本意）。
 // 學生時期判斷依據呼應3.4.6/9.8改版，統一以studentStatus是否已轉為graduated/withdrawn為準，不看年齡
+// 3.4.8/3.4.10（2026-09-27修正）：存款下限、學生開銷公式、payload is_student也改用這個判斷，不再看occupationCategory
+function isStudentPhase(s){
+  return s.studentStatus!=="graduated" && s.studentStatus!=="withdrawn";
+}
 function chronicleLifeStageKey(s){
-  if(s.studentStatus!=="graduated" && s.studentStatus!=="withdrawn") return "student";
+  if(isStudentPhase(s)) return "student";
   const bucket = LIFE_STAGE_ROUND_BUDGET.find(b=>s.age>=b.minAge && s.age<=b.maxAge);
   return bucket ? `${bucket.minAge}-${bucket.maxAge}` : "career_other";
 }
@@ -848,9 +858,30 @@ const SELF_DISCIPLINE_INTEREST_STREAK_2 = 6; // 【定案,3.7.2】連續6次持�
 function findInterestCard(s, category){
   return (s.interestCandidates||[]).find(c=>c.category===category);
 }
-function computeInterestCareerWeightBonus(investment){
-  // 8.7【測試值,非正式定案】基礎權重×(1+投入度×0.5%)，純工具函式：目前代碼沒有對應的「職涯分支選擇點」可以接，先備妥公式供未來整合
-  return 1 + investment*0.005;
+// 八、8.9（2026-09-27新增）興趣類別對應職業類別：每類只列1～2個，同列不分主次；刻意不對應不穩定/待業類、政治人物子女、長期不在身邊類
+const INTEREST_OCCUPATION_MATCH = {
+  藝術創作: ["自由/創作類"],
+  手作工藝: ["自營/家庭事業類","勞力/服務類"],
+  知識研究: ["受雇專業/白領類","軍公教/警消類"],
+  體能競技: ["勞力/服務類","軍公教/警消類"],
+  科技邏輯: ["受雇專業/白領類","勞力/服務類"],
+  社交表演: ["自由/創作類","受雇專業/白領類"],
+  商業交易: ["自營/家庭事業類","受雇專業/白領類"]
+};
+const INTEREST_HIRE_BONUS_CAP_PP = 10; // 【測試參數,8.7/12.4】上限刻意等於科系對口加成
+// 對應到targetCategory的正式興趣卡(active)中投入度最高的一張；candidate/dormant不算，多張不加總（8.7）
+function topMatchedActiveInterestInvestment(s, targetCategory){
+  let top = 0;
+  (s.interestCandidates||[]).forEach(c=>{
+    if(c.status!=="active") return;
+    if(!(INTEREST_OCCUPATION_MATCH[c.category]||[]).includes(targetCategory)) return;
+    top = Math.max(top, c.investment||0);
+  });
+  return top;
+}
+// 8.7（2026-09-27改寫，取代原本從未被呼叫的computeInterestCareerWeightBonus()）：12.4錄取機率加成＝投入度÷10(捨去)，0～10個百分點
+function computeInterestHireBonusPp(s, targetCategory){
+  return Math.min(Math.floor(topMatchedActiveInterestInvestment(s, targetCategory)/10), INTEREST_HIRE_BONUS_CAP_PP);
 }
 // 8.1-8.2 反應三分類：正向累積朝正式興趣卡邁進／中性維持原狀／明確負向暫停或降低(不刪除)
 // 8.7 下游出口：自律(僅持續投入計入)、副業契機(投入度40，三選一，見renderSideBusinessModal)
@@ -1103,6 +1134,8 @@ function finalizeDivorce(s, spouseName, propertyChoice, custodyChoice){
   s.cash = Math.round(s.cash * (playerSharePct/100));
   s.spouseIncome = 0; s.spouseOccupationCategory = null;
   spouse.romanceStatus = "divorced";
+  // 4.1.1【定案】第1層戀愛狀態轉換含離婚，當回合必定提示（2026-09-27補上）
+  s.pendingRelationshipHints = (s.pendingRelationshipHints||[]).concat([{ tier:1, text:`你和${spouse.name}，離婚了` }]);
   spouse.relation = "前配偶";
   releaseCohabiting(spouse);
   const custody = custodyChoice || "joint";
@@ -1183,6 +1216,7 @@ function computeHireProbability(s, targetCategory, opts){
   pp += (s.conscientiousness.achievement-50)*0.3; // 沿用3.7.3既有公式
   const majorMatch = s.studentMajorGroup && (MAJOR_OCCUPATION_MATCH[s.studentMajorGroup]||[]).includes(targetCategory);
   if(majorMatch) pp += 10;
+  pp += computeInterestHireBonusPp(s, targetCategory); // 八、8.9/十二、12.4（2026-09-27）：相關興趣投入度加成
   if(opts.crossCategoryTransfer) pp -= 10;
   if(s.studentStatus==="withdrawn") pp -= 10;
   if((s.collegeDelayYearsUsed||0) > 0) pp -= 5;
@@ -1219,8 +1253,8 @@ function resolveJobApplication(s, category, isTransfer, opts){
     s.jobSearchStreak = 0;
     // 十二、12.6.1【定案】海外型轉職一律視為跨類別轉職的子情境(留學/外派/移居)，即使選了同一類別也套用降級/歸零，不比照一般同類別轉職保留
     if(isTransfer && (!sameCategory || opts.isOverseas)){
-      // 12.6【定案】跨類別轉職：job_level降一級(不低於新人)，tenure_months歸零
-      s.jobLevel = 0; s.tenureMonths = 0;
+      // 12.6【定案】跨類別轉職：job_level降一級(不低於新人)，tenure_months歸零（2026-09-27修正：原本直接歸零）
+      s.jobLevel = Math.max(0, (s.jobLevel||0)-1); s.tenureMonths = 0;
     }
     // 同類別轉職：job_level/tenure_months保留，只重骰薪資落點（12.6【定案】）
     s.occupationCategory = finalCategory;
@@ -1339,6 +1373,9 @@ function resolvePromotionOffer(s, accept){
     const healthCostMult = clamp(1+(s.conscientiousness.achievement-50)*0.01, 0.5, 1.5);
     s.stats.health = clamp(s.stats.health - Math.round(3*healthCostMult), 0, 100);
     s.promotionDeclineStreak = 0;
+  } else {
+    // 12.6【定案】被動轉職候選「升遷候選連續兩次未成立」：只計擲骰失敗，玩家主動拒絕不算（12.5拒絕不影響後續資格）
+    s.promotionDeclineStreak = (s.promotionDeclineStreak||0)+1;
   }
   s.careerEventLog = { type:"promotion", accepted:true, success, probPct, roll };
 }
@@ -1402,7 +1439,8 @@ const INHERITED_BUSINESS_SUCCESS_BONUS_PP = 10; // 【測試參數】
 // 12.8.2【定案,測試參數】年度營運成功率＝基礎45%＋(成就傾向−50)×0.3＋才識修正＋人脈修正＋相關興趣投入度修正(上限+5個百分點)＋接手家業加成
 function rollAnnualBusinessCheck(s){
   if(s.businessStatus!=="經營中") return null;
-  const topInvestment = (s.interestCandidates||[]).length ? Math.max.apply(null,(s.interestCandidates||[]).map(c=>c.investment||0)) : 0;
+  // 12.8.2（2026-09-27補充）：「相關興趣」＝8.9對應到自營/家庭事業類的正式興趣卡，原本取所有卡(含候選)的最高投入度、沒判斷相關性
+  const topInvestment = topMatchedActiveInterestInvestment(s, "自營/家庭事業類");
   const interestMod = Math.min(topInvestment*0.05, 5); // 8.4限制：興趣投入度只能是有上限的修正項，不得直接當成功率使用
   const inheritedMod = s.businessOrigin==="inherited" ? INHERITED_BUSINESS_SUCCESS_BONUS_PP : 0;
   const probPct = clamp(45 + (s.conscientiousness.achievement-50)*0.3 + (s.stats.knowledge-50)*0.1 + (s.stats.network-50)*0.1 + interestMod + inheritedMod, 5, 95);
@@ -1453,6 +1491,7 @@ function resolveBusinessContinuation(s, choice){ // "close"/"persist"/"inject"
 const RETIREMENT_CANDIDATE_MIN_AGE = 60; // 【測試參數,待驗證,12.10】
 const RETIREMENT_ANNUAL_OFFER_AGE = 65;
 const RETIREMENT_EARLY_MIN_AGE = 55;
+const RETIREMENT_DELAY_MAX_AGE = 70; // 12.10【定案】延後退休最晚至70歲
 // 12.10【定案,測試參數】退休金替代率依職業類別在40%-60%區間分流
 const RETIREMENT_REPLACEMENT_RATE = {
   "軍公教/警消類": 0.6, "政治人物子女(自身從政)": 0.55, "受雇專業/白領類": 0.5,
@@ -1477,6 +1516,8 @@ function checkRetirementCandidate(s){
 // choice: "on_time"/"delay"/"early"/"semi"/"no_retire"/null(自訂輸入，視同no_retire)
 function resolveRetirementOffer(s, choice){
   s.pendingRetirementOffer = null;
+  // 2026-09-27修正：原本70歲以後只在UI把按鈕反灰，彈窗預設值仍是delay，直接按確定可無限延後；程式層在這裡把關
+  if(choice==="delay" && s.age>=RETIREMENT_DELAY_MAX_AGE) choice = "on_time";
   if(!choice || choice==="delay" || choice==="no_retire"){
     s.careerEventLog = { type:"retirement", choice: choice||"no_retire" };
     return; // 繼續工作，不做任何狀態變動（呼應6.4永遠可以跳過）
@@ -1601,6 +1642,15 @@ function rollAnnualCareerChecks(s){
   const layoff = rollAnnualLayoffCheck(s);
   const business = rollAnnualBusinessCheck(s);
   checkRetirementCandidate(s);
+  // 12.7/12.8.2/12.13（2026-09-27修正）：年度判定結果原本被丟掉，AI拿不到裁員前兆與營運結果。
+  // 年度判定在呼叫AI之前跑，寫進careerEventLog就會隨本回合career_event_now送出；若同回合已有彈窗事件，掛在annual底下不覆蓋
+  let annualEvent = null;
+  if(layoff.justForeshadowed) annualEvent = { type:"layoff_foreshadow" };
+  else if(layoff.layoffTriggered) annualEvent = { type:"layoff" };
+  else if(business) annualEvent = { type:"business_annual", outcome: business.outcome };
+  if(annualEvent){
+    s.careerEventLog = s.careerEventLog ? Object.assign({}, s.careerEventLog, { annual: annualEvent }) : annualEvent;
+  }
   return { layoff, business };
 }
 // 每回合都要跑的職涯檢查集合：求職觸發/升遷候選/轉職候選(段落型判定，不與回合預算解耦)
@@ -2000,8 +2050,9 @@ function computeChildSupportCost(s){
   return (s.characters||[]).filter(c=>c.isChild && c.active).reduce((sum,c)=>sum+childSupportAmount(c.age),0);
 }
 function computeBaseLivingCost(s){
-  // 9/14改版：學生時期(尚無正職)改用5.5生活方式選擇的公式，遊戲內單位，不對應NT$；出社會後維持既有housing分級公式
-  if(!s.occupationCategory){
+  // 9/14改版：學生時期改用5.5生活方式選擇的公式，遊戲內單位，不對應NT$；出社會後維持既有housing分級公式
+  // 2026-09-27：學生判斷改用studentStatus（3.4.8明文禁止以occupationCategory判斷），畢業未就業/收攤者走housing分級，不會變0
+  if(isStudentPhase(s)){
     const habitPct = SPENDING_HABITS[s.spendingHabit] ?? SPENDING_HABITS["普通花費"];
     const mealMult = MEAL_EXPENSE_MULT[s.mealArrangement] ?? MEAL_EXPENSE_MULT["自己打理"];
     return Math.round(s.monthlyIncome * habitPct * mealMult);
@@ -2039,7 +2090,8 @@ function newRoll(carry, identity){
     const style = pick(PARENTING_STYLES);
     presentParentStyles.push(style.label);
     presentParentInfos.push({ style: style.label, occupation: occ.label });
-    const aff = clamp(rnd(style.affinityRange[0],style.affinityRange[1]) + rnd(-8,8), 0, 100);
+    // 5.2.2【定案】好感度起點落在教養風格區間內（2026-09-27修正：原本區間骰完又加±8，會超出定案區間）
+    const aff = clamp(rnd(style.affinityRange[0],style.affinityRange[1]), 0, 100);
     characters.push({
       name: relationLabel==="父親" ? "爸爸" : "媽媽",
       relation: relationLabel, dialogueStyle: rollDialogueStyle(), // 一、1.2.8.4.2：家人卡開局時同樣設定
@@ -2513,6 +2565,7 @@ function rollFinalExamCheck(wisdom, studyCount){
 const DUAL_MAJOR_KNOWLEDGE_THRESHOLD = 70; // 【測試參數】
 function checkDualMajorCandidate(s){
   if(s.studentStatus!=="enrolled" || s.dualMajorStatus) return; // 已經是candidate/active/abandoned/completed就不重複判定
+  if(s.dualMajorOfferDeclined) return; // 9.8「狀態一次轉換，不重複觸發」（2026-09-27修正）：拒絕過一次就不再提
   if(s.stats.knowledge>=DUAL_MAJOR_KNOWLEDGE_THRESHOLD){
     s.dualMajorStatus = "candidate"; s.pendingDualMajorOffer = true; return;
   }
@@ -2540,6 +2593,7 @@ function checkDualMajorAbandonCandidate(s){
 const WITHDRAWAL_STREAK_TRIGGER = 4; // 【測試參數，9.7測試項目4待校準】
 function checkWithdrawalCandidate(s){
   if(s.studentStatus!=="enrolled" || s.leaveStatus!=="normal" || s.pendingLeaveOffer) return;
+  if((s.withdrawalOfferCooldown||0)>0) return;
   if((s.lowHealthStreak||0)>=WITHDRAWAL_STREAK_TRIGGER){ s.pendingLeaveOffer = "health"; return; }
   if((s.lowCashStreak||0)>=WITHDRAWAL_STREAK_TRIGGER){ s.pendingLeaveOffer = "financial"; }
 }
@@ -2554,6 +2608,7 @@ function sweepUniversityState(s){
   if(s.timeState?.stageMode!=="college" || s.studentStatus!=="enrolled") return;
   if(s.transferCooldown>0) s.transferCooldown--;
   if(s.dualMajorAbandonCooldown>0) s.dualMajorAbandonCooldown--; // 9.5.2（9/16補充）雙主修中途放棄候選冷卻
+  if(s.withdrawalOfferCooldown>0) s.withdrawalOfferCooldown--; // 9.5.3（2026-09-27）選「撐下去」後的冷卻
   s.lowCashStreak = s.cash<=0 ? (s.lowCashStreak||0)+1 : 0;
   if(s.leaveStatus==="onLeave"){
     s.leaveResumeCountdown = (s.leaveResumeCountdown||LEAVE_OF_ABSENCE_TURNS)-1;
@@ -2790,7 +2845,10 @@ function advanceStructuredTime(actionText){
       rollAnnualHealthChecks(s); // 十三、13.2/13.3/13.5：健康cap收斂/疾病判定/父母健康狀態機推進，同樣每滿一年才判定一次
     }
     const toLabel = computeTimeLabel(s);
-    return { bigJump: skip, fromLabel, toLabel, currentLabel:toLabel, monthsCrossed, examTriggered:false, examType:null, deathForeshadowNow: deathCheck.justForeshadowed, deathTriggered: deathCheck.deathTriggered, window: win };
+    // 二、2.2.2（2026-09-27比照學生期修正）：這回合的日期還在滿年前，標籤用這回合所在的年度(fromLabel)；
+    // 原本一律用toLabel，每年最後一回合會提前顯示新年齡/新的「入職第X年」。跳過指令本身就是「跳到了X」，維持toLabel
+    const currentLabel = skip ? toLabel : fromLabel;
+    return { bigJump: skip, fromLabel, toLabel, currentLabel, monthsCrossed, examTriggered:false, examType:null, deathForeshadowNow: deathCheck.justForeshadowed, deathTriggered: deathCheck.deathTriggered, window: win };
   }
   return { bigJump:false, fromLabel:null, toLabel:null, currentLabel:null, monthsCrossed:0, examTriggered:false, examType:null };
 }
@@ -2970,6 +3028,7 @@ function applyMarriageDecisionCompletion(s){
   // 三、3.4.11（2026-09-20新增）：配偶收入採中間深度，結婚當下骰定一次固定月薪，寫進週期性收入
   const spouseRoll = rollSpouseIncome();
   setSpouseIncome(s, spouseRoll.monthlyIncome, spouseRoll.category);
+  return partner;
 }
 
 // ========== 七、7.6.1.1 同居觸發入口（2026-09-22新增） ==========
@@ -3021,6 +3080,17 @@ function baseHealthCapForAge(age){
   return bucket ? bucket.cap : 50;
 }
 const HEALTH_CAP_BONUS_STREAK_TRIGGER = 8; // 【測試參數,待驗證,13.2】長期健康經營行為連續N年，供cap上修+5用，年數本身非文件明文規定
+// 【測試參數,待驗證,13.2，2026-09-27使用者指示先用測試參數】一年中「健康經營回合」佔該年回合數的比例達此值，才算一個健康經營年。
+// 健康經營回合＝AI回報的健康增量>0（沿用3.5.1加分來源的訊號，與13.3.3慢性病控制良好同一個判斷）；用比例而非固定次數，因各年齡帶每年回合數不同(32→5)
+const HEALTH_CAP_BONUS_YEAR_RATIO = 0.25;
+// 每滿一年呼叫一次：結算這一年是否算健康經營年，連續達HEALTH_CAP_BONUS_STREAK_TRIGGER年即永久取得cap+5
+function settleHealthyYear(s){
+  const turns = s.turnsThisYearForHealth||0;
+  const healthy = s.healthyTurnsThisYear||0;
+  s.healthyYearStreak = (turns>0 && healthy/turns>=HEALTH_CAP_BONUS_YEAR_RATIO) ? (s.healthyYearStreak||0)+1 : 0;
+  if(s.healthyYearStreak>=HEALTH_CAP_BONUS_STREAK_TRIGGER) s.healthCapBonusEarned = true;
+  s.turnsThisYearForHealth = 0; s.healthyTurnsThisYear = 0;
+}
 function computeHealthCap(s){
   // 13.2【定案】玩家能動性：長期健康經營行為可讓cap上修+5；慢性病每項cap-5；重大疾病康復後cap永久-5
   let cap = baseHealthCapForAge(s.age);
@@ -3275,6 +3345,7 @@ function finalizeParentDeath(s, parentName){
 
 // 十三、健康衰退年度檢查集合：健康cap收斂/疾病判定/父母健康狀態機推進，比照12的rollAnnualCareerChecks，每滿一年判定一次
 function rollAnnualHealthChecks(s){
+  settleHealthyYear(s); // 13.2（2026-09-27）：先結算上一年的健康經營，再做cap收斂
   applyHealthCapConvergence(s);
   const illness = rollAnnualIllnessCheck(s);
   if(illness) s.illnessEventLog = illness;
@@ -3510,7 +3581,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     stat_delta_limits: STAT_DELTA_LIMITS,          // 三、3.9.2（2026-09-25）：stat_deltas單回合上下限
     financial_health: financialHealth,
     can_afford_medical: { 低: financialHealth>=20, 中: financialHealth>=50, 高: financialHealth>=75 },
-    is_student: !s.occupationCategory,
+    is_student: isStudentPhase(s),
     spending_habit: s.spendingHabit, meal_arrangement: s.mealArrangement,
     meal_event_multipliers: s.mealArrangement ? MEAL_EVENT_MULT[s.mealArrangement] || null : null,
     occupation_category: s.occupationCategory, housing: s.housing,
@@ -4162,6 +4233,11 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 十三、13.3.3（2026-09-20新增）：慢性病命中機率×0.85（每項疊乘），不封鎖選項本身，只是這次健康加分沒有生效；
   // 同時追蹤「連續健康經營行為」讓慢性病轉為控制良好狀態(控制良好後移除此機率折扣，保留支出與cap影響)
   let healthDelta = d.health||0;
+  // 13.2（2026-09-27）：出社會後每回合累計健康經營回合數，年度結算見settleHealthyYear()（慢性病折扣前的原始訊號）
+  if(s.timeState?.stageMode==="career"){
+    s.turnsThisYearForHealth = (s.turnsThisYearForHealth||0)+1;
+    if(healthDelta>0) s.healthyTurnsThisYear = (s.healthyTurnsThisYear||0)+1;
+  }
   (s.chronicConditions||[]).forEach(c=>{
     if(c.controlled) return;
     if(healthDelta>0){ c.controlledStreak = (c.controlledStreak||0)+1; if(c.controlledStreak>=CHRONIC_CONTROL_STREAK_TRIGGER) c.controlled = true; }
@@ -4281,7 +4357,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     const householdMonthlyIncome = s.monthlyIncome + (s.spouseIncome||0);
     let net = Math.round((householdMonthlyIncome - totalExpenses - livingCost) * monthsCrossed);
     // 5.5存款下限保護（9/14新增）：學生時期(尚無正職)存款不能變成負值，修正原本會出現NT$-35,950這種不合理負債的bug
-    if(!s.occupationCategory && s.cash + net < 0) net = -s.cash;
+    if(isStudentPhase(s) && s.cash + net < 0) net = -s.cash;
     s.cash += net;
     s.lastSettlement = { months: monthsCrossed, net, income:householdMonthlyIncome, expenses:totalExpenses+livingCost };
     // 資產模型（9/14新增）：房貸每月攤還本金（不含利息，簡化模型），還清時自動移除房貸支出項
@@ -4316,7 +4392,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   cappedTx.txs.forEach(tx=>{
     if(!tx || typeof tx.amount !== "number") return;
     // 5.5存款下限保護（9/14新增）：學生時期消費若超過目前存款，這筆消費「不會發生」，不是扣成負值
-    if(!s.occupationCategory && tx.amount<0 && Math.abs(tx.amount) > s.cash) return;
+    if(isStudentPhase(s) && tx.amount<0 && Math.abs(tx.amount) > s.cash) return;
     s.cash += tx.amount;
   });
   if(r.housing_choice && r.housing_choice.type && r.housing_choice.type!==(s.housing?.type)){
@@ -4396,7 +4472,9 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 變化量（relationshipHintAccum），累積絕對值達RELATIONSHIP_HINT_ACCUM_THRESHOLD才提示一次並歸零。
   // 每回合最多顯示RELATIONSHIP_HINT_MAX_PER_TURN則，依tier排序取前幾則，沒被選中的（tier3的累積值）繼續保留，不丟棄
   const beforeRelationship = new Map(s.characters.map(c=>[c.name, { romanceStatus:c.romanceStatus||null, label:relationshipStatusLabel(c) }]));
-  const relationshipHintCandidates = [];
+  // 4.1.1：離婚在回合之間的彈窗結算（finalizeDivorce），先暫存在pendingRelationshipHints，由敘事承接離婚的這一回合一起提示
+  const relationshipHintCandidates = (s.pendingRelationshipHints||[]).slice();
+  s.pendingRelationshipHints = [];
   (r.character_updates||[]).forEach(cu=>{
     const c = s.characters.find(x=>x.name===cu.name);
     if(!c) return;
@@ -4446,7 +4524,11 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     if(s.milestones[mu.id]==="locked") return;
     if(s.milestones[mu.id]==="completed") return; // 已結構化完成的不可被事後改回skipped
     s.milestones[mu.id] = mu.status;
-    if(mu.id==="marriage_decision" && mu.status==="completed") applyMarriageDecisionCompletion(s);
+    if(mu.id==="marriage_decision" && mu.status==="completed"){
+      const spouse = applyMarriageDecisionCompletion(s);
+      // 4.1.1【定案】第1層戀愛狀態轉換含結婚，當回合必定提示（2026-09-27補上）
+      if(spouse) relationshipHintCandidates.push({ tier:1, text:`你和${spouse.name}結婚了` });
+    }
     // 十二、12.11.1（2026-09-22補充）：家長退休是接手家業的第二個觸發來源
     if(mu.id==="parent_retirement" && mu.status==="completed") checkFamilyBusinessOnParentRetirement(s);
   });
@@ -5925,6 +6007,7 @@ function renderDualMajorOfferModal(){
 function resolveDualMajorOffer(s, choice){
   // 9.5.2【定案】zero-cost：不論選哪邊都不動collegeDelayYearsUsed
   s.dualMajorStatus = choice==="apply" ? "active" : null; // decline時歸零而非設abandoned，abandoned專指「進行中才放棄」
+  if(choice!=="apply") s.dualMajorOfferDeclined = true; // 2026-09-27：原本decline後才識≥70的玩家下一回合會再跳
 }
 // 9.5.2（9/16補充）雙主修中途放棄彈窗：candidate成立條件見checkDualMajorAbandonCandidate()
 function renderDualMajorAbandonModal(){
@@ -6010,6 +6093,10 @@ function resolveWithdrawalOffer(s, choice){
     s.timeState.stageMode = "career";
     applyHalfYearCarryOnCareerEntry(s); // 9.8.1：帶著halfYearCarry=1肄業時，當年度回合預算設為一半
     s.universityEventLog = { type:"withdrawn" };
+  } else {
+    // 2026-09-27修正：選「撐下去」後原本下一回合會立刻再跳。冷卻回合數沿用觸發門檻WITHDRAWAL_STREAK_TRIGGER，
+    // 不動lowHealthStreak（過勞訊號與轉職候選共用），冷卻期滿後若仍持續低值才再提
+    s.withdrawalOfferCooldown = WITHDRAWAL_STREAK_TRIGGER;
   }
 }
 // 七、7.3.5（2026-09-20新增）：子女成長節點彈窗，格式比照七、7.5.2「選項＋自訂輸入」
@@ -6027,7 +6114,11 @@ function renderParentingNodeModal(pn){
       ${node.options.map(o=>`<button class="ghost-btn parenting-opt-btn" data-key="${o.id}" style="display:block;width:100%;text-align:left;margin:4px 0;">${escapeHtml(o.text)}</button>`).join("")}
       <button class="ghost-btn parenting-opt-btn" data-key="custom" style="display:block;width:100%;text-align:left;margin:4px 0;">自訂做法……</button>
       <div id="parenting-custom-wrap" style="display:none;margin-top:8px;">
-        <input type="text" id="parenting-custom-input" maxlength="${CUSTOM_INPUT_MAX_CHARS}" style="width:100%;box-sizing:border-box;padding:6px;" placeholder="說說你會怎麼做" />
+        <input type="text" id="parenting-custom-input" style="width:100%;box-sizing:border-box;padding:6px;" placeholder="說說你會怎麼做" />
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;">
+          <span id="parenting-custom-error" style="color:var(--stamp);"></span>
+          <span id="parenting-custom-count" style="color:var(--ink-soft);white-space:nowrap;">0／${CUSTOM_INPUT_MAX_CHARS}</span>
+        </div>
       </div>
       <button class="primary-btn" id="btn-parenting-confirm" style="margin-top:14px;">確定</button>
     </div>`;
@@ -6041,8 +6132,22 @@ function renderParentingNodeModal(pn){
       document.getElementById("parenting-custom-wrap").style.display = chosen==="custom" ? "block" : "none";
     };
   });
+  // 一、1.1.3【定案】超過字數不可默默截斷（2026-09-27修正：原本用maxlength直接擋住/截斷貼上內容），比照主輸入框顯示即時字數並擋下送出
+  const customInput = document.getElementById("parenting-custom-input");
+  const customCount = document.getElementById("parenting-custom-count");
+  const customError = document.getElementById("parenting-custom-error");
+  customInput.oninput = ()=>{
+    const n = countInputChars(customInput.value);
+    customCount.textContent = `${n}／${CUSTOM_INPUT_MAX_CHARS}`;
+    customCount.style.color = n>CUSTOM_INPUT_MAX_CHARS ? "var(--stamp)" : "var(--ink-soft)";
+    if(n<=CUSTOM_INPUT_MAX_CHARS) customError.textContent = "";
+  };
   document.getElementById("btn-parenting-confirm").onclick = ()=>{
     const customText = document.getElementById("parenting-custom-input")?.value || "";
+    if(chosen==="custom" && countInputChars(customText) > CUSTOM_INPUT_MAX_CHARS){
+      customError.textContent = `太長了（目前${countInputChars(customText)}字，上限${CUSTOM_INPUT_MAX_CHARS}字），請稍微縮短`;
+      return;
+    }
     resolveParentingGrowthNode(s, pn.childName, pn.nodeKey, chosen==="custom" ? null : chosen, customText);
     div.remove();
     saveGame(); render();
@@ -6345,20 +6450,21 @@ function renderRetirementOfferModal(pending){
   div.id = "retirement-offer-modal";
   div.className = "modal-backdrop";
   const canEarly = s.age>=RETIREMENT_EARLY_MIN_AGE;
+  const canDelay = s.age<RETIREMENT_DELAY_MAX_AGE;
   const canNotRetire = ["自營/家庭事業類","自由/創作類","勞力/服務類"].includes(s.occupationCategory);
   div.innerHTML = `
     <div class="modal">
       <h3>${pending.forced ? "身體撐不住了，該休息了" : "退休的念頭"}</h3>
       <p>接下來怎麼安排？</p>
       <button class="ghost-btn ret-btn" data-key="on_time" style="display:block;width:100%;text-align:left;margin:4px 0;">準時退休</button>
-      <button class="ghost-btn ret-btn" data-key="delay" ${s.age>=70?"disabled style='opacity:0.4;'":""} style="display:block;width:100%;text-align:left;margin:4px 0;">延後退休(最晚至70歲)</button>
-      <button class="ghost-btn ret-btn" data-key="early" ${canEarly?"":"disabled style='opacity:0.4;'"} style="display:block;width:100%;text-align:left;margin:4px 0;">提早退休${canEarly?"":"（55歲起才開放）"}</button>
+      <button class="ghost-btn ret-btn" data-key="delay" ${canDelay?"":"disabled"} style="display:block;width:100%;text-align:left;margin:4px 0;${canDelay?"":"opacity:0.4;"}">延後退休(最晚至70歲)</button>
+      <button class="ghost-btn ret-btn" data-key="early" ${canEarly?"":"disabled"} style="display:block;width:100%;text-align:left;margin:4px 0;${canEarly?"":"opacity:0.4;"}">提早退休${canEarly?"":"（55歲起才開放）"}</button>
       <button class="ghost-btn ret-btn" data-key="semi" style="display:block;width:100%;text-align:left;margin:4px 0;">半退休(兼職/接案/志工)</button>
       ${canNotRetire ? `<button class="ghost-btn ret-btn" data-key="no_retire" style="display:block;width:100%;text-align:left;margin:4px 0;">不退休，繼續做下去</button>` : ""}
       <button class="primary-btn" id="btn-ret-confirm" style="margin-top:14px;">確定</button>
     </div>`;
   document.body.appendChild(div);
-  let chosen = "delay";
+  let chosen = canDelay ? "delay" : "on_time";
   div.querySelectorAll(".ret-btn").forEach(btn=>{
     if(btn.disabled) return;
     btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".ret-btn").forEach(b=>{ if(!b.disabled){ b.style.background=""; b.style.color=""; } }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
@@ -6402,7 +6508,9 @@ function renderEldercareDecisionModal(pending){
 function renderEnding(){
   const s = state;
   const kids = eligibleChildren();
-  const canSucceed = s.ending.successionAvailable && kids.length>0;
+  // 7.4.1【定案】有兒女就提供延續選項（2026-09-27修正：原本還要AI回傳succession_available=true，AI漏填時有子女的玩家會失去傳承選項；
+  // 有沒有子女是客戶端確定的事，不再假手AI。successionAvailable欄位保留記錄，不參與判斷）
+  const canSucceed = kids.length>0;
   // 七、7.1.4（9/20改版）：不顯示任何標籤、分數、排名。
   // 依序是 L1段落回顧 →（階段之間）L2變化句 → L3墓誌銘。
   // 舊存檔相容：9/20以前的存檔只有title/summary，沒有segments，降級成單段顯示不讓畫面爆掉。

@@ -10,6 +10,37 @@
 
 ---
 
+## 2026-09-27（9/26落差掃描第一節：程式bug修正）
+
+**〔整理〕9/26落差掃描**
+- 用workflow（3個代理分章核對＋1個代理複查，只讀檔案）掃描`life-sim-design/`全部【定案】對照代碼：回報81條落差/未實作，複查後確認80條、存疑1條（7.3.2生育機率），誤判0條。完整清單在對話紀錄，尚未寫進QA手冊（等使用者確認）
+
+**〔開發部〕第一節程式bug，16條全部修完**
+- 3.4.8/3.4.10：新增`isStudentPhase(s)`（依`studentStatus`判斷），取代`computeBaseLivingCost()`、存款下限、學生消費不發生、payload `is_student`這四處的`!occupationCategory`判斷。畢業未就業或收攤的人改用居住狀態分級計算開銷，不再是0，也不會被當成學生
+- 12.6：升遷擲骰失敗時`promotionDeclineStreak`+1（原本從來沒有累加，被動轉職永遠不會觸發）；玩家主動拒絕不計入
+- 12.6：跨類別/海外轉職的`jobLevel`從直接歸零改為降一級（不低於新人）
+- 12.5：`computeAutonomyRaw()`把升遷合併算成一項可跳過事件：遇過升遷候選就算進分母，拒絕過至少一次就算chosen
+- 9.5.2：拒絕雙主修後記`dualMajorOfferDeclined`，不再重複跳彈窗
+- 9.5.3：休學彈窗選「撐下去」後冷卻`WITHDRAWAL_STREAK_TRIGGER`回合（`withdrawalOfferCooldown`），不動`lowHealthStreak`
+- 12.10：新增`RETIREMENT_DELAY_MAX_AGE=70`；70歲以後送出delay會改成準時退休，彈窗預設值改為準時退休。順便修正反灰按鈕的style屬性重複、排版失效
+- 12.7/12.8.2/12.13：`rollAnnualCareerChecks()`把裁員前兆(`layoff_foreshadow`)、裁員(`layoff`)、創業年度結果(`business_annual`+outcome)寫進`careerEventLog`隨本回合送給AI；同回合已有彈窗事件時放在`annual`欄位，不覆蓋
+- 7.4.1：有子女就顯示傳承選項，不再看AI的`succession_available`
+- 1.1.3：子女教養彈窗的自訂輸入拿掉`maxlength`，加上即時字數，超過字數時擋下送出並提示
+- 5.2.2：父母好感度起點不再額外加±8，確保落在教養風格區間內
+- 4.1.1：結婚當回合、離婚後承接的那一回合加上第1層關係提示（離婚先暫存在`pendingRelationshipHints`）
+- 2.2.2：出社會後的`currentLabel`比照學生期，非跳過回合用`fromLabel`，每年最後一回合不再提前顯示新年齡
+- `worker/prompt.js`：achievement_probability_modifier_pp改成「系統已套用，AI不能自行決定升遷/創業結果」（12.13，原本和第99行矛盾）；career_event_now補上三種年度事件的說明；succession_available改成只照實填、不影響判斷。**要重新部署Worker才會生效**
+- 13.2（使用者指示先用測試參數）：新增`settleHealthyYear()`，掛在`rollAnnualHealthChecks()`開頭。出社會後每回合累計「健康經營回合」（AI回報的健康增量>0，跟13.3.3慢性病控制良好用同一個訊號），一年內佔比≥`HEALTH_CAP_BONUS_YEAR_RATIO`(0.25，【測試參數】)才算健康經營年，連續`HEALTH_CAP_BONUS_STREAK_TRIGGER`(8)年就永久取得cap+5。用比例而不是固定次數，是因為各年齡帶每年的回合數不同（32→5）
+- 8.7/8.9/12.4/12.8.2：套用網頁版的設計patch（`2026-09-27-8.9-interest-career.patch`，用`git apply`，改`00-總覽.md`、`08-興趣系統.md`、`12-職涯系統.md`）。代碼新增`INTEREST_OCCUPATION_MATCH`（7×8對應表）、`computeInterestHireBonusPp()`（投入度÷10捨去，上限+10，只算active卡、同一類取最高），接進`computeHireProbability()`；`rollAnnualBusinessCheck()`的興趣修正改成只看對應自營/家庭事業類的active卡（手作工藝、商業交易）。移除從來沒被呼叫的`computeInterestCareerWeightBonus()`
+
+**〔測試部〕**
+- 新增`tests/test-7-gapfix-0927.mjs`（已納入run-all）：45/45通過，涵蓋上面16條（直接呼叫函式＋jsdom彈窗點擊＋假上游跑回合）
+- 全套回歸：語法檢查＋批次1/2/3/4/6＋十六＋本批全部通過（含批次4的mock連續300回合長程）
+- 需要真實API才能驗證、**未測試**：AI收到`layoff_foreshadow`/`business_annual`後的敘事是否得當；改過的prompt在升遷/創業時是否還會自行宣布成敗
+- 不影響舊存檔：新增欄位都有預設值（`dualMajorOfferDeclined`、`withdrawalOfferCooldown`、`pendingRelationshipHints`、`healthyYearStreak`等）
+
+---
+
 ## 2026-09-26（套用雲端批次patch；十六、playStyle隱性計數；十、10.6放置代活寫入設計文件）
 
 **〔整理〕**
