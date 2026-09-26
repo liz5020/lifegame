@@ -867,7 +867,7 @@ function applyInterestEvent(s, interestEvent){
   let card = findInterestCard(s, category);
   if(!card){
     card = {
-      id: category+"_"+s.turnCount, category, status:"candidate", investment:0, positiveStreak:0, candidateProgress:0,
+      id: category+"_"+s.turnCount, createdTurn: s.turnCount, category, status:"candidate", investment:0, positiveStreak:0, candidateProgress:0,
       lastEngagedRound: s.turnCount, sideBusinessOffered:false, sideBusinessStatus:null,
       selfDisciplineAwarded3:false, selfDisciplineAwarded6:false
     };
@@ -877,6 +877,7 @@ function applyInterestEvent(s, interestEvent){
   // active階段只有positive算投入、重置降階計時，neutral不算；negative兩階段都不重置(呼應「negative反應不會重置計時」)
   if(reaction==="positive" || (reaction==="neutral" && card.status==="candidate")){
     card.lastEngagedRound = s.turnCount;
+    updatePlayStyleLongestInterest(s, card); // 十六、16.2.2：長期關注＝持續最久的興趣(卡片被淡出刪除後紀錄仍保留)
   }
   if(reaction==="positive"){
     const raw = rnd(4,9); // 8.3【測試參數】原始投入值，量級比照其他成長型數值
@@ -1033,6 +1034,9 @@ function resolveRelationshipInvestment(s, partnerName, choice){
   }
   // maintain_status_quo／divert_elsewhere：不直接扣分(六、6.4)，divert轉投入的時間本身已經在興趣/工作/子女各自的管道計分，這裡不重複加成避免雙重計分
   s.relationshipInvestmentEventLog = { choice, partnerName };
+  // 十六、16.2.2：投入關係+1、把時間轉到別處−1、維持現狀不計
+  if(choice==="invest_time") logPlayStyleRelation(s, 1);
+  else if(choice==="divert_elsewhere") logPlayStyleRelation(s, -1);
 }
 
 // 7.6.2 婚姻危機里程碑：觸發由客戶端判定，二選一條件
@@ -1076,6 +1080,8 @@ function resolveMarriageCrisis(s, spouseName, choice){
     s.pendingDivorceSettlement = { spouseName };
   }
   s.marriageCrisisEventLog = { choice, spouseName };
+  if(choice==="repair") logPlayStyleRelation(s, 1); // 十六、16.2.2：修復+1、離婚−1、維持現狀不計
+  else if(choice==="divorce") logPlayStyleRelation(s, -1);
 }
 
 // 7.6.3 離婚結算
@@ -1241,6 +1247,17 @@ function resolveJobApplication(s, category, isTransfer, opts){
     closeForeshadowCandidate(s, opts.foreshadowLine, landedIntendedPath);
   }
   s.careerEventLog = { type:"job_search", category:finalCategory, roll, probPct, hired, isTransfer:!!isTransfer, wasFallback:isFallbackForced };
+  // 十六、16.2.2：投遞的錄取機率代表冒險程度(保底offer沒有選擇空間，不計)；轉職本身算一次偏離常規；
+  // 失業後的求職：投回原本的職業類別算「重來」，換類別算「轉向」
+  if(!isFallbackForced){
+    if(probPct < PLAYSTYLE_JOB_RISKY_PCT) logPlayStyleRisk(s, 1);
+    else if(probPct >= PLAYSTYLE_JOB_SAFE_PCT) logPlayStyleRisk(s, -1);
+  }
+  if(isTransfer) logPlayStyleDeviation(s);
+  else {
+    const sb = ensurePlayStyle(s).pendingSetback;
+    if(sb && sb.type==="job_loss") logPlayStyleSetbackResponse(s, category===sb.prevCategory ? "retry" : "pivot", ["job_loss"]);
+  }
   return { category:finalCategory, roll, probPct, hired };
 }
 // 觸發時機三種（12.4）：畢業/肄業後下一回合、失業後、玩家選擇轉職後；用career_status+studentStatus判斷，不看年齡
@@ -1295,6 +1312,9 @@ function resolveCareerForkOffer(s, choice){ // choice: "stay"/"transfer"/"startu
   if(choice==="transfer") s.pendingJobSearch = { offers: buildJobSearchOffers(s), isTransfer:true, isFallback:false };
   else if(choice==="startup") s.pendingBusinessLaunch = {};
   s.careerEventLog = { type:"career_fork", choice };
+  // 十六、16.2.2：職級封頂岔路，維持現狀算保守、轉職算冒險；選創業不在這裡計，實際啟動時由launchBusiness()計一次，避免重複
+  if(choice==="stay") logPlayStyleRisk(s, -1);
+  else if(choice==="transfer") logPlayStyleRisk(s, 1);
 }
 // 12.5【定案,測試參數】升遷成功機率＝基礎40%＋(成就傾向−50)×0.3個百分點，沿用3.7.3既有公式
 function resolvePromotionOffer(s, accept){
@@ -1303,9 +1323,11 @@ function resolvePromotionOffer(s, accept){
   if(!accept){
     // 12.5【定案】玩家可拒絕升遷，記為skip_reason:chosen，推高自主感管道；拒絕不扣幸福感也不影響後續升遷資格
     s.promotionOffersDeclined = (s.promotionOffersDeclined||0)+1;
+    logPlayStyleRisk(s, -1); // 十六、16.2.2：升遷是明牌檢定節點，拒絕算保守、接受算冒險
     s.careerEventLog = { type:"promotion", accepted:false };
     return;
   }
+  logPlayStyleRisk(s, 1);
   const probPct = clamp(40 + (s.conscientiousness.achievement-50)*0.3, 5, 95);
   const roll = rnd(1,100);
   const success = roll<=probPct;
@@ -1341,6 +1363,7 @@ function rollAnnualLayoffCheck(s){
   s.layoffForeshadowed = false;
   s.careerStatus = CAREER_STATUS.UNEMPLOYED;
   s.justLostJob = true; // 【定案,2026-09-23】七、7.6.2婚姻危機失業觸發改讀這個旗標，回合結束時清除
+  markPlayStyleSetback(s, "job_loss", s.occupationCategory); // 十六、16.2.3
   s.monthlyIncome = 0;
   s.jobSearchStreak = 0;
   return { justForeshadowed:false, layoffTriggered:true };
@@ -1355,6 +1378,11 @@ function computeStartupCapitalRequired(){
 function launchBusiness(s){
   const capital = computeStartupCapitalRequired();
   if(s.cash < capital) return false; // 現金不足：客戶端直接擋下，不扣款、不建立事業
+  // 十六、16.2.2：創業算高風險；在職時辭職創業同時算一次偏離常規；收攤後再創業算「重來」、失業後改創業算「轉向」
+  logPlayStyleRisk(s, 1);
+  if(s.careerStatus===CAREER_STATUS.EMPLOYED) logPlayStyleDeviation(s);
+  const sb = ensurePlayStyle(s).pendingSetback;
+  if(sb && sb.type==="job_loss") logPlayStyleSetbackResponse(s, sb.prevCategory==="自營/家庭事業類" ? "retry" : "pivot", ["job_loss"]);
   s.cash -= capital;
   s.businessCapital = capital;
   s.businessStatus = "經營中";
@@ -1402,7 +1430,9 @@ function rollAnnualBusinessCheck(s){
 function resolveBusinessContinuation(s, choice){ // "close"/"persist"/"inject"
   s.businessContinuationCooldown = 4; // 12.8.2【定案】冷卻4回合
   s.pendingBusinessContinuation = null;
+  logPlayStyleRisk(s, choice==="close" ? -1 : 1); // 十六、16.2.2：連續虧損時收攤算保守、硬撐/增資算冒險
   if(choice==="close"){
+    markPlayStyleSetback(s, "job_loss", "自營/家庭事業類"); // 十六、16.2.3：收攤視同一次失業
     s.businessStatus = "收攤";
     s.careerStatus = CAREER_STATUS.UNEMPLOYED; // 12.8.2【定案】收攤後回到12.4求職段落，不卡死人生
     s.justLostJob = true; // 【定案,2026-09-23】收攤視同一次失業寫入點，同樣要設旗標
@@ -1580,6 +1610,49 @@ function checkCareerTriggers(s){
   checkPromotionCandidate(s);
   checkTransferCandidate(s, false);
   sweepCareerForeshadowCandidates(s); // 十二、12.11.1（2026-09-22新增）
+}
+
+// ========== 十六、16.2 隱性行為傾向追蹤 playStyle（2026-09-26新增，【草案】待使用者確認） ==========
+// 只記錄「這一生怎麼活」，不影響任何數值判定、不送給AI、不顯示給玩家（16.2.1）。
+// 第一版只從結構化節點(彈窗選擇/客戶端判定)計數，不分析自由輸入文字——時間跳過雖然由關鍵字偵測，但它本身就是既有的結構化跳過指令
+const PLAYSTYLE_SETBACK_WINDOW_TURNS = 24; // 【測試參數,16.2.3】挫折後多少回合內的下一個結構化選擇，才算「面對錯誤」的回應
+const PLAYSTYLE_JOB_RISKY_PCT = 50; // 【測試參數,16.2.2】求職投遞錄取機率低於此值算「高風險路線」
+const PLAYSTYLE_JOB_SAFE_PCT = 70;  // 【測試參數,16.2.2】求職投遞錄取機率達此值以上算「保守路線」
+function newPlayStyle(){
+  return {
+    risk:0, riskEvents:0,          // 面對風險：高風險+1／保守−1，riskEvents為計入次數
+    deviation:0,                   // 規則與自由度：每走一次偏離常規的路線+1
+    relation:0, relationEvents:0,  // 人際與界線：投入關係+1／獨處或抽離−1
+    setback:{ retry:0, pivot:0, rest:0 }, pendingSetback:null, // 面對錯誤：挫折後下一個結構化選擇分成重來/轉向/休息
+    skips:0,                       // 效率與控制感：每次成功跳過時間+1
+    longestInterest:null           // 長期關注：{category, turns}，持續最久的興趣
+  };
+}
+function ensurePlayStyle(s){ if(!s.playStyle) s.playStyle = newPlayStyle(); return s.playStyle; }
+function logPlayStyleRisk(s, delta){ const p = ensurePlayStyle(s); p.risk += delta; p.riskEvents += 1; }
+function logPlayStyleDeviation(s){ ensurePlayStyle(s).deviation += 1; }
+function logPlayStyleRelation(s, delta){ const p = ensurePlayStyle(s); p.relation += delta; p.relationEvents += 1; }
+function logPlayStyleSkip(s){ ensurePlayStyle(s).skips += 1; }
+// type: "exam_fail"(期末考明牌檢定未過)／"job_loss"(裁員、收攤)；prevCategory供判斷「重來」(回到同一類工作)還是「轉向」
+function markPlayStyleSetback(s, type, prevCategory){
+  ensurePlayStyle(s).pendingSetback = { type, turn: s.turnCount||0, prevCategory: prevCategory||null };
+}
+// kind: "retry"/"pivot"/"rest"；types：這個選擇只算哪幾種挫折的回應(null＝任何挫折都算)
+function logPlayStyleSetbackResponse(s, kind, types){
+  const p = ensurePlayStyle(s);
+  const sb = p.pendingSetback;
+  if(!sb) return;
+  if((s.turnCount||0) - sb.turn > PLAYSTYLE_SETBACK_WINDOW_TURNS){ p.pendingSetback = null; return; }
+  if(types && !types.includes(sb.type)) return;
+  p.setback[kind] += 1;
+  p.pendingSetback = null;
+}
+function updatePlayStyleLongestInterest(s, card){
+  const start = typeof card.createdTurn==="number" ? card.createdTurn : parseInt(String(card.id).split("_").pop(),10);
+  if(!isFinite(start)) return;
+  const turns = (card.lastEngagedRound||0) - start;
+  const p = ensurePlayStyle(s);
+  if(!p.longestInterest || turns > p.longestInterest.turns) p.longestInterest = { category: card.category, turns };
 }
 
 let state = null;
@@ -2138,6 +2211,7 @@ function newRoll(carry, identity){
     // 八、興趣系統v1（9/16新增）
     interestCandidates: [],
     pendingSideBusinessCardId: null,
+    playStyle: newPlayStyle(), // 十六、16.2（2026-09-26）：每一世各自一組，世代傳承不繼承
     // 九、大學科系系統（9/16新增）：出生時尚未進大學，欄位先留空預設，進大學時由選科系流程賦值
     studentMajorGroup: null,
     studentIsFiveYearTrack: false,
@@ -2634,6 +2708,7 @@ function advanceStructuredTime(actionText){
     let toLabel = fromLabel;
     let win;
     if(skip){
+      logPlayStyleSkip(s); logPlayStyleSetbackResponse(s, "rest", null); // 十六、16.2.2/16.2.3
       // 二、2.2（2026-09-23修正）：沒指定目標時只結束目前段落、進下一段第1回合，不再是原本的rnd(2,4)大跳段；
       // 有指定目標(跳到+寒假/暑假/下學期/期中/期末)時找下一次出現該段落的位置
       const target = resolveTimeSkipTarget(actionText);
@@ -2688,6 +2763,7 @@ function advanceStructuredTime(actionText){
     if(cal.careerYearBase==null) cal.careerYearBase = cal.lastRoundEnd + 1 - Math.floor((s.timeState.adultTurnsInYear||0)*365/budget);
     let win;
     if(skip){
+      logPlayStyleSkip(s); logPlayStyleSetbackResponse(s, "rest", null); // 十六、16.2.2/16.2.3
       // 跳過語意：直接跳完當年剩餘回合，進入下一年（實作假設：比照學生時期"跳過至少跨一段"的精神，此處對應"至少跨完當年"）
       s.timeState.adultTurnsInYear = 0;
       yearsToAdd = 1;
@@ -3897,6 +3973,7 @@ function snapshotForUndo(){
     // 遊戲內日期(timeState.cal)已經包在上面的timeState裡，反悔時一併回到上一回合的狀態(1.2.9.11.5)
     mutterStreak:state.mutterStreak||0, foreshadows:state.foreshadows||[], foreshadowSeq:state.foreshadowSeq||0,
     renameNotices:state.renameNotices||[], foreshadowFadeNotices:state.foreshadowFadeNotices||[],
+    playStyle: state.playStyle||newPlayStyle(), // 十六、16.2：反悔時行為計數也回到上一回合
     // 十五、人生之書（2026-09-25）：反悔時目前這一章的素材也要回到上一回合；已經收成的章節另外處理(見applySnapshot)
     bookDraft: state.book ? { draft: state.book.draft||null, chronicleSeen: state.book.chronicleSeen||0 } : null
   }));
@@ -3943,6 +4020,7 @@ async function takeTurn(actionText, cost){
   // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
   // （呼應7.1.5死亡機制精神，不讓AI自由裁量這個數字），期中考不受影響、維持原本hint範圍由AI自由發揮
   const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance) : null;
+  if(examCheck && !examCheck.passed) markPlayStyleSetback(state, "exam_fail", null); // 十六、16.2.3
   // 2026-09-23修正（時間標籤慢一拍bug）：這回合顯示/送給AI的標籤改用currentLabel(這回合實際所在的段落)，
   // 不再用toLabel(換段後、下一回合才生效的段落)；jump提示(from/to)維持給跳過動作用，語意不變
   let timeCtx = { structured:true, label: adv.currentLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, interestCountAtExam: interestCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow, window: adv.window||null, prologue: wasPrologue };
@@ -4624,6 +4702,7 @@ function succeedAsChild(childName){
     // 八、興趣系統v1（9/16新增）：世代傳承視為全新一世，不繼承上一世的興趣卡
     interestCandidates: [],
     pendingSideBusinessCardId: null,
+    playStyle: newPlayStyle(), // 十六、16.2（2026-09-26）：每一世各自一組，世代傳承不繼承
     // 九、大學科系系統（9/16新增）：世代傳承視為全新一世，不繼承上一世的科系/延畢狀態
     studentMajorGroup: null,
     studentIsFiveYearTrack: false,
@@ -5797,6 +5876,8 @@ function resolveTransferOffer(s, mainChoice, targetKey){
   if(mainChoice==="apply" && targetKey){
     const cat = findMajorCategory(targetKey);
     if(!cat) return null;
+    // 十六、16.2.2/16.2.3：申請轉系算冒險＋偏離常規；考試失利後申請轉系算「轉向」、留在原系算「重來」
+    logPlayStyleRisk(s, 1); logPlayStyleDeviation(s); logPlayStyleSetbackResponse(s, "pivot", ["exam_fail"]);
     // 9.5.1【定案】結果判定複用2.4考試成績算法精神：知識值+自律程度換算成功機率，不另設新公式
     const probPct = Math.round(clamp(0.3 + (s.stats.knowledge/100)*0.5 + (s.conscientiousness.selfDiscipline-50)/200, 0.1, 0.95) * 100); // 【測試參數】
     const roll = rnd(1,100);
@@ -5811,6 +5892,7 @@ function resolveTransferOffer(s, mainChoice, targetKey){
     }
     return { success, roll, probPct, majorLabel: cat.label };
   } else if(mainChoice==="stay"){
+    logPlayStyleRisk(s, -1); logPlayStyleSetbackResponse(s, "retry", ["exam_fail"]);
     s.universityEventLog = { type:"transfer_declined" };
   }
   return null;
@@ -5911,6 +5993,9 @@ function renderWithdrawalOfferModal(reason){
 function resolveWithdrawalOffer(s, choice){
   // 9.8.1（2026-09-22修正）：休學可用條件改為兩項都要成立，不再只看delay_years上限（防呆，UI也會先擋，這裡是程式層再把關一次）
   if(choice==="leave" && !isAnotherLeaveFeasible(s)) return;
+  // 十六、16.2.2/16.2.3：休學、肄業算偏離常規；挫折後休學算「休息」、肄業算「轉向」、撐下去算「重來」
+  if(choice==="leave" || choice==="withdraw") logPlayStyleDeviation(s);
+  logPlayStyleSetbackResponse(s, choice==="leave" ? "rest" : choice==="withdraw" ? "pivot" : "retry", null);
   if(choice==="leave"){
     // 9.8：delay_years最小粒度0.5年對應休一學期，記一次0.5年代價（只作帳本用途，不再加進畢業門檻，見9.8.1）
     s.collegeDelayYearsUsed = clamp((s.collegeDelayYearsUsed||0)+0.5, 0, COLLEGE_DELAY_CAP);
