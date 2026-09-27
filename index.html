@@ -2093,6 +2093,7 @@ function rollAttachmentBaseline(styleLabel){
 }
 function rollPeerPosition(){ return rnd(20,100); }
 const PEER_SPECIAL_RELEASE_DRIFT = 20; // 【測試參數,5.2.4】
+const DIVORCED_PARENT_CONTACT_PROB = 0.6; // 【測試參數,5.2.6，2026-09-27】單親離異時另一方仍有聯絡(建卡)的機率
 function peerPositionLabel(v, special){
   if(special) return special;
   if(v<=35) return "獨行俠";
@@ -2295,10 +2296,34 @@ function newRoll(carry, identity){
     });
   }
 
+  // 五、5.2.6【定案】單親離異的另一方「可能仍在通訊錄裡(依監護/探視安排，好感度另外計算)，也可能長期失聯」
+  // （2026-09-27補上，使用者授權Claude全權判斷，數字為【測試參數】）：DIVORCED_PARENT_CONTACT_PROB的機率仍有聯絡→建角色卡，
+  // relation標「（不同住）」、不同住、自己的教養風格與職業、好感度依自己的風格區間再−10（不同住、見面少）；
+  // 其餘為長期失聯，不建卡（prompt說明：沒有這張卡就代表失聯，可以被提起但不安排見面）。
+  // 不同住的一方不列入presentParentStyles（不影響依附/社交起點）、也不列入5.5三餐資格，職業不抽政治人物（避免改到家境判定）
+  function addNonResidentDivorcedParent(relationLabel){
+    if(Math.random() >= DIVORCED_PARENT_CONTACT_PROB) return;
+    const occ = pick(PARENT_OCCUPATIONS.filter(o=>o.label!=="政治人物"));
+    const style = pick(PARENTING_STYLES);
+    characters.push({
+      name: relationLabel==="父親" ? "爸爸" : "媽媽",
+      relation: relationLabel+"（不同住）", dialogueStyle: rollDialogueStyle(),
+      traits: style.parentTrait + "；" + occ.trait + "；離婚後不同住，依探視安排見面",
+      affinity: clamp(rnd(style.affinityRange[0],style.affinityRange[1]) - 10, 0, 100),
+      summary:"", lastTurn:turnCount, active:true, isChild:false,
+      origin: "父母，從出生起", cohabiting: false,
+      age: 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX),
+      occupation: occ.label
+    });
+  }
   // 第二步：家長職業（在addNormalParent裡一併骰）+ 建立角色卡（依家庭結構決定有誰）
   if(familyStructure==="雙親同住"){
     addNormalParent("父親"); addNormalParent("母親");
-  } else if(familyStructure==="單親－離異" || familyStructure==="單親－喪親"){
+  } else if(familyStructure==="單親－離異"){
+    const custodial = pick(["父親","母親"]);
+    addNormalParent(custodial);
+    addNonResidentDivorcedParent(custodial==="父親" ? "母親" : "父親");
+  } else if(familyStructure==="單親－喪親"){
     addNormalParent(pick(["父親","母親"]));
   } else if(familyStructure==="隔代教養"){
     const gp = pick([["阿公","爺爺"],["阿嬤","奶奶"]]);
@@ -3537,7 +3562,10 @@ function rollParentHealthStageAdvance(s){
   const events = [];
   // 13.6【定案】過世的父母(deceased===true，含世代傳承後標記為過世的上一代主角)不再進入這個狀態機，避免被判定「再過世一次」
   // 十三、13.5.1（2026-09-23新增）：隔代教養的祖父母卡納入同一套狀態機，長照決策/過世/遺產一律沿用13.5、13.6既有流程
-  s.characters.filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && (c.healthStage||1)<4 && c.active!==false && !c.deceased).forEach(c=>{
+  // 2026-09-27修正（既有bug）：原本也排除active===false，但父母搬離/不同住後12回合沒互動就會被降為背景角色(active=false)，
+  // 從此不再老化、不會需要照顧或過世（服刑家長從第13回合起就是如此）。降級只代表近期沒出場，不代表不在世；
+  // 已過世一律有deceased標記（含傳承時的上一代主角），所以只看deceased即可
+  s.characters.filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && (c.healthStage||1)<4 && !c.deceased).forEach(c=>{
     if((c.age||0) >= PARENT_HEALTH_HARD_CAP_AGE){
       finalizeParentDeath(s, c.name);
       events.push({ parentName:c.name, newStage:4 });
@@ -3617,7 +3645,8 @@ function finalizeParentDeath(s, parentName){
     .map(c=>({ name:c.name, tone: (c.affinity||0)>=SIBLING_ESTATE_NEGOTIATION_AFFINITY ? "negotiation" : "conflict" }));
   // 13.6【定案】另一位家長進入單親狀態、照顧負荷提升（2026-09-27使用者同意Claude建議）：在世的另一位家長健康階段提前一階
   // （不超過失能長照），進入需要協助/失能時照常跳照顧決策彈窗
-  const otherParent = s.characters.find(c=>c.name!==parentName && (c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && !c.deceased && c.active!==false);
+  // 離異不同住的另一方不是「單親狀態下的另一位家長」（兩人早已分開），不套用照顧負荷提前
+  const otherParent = s.characters.find(c=>c.name!==parentName && (c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && !c.deceased && !/不同住/.test(c.relation||""));
   let otherParentStage = null;
   if(otherParent && (otherParent.healthStage||1) < PARENT_HEALTH_LAST_LIVING_STAGE){
     otherParent.healthStage = (otherParent.healthStage||1)+1;
