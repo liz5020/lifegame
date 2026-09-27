@@ -2432,7 +2432,7 @@ function newRoll(carry, identity){
     ap: carry?.ap ? { ...carry.ap, giftPending:false } : newLifeAP(),
     lifeId: newLifeId(), // 2026-09-25：每一世都換新id(轉世丹也是新的一世)
     turnCount,
-    characters,
+    characters: withRelationGenders(characters), // 4.1（2026-09-27）：家人卡建立時就依稱謂記下性別
     chronicle: carry?.chronicleCarry ? [carry.chronicleCarry] : [],
     log:[],
     choices:[],
@@ -3110,6 +3110,24 @@ function advanceStageYear(s, mode, yearsToAdd){
   }
 }
 
+// 四、4.1／一、1.2.5【定案】角色卡記錄性別，一旦生成保持一致（2026-09-27新增gender欄位）：
+// AI建卡時在new_characters回傳gender；家人卡依稱謂推得；舊存檔或AI沒給時，能從稱謂推得就補上，推不出來維持null(不猜)
+const CHARACTER_GENDERS = ["男","女"];
+const MALE_RELATION_RE = /^(父親|爸爸|爸|哥哥|弟弟|兒子|爺爺|阿公|外公|祖父|先生|老公|丈夫|叔叔|伯伯|舅舅)/;
+const FEMALE_RELATION_RE = /^(母親|媽媽|媽|姊姊|姐姐|妹妹|女兒|奶奶|阿嬤|外婆|祖母|太太|老婆|妻子|阿姨|姑姑|嬸嬸)/;
+function genderFromRelation(relation){
+  const r = String(relation||"");
+  if(MALE_RELATION_RE.test(r)) return "男";
+  if(FEMALE_RELATION_RE.test(r)) return "女";
+  return null;
+}
+function withRelationGenders(chars){
+  chars.forEach(c=>{ if(!CHARACTER_GENDERS.includes(c.gender)) c.gender = genderFromRelation(c.relation); });
+  return chars;
+}
+function ensureCharacterGenders(s){
+  (s.characters||[]).forEach(c=>{ if(!CHARACTER_GENDERS.includes(c.gender)) c.gender = genderFromRelation(c.relation); });
+}
 function activeCharacters(){
   return state.characters.filter(c=>c.active);
 }
@@ -3825,8 +3843,9 @@ function buildTimeContextPayload(s, timeCtx){
 }
 function buildUserMessage(actionText, forceEnding, timeCtx){
   const s = state;
+  ensureCharacterGenders(s); // 4.1（2026-09-27）：舊存檔/家人卡補上性別
   const roster = activeCharacters().map(c=>({
-    name:c.name, relation:c.relation, traits:c.traits,
+    name:c.name, relation:c.relation, traits:c.traits, gender:c.gender||null, // 4.1/1.2.5：已記錄的性別，引用時必須一致
     affinity:c.affinity, summary:c.summary, is_child:!!c.isChild,
     dialogue_style: c.dialogueStyle||"normal", // 一、1.2.8.4.2（2026-09-24實作）：台詞句數上限，程式依{{名字|台詞}}標記截斷
     romance_status: c.romanceStatus||null // 四、4.4戀愛狀態機（9/16新增）：null/ambiguous/dating/stable/breakup，僅供你參考語氣，不可自行變更
@@ -4229,8 +4248,10 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
   }
   const new_characters = [];
   if(Math.random()<0.12){
+    // 4.1/1.2.5 mock版（2026-09-27）：名字與性別成對，比照AI必須讓姓名符合性別
+    const mockPerson = pick([["小林","男"],["阿哲","男"],["惠雯","女"],["子晴","女"],["阿凱","男"],["詩婷","女"]]);
     new_characters.push({
-      name: pick(["小林","阿哲","惠雯","子晴","阿凱","詩婷"]),
+      name: mockPerson[0], gender: mockPerson[1],
       relation: pick(["同學","同事","鄰居","網友"]),
       traits: pick(["直率","話少但可靠","愛開玩笑","有點神秘"]),
       initial_affinity: rnd(40,65),
@@ -4733,6 +4754,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     }
     s.characters.push({
       name, relation:nc.relation||"", traits:nc.traits||"",
+      gender: CHARACTER_GENDERS.includes(nc.gender) ? nc.gender : genderFromRelation(nc.relation), // 4.1/1.2.5（2026-09-27）
       dialogueStyle: DIALOGUE_STYLE_LIMITS[nc.dialogue_style] ? nc.dialogue_style : "normal", // 一、1.2.8.4.2：建卡時設定一次，之後固定不變
       affinity: clamp(nc.initial_affinity ?? 50,0,100),
       summary:"", lastTurn:s.turnCount, active:true, isChild:!!nc.is_child,
@@ -4985,7 +5007,8 @@ function succeedAsChild(childName){
   let familyStructure;
   if(spouse){
     characters.push({
-      name: spouse.name, relation: deceasedRelation==="父親" ? "母親" : "父親", dialogueStyle: spouse.dialogueStyle || rollDialogueStyle(),
+      // 4.1（2026-09-27）：另一位家長的稱謂依配偶卡記錄的性別，沒有記錄才沿用「跟過世的一方相反」的舊假設
+      name: spouse.name, relation: spouse.gender==="男" ? "父親" : spouse.gender==="女" ? "母親" : (deceasedRelation==="父親" ? "母親" : "父親"), gender: spouse.gender || null, dialogueStyle: spouse.dialogueStyle || rollDialogueStyle(),
       // 2026-09-22修正（bug回報：在世配偶被當成新角色重新產生）：年齡/健康階段/同住狀態/關係值一律沿用傳承前資料，不重新骰——
       // married的配偶在目前架構下不會有獨立死亡判定，傳承當下必然還在世，也不會被finalizeDivorce解除同住，cohabiting因此必為true
       traits: spouse.traits||"忙碌但關心家裡", affinity: spouse.affinity, summary: spouse.summary||"",
@@ -5053,7 +5076,7 @@ function succeedAsChild(childName){
     // 十、10.3.6：世代傳承不算新人生，上一代的每日池/禮包點/購買點全部由下一代繼承，不另發禮包
     ap: { ...ensureAP(prev), giftPending:false }, turnCount:0,
     lifeId: newLifeId(), // 2026-09-25：世代傳承是新的一世，換新id
-    characters,
+    characters: withRelationGenders(characters), // 4.1（2026-09-27）：家人卡建立時就依稱謂記下性別
     chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`],
     log:[], choices:[], reincarnations:(prev.reincarnations||0)+1,
     undosLeft:3, snapshot:null, ending:null,

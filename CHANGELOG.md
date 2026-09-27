@@ -10,6 +10,25 @@
 
 ---
 
+## 2026-09-27（續三：四、4.1 NPC性別欄位）
+
+**〔開發部〕**
+- 4.1／1.2.5：角色卡新增`gender`（"男"/"女"/null）。AI建卡時在new_characters回傳gender（schema新增enum欄位）；enum外的值不採用。家人卡（父母、祖父母、服刑家長、手足、傳承後的家人）建立時由`withRelationGenders()`依稱謂記下；AI沒給、稱謂也推不出（例如「同學」「鄰居」）時維持null，不猜
+- 性別一旦記錄就不變：character_updates不處理gender
+- 送AI的active_characters每個角色帶gender；`ensureCharacterGenders()`在組payload時替舊存檔補上能從稱謂推得的性別
+- 世代傳承：在世配偶轉成新主角的另一位家長時，稱謂改依配偶卡的性別（原本一律假設跟過世的一方相反，同性伴侶會被標錯）
+- mock新角色的名字與性別成對產生
+- `worker/prompt.js`：new_characters的gender schema、【NPC姓名與性別一致性】補上「gender已記錄就必須一致、null時不要自己改」。**要重新部署Worker才會生效**
+- NPC詳細頁不顯示性別：4.1.1定案的顯示內容清單裡沒有這一項
+
+**〔測試部〕**
+- 新增`tests/test-10-npc-gender.mjs`：14/14通過，連跑3次穩定（含100次開局與mock 200回合）
+- 全套回歸全部通過
+- 需要真實API才能驗證、**未測試**：AI是否每次都填gender、名字是否跟性別相符
+- 不影響舊存檔：缺gender時自動依稱謂補上
+
+---
+
 ## 2026-09-27（續二：第二節2B批，使用者回覆「全部照建議」）
 
 **〔整理〕設計文件**
