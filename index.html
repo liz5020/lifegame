@@ -3593,6 +3593,34 @@ function applyAcuteRecovery(s){
   s.acuteRecoveryTurns--;
   s.stats.health = Math.min(s.stats.health + ACUTE_RECOVERY_PER_TURN, Math.max(s.stats.health, computeHealthCap(s)), 100);
 }
+// ========== 十三、13.7.2 老年主題池（2026-09-27補上，使用者授權Claude全權判斷） ==========
+// 60歲以後每回合由程式依年齡帶比重表抽一條主軸，連同該年齡帶的骨幹素材送給AI（old_age_theme），取代原本prompt裡
+// 「年紀越大事務與回顧越多」的質性描述。素材刻意不含系統判定的事件(退休、長照、父母過世、喪偶、生病)——那些由各自的
+// *_event_now帶，AI不能自己編。六、6.3調性約束：最近兩回合都是unsettling/heavy時標記need_breather，且這回合不抽身體與醫療
+const OLD_AGE_THEME_WEIGHTS = [ // 【測試參數,待驗證】13.7.2比重表
+  { minAge:60, maxAge:69, w:{ body:20, relation:30, meaning:35, affairs:15 } },
+  { minAge:70, maxAge:79, w:{ body:30, relation:30, meaning:25, affairs:15 } },
+  { minAge:80, maxAge:999, w:{ body:35, relation:35, meaning:15, affairs:15 } }
+];
+const OLD_AGE_THEME_LABELS = { body:"身體與醫療", relation:"關係", meaning:"自我與意義", affairs:"事務與交代" };
+const OLD_AGE_BACKBONES = {
+  "60-69": ["子女成家、孫輩出生","第一次健康檢查的壞消息","住居調整（搬小一點、搬去離子女近的地方）"],
+  "70-79": ["慢性病的長期管理","老朋友的聯絡漸漸變少","興趣的最後一次高峰","跟子女的角色反轉（從照顧人變成被照顧）"],
+  "80+": ["時間顆粒拉大，日常與回顧交錯","身體的小警訊","把東西交代清楚"]
+};
+function computeOldAgeTheme(s){
+  if(s.age<60) return null;
+  const band = OLD_AGE_THEME_WEIGHTS.find(b=>s.age>=b.minAge && s.age<=b.maxAge) || OLD_AGE_THEME_WEIGHTS[2];
+  const recent = (s.recentTones||[]).slice(-2);
+  const needBreather = recent.length===2 && recent.every(x=>x==="unsettling" || x==="heavy");
+  const w = Object.assign({}, band.w);
+  if(needBreather) w.body = 0;
+  const total = Object.values(w).reduce((a,b)=>a+b,0);
+  let r = rnd(1,total), axis = "meaning";
+  for(const k of Object.keys(w)){ if(r<=w[k]){ axis = k; break; } r -= w[k]; }
+  const key = s.age>=80 ? "80+" : s.age>=70 ? "70-79" : "60-69";
+  return { axis, axis_label: OLD_AGE_THEME_LABELS[axis], backbone_material: OLD_AGE_BACKBONES[key], need_breather: needBreather };
+}
 // 13.3.4 重大疾病四階段：徵兆期(1-3回合)→確診(1回合,里程碑)→治療期(3-6回合)→岔路點(康復/帶病生存/惡化)
 // 每回合都要檢查(治療期是連續回合而非年度事件)，跟疾病最初觸發的年度判定分開
 function advanceMajorIllness(s){
@@ -4028,6 +4056,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     health_cap: computeHealthCap(s),
     chronic_conditions_count: (s.chronicConditions||[]).length,
     major_illness_stage: s.majorIllness ? s.majorIllness.stage : null,
+    old_age_theme: computeOldAgeTheme(s), // 13.7.2（2026-09-27）：60歲以後本回合的主題方向
     illness_event_now: s.illnessEventLog,
     major_illness_event_now: s.majorIllnessEventLog,
     parent_health_event_now: s.parentHealthEventLog,
@@ -4733,6 +4762,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // AI只給emotional_tone四選一，程式查表決定增減量，再依回歸週期朝基準線移動
   // 十三、13.6【定案】父母過世的喪禮回合emotional_tone為heavy（2026-09-27補上：原本完全由AI決定），由程式強制，不靠AI記得回傳
   applyHappiness(s, parentDiedThisTurn ? "heavy" : r.emotional_tone);
+  s.recentTones = (s.recentTones||[]).concat([parentDiedThisTurn ? "heavy" : r.emotional_tone]).slice(-3); // 13.7.2/6.3（2026-09-27）：喘息判斷用
   refreshMilestoneSkipReasons(s); // 3.8.4：skip_reason三選一，供自主感管道與QA查核用
 
   // 氣質被動成長（呼應才識/表達力提升、財務狀況、隨時間累積），外表=顏值+氣質

@@ -10,6 +10,27 @@
 
 ---
 
+## 2026-09-27（續五：第二節C批後七項，使用者授權Claude全權判斷）
+
+**〔開發部〕**（每項各自一個commit，數字皆為【測試參數】）
+- 3.3：新增`looksModifier()`／`refreshAppearance()`：顏值先天值不變，加上氣色（健康<30扣5、<15扣10）與保養（出社會後財務健康度≥75加3、≥90加5），都會隨狀態恢復。`annualTemperamentGrowth()`：每滿一歲氣質+1，財務健康度≥60那年再+1；關鍵事件揭露+2、性格破格+2
+- 3.2.4：讀書/興趣次數只在期中/期末準備期累計（`inPrepPhaseThisTurn`）；`rollFinalExamCheck()`加入興趣拖累（轉系呼叫不受影響）；每次考試記入`examHistory`；帳本下方新增`renderTracks()`：課業（上次考試分數、準備期次數）與興趣（文字級距，不顯示數字）
+- 3.8.2：`computeCareerIdentity()`由職涯狀態換算職涯認同；AI新欄位`club_activity`由`applyClubActivity()`累積社團參與（+8套邊際遞減，12回合沒活動起每回合−1）。兩者都跟原輸入取較高：友情與歸屬＝人脈×0.6＋max(非親密關係值,社團)×0.4；自我實現＝才識×0.5＋max(興趣,職涯認同)×0.5
+- 7.1.1：AI新欄位`risky_activity`累積`riskyHobbyScore`（每次+1、每年−1，≥2算習慣），`riskyAnnualBonus()`讓危險職業與極限運動習慣各自加2個百分點，死亡與疾病機率共用
+- 7.6.2：新增`marriageCrisisArc`／`advanceMarriageCrisisArc()`：觸發後浮現、攤牌各一回合（payload `marriage_crisis_arc`，語氣軌克制），攤牌結束才跳岔路彈窗；彈窗文案改成承接攤牌
+- 12.3：`rollJobRiskSubtype()`錄取時依類別擲高風險工種（勞力/服務30%、長期不在身邊40%、軍公教/警消40%、自由/創作5%），`jobRiskSubtype`送AI（`job_risk_subtype`）；離職時清掉
+- 13.7.2：`computeOldAgeTheme()` 60歲以後依比重表抽主軸＋骨幹素材送AI（`old_age_theme`）；`recentTones`記最近語氣，前兩回合都是unsettling/heavy時標記`need_breather`且不抽身體與醫療
+- `worker/prompt.js`：club_activity、risky_activity的schema與說明；marriage_crisis_arc、job_risk_subtype、old_age_theme的敘事說明。**要重新部署Worker才會生效**
+- 設計文件03、07、12、13補上判斷說明；`00-總覽.md`全域更新日誌同步；QA手冊34.8對應列改為已修正
+
+**〔測試部〕**
+- 新增`test-14-appearance`（13項）、`test-15-tracks`（10項）、`test-16b-happiness-inputs`（12項）、`test-17-risky-hobby`（8項）、`test-18-marriage-crisis`（10項）、`test-19-job-risk`（9項）、`test-20-old-age-theme`（10項），各連跑3次都穩定
+- 全套回歸（20個測試檔）全部通過
+- 需要真實API才能驗證、**未測試**：AI是否正確回報club_activity/risky_activity、是否照浮現/攤牌分段寫、是否照old_age_theme與need_breather調整、是否寫出高風險工種的感覺
+- 舊存檔：新欄位都有預設值；舊存檔在職者的riskyLifestyle沿用舊的整類判定，下次換工作時才改用工種判定
+
+---
+
 ## 2026-09-27（續四：第二節C批前三項，使用者授權Claude全權判斷）
 
 **〔開發部〕**
