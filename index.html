@@ -1831,6 +1831,18 @@ function rollAnnualCareerChecks(s){
 }
 // 每回合都要跑的職涯檢查集合：求職觸發/升遷候選/轉職候選(段落型判定，不與回合預算解耦)
 const SIDE_BUSINESS_UPGRADE_TURNS = 24; // 【測試參數,12.8.1，2026-09-27】
+// 八、8.7【定案】副業三選一「非二元開關」、正式副業要真正產生成本/時間壓力差異（2026-09-27補上，使用者授權Claude全權判斷，【測試參數】）：
+// 保持興趣＝無變化；接零星案＝每月小額副業收入；正式副業＝每月較多副業收入，時間成本依8.7【測試值】現階段用敘事呈現(prompt)，
+// 滿24回合再升級為創業候選(12.8.1)。只算仍是正式興趣卡(active)的副業，興趣淡成背景就停；正式副業已經升級並成功創業後，
+// 收入改由事業本身計算，不重複給
+const SIDE_BUSINESS_MONTHLY_INCOME = { gig:3, formal:6 };
+function computeSideBusinessIncome(s){
+  return (s.interestCandidates||[]).reduce((sum,c)=>{
+    if(c.status!=="active") return sum;
+    if(c.sideBusinessStatus==="formal" && c.sideBusinessUpgradeOffered && s.businessStatus==="經營中") return sum;
+    return sum + (SIDE_BUSINESS_MONTHLY_INCOME[c.sideBusinessStatus]||0);
+  }, 0);
+}
 // 12.8.1：正式副業持續滿SIDE_BUSINESS_UPGRADE_TURNS回合，升級為創業候選（跳創業彈窗，現金門檻照常在launchBusiness把關）；每張卡只升級一次
 function checkSideBusinessUpgrade(s){
   if(s.businessStatus==="經營中" || s.pendingBusinessLaunch) return;
@@ -3924,7 +3936,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     max_affordable_home_monthly_payment: Math.floor(s.cash/60), // 七、7.5.3買房頭期款門檻：頭期款=月付×240×0.25=月付×60，現金/60=這個現金水位能負擔的最高月付房貸(呼應20年期/8成貸款成數假設)
     home_purchase_min_down_payment_pct: 20,
     milestone_status: MILESTONE_DEFS.map(def=>({ id:def.id, label:def.label, status:s.milestones[def.id] })),
-    interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, status:c.status, investment:Math.round(c.investment) })),
+    interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, status:c.status, investment:Math.round(c.investment), side_business: c.sideBusinessStatus||null })),
+    side_business_event_now: s.sideBusinessEventLog || null, // 8.7（2026-09-27）：玩家剛在副業彈窗做的選擇
     pending_side_business_category: s.pendingSideBusinessCardId ? ((s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId)||{}).category || null : null,
     // 一、1.2.9.1（2026-09-23新增）：取代原本system prompt裡寫死的「每次敘事約250-350字」，改依這回合monthsCrossed分級給字數目標
     narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed, timeCtx && timeCtx.tone && timeCtx.tone.tension),
@@ -4529,6 +4542,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   s.cohabitationEventLog = null;
   // 十二、職涯系統（2026-09-20新增）：career_event_now只給AI看這一回合，用過就清掉
   s.careerEventLog = null;
+  s.sideBusinessEventLog = null; // 8.7（2026-09-27）
   // 十三、健康衰退與老年階段（2026-09-20新增）：以下event log只給AI看這一回合，用過就清掉
   s.illnessEventLog = null;
   s.majorIllnessEventLog = null;
@@ -4683,7 +4697,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     const livingCost = computeBaseLivingCost(s); // 3.4.11：已內含household共同生活分攤係數與子女扶養費
     // 三、3.4.11（2026-09-20新增）：household合併收入＝玩家個人月收入＋配偶月收入(若已婚)。配偶收入獨立追蹤(s.spouseIncome)，
     // 不直接併進s.monthlyIncome，避免玩家轉職時job_change覆寫monthlyIncome連帶把配偶收入也洗掉
-    const householdMonthlyIncome = s.monthlyIncome + (s.spouseIncome||0);
+    // 八、8.7（2026-09-27）：副業三選一的後續差異，接零星案／正式副業各有一筆週期性副業收入，見computeSideBusinessIncome()
+    const householdMonthlyIncome = s.monthlyIncome + (s.spouseIncome||0) + computeSideBusinessIncome(s);
     let net = Math.round((householdMonthlyIncome - totalExpenses - livingCost) * monthsCrossed);
     // 5.5存款下限保護（9/14新增）：學生時期(尚無正職)存款不能變成負值，修正原本會出現NT$-35,950這種不合理負債的bug
     if(isStudentPhase(s) && s.cash + net < 0) net = -s.cash;
@@ -6154,6 +6169,8 @@ function renderSideBusinessModal(cardId){
     // 十二、12.8.1【定案】副業轉正＝side_business狀態持續一定回合後升級為創業候選（2026-09-27使用者同意Claude建議：24回合，【測試參數】）。
     // 取代原本選formal當下直接launchBusiness；持續回合數的檢查見checkSideBusinessUpgrade()
     if(chosen==="formal") card.sideBusinessSince = state.turnCount;
+    // 8.7（2026-09-27）：選擇結果下一回合告訴AI（原本AI只在pending_side_business_category看得到，但那個欄位在彈窗前就被清掉，AI實際上收不到）
+    state.sideBusinessEventLog = { category: card.category, choice: chosen };
     div.remove();
     saveGame(); render();
   };

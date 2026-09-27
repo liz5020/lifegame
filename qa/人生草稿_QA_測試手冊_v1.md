@@ -1742,7 +1742,7 @@ AI根據已確定事實敘事
 | 39 | 8.4 興趣的代價（時間／金錢／健康／機會成本） | 沒實作 | applyInterestEvent只加投入度與自律，沒有任何成本扣除；prompt的興趣段落也沒有要求AI在敘事或數值上呈現取捨。 | index.html:860-913、worker/prompt.js:131 | 確認 |  |
 | 40 | 8.6 喚醒走敘事記憶 | 有落差 | dormant卡只在玩家又對同類別有positive反應時直接轉回active，沒有「整理舊物觸發回憶」這類敘事記憶事件，prompt也沒有對背景興趣喚醒的指示。 | index.html:893 | 確認 | 已修正（2A，prompt） |
 | 41 | 8.7 → 職涯：投入度提升對應職涯分支出現權重 | 有落差 | computeInterestCareerWeightBonus()有定義，但全檔沒有任何呼叫點（buildJobSearchOffers、伏筆判定都沒用），投入度實際上不影響任何職涯分支權重。 | index.html:851 | 確認 | 已修正 |
-| 42 | 8.7 副業三選一的後續差異 | 有落差 | 只有選「正式副業」會走launchBusiness；選「接零星案」只記錄sideBusinessStatus，沒有數值效果。sideBusinessStatus也沒有放進payload（interest_status只送category/status/investment），AI無從在敘事上呈現成本或時間壓力差異。另外prompt要求AI在choices裡給三個方向，跟彈窗重複。 | index.html:5713-5719、3540、worker/prompt.js:131 | 確認 |  |
+| 42 | 8.7 副業三選一的後續差異 | 有落差 | 只有選「正式副業」會走launchBusiness；選「接零星案」只記錄sideBusinessStatus，沒有數值效果。sideBusinessStatus也沒有放進payload（interest_status只送category/status/investment），AI無從在敘事上呈現成本或時間壓力差異。另外prompt要求AI在choices裡給三個方向，跟彈窗重複。 | index.html:5713-5719、3540、worker/prompt.js:131 | 確認 | 已修正（C批：零星案/正式副業各有每月副業收入、選擇結果送AI、prompt不再重複列三選項） |
 | 43 | 9.4 延畢觸發原因（3.2.4課業興趣連動、財務壓力） | 沒實作 | delay_years只由休學累加；3.2.4的興趣拖累成績或財務壓力都不會產生延畢，也沒有9.8.1規定的「非休學型延畢：該學期不計入重跑＋0.5」機制。 | index.html:6001 | 確認 |  |
 | 44 | 9.4/9.5.1 轉系最後可行年齡作為候選成立前提 | 有落差 | 定案寫轉系須先通過年齡門檻才成立候選，但updateTransferCandidateOnExam不檢查可行性，只在彈窗裡把不可行的目標科系反灰。超過20歲時仍會跳出轉系彈窗，而且所有目標都不能選。 | index.html:2485-2491、5824-5829 | 確認 | 已修正（2A） |
 | 45 | 9.5.1 轉系候選成立機率與結果判定 | 有落差 | (1) 定案寫候選成立機率由才識與自律決定，實作是連續2次低於預期就必定成立，沒有擲骰。(2) 結果判定應複用2.4考試成績算法（才識＋備考次數），實作另寫了一套0.3+才識×0.5+自律修正的新公式。(3) 定案要求log同時輸出候選判定結果，lastExamPerformanceLog缺這一欄。 | index.html:2485-2491、5882 | 確認 | 已修正（2A年齡門檻＋2B機率與2.4算法） |
