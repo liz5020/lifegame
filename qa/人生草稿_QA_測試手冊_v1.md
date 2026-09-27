@@ -1732,7 +1732,7 @@ AI根據已確定事實敘事
 | 29 | 7.3.5.4 非節點日常親子互動的關係值更新 | 有落差 | 定案要求沿用3.8.3做法，由AI輸出固定enum、程式查表換算增減量，不由AI直接給數值；實際上character_updates.affinity_delta是AI自由給的數字，applyResult直接相加，也沒有另外設上下限。 | index.html:4404-4405、worker/prompt.js:229 | 確認 | 已修正（2B） |
 | 30 | 7.4.1 延續下一世選項 | 有落差 | 定案寫「若玩家有兒女」就提供延續選項，但實作要求AI回傳succession_available=true才會顯示（canSucceed = successionAvailable && kids.length>0）。AI漏填或填false時，有子女的玩家會失去傳承選項，這是把客戶端能確定的事交給AI。 | index.html:767、6405 | 確認 | 已修正 |
 | 31 | 7.4.2 繼承範圍：教養風格與家境 | 有落差 | 換算出的教養風格只當rollAttachmentBaseline/rollSocialStart的偏向參數，沒有寫進state，在世配偶（新一世家長）的角色卡語氣與好感度起點也沒有套用這個風格。家境只用prev.cash換算，房產淨值（propertyValue−mortgageBalance）沒有納入「死亡當下的財富水準」。 | index.html:4628-4632、4649、4656-4660 | 確認 | 已修正（2A家境含房產＋C批教養風格寫入家長卡語氣與state） |
-| 32 | 7.6.2 婚姻危機三段式敘事 | 有落差 | 定案要求「浮現→攤牌→岔路」三段式，篇幅比照7.3.3但較短。實作在觸發當回合直接跳出岔路彈窗，浮現與攤牌兩段只寫成彈窗內一句話，prompt也沒有要求AI分段鋪陳。 | index.html:6102-6114、worker/prompt.js:105 | 確認 |  |
+| 32 | 7.6.2 婚姻危機三段式敘事 | 有落差 | 定案要求「浮現→攤牌→岔路」三段式，篇幅比照7.3.3但較短。實作在觸發當回合直接跳出岔路彈窗，浮現與攤牌兩段只寫成彈窗內一句話，prompt也沒有要求AI分段鋪陳。 | index.html:6102-6114、worker/prompt.js:105 | 確認 | 已修正（C批：觸發後浮現、攤牌各一回合由AI寫，攤牌回合結束才跳岔路彈窗） |
 | 33 | 7.6.3 監護：非主要照顧者的節點選項較少 | 有落差 | custodyStatus只在finalizeDivorce寫入，renderParentingNodeModal和checkParentingGrowthNode都沒有讀它。非主要照顧者跟主要照顧者看到的節點選項完全一樣，沒有「可選選項較少」。 | index.html:1113、6027 | 確認 | 已修正（2B） |
 | 34 | 7.6.3 離婚後開放自主感與自我實現的正向節點 | 沒實作 | 找不到任何離婚後觸發自主感或自我實現正向節點的機制，prompt也沒有對應指示（grep「離婚後」只找到household_status標籤）。 | index.html:1980、2893（無對應機制） | 確認 |  |
 | 35 | 7.7.1 人生特質放在人生回顧、需玩家點選才出現 | 沒實作 | 找不到「看看這一生的樣子」入口，也沒有任何人生特質呈現。 | 無（僅index.html:1615-1631計數器） | 確認 |  |

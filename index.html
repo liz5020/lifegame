@@ -1187,18 +1187,33 @@ const MARRIAGE_CRISIS_LOW_STREAK_TRIGGER = 12; // 【測試參數,待驗證,7.6.
 const MARRIAGE_CRISIS_COOLDOWN_TURNS = 20; // 【測試參數,待驗證,7.6.2】
 // 技術判斷：7.3.5.2青春期衝突節點的兩個極端選項(嚴格管教/放任不管)視為「激化方向」，中間的溝通選項不算，設計文件未逐一列出對照表，此為實作階段判斷
 const MARRIAGE_CRISIS_ESCALATING_TEEN_CHOICES = ["strict_rules","let_go"];
+// 七、7.6.2【定案】三段式敘事「浮現→攤牌→岔路」（2026-09-27補上，使用者授權Claude全權判斷）：原本觸發當回合直接跳岔路彈窗，
+// 浮現與攤牌只是彈窗裡一句話。改成跨回合：觸發後下一回合AI寫「浮現」(說不上哪裡不對)、再下一回合寫「攤牌」(具體導火線)，
+// 攤牌那回合結束才跳岔路彈窗。篇幅比7.3.3不孕症四階段短(各一回合)。進行中不重複觸發；配偶關係中途結束就收掉
+function advanceMarriageCrisisArc(s, spouse){
+  const arc = s.marriageCrisisArc;
+  if(!arc) return false;
+  if(!spouse || spouse.name!==arc.spouseName){ s.marriageCrisisArc = null; return false; }
+  if(arc.stage==="surfacing"){ arc.stage = "confrontation"; return true; }
+  // 攤牌寫完 → 岔路
+  s.marriageCrisisArc = null;
+  s.pendingMarriageCrisis = { spouseName: arc.spouseName, reason: arc.reason };
+  return true;
+}
 function sweepMarriageCrisisCandidate(s){
   const spouse = s.characters.find(c=>c.romanceStatus==="married");
-  if(!spouse){ s.justEscalatedTeenConflict = false; s.justLostJob = false; s.justReachedFertilityStage4 = false; return; }
+  if(!spouse){ s.marriageCrisisArc = null; s.justEscalatedTeenConflict = false; s.justLostJob = false; s.justReachedFertilityStage4 = false; return; }
   spouse.lowAffinityStreak = spouse.affinity<MARRIAGE_CRISIS_LOW_THRESHOLD ? (spouse.lowAffinityStreak||0)+1 : 0;
-  if(!s.pendingMarriageCrisis && s.turnCount >= (s.marriageCrisisCooldownUntilTurn||0)){
+  const arcAdvanced = advanceMarriageCrisisArc(s, spouse);
+  if(!arcAdvanced && !s.marriageCrisisArc && !s.pendingMarriageCrisis && s.turnCount >= (s.marriageCrisisCooldownUntilTurn||0)){
     const lowStreakTrigger = spouse.lowAffinityStreak >= MARRIAGE_CRISIS_LOW_STREAK_TRIGGER;
     // 特定高壓事件疊加：青春期衝突激化方向、剛失業、七、7.3.3不孕症走到第四階段
     // 【定案,2026-09-23】三個旗標都是「只在狀態剛發生的那一回合觸發」，本函式每回合結束都會清成false，
     // 剛好滿足「如果剛失業/剛進第四階段那回合婚姻危機正在冷卻期，則不觸發也不延後」的要求——旗標只活一個sweep週期，不會被留到冷卻結束後重新判定
     const pressureEventTrigger = !!s.justEscalatedTeenConflict || !!s.justLostJob || !!s.justReachedFertilityStage4;
     if(lowStreakTrigger || pressureEventTrigger){
-      s.pendingMarriageCrisis = { spouseName: spouse.name };
+      const reason = lowStreakTrigger ? "long_distance" : s.justLostJob ? "job_loss" : s.justReachedFertilityStage4 ? "fertility" : "teen_conflict";
+      s.marriageCrisisArc = { spouseName: spouse.name, stage:"surfacing", reason }; // 7.6.2：下一回合開始浮現
     }
   }
   s.justEscalatedTeenConflict = false;
@@ -3895,6 +3910,7 @@ function computeToneTrack(s, timeCtx, actionText, forceEnding){
   else if(timeCtx && timeCtx.examTriggered) add("restrained","low","期中考/期末考(考試當下)",false);
   if(s.pendingSideBusinessCardId) add("restrained","high","副業觸發抉擇",false);
   if(detectRelationshipTurningIntent(actionText) || s.marriageCrisisEventLog) add("restrained","high","告白/表態、分手/關係破裂、結婚",false);
+  if(s.marriageCrisisArc) add("restrained", s.marriageCrisisArc.stage==="confrontation" ? "high" : "low", "婚姻危機（"+(s.marriageCrisisArc.stage==="surfacing"?"浮現":"攤牌")+"）", false); // 7.6.2（2026-09-27）
   if(s.careerEventLog){
     if(s.careerEventLog.type==="retirement") add("retrospect","high","人生階段轉換(退休)",false);
     else add("restrained","high","求職面試、轉職、升遷、創業啟動",false);
@@ -4052,6 +4068,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     breakthrough_event_now: s.breakthroughEventLog, // 六、6.2（2026-09-20新增）：{axis,direction,label}，系統剛判定成立一次性格破格時刻，這回合請寫一段比平常更長更慢、聚焦情緒的加重敘事，不用你判斷要不要成立
     parenting_event_now: s.parentingEventLog, // 七、7.3.5（2026-09-20新增）：{nodeLabel,childName,optionText}，玩家剛在彈窗選了一個教養節點的做法，這回合請把這個選擇自然帶進敘事
     relationship_investment_event_now: s.relationshipInvestmentEventLog, // 七、7.6.1（2026-09-20新增）：{choice,partnerName}，玩家剛在彈窗做了關係投入的選擇
+    marriage_crisis_arc: s.marriageCrisisArc ? { stage: s.marriageCrisisArc.stage, spouse_name: s.marriageCrisisArc.spouseName, reason: s.marriageCrisisArc.reason } : null, // 7.6.2（2026-09-27）：三段式進行中
     marriage_crisis_event_now: s.marriageCrisisEventLog, // 七、7.6.2（2026-09-20新增）：{choice,spouseName}，玩家剛在婚姻危機彈窗做了選擇(repair/maintain/divorce)
     divorce_event_now: s.divorceEventLog, // 七、7.6.3（2026-09-20新增）：{spouseName,playerCashSharePct,propertyChoice,custody}，離婚結算剛完成，數字僅供敘事參考不用你計算
     cohabitation_event_now: s.cohabitationEventLog, // 七、7.6.1.1（2026-09-22新增）：{choice,partnerName}，玩家剛在「要不要一起住」彈窗做了選擇(move_in/stay_separate)
@@ -6698,7 +6715,7 @@ function renderMarriageCrisisModal(pending){
   div.innerHTML = `
     <div class="modal">
       <h3>你們之間，好像哪裡不對勁</h3>
-      <p>說不上哪裡開始的，但最近跟${escapeHtml(pending.spouseName)}之間，好像一直有種說不出口的疙瘩，終於在某次對話裡攤開來講了。</p>
+      <p>話已經攤開來講了。接下來，你和${escapeHtml(pending.spouseName)}要怎麼走？</p>
       <button class="ghost-btn mc-btn" data-key="repair" style="display:block;width:100%;text-align:left;margin:4px 0;">試著修復這段關係</button>
       <button class="ghost-btn mc-btn" data-key="maintain" style="display:block;width:100%;text-align:left;margin:4px 0;">先維持現狀，暫時不處理</button>
       <button class="ghost-btn mc-btn" data-key="divorce" style="display:block;width:100%;text-align:left;margin:4px 0;">決定離婚</button>
