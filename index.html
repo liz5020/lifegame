@@ -964,7 +964,7 @@ function computeInterestHireBonusPp(s, targetCategory){
 function applyInterestEvent(s, interestEvent){
   if(!interestEvent || !interestEvent.category || !INTEREST_CATEGORIES.includes(interestEvent.category)) return;
   // 三、3.2.4（2026-09-23拍板）：這回合的行動投入在興趣路徑上，算一次考前拖累計數，與study_count_this_term同時累積、同時歸零
-  s.interestCountThisTerm = (s.interestCountThisTerm||0)+1;
+  if(s.inPrepPhaseThisTurn) s.interestCountThisTerm = (s.interestCountThisTerm||0)+1; // 2026-09-27：只算考前準備期
   if(!s.interestCandidates) s.interestCandidates = [];
   const category = interestEvent.category;
   const reaction = interestEvent.reaction; // "positive" | "neutral" | "negative"
@@ -2816,8 +2816,11 @@ function updateTransferCandidateOnExam(s, studyCountAtExam){
 // 以下數字皆為實作階段選定的【測試參數，待驗證】——60分及格門檻沿用台灣常見及格線慣例、骰值範圍呼應
 // system prompt既有「hint±10分左右合理，保留少量機率更意外」的敘事指示，改寫成client端可明牌呈現的擲骰版本
 const EXAM_CHECK_PASS_THRESHOLD = 60; // 【測試參數，待驗證】
-function rollFinalExamCheck(wisdom, studyCount){
-  const base = clamp(Math.round(wisdom + (studyCount||0)*3), 0, 100); // 沿用既有2.4.1大方向層公式
+function rollFinalExamCheck(wisdom, studyCount, interestCount){
+  // 三、3.2.4（2026-09-27補上）：期末考明牌檢定的基準分原本沒有扣興趣路徑拖累，跟期中考exam_score_hint不一致；
+  // 改成同一條公式（才識＋讀書×3−興趣×2×拖累倍率）。轉系(9.5.1)呼叫時不傳interestCount，維持原本算法
+  const drag = (interestCount||0) * EXAM_INTEREST_DRAG_PER_CHOICE * computeExamInterestDragMultiplier(wisdom);
+  const base = clamp(Math.round(wisdom + (studyCount||0)*3 - drag), 0, 100); // 沿用既有2.4.1大方向層公式
   const roll = rnd(1,100); // 骰值，明牌呈現給玩家
   let swing;
   if(roll<=90){
@@ -2827,7 +2830,7 @@ function rollFinalExamCheck(wisdom, studyCount){
     swing = (roll%2===0) ? rnd(11,25) : rnd(-25,-11);
   }
   const finalScore = clamp(base+swing, 0, 100);
-  return { wisdom:Math.round(wisdom), studyCount:(studyCount||0), base, roll, swing, finalScore, passThreshold: EXAM_CHECK_PASS_THRESHOLD, passed: finalScore>=EXAM_CHECK_PASS_THRESHOLD };
+  return { wisdom:Math.round(wisdom), studyCount:(studyCount||0), interestCount:(interestCount||0), drag:Math.round(drag*10)/10, base, roll, swing, finalScore, passThreshold: EXAM_CHECK_PASS_THRESHOLD, passed: finalScore>=EXAM_CHECK_PASS_THRESHOLD };
 }
 // 9.5.2 雙主修候選觸發：才識數值達門檻【測試參數，9.7測試項目3待校準】，或特定科系伏筆權重被觸發
 const DUAL_MAJOR_KNOWLEDGE_THRESHOLD = 70; // 【測試參數】
@@ -3029,7 +3032,10 @@ function advanceStructuredTime(actionText){
     cal.yearBase = (cal.leaveBase + LEAVE_OF_ABSENCE_DAYS) - SCHOOL_SEGMENT_OFFSET[s.timeState.segmentIndex % YEAR_SEGMENTS.length];
     cal.leaveBase = null; cal.leaveRound = 0;
   }
-  if(detectStudyIntent(actionText)) s.studyCountThisTerm = (s.studyCountThisTerm||0)+1;
+  // 三、3.2.4（2026-09-27修正）：讀書/興趣路徑次數只算「考前準備期」（原本開學初、放鬆期、假期也會算進去）
+  s.inPrepPhaseThisTurn = (mode==="highschool" || mode==="college") && s.leaveStatus!=="onLeave" &&
+    /準備期/.test(YEAR_SEGMENTS[s.timeState.segmentIndex % YEAR_SEGMENTS.length].key);
+  if(s.inPrepPhaseThisTurn && detectStudyIntent(actionText)) s.studyCountThisTerm = (s.studyCountThisTerm||0)+1;
   if(mode==="highschool" || mode==="college"){
     const fromGlobalIdx = (s.timeState.yearInStage-1)*YEAR_SEGMENTS.length + s.timeState.segmentIndex;
     const currentSeg = YEAR_SEGMENTS[fromGlobalIdx % YEAR_SEGMENTS.length];
@@ -4452,7 +4458,13 @@ async function takeTurn(actionText, cost){
   const adv = advanceStructuredTime(actionText);
   // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
   // （呼應7.1.5死亡機制精神，不讓AI自由裁量這個數字），期中考不受影響、維持原本hint範圍由AI自由發揮
-  const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance) : null;
+  const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance, interestCountBeforeAdvance) : null;
+  // 三、3.2.4（2026-09-27）：記下每次考試成績，供畫面上的課業軌跡顯示（期中考用大方向落點，期末考用明牌檢定分數）
+  if(adv.examTriggered){
+    const score = examCheck ? examCheck.finalScore : clamp(Math.round(state.stats.knowledge + studyCountBeforeAdvance*3
+      - interestCountBeforeAdvance*EXAM_INTEREST_DRAG_PER_CHOICE*computeExamInterestDragMultiplier(state.stats.knowledge)), 0, 100);
+    state.examHistory = (state.examHistory||[]).concat([{ label: adv.currentLabel, type: adv.examType, score }]).slice(-6);
+  }
   if(examCheck && !examCheck.passed) markPlayStyleSetback(state, "exam_fail", null); // 十六、16.2.3
   // 2026-09-23修正（時間標籤慢一拍bug）：這回合顯示/送給AI的標籤改用currentLabel(這回合實際所在的段落)，
   // 不再用toLabel(換段後、下一回合才生效的段落)；jump提示(from/to)維持給跳過動作用，語意不變
@@ -5885,6 +5897,7 @@ function renderPlaying(loadingTurn){
     ${ledgerRow("外表", s.appearance)}
     ${ledgerRow("人脈", s.stats.network)}
   </div>
+  ${renderTracks(s)}
   <div class="journal">
     ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text, true)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("")}
     ${loadingTurn ? renderTurnLoading() : ""}
@@ -5931,6 +5944,29 @@ function renderProgressStrip(s){
     <div class="prow"><b>${escapeHtml(timeLabel)}</b>${progress ? `<span>${progress.label}　${progress.current}/${progress.total}</span>` : ``}</div>
     ${progress ? `<div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>` : ``}
   </div>`;
+}
+// 三、3.2.4【定案】課業成績與興趣成長兩條軌跡都要顯示給玩家（2026-09-27補上）：帳本下方一行課業、一行興趣。
+// 興趣投入度不裸露數字，改文字級距（比照4.1.1關係值「文字化呈現」的精神）；課業成績是考試分數，本來就會在考試彈窗/敘事出現，直接顯示
+function interestLevelLabel(c){
+  if(c.status==="dormant") return "淡了";
+  if(c.status==="candidate") return "剛接觸";
+  const v = c.investment||0;
+  return v>=70 ? "很投入" : v>=40 ? "漸入佳境" : "持續中";
+}
+function renderTracks(s){
+  const rows = [];
+  if(isStudentPhase(s) && s.timeState.stageMode!=="career"){
+    const last = (s.examHistory||[]).slice(-1)[0];
+    const lastText = last ? `上次${last.type}${last.score}分` : "還沒考過試";
+    const prep = s.inPrepPhaseThisTurn || /準備期/.test((YEAR_SEGMENTS[s.timeState.segmentIndex % YEAR_SEGMENTS.length]||{}).key||"");
+    const prepText = prep ? `；這段準備期讀書${s.studyCountThisTerm||0}次、興趣${s.interestCountThisTerm||0}次` : "";
+    rows.push(`<div class="ledger-row"><span class="lbl">課業</span><span class="dots"></span><span class="val" style="font-size:12px;">${escapeHtml(lastText+prepText)}</span></div>`);
+  }
+  const cards = (s.interestCandidates||[]).filter(c=>c.status==="active" || c.status==="dormant");
+  if(cards.length){
+    rows.push(`<div class="ledger-row"><span class="lbl">興趣</span><span class="dots"></span><span class="val" style="font-size:12px;">${escapeHtml(cards.map(c=>`${c.category}（${interestLevelLabel(c)}）`).join("、"))}</span></div>`);
+  }
+  return rows.length ? `<div class="ledger tracks">${rows.join("")}</div>` : "";
 }
 function ledgerRow(label,val){
   // bug修正（9/14，人生草稿0914測試.pdf）：底層數值（例如邊際遞減後的才識/人脈）是浮點數，
@@ -6281,7 +6317,7 @@ function renderExamCheckModal(check){
         <button class="primary-btn" id="btn-exam-reveal">揭曉</button>
       </div>
       <div id="exam-check-stage2" style="display:none;">
-        <p style="font-size:13px;">屬性加成：才識${check.wisdom} + 讀書${check.studyCount}次×3 = 基準${check.base}分</p>
+        <p style="font-size:13px;">屬性加成：才識${check.wisdom} + 讀書${check.studyCount}次×3${check.interestCount ? ` − 興趣${check.interestCount}次拖累${check.drag}` : ""} = 基準${check.base}分</p>
         <p style="font-size:13px;">骰值：擲出${check.roll}（1-100），對應加減 ${swingText} 分</p>
         <p style="font-size:13px;">最終分數：${check.base} ${swingText} = <strong>${check.finalScore}分</strong>（及格門檻${check.passThreshold}分）</p>
         <p style="font-size:16px;margin-top:10px;"><strong>${check.passed ? "通過及格線" : "未達及格線"}</strong></p>
