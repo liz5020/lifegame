@@ -609,19 +609,44 @@ function refreshMilestoneSkipReasons(s){
     else delete s.milestoneSkipReason[def.id];
   });
 }
+// 3.8.2 職涯認同（2026-09-27，【測試參數】）：只用既有結構化職涯狀態換算，不另設AI欄位。
+// 在職＝40＋職級×15＋年資(年,上限10)×2；經營事業＝50＋規模×10；半退休＝40；正職工作跟某張正式興趣卡對應(8.9)再＋10；其餘0
+function computeCareerIdentity(s){
+  let v = 0;
+  if(s.careerStatus===CAREER_STATUS.EMPLOYED) v = 40 + (s.jobLevel||0)*15 + Math.min((s.tenureMonths||0)/12, 10)*2;
+  else if(s.careerStatus===CAREER_STATUS.BUSINESS) v = 50 + (s.jobLevel||0)*10;
+  else if(s.careerStatus===CAREER_STATUS.SEMI_RETIRED) v = 40;
+  if(v>0 && s.occupationCategory && (s.interestCandidates||[]).some(c=>c.status==="active" && (INTEREST_OCCUPATION_MATCH[c.category]||[]).includes(s.occupationCategory))) v += 10;
+  return clamp(v, 0, 100);
+}
+// 3.8.2 社團參與（2026-09-27，【測試參數】）：AI每回合回報club_activity(這回合有沒有社團/球隊/志工/讀書會等團體活動)，
+// 有就＋CLUB_ENGAGEMENT_GAIN(套3.5.3邊際遞減)；連續CLUB_IDLE_TURNS回合沒有就每回合−1，比照人脈閒置衰退
+const CLUB_ENGAGEMENT_GAIN = 8;
+const CLUB_IDLE_TURNS = 12;
+function applyClubActivity(s, active){
+  if(active){
+    s.clubEngagement = clamp((s.clubEngagement||0) + applyMarginalDiminish(CLUB_ENGAGEMENT_GAIN, s.clubEngagement||0), 0, 100);
+    s.clubIdleStreak = 0;
+  } else {
+    s.clubIdleStreak = (s.clubIdleStreak||0)+1;
+    if(s.clubIdleStreak>=CLUB_IDLE_TURNS) s.clubEngagement = Math.max(0, (s.clubEngagement||0)-1);
+  }
+}
 function computeHappinessChannels(s){
   // 3.8.2【定案】五條來源管道，各自0-100、各自套用邊際遞減。
-  // ⚠️落差：「社團參與」與「職涯認同」目前沒有對應的結構化欄位，v1先由人脈／才識承擔，已記入QA手冊34.2
+  // （2026-09-27）「社團參與」「職涯認同」已補上，見applyClubActivity()／computeCareerIdentity()
   const chars = s.characters||[];
   const intimate = chars.filter(c=>INTIMATE_RELATION_RE.test(c.relation||""));
   const others = chars.filter(c=>!INTIMATE_RELATION_RE.test(c.relation||""));
   const interests = s.interestCandidates||[];
   const topInterest = interests.length ? Math.max.apply(null, interests.map(c=>c.investment||0)) : 0;
   const finHealth = computeFinancialHealthForState(s);
+  // 3.8.2（2026-09-27補上社團參與與職涯認同，使用者授權Claude全權判斷）：兩個新輸入都跟原本的同類輸入「取較高」再加權，
+  // 不是額外加一項——沒參加社團、沒在工作(學生/退休/不婚不就業)的人不會因此被拉低，維持六、6.4中立性
   const raw = {
     intimacy: avgAffinity(intimate),
-    belonging: (s.stats.network||0)*0.6 + avgAffinity(others)*0.4,
-    selfActualization: (s.stats.knowledge||0)*0.5 + clamp(topInterest,0,100)*0.5,
+    belonging: (s.stats.network||0)*0.6 + Math.max(avgAffinity(others), s.clubEngagement||0)*0.4,
+    selfActualization: (s.stats.knowledge||0)*0.5 + Math.max(clamp(topInterest,0,100), computeCareerIdentity(s))*0.5,
     stability: (s.stats.health||0)*0.5 + finHealth*0.5,
     autonomy: computeAutonomyRaw(s)
   };
@@ -4374,6 +4399,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
     foreshadow_new, foreshadow_updates,
     narrative: narrative + docBox, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
     stat_deltas: deltas, event_type, event_id, interest_event, emotional_tone,
+    club_activity: Math.random()<0.15, // 3.8.2 mock版（2026-09-27）
     attachment_shift, peer_position_shift, revealed_key_event:false,
     college_location_choice:null, fertility_stage_update:null,
     new_characters, character_updates, major_event_summary, major_event_type,
@@ -4708,6 +4734,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 
   // 八、興趣系統v1（9/16新增）：AI只分類，候選成立/投入度/自律加成/副業契機一律由程式計算
   applyInterestEvent(s, r.interest_event);
+  applyClubActivity(s, r.club_activity===true); // 3.8.2（2026-09-27）：社團參與
   sweepInterestDecay(s);
 
   if(r.revealed_key_event && s.keyEvent && !s.keyEvent.revealed){
