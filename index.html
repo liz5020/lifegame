@@ -578,6 +578,52 @@ function applyLogicGrowth(s, actionText, interestEvent){
   if(!detectLogicIntent(actionText) && !byInterest) return;
   s.logicAbility = clamp(s.logicAbility + applyMarginalDiminish(LOGIC_GROWTH_PER_EVENT, s.logicAbility), 0, 100);
 }
+// ========== 七、7.3.2 生育嘗試兩層骰的大方向層改由程式掌管（2026-09-27，使用者同意Claude建議，數字皆為【測試參數】） ==========
+// 取代原本「AI依健康/年齡/financial_health自行判斷成功」：玩家行動提到想生小孩/備孕/試管，且有交往以上的伴侶時，程式依年齡、健康、
+// 財務健康度擲骰；成功就懷孕，約FERTILITY_PREGNANCY_DAYS天後出生，出生那回合才開放AI建立子女卡(沒建就程式補一張)。
+// 領養：財務健康度≥ADOPTION_MIN_FINANCIAL_HEALTH才成立，成立當回合就是新成員加入。細節層(一次成功或多次嘗試的心情、不孕症四階段)仍由AI寫
+const FERTILITY_PREGNANCY_DAYS = 270;
+const ADOPTION_MIN_FINANCIAL_HEALTH = 40;
+function fertilityBaseProbability(age){
+  if(age<=30) return 0.35; if(age<=35) return 0.28; if(age<=40) return 0.15; if(age<=45) return 0.05; return 0.01;
+}
+function computeFertilityProbability(s){
+  const healthMult = 0.6 + (s.stats.health||0)/250;
+  const financeMult = computeFinancialHealthForState(s) < 20 ? 0.8 : 1;
+  return clamp(fertilityBaseProbability(s.age) * healthMult * financeMult, 0, 0.95);
+}
+function detectFertilityIntent(t){ return /想生|備孕|生小孩|生個孩子|生孩子|做人|試管|人工受孕|想要孩子|想要小孩/.test(t||""); }
+function detectAdoptionIntent(t){ return /領養|收養/.test(t||""); }
+function hasFertilityPartner(s){ return (s.characters||[]).some(c=>!c.deceased && ["dating","stable","married"].includes(c.romanceStatus)); }
+function applyFertilityTurn(s, actionText){
+  s.fertilityEventLog = null; s.birthNow = null;
+  const cal = s.timeState && s.timeState.cal;
+  // 懷孕到期：這一回合出生
+  if(s.pregnancy && cal && cal.lastRoundEnd >= s.pregnancy.dueDay){
+    s.pregnancy = null;
+    s.birthNow = { method:"birth" };
+    s.fertilityEventLog = { type:"birth" };
+    return;
+  }
+  if(s.pregnancy) return; // 懷孕中不再嘗試
+  if(detectAdoptionIntent(actionText)){
+    const ok = computeFinancialHealthForState(s) >= ADOPTION_MIN_FINANCIAL_HEALTH;
+    if(ok){ s.birthNow = { method:"adoption" }; s.fertilityEventLog = { type:"adoption", success:true }; }
+    else s.fertilityEventLog = { type:"adoption", success:false, reason:"finance" };
+    return;
+  }
+  if(!detectFertilityIntent(actionText) || !hasFertilityPartner(s)) return;
+  const prob = computeFertilityProbability(s);
+  const success = Math.random() < prob;
+  s.fertilityAttempts = (s.fertilityAttempts||0)+1;
+  if(success){
+    s.pregnancy = { dueDay: (cal ? cal.lastRoundEnd : 0) + FERTILITY_PREGNANCY_DAYS };
+    s.fertilityEventLog = { type:"attempt", success:true, attempts: s.fertilityAttempts };
+    s.fertilityAttempts = 0;
+  } else {
+    s.fertilityEventLog = { type:"attempt", success:false, attempts: s.fertilityAttempts };
+  }
+}
 // ========== 三、3.4.2 打工薪資（2026-09-27補上，使用者授權Claude全權判斷） ==========
 // 原本打工收入只能靠AI在one_time_transaction自由填，沒有基準時薪。改成：沒有正職（學生、待業、半退休）的人這回合行動
 // 提到打工/兼職/家教等，程式依時薪×時數入帳，並告訴AI金額(part_time_event_now)。時薪：一般0.2、家教/技術型0.3~0.5，
@@ -2605,11 +2651,14 @@ const HOUSEHOLD_COHABITING_LIVING_MULTIPLIER = HOUSEHOLD_SHARED_LIVING_MULTIPLIE
 const CHILD_SUPPORT_PRESCHOOL_MAX_AGE = 5;
 const CHILD_SUPPORT_SCHOOL_MAX_AGE = 17;
 const CHILD_SUPPORT_AMOUNT = { preschool:3, school:5 }; // 【待驗證,3.4.11】三級扶養費具體金額，跟3.4.8基準金額一樣先用參數值
+const CHILD_SUPPORT_COLLEGE_MAX_AGE = 22; // 【測試參數,3.4.11，2026-09-27】
 function childSupportAmount(age){
   if(typeof age!=="number") return 0;
   if(age<=CHILD_SUPPORT_PRESCHOOL_MAX_AGE) return CHILD_SUPPORT_AMOUNT.preschool;
   if(age<=CHILD_SUPPORT_SCHOOL_MAX_AGE) return CHILD_SUPPORT_AMOUNT.school;
-  return 0; // 大學階段：3.4.4統一由家長支付，不接扣款機制；已成年離家：不再列入扶養
+  // 3.4.11（2026-09-27使用者同意Claude建議）：18~22歲大學期間照青少年級繼續算生活費；學費照3.4.4由家長支付、不另外算
+  if(age<=CHILD_SUPPORT_COLLEGE_MAX_AGE) return CHILD_SUPPORT_AMOUNT.school;
+  return 0; // 22歲以後：不再列入扶養
 }
 function computeChildSupportCost(s){
   // 【定案】多名子女各自計算，不打折
@@ -4134,6 +4183,26 @@ function queueEldercareDecision(s, c){
   else (s.eldercareQueue = s.eldercareQueue||[]).push(ecReq);
 }
 // 13.6 父母過世
+// 十三、13.6（2026-09-27使用者同意Claude建議，【測試參數】）：原生家庭的房子。開局依家境決定有沒有(清寒20%／小康60%／富裕95%)，
+// 價值＝家庭月收入×120。父母兩人(含隔代教養的祖父母)都過世時才繼承，有在世手足時平分；繼承的是沒有房貸的房產淨值(掛3.4.9)
+const FAMILY_HOME_OWN_PROB = { 清寒:0.2, 小康:0.6, 富裕:0.95 };
+const FAMILY_HOME_VALUE_MONTHS = 120;
+function ensureFamilyHome(s){
+  if(s.familyHomeValue!==undefined) return;
+  const owns = Math.random() < (FAMILY_HOME_OWN_PROB[s.family] ?? 0.6);
+  s.familyHomeValue = owns ? Math.round((s.familyMonthlyIncome||60) * FAMILY_HOME_VALUE_MONTHS) : 0;
+}
+function settleFamilyHomeInheritance(s){
+  ensureFamilyHome(s);
+  if(!s.familyHomeValue || s.familyHomeInherited) return 0;
+  const livingParents = (s.characters||[]).filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && !c.deceased && !/不同住/.test(c.relation||""));
+  if(livingParents.length) return 0;
+  const siblings = (s.characters||[]).filter(c=>c.origin==="手足，從出生起" && !c.deceased).length;
+  const share = Math.round(s.familyHomeValue / (1+siblings));
+  s.propertyValue = (s.propertyValue||0) + share;
+  s.familyHomeInherited = true;
+  return share;
+}
 function finalizeParentDeath(s, parentName){
   const parent = s.characters.find(c=>c.name===parentName);
   if(!parent) return;
@@ -4163,7 +4232,9 @@ function finalizeParentDeath(s, parentName){
     otherParentStage = otherParent.healthStage;
     queueEldercareDecision(s, otherParent);
   }
-  s.parentDeathEventLog = { parentName, relation:parent.relation, inheritance, siblings_estate: siblings.length ? siblings : null,
+  const homeShare = settleFamilyHomeInheritance(s); // 13.6（2026-09-27）：最後一位家長過世時繼承房子
+  if(homeShare) s.chronicle.push(`（${s.age}歲）繼承了家裡的房子${siblings.length ? "（和手足平分）" : ""}`);
+  s.parentDeathEventLog = { parentName, relation:parent.relation, inheritance, home_share: homeShare || null, siblings_estate: siblings.length ? siblings : null,
     other_parent: otherParent ? { name: otherParent.name, new_health_stage: otherParentStage } : null };
 }
 
@@ -4475,6 +4546,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     previous_generation_events: (timeCtx && timeCtx.prologue && s.prevGenerationEventTitles && s.prevGenerationEventTitles.length) ? s.prevGenerationEventTitles : null, // 7.7.5（2026-09-27）：只在傳承後的開場回合送上一代事件標題
     interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
     part_time_event_now: s.partTimeEventLog || null,
+    fertility_event_now: s.fertilityEventLog || null, // 7.3.2（2026-09-27）：這回合生育嘗試/懷孕/出生/領養的系統判定結果
+    pregnant: !!s.pregnancy,
     caregiving_now: s.caringForParentName ? { parent: s.caringForParentName, reduced_hours: !!s.caregiverIncomeCut } : null, // 13.5.2（2026-09-27） // 3.4.2（2026-09-27）：這回合打工的時薪、時數、收入，已入帳
     illness_event_now: s.illnessEventLog,
     major_illness_event_now: s.majorIllnessEventLog,
@@ -4977,6 +5050,7 @@ async function takeTurn(actionText, cost){
   // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
   const adv = advanceStructuredTime(actionText);
   applyPartTimeWork(state, actionText, adv.window); // 3.4.2（2026-09-27）：打工收入由程式依時薪×時數算好，AI只負責敘事
+  applyFertilityTurn(state, actionText); // 7.3.2（2026-09-27）：生育/領養的大方向由程式判定
   // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
   // （呼應7.1.5死亡機制精神，不讓AI自由裁量這個數字），期中考不受影響、維持原本hint範圍由AI自由發揮
   const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance, interestCountBeforeAdvance) : null;
@@ -5787,7 +5861,15 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   });
   // 三、3.9.1（2026-09-25）：單回合一次性收入合計不超過max_windfall_this_turn，超過的部分不入帳(支出不受影響)
   const windfallCap = computeMaxWindfall(s);
-  const cappedTx = capWindfallTransactions(r.one_time_transaction, windfallCap);
+  // 12.13（2026-09-27使用者同意Claude建議）：職涯相關收入(薪水、獎金、分紅、營收)一律由系統計算，AI在one_time_transaction回報的不入帳
+  const careerIncomeRe = /薪水|薪資|月薪|獎金|年終|分紅|營收|業績獎|退休金/;
+  const txNoCareer = (r.one_time_transaction||[]).filter(tx=>{
+    if(tx && typeof tx.amount==="number" && tx.amount>0 && careerIncomeRe.test(String(tx.label||""))){
+      addReviewFlag(s, "career_income_blocked", `AI回報職涯收入「${tx.label}」${tx.amount}，未入帳`); return false;
+    }
+    return true;
+  });
+  const cappedTx = capWindfallTransactions(txNoCareer, windfallCap);
   if(cappedTx.blocked>0) addReviewFlag(s, "windfall_capped", `一次性收入超過本回合上限${windfallCap}，${Math.round(cappedTx.blocked)}未入帳`);
   cappedTx.txs.forEach(tx=>{
     if(!tx || typeof tx.amount !== "number") return;
@@ -5852,6 +5934,9 @@ function applyResult(r, timeCtx, forceEnding, actionText){
       console.warn(`[角色同名] ${name}（${nc.relation}）與既有角色（${exists.relation}）衝突，改名為${renamed}`);
       name = renamed;
     }
+    // 7.3.2（2026-09-27）：子女卡只在系統判定出生/領養的這一回合開放(birthNow)，其他回合AI回報的is_child不採用
+    if(nc.is_child && !s.birthNow) return;
+    if(nc.is_child) s.birthNow.created = true;
     s.characters.push({
       name, relation:nc.relation||"", traits:nc.traits||"",
       gender: CHARACTER_GENDERS.includes(nc.gender) ? nc.gender : genderFromRelation(nc.relation), // 4.1/1.2.5（2026-09-27）
@@ -5868,6 +5953,17 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     // 四、4.2.2（9/19新增）：is_child是既有結構化訊號，生育/領養自動判定完成
     if(nc.is_child && s.milestones.first_child!=="completed") s.milestones.first_child = "completed";
   });
+  // 7.3.2（2026-09-27）：系統判定出生/領養但AI沒有建子女卡時，程式補一張(名字先用暫名，之後AI可在敘事裡取名)
+  if(s.birthNow && !s.birthNow.created){
+    const isBoy = Math.random()<0.5;
+    let babyName = isBoy ? "小弟" : "小妹";
+    if(s.characters.some(c=>c.name===babyName)) babyName = renameForConflict(s, babyName, isBoy?"兒子":"女兒");
+    s.characters.push({ name: babyName, relation: isBoy?"兒子":"女兒", gender: isBoy?"男":"女", traits:"", dialogueStyle:"normal",
+      affinity:60, summary:"", lastTurn:s.turnCount, active:true, isChild:true, origin: s.birthNow.method==="adoption" ? "領養" : "出生",
+      age:0, cohabiting:true, parentingLog:[] });
+    if(s.milestones.first_child!=="completed") s.milestones.first_child = "completed";
+  }
+  s.birthNow = null;
   // 4.1.1顯示規則（2026-09-22改版，取代原本「每次互動只要有變就跳」的洗版式做法）：三層優先序——
   // 第1層戀愛狀態轉換／第2層關係狀態文字級距改變，當回合必定提示；第3層一般關係值增減，每位NPC累積尚未提示過的
   // 變化量（relationshipHintAccum），累積絕對值達RELATIONSHIP_HINT_ACCUM_THRESHOLD才提示一次並歸零。
