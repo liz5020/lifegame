@@ -1,0 +1,38 @@
+// 2026-09-27：十三、13.5.2照顧選項補完、13.3.4徵兆期指示
+import fs from "fs";
+import path from "path";
+import * as H from "./harness.mjs";
+const A = H.makeAsserter("13.5.2照顧補完");
+let lastBody = "";
+H.installUpstream(H.makeFakeAnthropic({ turnOverride: (p) => { lastBody = JSON.stringify(p); return {}; } }));
+const g = await H.loadGame({ useMock: false, env: H.makeEnv(), key: "caregiv001" });
+await H.startNewLife(g);
+await H.playTurn(g);
+const ev = g.ev;
+const doc = g.win.document;
+ev(`state.characters = state.characters.filter(c=>c.origin!=='父母，從出生起' && c.origin!=='隔代教養，從出生起' && c.origin!=='手足，從出生起');
+    state.characters.push({name:'老媽',relation:'母親',gender:'女',origin:'父母，從出生起',age:80,healthStage:2,affinity:60,active:true,traits:'',summary:'',lastTurn:0},
+      {name:'大哥',relation:'哥哥',gender:'男',origin:'手足，從出生起',affinity:30,active:true,traits:'',summary:'',lastTurn:0});
+    state.careerStatus=CAREER_STATUS.EMPLOYED; state.occupationCategory='受雇專業/白領類'; state.monthlyIncome=100; state.studentStatus='graduated'; state.timeState.stageMode='career'`);
+ev("resolveEldercareDecision(state,'老媽','split')");
+A.check("手足關係值30：分工起衝突、關係值下降", ev("state.eldercareEventLog.sibling_tone") === "conflict" && ev("state.characters.find(c=>c.name==='大哥').affinity") < 30);
+ev("state.characters.find(c=>c.name==='大哥').affinity=70; resolveEldercareDecision(state,'老媽','split')");
+A.check("手足關係值70：分工是支援", ev("state.eldercareEventLog.sibling_tone") === "support");
+ev("resolveEldercareDecision(state,'老媽','self')");
+A.check("自己照顧：在職減工時(月收入×0.8)", ev("state.monthlyIncome") === 80 && ev("state.caringForParentName") === "老媽");
+const h0 = ev("state.stats.health");
+await H.playTurn(g);
+A.check("照顧期間：每回合健康扣0.5、AI收到caregiving_now", ev("state.stats.health") <= h0 && /caregiving_now[^}]*老媽/.test(lastBody.replace(/\\"/g, '"')));
+ev("finalizeParentDeath(state,'老媽'); applyCaregivingTurn(state)");
+A.check("照顧結束：工時恢復", ev("state.caringForParentName") === null && ev("state.monthlyIncome") === 100);
+ev(`state.characters.push({name:'老爸',relation:'父親',gender:'男',origin:'父母，從出生起',age:82,healthStage:2,affinity:60,active:true,traits:'',summary:'',lastTurn:0}); renderEldercareDecisionModal({parentName:'老爸',stage:2})`);
+A.check("照顧彈窗有自訂選項", !!doc.querySelector('.ec-btn[data-key="custom"]'));
+doc.querySelector('.ec-btn[data-key="custom"]').click();
+doc.getElementById("ec-custom-input").value = "白天請鄰居幫忙看，晚上我回去";
+doc.getElementById("btn-ec-confirm").click();
+A.check("自訂：內容交給AI、沒有數值變動", ev("state.eldercareEventLog.choice") === "custom" && ev("state.eldercareEventLog.custom_text").includes("鄰居") && ev("state.caringForParentName") === null);
+const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
+A.check("prompt：徵兆期要不要去檢查、照顧佔時間", prompt.includes("要不要去檢查") && prompt.includes("caregiving_now"));
+A.check("整段沒有jsdom錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
+const ok = A.report();
+process.exit(ok ? 0 : 1);

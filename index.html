@@ -4066,8 +4066,38 @@ function rollParentHealthStageAdvance(s){
 }
 // 13.5.2【定案】選項：自己擔任主要照顧者/與手足分工/聘僱居家照服員或機構(中費用等級)/由手足承擔自己有限度參與/自訂輸入
 const ELDERCARE_HIRE_MONTHLY_COST = 5; // 【測試參數,待驗證,13.5.2】中費用等級
-function resolveEldercareDecision(s, parentName, choice){
+// 13.5.2（2026-09-27補完，使用者授權Claude全權判斷，【測試參數】）：
+//  ①第5個選項「自訂輸入」：不做數值變動，玩家寫的安排交給AI；②跟手足分工：手足關係值≥50是支援(+1~4)，否則是衝突(−2~4)，並告訴AI；
+//  ③自己擔任主要照顧者：在職者減少工時(月收入×CAREGIVER_INCOME_FACTOR，照顧結束時恢復)，照顧期間每回合健康−CAREGIVER_HEALTH_COST_PER_TURN，
+//    這些回合AI會收到caregiving_now，敘事要寫出照顧佔掉的時間
+const CAREGIVER_INCOME_FACTOR = 0.8;
+const CAREGIVER_HEALTH_COST_PER_TURN = 0.5;
+function startCaregiving(s, parentName){
+  s.caringForParentName = parentName;
+  if(s.careerStatus===CAREER_STATUS.EMPLOYED && !s.caregiverIncomeCut){
+    s.caregiverIncomeCut = { original: s.monthlyIncome };
+    s.monthlyIncome = Math.round(s.monthlyIncome * CAREGIVER_INCOME_FACTOR);
+  }
+}
+function endCaregivingIfDone(s){
+  if(!s.caringForParentName) return;
+  const p = s.characters.find(c=>c.name===s.caringForParentName);
+  if(p && !p.deceased) return;
+  s.caringForParentName = null;
+  if(s.caregiverIncomeCut){
+    if(s.careerStatus===CAREER_STATUS.EMPLOYED) s.monthlyIncome = Math.max(s.monthlyIncome, s.caregiverIncomeCut.original);
+    s.caregiverIncomeCut = null;
+  }
+}
+function applyCaregivingTurn(s){
+  endCaregivingIfDone(s);
+  if(!s.caringForParentName) return false;
+  s.stats.health = clamp(s.stats.health - CAREGIVER_HEALTH_COST_PER_TURN, 0, 100);
+  return true;
+}
+function resolveEldercareDecision(s, parentName, choice, customText){
   const parent = s.characters.find(c=>c.name===parentName);
+  let siblingTone = null;
   if(parent){
     if(choice==="hire"){
       s.monthlyExpenses.push({ label:"長照看護費", amount:ELDERCARE_HIRE_MONTHLY_COST });
@@ -4076,11 +4106,14 @@ function resolveEldercareDecision(s, parentName, choice){
       parent.affinity = clamp(parent.affinity + rnd(3,6), 0, 100);
       s.stats.health = clamp(s.stats.health - rnd(3,6), 0, 100);
       completeMilestone(s, "became_caregiver"); // 4.3.1（2026-09-27）
-      s.caringForParentName = parentName; // 10.6.9：放置時「顧家」的照顧父母狀態
+      startCaregiving(s, parentName); // 13.5.2（2026-09-27）：工時與照顧負荷連動；10.6.9放置時「顧家」也讀這個狀態
     } else if(choice==="split"){
       // 13.5.2【定案】連動五、5.2家庭結構的手足角色卡，手足互動是支援或衝突取決於既有關係值，這裡採支援方向的預設效果
-      const sibling = s.characters.find(c=>/^哥哥$|^弟弟$|^姊姊$|^妹妹$/.test(c.relation||""));
-      if(sibling) sibling.affinity = clamp(sibling.affinity + rnd(1,4), 0, 100);
+      const sibling = s.characters.find(c=>c.origin==="手足，從出生起" && !c.deceased) || s.characters.find(c=>/^哥哥$|^弟弟$|^姊姊$|^妹妹$/.test(c.relation||""));
+      if(sibling){
+        siblingTone = (sibling.affinity||0)>=50 ? "support" : "conflict";
+        sibling.affinity = clamp(sibling.affinity + (siblingTone==="support" ? rnd(1,4) : -rnd(2,4)), 0, 100);
+      }
     }
     // limited：由手足承擔，自己有限度參與——不做額外數值變動，代價由「沒有主動投入」自然反映
   }
@@ -4091,7 +4124,8 @@ function resolveEldercareDecision(s, parentName, choice){
     const np = s.characters.find(c=>c.name===next.parentName);
     if(np && !np.deceased && (np.healthStage||1)<4) s.pendingEldercareDecision = { parentName:np.name, stage:np.healthStage };
   }
-  s.eldercareEventLog = { parentName, choice, stage: parent ? parent.healthStage : null };
+  s.eldercareEventLog = { parentName, choice, stage: parent ? parent.healthStage : null, sibling_tone: siblingTone,
+    custom_text: choice==="custom" ? String(customText||"").slice(0, CUSTOM_INPUT_MAX_CHARS) : undefined };
 }
 
 function queueEldercareDecision(s, c){
@@ -4440,7 +4474,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     old_age_theme: computeOldAgeTheme(s), // 13.7.2（2026-09-27）：60歲以後本回合的主題方向
     previous_generation_events: (timeCtx && timeCtx.prologue && s.prevGenerationEventTitles && s.prevGenerationEventTitles.length) ? s.prevGenerationEventTitles : null, // 7.7.5（2026-09-27）：只在傳承後的開場回合送上一代事件標題
     interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
-    part_time_event_now: s.partTimeEventLog || null, // 3.4.2（2026-09-27）：這回合打工的時薪、時數、收入，已入帳
+    part_time_event_now: s.partTimeEventLog || null,
+    caregiving_now: s.caringForParentName ? { parent: s.caringForParentName, reduced_hours: !!s.caregiverIncomeCut } : null, // 13.5.2（2026-09-27） // 3.4.2（2026-09-27）：這回合打工的時薪、時數、收入，已入帳
     illness_event_now: s.illnessEventLog,
     major_illness_event_now: s.majorIllnessEventLog,
     parent_health_event_now: s.parentHealthEventLog,
@@ -5261,7 +5296,6 @@ function idleResolvePendingPopups(s, record){
       const hasSibling = s.characters.some(c=>c.origin==="手足，從出生起" && !c.deceased);
       const opts = IDLE_POPUP_MAP.eldercare.filter(o=>hasSibling || (o.key!=="split" && o.key!=="limited"));
       const k = idleChooseOption(s, opts); resolveEldercareDecision(s, ec.parentName, k);
-      if(k==="self") s.caringForParentName = ec.parentName;
       decide("eldercare", k); continue;
     }
     break;
@@ -5290,6 +5324,7 @@ function simulateIdleRound(s, index){
   record.line = nextIdleLine(s, tag);
   record.newFriend = record.line===IDLE_NEW_FRIEND_LINE;
   applyAcuteRecovery(s);
+  applyCaregivingTurn(s);
   advanceMajorIllness(s); // 已經在治療中的照常推進；新的重大疾病不判定(rollAnnualIllnessCheck讀idleMode)
   s.lowHealthStreak = s.stats.health<30 ? (s.lowHealthStreak||0)+1 : 0;
   refreshAppearance(s);
@@ -5617,6 +5652,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   s.stats.health = clamp(s.stats.health + healthDelta, 0, 100);
   // 十三、13.2（2026-09-20新增）：健康年齡上限收斂(年度)已在rollAnnualHealthChecks處理；13.3.4重大疾病治療期是連續回合機制，每回合都要推進
   applyAcuteRecovery(s); // 13.3.2（2026-09-27）：急性病之後幾回合健康回升
+  applyCaregivingTurn(s); // 13.5.2（2026-09-27）：照顧家人的負荷
   const majorIllnessProgress = advanceMajorIllness(s);
   if(majorIllnessProgress) s.majorIllnessEventLog = majorIllnessProgress;
 
@@ -8085,15 +8121,20 @@ function renderEldercareDecisionModal(pending){
       ${hasSibling ? `<button class="ghost-btn ec-btn" data-key="split" style="display:block;width:100%;text-align:left;margin:4px 0;">與手足分工</button>` : ""}
       <button class="ghost-btn ec-btn" data-key="hire" style="display:block;width:100%;text-align:left;margin:4px 0;">聘僱居家照服員或機構</button>
       ${hasSibling ? `<button class="ghost-btn ec-btn" data-key="limited" style="display:block;width:100%;text-align:left;margin:4px 0;">由手足承擔，自己有限度參與</button>` : ""}
+      <button class="ghost-btn ec-btn" data-key="custom" style="display:block;width:100%;text-align:left;margin:4px 0;">自己想辦法安排</button>
+      <div id="ec-custom-wrap" style="display:none;"><input type="text" id="ec-custom-input" style="width:100%;box-sizing:border-box;padding:6px;" placeholder="說說你打算怎麼安排" /></div>
       <button class="primary-btn" id="btn-ec-confirm" style="margin-top:14px;">確定</button>
     </div>`;
   document.body.appendChild(div);
   let chosen = hasSibling ? "limited" : "hire";
   div.querySelectorAll(".ec-btn").forEach(btn=>{
-    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".ec-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".ec-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)";
+      document.getElementById("ec-custom-wrap").style.display = chosen==="custom" ? "block" : "none"; };
   });
   document.getElementById("btn-ec-confirm").onclick = ()=>{
-    resolveEldercareDecision(s, pending.parentName, chosen);
+    const customText = (document.getElementById("ec-custom-input")||{}).value || "";
+    if(chosen==="custom" && countInputChars(customText) > CUSTOM_INPUT_MAX_CHARS) return; // 1.1.3
+    resolveEldercareDecision(s, pending.parentName, chosen, customText);
     div.remove();
     saveGame(); render();
   };
