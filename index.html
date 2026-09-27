@@ -4990,10 +4990,18 @@ function succeedAsChild(childName){
   const otherKids = prev.characters.filter(c=>c.isChild && c.name!==childName);
 
   const deceasedRelation = prev.gender==="男" ? "父親" : "母親";
+  // 七、7.4.2／7.3.5.5：教養風格由這一世對該兒女的parenting_log換算得出（提前到建卡前算，家長卡的語氣要用到）
+  const inheritedParentingStyle = computeInheritedParentingStyle(child);
+  const inheritedStyleDef = PARENTING_STYLES.find(x=>x.label===inheritedParentingStyle) || null;
+  // 7.4.2（2026-09-27補上）：換算出的教養風格原本只當骰依附/社交起點的偏向，家長卡語氣仍依關係值另外推；
+  // 改成兩張家長卡的traits都以這個風格的parentTrait開頭（跟開局newRoll家長卡同一套描述），AI從家長卡讀到的語氣就是這一世實際的教養方式。
+  // 關係值不動（7.4.2：關係史延續）。在世配偶沿用自己的個性描述，接在教養風格後面（Claude判斷：parenting_log記的是玩家的選擇，
+  // 但新主角15歲後是由在世的另一位家長帶大，這個家的教養環境由他延續）
+  const styleTraitPrefix = inheritedStyleDef ? inheritedStyleDef.parentTrait : null;
   const characters = [];
   characters.push({
     name: prev.name, relation: deceasedRelation, dialogueStyle: rollDialogueStyle(),
-    traits: deriveParentTraitFromAffinity(child.affinity, child.summary),
+    traits: styleTraitPrefix ? (styleTraitPrefix + (child.summary ? "；過去點滴："+child.summary : "")) : deriveParentTraitFromAffinity(child.affinity, child.summary),
     affinity: child.affinity, summary: child.summary||"", lastTurn:0,
     // 2026-09-22修正（bug回報：世代傳承後上一代主角被當成活著的父母）：
     // 上一代主角在傳承當下已經過世，標記deceased/active:false/healthStage:4(過世)、cohabiting:false，
@@ -5011,7 +5019,7 @@ function succeedAsChild(childName){
       name: spouse.name, relation: spouse.gender==="男" ? "父親" : spouse.gender==="女" ? "母親" : (deceasedRelation==="父親" ? "母親" : "父親"), gender: spouse.gender || null, dialogueStyle: spouse.dialogueStyle || rollDialogueStyle(),
       // 2026-09-22修正（bug回報：在世配偶被當成新角色重新產生）：年齡/健康階段/同住狀態/關係值一律沿用傳承前資料，不重新骰——
       // married的配偶在目前架構下不會有獨立死亡判定，傳承當下必然還在世，也不會被finalizeDivorce解除同住，cohabiting因此必為true
-      traits: spouse.traits||"忙碌但關心家裡", affinity: spouse.affinity, summary: spouse.summary||"",
+      traits: styleTraitPrefix ? (styleTraitPrefix + "；" + (spouse.traits||"忙碌但關心家裡")) : (spouse.traits||"忙碌但關心家裡"), affinity: spouse.affinity, summary: spouse.summary||"",
       lastTurn:0, active:true, isChild:false, origin: "父母，從出生起",
       cohabiting: spouse.cohabiting!==false, healthStage: spouse.healthStage||1,
       age: spouse.age // 沿用傳承前的實際年齡，不再重新骰
@@ -5042,7 +5050,6 @@ function succeedAsChild(childName){
   const luckHidden = +(0.85+Math.random()*0.3).toFixed(2);
   // 七、7.4.2／7.3.5.5（2026-09-20新增）：教養風格由這一世對該兒女的parenting_log換算得出，取代原本biasStyle固定null——
   // 依附風格/同儕位置本身「不繼承」(仍是新骰定的隨機值)，但影響隨機骰的biasStyle改用「真的發生過的教養方式」而非重新亂骰
-  const inheritedParentingStyle = computeInheritedParentingStyle(child);
   const attach = rollAttachmentBaseline(inheritedParentingStyle);
   const peerPosition = rollPeerPosition();
   const expression = rollSocialStart(inheritedParentingStyle, peerPosition);
@@ -5057,6 +5064,7 @@ function succeedAsChild(childName){
     age:15, luckHidden,
     birthday: rollBirthday(), // 一、1.2.9.11.1.1（2026-09-24定案）
     family: econ.tier, familyMonthlyIncome: econ.familyMonthlyIncome, familySavings: econ.familySavings, familyStructure, isPoliticianChild:false,
+    inheritedParentingStyle, // 7.4.2（2026-09-27）：記下這一世繼承到的教養風格，供除錯與日後查詢
     collegeLocation:null,
     // 二、2.2（2026-09-23新增）：世代傳承的新主角一律從15歲高中入學前重新開始，同樣要有一次prologue開場段落
     timeState:{ stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0, prologue:true },
