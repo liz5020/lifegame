@@ -3454,6 +3454,14 @@ const DEATH_AGE_BASE_PROBABILITY = [ // 【測試參數,待測試組複驗,7.1.5
   { minAge:90, maxAge:9999, prob:0.32 }
 ];
 const RISKY_LIFESTYLE_DEATH_BONUS = 0.02; // 【測試參數,7.1.5三】高風險行為/職業固定加成，每年+2個百分點，加法疊加不隨年齡縮放
+// 七、7.1.1【定案】高風險加成＝危險行業或極限運動（2026-09-27補上極限運動的輸入，使用者授權Claude全權判斷，【測試參數】）：
+// AI每回合回報risky_activity(玩家主動從事極限運動/危險嗜好)，每次＋1分，每滿一年−1分；分數≥RISKY_HOBBY_ACTIVE_SCORE視為「有這個習慣」，
+// 加成與危險職業各自獨立相加(兩者都有＝＋4個百分點)。偶爾玩一次不算習慣，停下來一兩年就會退回去——保留7.1.1「避開高風險選擇能降低機率」的能動性
+const RISKY_HOBBY_ACTIVE_SCORE = 2;
+function riskyHobbyActive(s){ return (s.riskyHobbyScore||0) >= RISKY_HOBBY_ACTIVE_SCORE; }
+function riskyAnnualBonus(s){
+  return (s.riskyLifestyle ? RISKY_LIFESTYLE_DEATH_BONUS : 0) + (riskyHobbyActive(s) ? RISKY_LIFESTYLE_DEATH_BONUS : 0);
+}
 function deathAgeBaseProbability(age){
   const bucket = DEATH_AGE_BASE_PROBABILITY.find(b=>age>=b.minAge && age<=b.maxAge);
   return bucket ? bucket.prob : 0;
@@ -3468,7 +3476,7 @@ function computeDeathProbability(s){
   // 【測試參數,7.1.5一】死亡機率 = 年齡基礎機率×健康修正倍率 + 高風險行為/職業加成
   if(s.age<DEATH_MIN_AGE) return 0;
   const base = deathAgeBaseProbability(s.age) * deathHealthMultiplier(s.stats.health, computeHealthCap(s));
-  const riskyBonus = s.riskyLifestyle ? RISKY_LIFESTYLE_DEATH_BONUS : 0;
+  const riskyBonus = riskyAnnualBonus(s); // 7.1.1：危險職業＋極限運動習慣
   return clamp(base + riskyBonus, 0, 1);
 }
 // 每年一次判定（在advanceStructuredTime的career分支、年份真的跳動時呼叫）：
@@ -3519,7 +3527,7 @@ function rollIllnessLevel(age){
 function rollAnnualIllnessCheck(s){
   if(s.age<ILLNESS_MIN_AGE || s.majorIllness) return null; // 已在重大疾病線中，不重複判定新疾病事件(技術判斷，避免同時疊加多條疾病線)
   const cap = computeHealthCap(s);
-  const prob = clamp(illnessAnnualProbability(s.age)*deathHealthMultiplier(s.stats.health, cap) + (s.riskyLifestyle?RISKY_LIFESTYLE_DEATH_BONUS:0), 0, 1);
+  const prob = clamp(illnessAnnualProbability(s.age)*deathHealthMultiplier(s.stats.health, cap) + riskyAnnualBonus(s), 0, 1);
   if(Math.random() >= prob) return null;
   let level = rollIllnessLevel(s.age);
   const bandKey = chronicleLifeStageKey(s); // 沿用既有8段年齡帶定義做「每個年齡帶」判斷
@@ -3733,6 +3741,7 @@ function finalizeParentDeath(s, parentName){
 
 // 十三、健康衰退年度檢查集合：健康cap收斂/疾病判定/父母健康狀態機推進，比照12的rollAnnualCareerChecks，每滿一年判定一次
 function rollAnnualHealthChecks(s){
+  if(s.riskyHobbyScore>0) s.riskyHobbyScore--; // 7.1.1（2026-09-27）：極限運動習慣每滿一年退一分
   settleHealthyYear(s); // 13.2（2026-09-27）：先結算上一年的健康經營，再做cap收斂
   applyHealthCapConvergence(s);
   const illness = rollAnnualIllnessCheck(s);
@@ -4400,6 +4409,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
     narrative: narrative + docBox, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
     stat_deltas: deltas, event_type, event_id, interest_event, emotional_tone,
     club_activity: Math.random()<0.15, // 3.8.2 mock版（2026-09-27）
+    risky_activity: Math.random()<0.03, // 7.1.1 mock版（2026-09-27）
     attachment_shift, peer_position_shift, revealed_key_event:false,
     college_location_choice:null, fertility_stage_update:null,
     new_characters, character_updates, major_event_summary, major_event_type,
@@ -4735,6 +4745,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 八、興趣系統v1（9/16新增）：AI只分類，候選成立/投入度/自律加成/副業契機一律由程式計算
   applyInterestEvent(s, r.interest_event);
   applyClubActivity(s, r.club_activity===true); // 3.8.2（2026-09-27）：社團參與
+  if(r.risky_activity===true) s.riskyHobbyScore = (s.riskyHobbyScore||0)+1; // 7.1.1（2026-09-27）：極限運動/危險嗜好
   sweepInterestDecay(s);
 
   if(r.revealed_key_event && s.keyEvent && !s.keyEvent.revealed){
