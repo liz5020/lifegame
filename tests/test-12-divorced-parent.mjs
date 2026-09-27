@@ -36,7 +36,7 @@ A.check("另一方職業不會是政治人物", stats.politicianFromAbsent === 0
 A.check("其他家庭結構不會出現不同住家長", stats.othersWithNonResident === 0);
 
 // 父母狀態機：降級(active=false)的父母仍會推進
-ev(`state.characters = state.characters.filter(c=>c.origin!=='父母，從出生起');
+ev(`state.characters = state.characters.filter(c=>c.origin!=='父母，從出生起' && c.origin!=='隔代教養，從出生起');
     state.characters.push({name:'老爸',relation:'父親',gender:'男',origin:'父母，從出生起',healthStage:1,age:104,affinity:60,active:false,cohabiting:false,traits:'',summary:'',lastTurn:0});
     state.age=60`);
 ev("ageChildren(state,1); rollParentHealthStageAdvance(state)");
@@ -47,7 +47,7 @@ A.check("降為背景角色的父母健康階段會推進並跳照顧決策", ev
 ev("state.pendingEldercareDecision=null");
 
 // 13.6：離異不同住的另一方不套用照顧負荷提前
-ev(`state.characters = state.characters.filter(c=>c.origin!=='父母，從出生起');
+ev(`state.characters = state.characters.filter(c=>c.origin!=='父母，從出生起' && c.origin!=='隔代教養，從出生起');
     state.characters.push({name:'媽媽',relation:'母親',gender:'女',origin:'父母，從出生起',healthStage:1,age:70,affinity:60,active:true,cohabiting:true,traits:'',summary:'',lastTurn:0},
       {name:'爸爸',relation:'父親（不同住）',gender:'男',origin:'父母，從出生起',healthStage:1,age:72,affinity:40,active:true,cohabiting:false,traits:'',summary:'',lastTurn:0})`);
 ev("finalizeParentDeath(state,'媽媽')");

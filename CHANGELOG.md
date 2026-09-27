@@ -10,6 +10,23 @@
 
 ---
 
+## 2026-09-27（續七：第三節第二批，使用者授權Claude全權判斷）
+
+**〔開發部〕**（數字皆為【測試參數】）
+- 4.3.1／13.8：`MILESTONE_DEFS`新增divorce、child_left_home、retirement、major_illness_diagnosed、became_caregiver、parent_death、widowed，全部auto；`completeMilestone()`掛在各事件發生處；`ensureMilestoneDefs()`替舊存檔補欄位；履歷文字補上離婚/離家/退休/照顧
+- 4.2.2：parent_retirement改auto，`checkParentRetirements()`(年度)依父母卡年齡判定(65歲，自營業者70歲)，自營業者退休照舊觸發接手家業；`parent_retirement_event_now`送AI；prompt改成AI只回報3個里程碑
+- 13.7.2：`rollSpouseAnnualDeath()`(年度)：配偶用7.1.5年齡基礎機率判定，喪偶後配偶卡widowed/已故、收入歸零、喪偶里程碑與履歷、第1層提示、當回合幸福感heavy；結婚時補配偶年齡；關係標籤「已故的配偶」；`spouse_death_event_now`送AI
+- 7.6.3：離婚8回合後`checkDivorceRecoveryNode()`跳「一個人的生活」彈窗，`resolveDivorceRecovery()`三選一分別接自主感(`autonomyExtraChosen`)、自我實現、友情與歸屬；`divorce_recovery_event_now`送AI
+- `worker/prompt.js`：里程碑回報清單、四種新事件的敘事說明。**要重新部署Worker才會生效**
+- 測試修正：`test-11`、`test-12`清父母卡時一併清掉隔代教養的祖父母卡（開局隨機抽到隔代教養時會被當成另一位家長，造成偶發失敗；是測試資料問題，不是遊戲bug）
+
+**〔測試部〕**
+- 新增`tests/test-22-batch3b.mjs`：29/29通過，連跑3次穩定（含mock長程最多700回合）
+- 全套回歸全部通過
+- 需要真實API才能驗證、**未測試**：AI是否照喪偶、父母退休、離婚後重新開始寫敘事，是否還會自己回報parent_retirement
+
+---
+
 ## 2026-09-27（續六：第三節第一批，使用者授權Claude全權判斷）
 
 **〔開發部〕**（數字皆為【測試參數】）

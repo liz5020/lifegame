@@ -437,8 +437,26 @@ const MILESTONE_DEFS = [
   // 四、4.2.2（9/19新增）：4.3.1原文明講清單非封閉，這裡補上履歷判準討論時發現4.2例子有列但4.3.1沒收的三項
   { id:"first_job_change", label:"第一次轉職", auto:true, lockedUntil: null }, // 有既有job_change結構化訊號，非首次job_change視為轉職
   { id:"first_child", label:"生育或領養", auto:true, lockedUntil: null }, // 有既有new_characters的is_child結構化訊號
-  { id:"parent_retirement", label:"父母退休", auto:false, lockedUntil: null } // 無結構化訊號，AI回報
+  // 四、4.2.2（2026-09-27改客戶端判斷）：父母滿退休年齡時由checkParentRetirements()結構化判定，不再由AI回報
+  { id:"parent_retirement", label:"父母退休", auto:true, lockedUntil: null },
+  // 四、4.3.1【定案,9/20擴充】（2026-09-27補上）：以下都是客戶端結構化自動判斷，AI不回報
+  { id:"divorce", label:"離婚", auto:true, lockedUntil: null },
+  { id:"child_left_home", label:"子女成年離家", auto:true, lockedUntil: null },
+  { id:"retirement", label:"退休", auto:true, lockedUntil: null },
+  { id:"major_illness_diagnosed", label:"重大疾病確診", auto:true, lockedUntil: null },
+  { id:"became_caregiver", label:"成為主要照顧者", auto:true, lockedUntil: null },
+  { id:"parent_death", label:"父母過世", auto:true, lockedUntil: null },
+  { id:"widowed", label:"喪偶", auto:true, lockedUntil: null }
 ];
+// 舊存檔補上新增的里程碑欄位（沒有的一律視為available）
+function ensureMilestoneDefs(s){
+  s.milestones = s.milestones || {};
+  MILESTONE_DEFS.forEach(def=>{ if(!s.milestones[def.id]) s.milestones[def.id] = def.lockedUntil ? "locked" : "available"; });
+}
+function completeMilestone(s, id){
+  ensureMilestoneDefs(s);
+  if(s.milestones[id]!=="completed") s.milestones[id] = "completed";
+}
 // 四、4.2【定案】重大里程碑完成時系統自動留一筆1句話紀錄（2026-09-27補上：原本只有AI的major_event_summary、重大疾病、
 // 父母過世會進履歷）。每回合applyResult掃一次，回合之間彈窗完成的里程碑(求職、買房等)也會在下一回合補記；
 // 4.2.3結構化里程碑條目不佔achievement/setback配額；每項只記一次(milestoneChronicled)
@@ -455,7 +473,12 @@ const MILESTONE_CHRONICLE_TEXT = {
   marriage_decision: s=>{ const sp=(s.characters||[]).find(c=>c.romanceStatus==="married"); return sp?`和${sp.name}結婚`:"結婚"; },
   first_job_change: s=>`第一次轉職${s.occupationCategory?`（${s.occupationCategory.replace(/類$/,"")}）`:""}`,
   first_child: s=>"有了第一個孩子",
-  parent_retirement: s=>"父母退休了"
+  parent_retirement: s=>"父母退休了",
+  divorce: s=>"離婚了",
+  child_left_home: s=>"孩子長大，離家了",
+  retirement: s=>"退休了",
+  became_caregiver: s=>"開始照顧年邁的家人"
+  // major_illness_diagnosed、parent_death、widowed在事件發生處已直接寫履歷，這裡不重複
 };
 function recordMilestoneChronicle(s, label){
   // 舊存檔沒有這個欄位：把已經完成的里程碑當作已記錄，不在現在的年齡補記過去的事
@@ -472,6 +495,7 @@ function initMilestones(){
   return m;
 }
 function refreshMilestoneLocks(s){
+  ensureMilestoneDefs(s);
   // 每回合檢查locked狀態的里程碑，門檻達成就翻成available（客戶端結構化判斷，不假手AI）
   MILESTONE_DEFS.forEach(def=>{
     if(def.lockedUntil && s.milestones[def.id]==="locked" && def.lockedUntil(s)){
@@ -646,6 +670,8 @@ function computeAutonomyRaw(s){
     encountered++;
     if((s.promotionOffersDeclined||0)>0) chosen++;
   }
+  // 7.6.3（2026-09-27）：離婚後選「重新安排自己的生活」，算一項自己選的
+  if(s.autonomyExtraChosen){ encountered += s.autonomyExtraChosen; chosen += s.autonomyExtraChosen; }
   if(!encountered) return AUTONOMY_NEUTRAL_DEFAULT;
   return (chosen/encountered)*100;
 }
@@ -1219,7 +1245,7 @@ function resolveParentingGrowthNode(s, childName, nodeKey, optionId, customText)
   child.parentingNodesDone = child.parentingNodesDone || [];
   child.parentingNodesDone.push(nodeKey);
   // 4.1.2：成年離家節點完成，解除同住標記
-  if(nodeKey==="leaving_home") releaseCohabiting(child);
+  if(nodeKey==="leaving_home"){ releaseCohabiting(child); completeMilestone(s, "child_left_home"); } // 4.3.1（2026-09-27）
   // 七、7.6.2：青春期衝突節點選到激化方向，是婚姻危機兩條觸發條件之一
   if(nodeKey==="adolescent_conflict" && opt && MARRIAGE_CRISIS_ESCALATING_TEEN_CHOICES.includes(opt.id)){
     s.justEscalatedTeenConflict = true;
@@ -1297,6 +1323,50 @@ function sweepMarriageCrisisCandidate(s){
   s.justLostJob = false;
   s.justReachedFertilityStage4 = false;
 }
+// ========== 七、7.6.3【定案】離婚後須開放自主感與自我實現管道的正向節點（2026-09-27補上，使用者授權Claude全權判斷，【測試參數】） ==========
+// 離婚DIVORCE_RECOVERY_NODE_DELAY_TURNS回合後跳一次「一個人的生活」彈窗，三個方向各自接一條幸福感管道：
+//   重新安排自己的生活→自主感(computeAutonomyRaw多算一項自己選的)；把心力放在一直想做的事→自我實現(投入度最高的正式興趣卡＋10，沒有就才識＋3)；
+//   跟朋友重新聯絡→友情與歸屬(人脈＋3套遞減、非親密角色好感＋3，最多3位)。三者地位平等，不預設哪個比較好(六、6.4)
+const DIVORCE_RECOVERY_NODE_DELAY_TURNS = 8;
+function checkDivorceRecoveryNode(s){
+  if(s.divorceRecoveryNodeAtTurn==null || s.turnCount < s.divorceRecoveryNodeAtTurn) return;
+  s.divorceRecoveryNodeAtTurn = null;
+  s.pendingDivorceRecovery = true;
+}
+function resolveDivorceRecovery(s, choice){
+  if(choice==="reclaim_life"){
+    s.autonomyExtraChosen = (s.autonomyExtraChosen||0)+1;
+  } else if(choice==="pursue_passion"){
+    const cards = (s.interestCandidates||[]).filter(c=>c.status==="active");
+    if(cards.length){ const top = cards.reduce((a,b)=>(b.investment||0)>(a.investment||0)?b:a); top.investment = clamp((top.investment||0)+10, 0, 100); }
+    else s.stats.knowledge = clamp(s.stats.knowledge + 3, 0, 100);
+  } else if(choice==="reconnect"){
+    s.stats.network = clamp(s.stats.network + applyMarginalDiminish(3, s.stats.network), 0, 100);
+    s.characters.filter(c=>!c.deceased && !c.isChild && !INTIMATE_RELATION_RE.test(c.relation||"") && !c.romanceStatus).slice(0,3)
+      .forEach(c=>{ c.affinity = clamp(c.affinity+3, 0, 100); });
+  }
+  s.divorceRecoveryEventLog = { choice };
+}
+function renderDivorceRecoveryModal(){
+  const s = state;
+  const div = document.createElement("div");
+  div.id = "divorce-recovery-modal";
+  div.className = "modal-backdrop";
+  const opts = [["reclaim_life","重新安排自己的生活，照自己的步調過"],["pursue_passion","把心力放在一直想做、卻一直沒時間做的事"],["reconnect","跟好久沒聯絡的朋友重新聯絡"]];
+  div.innerHTML = `
+    <div class="modal">
+      <h3>一個人的生活</h3>
+      <p>日子慢慢安靜下來了。接下來，想把時間放在哪裡？</p>
+      ${opts.map(([k,l])=>`<button class="ghost-btn dr-btn" data-key="${k}" style="display:block;width:100%;text-align:left;margin:4px 0;">${l}</button>`).join("")}
+      <button class="primary-btn" id="btn-dr-confirm" style="margin-top:14px;">確定</button>
+    </div>`;
+  document.body.appendChild(div);
+  let chosen = "reclaim_life";
+  div.querySelectorAll(".dr-btn").forEach(btn=>{
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".dr-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+  });
+  document.getElementById("btn-dr-confirm").onclick = ()=>{ resolveDivorceRecovery(s, chosen); div.remove(); saveGame(); render(); };
+}
 // choice: "repair"／"maintain"／"divorce"。三者在幸福感計算上地位平等，不預設哪個正確(呼應六、6.4)
 // 技術判斷：文件明文只講「選擇修復後設冷卻期」，但「維持現狀」若不重置也會導致下回合立刻再次觸發(違反6.1不可無止盡重複的精神)，
 // 此處讓repair/maintain都設冷卻期，divorce則婚姻關係已結束不需要冷卻
@@ -1337,6 +1407,8 @@ function finalizeDivorce(s, spouseName, propertyChoice, custodyChoice){
   s.cash = Math.round(s.cash * (playerSharePct/100));
   s.spouseIncome = 0; s.spouseOccupationCategory = null;
   spouse.romanceStatus = "divorced";
+  completeMilestone(s, "divorce"); // 4.3.1（2026-09-27）
+  s.divorceRecoveryNodeAtTurn = s.turnCount + DIVORCE_RECOVERY_NODE_DELAY_TURNS; // 7.6.3（2026-09-27）：之後開放重新累積的正向節點
   // 4.1.1【定案】第1層戀愛狀態轉換含離婚，當回合必定提示（2026-09-27補上）
   s.pendingRelationshipHints = (s.pendingRelationshipHints||[]).concat([{ tier:1, text:`你和${spouse.name}，離婚了` }]);
   spouse.relation = "前配偶";
@@ -1849,6 +1921,7 @@ function resolveRetirementOffer(s, choice){
   const rate = RETIREMENT_REPLACEMENT_RATE[s.occupationCategory] || 0.45;
   const preRetireSalary = s.monthlyIncome;
   s.retirementStatus = "已退休";
+  completeMilestone(s, "retirement"); // 4.3.1（2026-09-27）
   s.careerStatus = choice==="semi" ? CAREER_STATUS.SEMI_RETIRED : CAREER_STATUS.RETIRED;
   s.riskyLifestyle = false; s.jobRiskSubtype = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
   // 3.4.7既有「下一個完整月份才計入」規則：這裡直接覆寫monthlyIncome，因為退休決定發生在彈窗(回合之間)，
@@ -3416,6 +3489,7 @@ function relationCategoryLabel(c){
   // 四、4.4.1（2026-09-20新增）：married/divorced狀態的關係類別分別為「配偶」「前配偶」，同樣由狀態機決定
   if(c.romanceStatus==="married") return "配偶";
   if(c.romanceStatus==="divorced") return "前配偶";
+  if(c.romanceStatus==="widowed") return "已故的配偶";
   if(c.romanceStatus==="ambiguous") return "曖昧對象";
   if(c.romanceStatus==="dating" || c.romanceStatus==="stable") return "戀愛對象";
   return c.relation||"";
@@ -3433,6 +3507,7 @@ function relationshipStatusLabel(c){
     return "漸行漸遠";
   }
   if(c.romanceStatus==="divorced") return "前配偶";
+  if(c.romanceStatus==="widowed") return "已故的配偶"; // 13.7.2（2026-09-27）
   if(c.romanceStatus==="ambiguous") return "曖昧中";
   if(c.romanceStatus==="dating") return "交往中";
   if(c.romanceStatus==="stable") return "穩定交往中";
@@ -3490,6 +3565,7 @@ function applyMarriageDecisionCompletion(s){
   if(!partner) return;
   partner.romanceStatus = "married";
   partner.relation = "配偶";
+  if(typeof partner.age!=="number") partner.age = s.age + rnd(-3,3); // 13.7.2（2026-09-27）：配偶要有年齡才能做年度判定
   partner.cohabiting = true;
   partner.lastTurn = s.turnCount;
   // 三、3.4.11（2026-09-20新增）：配偶收入採中間深度，結婚當下骰定一次固定月薪，寫進週期性收入
@@ -3748,6 +3824,7 @@ function advanceMajorIllness(s){
   if(mi.stage==="diagnosed"){
     // 【定案】確診為里程碑，寫入L3人生履歷——結構化事件，不依賴AI回報是否記得寫
     s.chronicle.push(`（${s.age}歲）確診重大疾病，開始一段治療的日子`);
+    completeMilestone(s, "major_illness_diagnosed"); // 4.3.1（2026-09-27）
     mi.stage = "treatment"; mi.turnsInStage = 0; mi.treatmentTargetTurns = rnd(3,6);
     // 13.3.4【定案】治療期代價連動伴侶/子女關係與工作狀態（2026-09-27使用者同意Claude建議）：陪病讓配偶與子女好感+2（一次），
     // 在職者立即走被迫退休判定（不等年度檢查）
@@ -3857,6 +3934,7 @@ function resolveEldercareDecision(s, parentName, choice){
       // 13.5.2【定案】代價與回饋：照顧行為佔用回合、健康扣分(比照3.5.1既有家庭壓力累積)，父母關係值上升
       parent.affinity = clamp(parent.affinity + rnd(3,6), 0, 100);
       s.stats.health = clamp(s.stats.health - rnd(3,6), 0, 100);
+      completeMilestone(s, "became_caregiver"); // 4.3.1（2026-09-27）
     } else if(choice==="split"){
       // 13.5.2【定案】連動五、5.2家庭結構的手足角色卡，手足互動是支援或衝突取決於既有關係值，這裡採支援方向的預設效果
       const sibling = s.characters.find(c=>/^哥哥$|^弟弟$|^姊姊$|^妹妹$/.test(c.relation||""));
@@ -3892,6 +3970,7 @@ function finalizeParentDeath(s, parentName){
   s.cash += inheritance;
   // 13.6【定案】喪禮回合採強制過渡回合的敘事處理已交由system prompt guidance；結構化紀錄部分：直接寫入L3人生履歷
   s.chronicle.push(`（${s.age}歲）${parent.relation}過世了`);
+  completeMilestone(s, "parent_death"); // 4.3.1（2026-09-27）
   s.pendingParentDeath = null;
   // 13.6【定案】有手足時依關係值觸發遺產分配的協商或衝突（2026-09-27使用者同意Claude建議）：關係值≥50走協商、否則衝突，
   // 由AI寫成敘事，不另外改數值
@@ -3913,7 +3992,46 @@ function finalizeParentDeath(s, parentName){
 }
 
 // 十三、健康衰退年度檢查集合：健康cap收斂/疾病判定/父母健康狀態機推進，比照12的rollAnnualCareerChecks，每滿一年判定一次
+// ========== 四、4.2.2 父母退休客戶端判定（2026-09-27，使用者授權Claude全權判斷，【測試參數】） ==========
+// 13.5.1父母狀態機沒有退休節點，改用父母卡的年齡與職業判斷：在世父母(含不同住、隔代教養的祖父母卡)滿PARENT_RETIREMENT_AGE退休，
+// 自營業者晚PARENT_RETIREMENT_SELF_EMPLOYED_EXTRA年。第一位退休時完成parent_retirement里程碑；
+// 退休的是自營業者時照舊觸發12.11.1接手家業(原本這條要等AI回報)。每位家長只判定一次，退休記在卡上(parent.retired)
+const PARENT_RETIREMENT_AGE = 65;
+const PARENT_RETIREMENT_SELF_EMPLOYED_EXTRA = 5;
+function checkParentRetirements(s){
+  const events = [];
+  (s.characters||[]).filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && !c.deceased && !c.retired && typeof c.age==="number").forEach(c=>{
+    const retireAge = PARENT_RETIREMENT_AGE + (c.occupation==="自營業者" ? PARENT_RETIREMENT_SELF_EMPLOYED_EXTRA : 0);
+    if(c.age < retireAge) return;
+    c.retired = true;
+    events.push({ parentName:c.name, relation:c.relation });
+    if(s.milestones.parent_retirement!=="completed"){ completeMilestone(s, "parent_retirement"); }
+    if(c.occupation==="自營業者" && s.careerStatus!==CAREER_STATUS.RETIRED) checkFamilyBusinessOnParentRetirement(s);
+  });
+  if(events.length) s.parentRetirementEventLog = events;
+}
+// ========== 十三、13.7.2 喪偶（2026-09-27，使用者授權Claude全權判斷） ==========
+// 【定案】伴侶角色卡沿用同一套年度判定：配偶沒有健康數值，用7.1.5年齡基礎機率(不乘健康倍率、沒有高風險加成)，40歲以前不判定(同7.1.5)。
+// 過世後：配偶卡標deceased、不再同住、配偶收入歸零；喪偶里程碑與履歷；這一回合幸福感以heavy計(比照13.6父母過世)，之後交回歸機制；
+// 戀愛狀態機照常可以開始新關係(沒有配偶就不會擋)。婚時沒有年齡的配偶卡(舊存檔)以玩家年齡補上
+function rollSpouseAnnualDeath(s){
+  const spouse = (s.characters||[]).find(c=>c.romanceStatus==="married" && !c.deceased);
+  if(!spouse) return null;
+  if(typeof spouse.age!=="number") spouse.age = s.age;
+  if(spouse.age < DEATH_MIN_AGE) return null;
+  if(Math.random() >= deathAgeBaseProbability(spouse.age)) return null;
+  spouse.deceased = true; spouse.active = false; spouse.romanceStatus = "widowed";
+  releaseCohabiting(spouse);
+  s.spouseIncome = 0; s.spouseOccupationCategory = null;
+  completeMilestone(s, "widowed");
+  s.chronicle.push(`（${s.age}歲）${spouse.name}走了`);
+  s.spouseDeathEventLog = { spouseName: spouse.name };
+  s.pendingRelationshipHints = (s.pendingRelationshipHints||[]).concat([{ tier:1, text:`${spouse.name}走了` }]);
+  return spouse.name;
+}
 function rollAnnualHealthChecks(s){
+  checkParentRetirements(s); // 4.2.2（2026-09-27）
+  rollSpouseAnnualDeath(s); // 13.7.2（2026-09-27）
   if(s.riskyHobbyScore>0) s.riskyHobbyScore--; // 7.1.1（2026-09-27）：極限運動習慣每滿一年退一分
   settleHealthyYear(s); // 13.2（2026-09-27）：先結算上一年的健康經營，再做cap收斂
   applyHealthCapConvergence(s);
@@ -4172,6 +4290,9 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     chronic_conditions_count: (s.chronicConditions||[]).length,
     major_illness_stage: s.majorIllness ? s.majorIllness.stage : null,
     major_illness_type: s.majorIllness ? (s.majorIllness.type||null) : null, // 13.3.5（2026-09-27）：重大疾病類型
+    spouse_death_event_now: s.spouseDeathEventLog || null, // 13.7.2（2026-09-27）：配偶這一年過世
+    parent_retirement_event_now: s.parentRetirementEventLog || null, // 4.2.2（2026-09-27）：父母剛退休
+    divorce_recovery_event_now: s.divorceRecoveryEventLog || null, // 7.6.3（2026-09-27）：離婚後重新開始的選擇
     old_age_theme: computeOldAgeTheme(s), // 13.7.2（2026-09-27）：60歲以後本回合的主題方向
     interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
     part_time_event_now: s.partTimeEventLog || null, // 3.4.2（2026-09-27）：這回合打工的時薪、時數、收入，已入帳
@@ -4771,6 +4892,7 @@ async function takeTurn(actionText, cost){
   // 七、7.6（2026-09-20新增）：婚姻危機優先於關係投入節點(較急迫)，兩者互斥避免同回合疊兩個彈窗
   if(state.pendingMarriageCrisis){ const mc = state.pendingMarriageCrisis; state.pendingMarriageCrisis = null; renderMarriageCrisisModal(mc); }
   else if(state.pendingRelationshipInvestment){ const ri = state.pendingRelationshipInvestment; state.pendingRelationshipInvestment = null; renderRelationshipInvestmentModal(ri); }
+  else if(state.pendingDivorceRecovery){ state.pendingDivorceRecovery = null; renderDivorceRecoveryModal(); }
   else if(state.pendingCohabitationOffer){ const co = state.pendingCohabitationOffer; state.pendingCohabitationOffer = null; renderCohabitationOfferModal(co); }
   // 十二、職涯系統（2026-09-20新增）：六個彈窗互斥，一次只處理一個，優先序為求職＞升遷＞職涯岔路＞創業啟動＞創業存續＞退休
   if(state.pendingJobOffer){ renderJobOfferDecisionModal(); } // 12.4：錄取後還沒決定接不接受就重新整理時，補出決定彈窗
@@ -4810,7 +4932,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   s.majorIllnessEventLog = null;
   s.parentHealthEventLog = null;
   s.eldercareEventLog = null;
-  const parentDiedThisTurn = !!s.parentDeathEventLog; // 13.6：清掉前先記下，下面幸福感用
+  const parentDiedThisTurn = !!s.parentDeathEventLog || !!s.spouseDeathEventLog; // 13.6／13.7.2：清掉前先記下，下面幸福感用(喪偶同樣以heavy計)
+  s.spouseDeathEventLog = null; s.parentRetirementEventLog = null; s.divorceRecoveryEventLog = null;
   s.parentDeathEventLog = null;
   // 一、1.2.8.6／1.2.9.13（2026-09-24新增）：以下只給AI看這一回合，用過就清掉
   s.graduationEventLog = null;
@@ -5191,6 +5314,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 七、7.6（2026-09-20新增）：關係投入節點＋婚姻危機候選檢查
   checkRelationshipInvestmentNode(s);
   sweepMarriageCrisisCandidate(s);
+  checkDivorceRecoveryNode(s); // 7.6.3（2026-09-27）
   // 七、7.6.1.1（2026-09-22新增）：同居觸發入口檢查
   checkCohabitationOffer(s, actionText);
 

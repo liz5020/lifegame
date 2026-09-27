@@ -7,7 +7,7 @@ const ev = g.ev;
 
 async function setupAndSucceed({ log, childAff, withSpouse }) {
   await H.startNewLife(g);
-  ev(`state.characters = state.characters.filter(c=>c.origin!=='父母，從出生起');
+  ev(`state.characters = state.characters.filter(c=>c.origin!=='父母，從出生起' && c.origin!=='隔代教養，從出生起');
       state.gender='女'; state.cash=100;
       ${withSpouse ? "state.characters.push({name:'阿偉',relation:'配偶',gender:'男',romanceStatus:'married',cohabiting:true,affinity:72,active:true,traits:'木訥、愛釣魚',summary:'',lastTurn:0});" : ""}
       state.characters.push({name:'小寶',relation:'兒子',gender:'男',isChild:true,age:20,affinity:${childAff},active:true,traits:'',summary:'一起去過墾丁',lastTurn:0,parentingLog:${JSON.stringify(log)}});
