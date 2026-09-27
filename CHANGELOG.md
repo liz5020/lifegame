@@ -10,6 +10,37 @@
 
 ---
 
+## 2026-09-27（續：掃描收尾＋第二節2A批）
+
+**〔整理〕掃描收尾**
+- `CLAUDE.md`「上次掃描記錄」改為2026-09-26全章掃描；`qa/人生草稿_QA_測試手冊_v1.md`新增34.8：完整收錄81條清單、複查結果與處理狀態（第一節、2A已修正的都有標記）
+- 已套用的`2026-09-27-8.9-interest-career.patch`移到`archive/`
+
+**〔開發部〕第二節「有做但不完整」2A批：規則明確、可直接做的項目**
+- 3.2.2：`rollKnowledgeRawValue()`在milestone達階段上限時改算intensive（原本給0），AI回傳enum以外的值時降級為ordinary；同一event_id重複仍給0
+- 3.4.11：子女扶養費改算所有在世的子女（原本只算active，非主要照顧者的子女被降級後扶養費就停了）
+- 4.2：新增`recordMilestoneChronicle()`，結構化里程碑完成時自動寫一句進履歷（`milestoneChronicled`去重；舊存檔已完成的不補記）；prompt告訴AI這些不用再填major_event_summary
+- 1.1.2：出社會時記`careerEntryAge`，標籤改成「入職第X年・上/下半年」
+- 7.4.2：傳承家境改用現金＋房產淨值
+- 9.5.1：轉系候選先檢查年齡門檻（連4年制都不可行就不成立），log加`candidate`、`ageFeasible`
+- 12.4：錄取後可以接受或婉拒offer（保底offer也可以），彈窗加兩顆按鈕；拆成`applyJobHire()`／`acceptJobOffer()`／`declineJobOffer()`，重新整理後會補出決定彈窗。婉拒不算求職失敗，在職時婉拒會套轉職冷卻
+- 11.2：求職、升遷、轉系的明牌彈窗列出屬性加成明細（`hireProbabilityBreakdown()`／`promotionProbabilityBreakdown()`，跟判定用的是同一份計算；轉系公式本身沒改）
+- 12.3：失業、創業、收攤、退休時清除`riskyLifestyle`
+- 12.8.1：新增`detectStartupIntent()`，自由輸入想創業就排入創業彈窗
+- 12.6.1：新增`detectOverseasIntent()`／`checkOverseasTransferCandidate()`：自由輸入想出國/外派/移居時走海外型轉職，現金不足回報`overseas_blocked`給AI；海外錄取後解除原生家庭（父母/隔代/手足）的同住標記，配偶與子女不動（文件沒規定，Claude判斷）
+- 13.6：父母過世的回合幸福感一律用heavy計算，不看AI回傳的emotional_tone
+- 13.5.2：兩位父母同時需要照顧時排隊依序跳彈窗（原本第二位會被略過）；沒有手足時隱藏兩個手足選項，預設改成聘僱照服員/機構
+- 4.1.1：日記裡的角色名可以點開詳細頁（只在遊戲畫面的日記啟用，人生之書與封存回顧不加）
+- `worker/prompt.js`：12.7裁員不歸因玩家、2.2準備期混合內容、2.3假期活動選單、1.2.8.4.1關鍵事件前溫暖日常／事件後摘要、5.2.6喪親忌日回憶、8.6背景興趣用敘事記憶喚醒、`overseas_blocked`說明。**要重新部署Worker才會生效**
+
+**〔測試部〕**
+- 新增`tests/test-8-gapfix-2a.mjs`：41/41通過（含彈窗點擊與mock連續400回合）
+- 全套回歸：語法檢查＋批次1/2/3/4/6＋十六＋9/27兩批全部通過
+- 需要真實API才能驗證、**未測試**：新增的prompt敘事指示（假期選單、關鍵事件寫法、喪親回憶、背景興趣喚醒、裁員歸因）AI是否遵守
+- 舊存檔：新增欄位都有預設值或相容處理（`careerEntryAge`缺時沿用22歲、`milestoneChronicled`缺時不補記）
+
+---
+
 ## 2026-09-27（9/26落差掃描第一節：程式bug修正）
 
 **〔整理〕9/26落差掃描**
