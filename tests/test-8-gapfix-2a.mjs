@@ -12,7 +12,7 @@ const ev = g.ev;
 const doc = g.win.document;
 
 // 3.2.2 milestone超上限降級intensive、enum外降級ordinary
-ev("state.knowledgeMilestoneCountByStage={}; state.knowledgeMilestoneUsedIds=[]; state.knowledgeMilestoneCountByStage[state.timeState.stageMode]=KNOWLEDGE_MILESTONE_CAP_PER_STAGE");
+ev("state.knowledgeMilestoneCountByStage={}; state.knowledgeMilestoneUsedIds=[]; state.knowledgeMilestoneCountByStage[chronicleLifeStageKey(state)]=KNOWLEDGE_MILESTONE_CAP_PER_STAGE");
 const capped = ev("rollKnowledgeRawValue('milestone','new_evt_x',state)");
 A.check("milestone達上限：改算intensive(5~8)", capped >= 5 && capped <= 8, capped);
 ev("state.knowledgeMilestoneCountByStage={}; state.knowledgeMilestoneUsedIds=['dup_evt']");
@@ -51,7 +51,7 @@ A.check("26歲下半年＝入職第3年・下半年", ev("computeTimeLabel(state
 ev("state.timeState.stageMode='college'; state.studentStatus='enrolled'; state.transferCooldown=0; state.examBelowExpectationStreak=TRANSFER_EXAM_STREAK_TRIGGER; state.pendingTransferOffer=false; state.stats.knowledge=0; state.collegeDelayYearsUsed=0");
 ev("state.age=22; updateTransferCandidateOnExam(state,0)");
 A.check("22歲(超過可行年齡)：轉系候選不成立", ev("!state.pendingTransferOffer") && ev("state.lastExamPerformanceLog.candidate") === false);
-ev("state.age=19; state.examBelowExpectationStreak=TRANSFER_EXAM_STREAK_TRIGGER; updateTransferCandidateOnExam(state,0)");
+ev("state.age=19; state.examBelowExpectationStreak=TRANSFER_EXAM_STREAK_TRIGGER; Math.__r=Math.random; Math.random=()=>0; updateTransferCandidateOnExam(state,0); Math.random=Math.__r"); // 9.5.1候選機率，固定骰值
 A.check("19歲：候選成立，log含candidate", ev("state.pendingTransferOffer===true") && ev("state.lastExamPerformanceLog.candidate") === true);
 ev("state.pendingTransferOffer=false; state.timeState.stageMode='career'; state.studentStatus='graduated'");
 

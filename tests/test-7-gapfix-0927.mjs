@@ -67,11 +67,11 @@ A.check("拒絕後再檢查：不再成立候選", ev("state.dualMajorStatus") =
 
 // 7. 9.5.3 選撐下去後有冷卻
 ev(`state.studentStatus='enrolled'; state.leaveStatus='normal'; state.pendingLeaveOffer=null; state.lowCashStreak=5; state.lowHealthStreak=0; state.withdrawalOfferCooldown=0; state.timeState.stageMode='college'`);
-ev("checkWithdrawalCandidate(state)");
+ev("Math.__r=Math.random; Math.random=()=>0; checkWithdrawalCandidate(state); Math.random=Math.__r");
 A.check("持續低現金：休學候選成立", ev("state.pendingLeaveOffer") === "financial");
 ev("state.pendingLeaveOffer=null; resolveWithdrawalOffer(state,'stay'); checkWithdrawalCandidate(state)");
 A.check("選撐下去：下一回合不立刻再跳", ev("state.pendingLeaveOffer") === null);
-ev("for(let i=0;i<WITHDRAWAL_STREAK_TRIGGER;i++) sweepUniversityState(state); state.lowCashStreak=5; checkWithdrawalCandidate(state)");
+ev("for(let i=0;i<WITHDRAWAL_STREAK_TRIGGER;i++) sweepUniversityState(state); state.lowCashStreak=5; Math.__r=Math.random; Math.random=()=>0; checkWithdrawalCandidate(state); Math.random=Math.__r"); // 9.5.3候選機率60%，固定骰值
 A.check("冷卻期滿且仍低值：再次成立", ev("state.pendingLeaveOffer") === "financial");
 ev("state.pendingLeaveOffer=null");
 
