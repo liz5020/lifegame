@@ -10,6 +10,23 @@
 
 ---
 
+## 2026-09-27（續九：第三節第四批，七、7.7人生特質，使用者授權Claude全權判斷）
+
+**〔開發部〕**
+- `classifyLifeTrait()`：依playStyle六型分類(門檻【測試參數】)，計數不足回「這一生還看不太出特定樣子」；死亡時存`state.lifeTrait`，傳承時再判定一次存進`familyChronicle`
+- 人生回顧(`renderArchiveView`)新增「看看這一生的樣子」：`renderLifeTraitModal()`特質卡(SVG五條長條) → 六選一猜測 → 揭曉描述＋編年史兩三筆(`lifeTraitEvidence()`)＋猜中/猜錯收尾；看不太出時直接顯示那句話、不猜
+- 分享卡：`renderShareCardPicker()`勾選編年史事件，`drawShareCard()`用canvas畫成PNG下載；瀏覽器不支援時顯示提示
+- 家族年表：`renderFamilyChronicleModal()`每一代一格，點開是那一代的特質卡
+- 下一代開局：`prevGenerationEventTitles`只在傳承後的開場回合以`previous_generation_events`送AI；計數器與特質描述不送AI(7.7.2)
+- 7.7.6六種白話描述先寫草稿，寫進設計文件並標【待確認】
+- `worker/prompt.js`：previous_generation_events的寫法說明。**要重新部署Worker才會生效**
+
+**〔測試部〕**
+- 新增`tests/test-24-life-traits.mjs`：22/22通過（jsdom不支援canvas，那一筆「Not implemented」不算錯誤；真實瀏覽器存圖**未測試**）
+- 全套回歸全部通過
+
+---
+
 ## 2026-09-27（續八：第三節第三批，使用者授權Claude全權判斷）
 
 **〔開發部〕**（數字皆為【測試參數】）

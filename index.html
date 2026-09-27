@@ -930,6 +930,69 @@ function buildLifeSummaryMaterial(s){
   }
   return { segments, transitions };
 }
+// ========== 七、7.7 人生特質（2026-09-27實作，使用者授權Claude全權判斷） ==========
+// 7.7.4【定案】六種行為組合、名稱改白話(7.7.3)；門檻【測試參數】先定一版，等真實遊玩資料再調(7.7.4)。
+// 7.7.6【待辦→2026-09-27草稿，待使用者確認】六種白話描述。只描述不評價，已對照六、防壓抑機制：沒有「比較好」的一種
+const LIFE_TRAITS = {
+  explorer:   { label:"常常往沒走過的路走", desc:"這一生常常往沒走過的路走，跌倒了，多半是拍拍灰再試一次。" },
+  ownPath:    { label:"照自己的步調走", desc:"這一生比較常照自己的步調走，不太跟著大家的節奏，也習慣自己扛。" },
+  steadyCare: { label:"穩穩地過、把力氣留給身邊的人", desc:"這一生喜歡穩穩地過，把多出來的力氣留給身邊的人。" },
+  forPeople:  { label:"很多選擇是為了某個人", desc:"回頭看，這一生的很多選擇，都是為了某個人做的。" },
+  planner:    { label:"一步一步照計畫走", desc:"這一生習慣照著計畫一步一步走，該快轉的地方就快轉。" },
+  slowDeep:   { label:"喜歡慢慢來", desc:"這一生喜歡慢慢來，累了就停一下，一件喜歡的事可以做很久。" }
+};
+const LIFE_TRAIT_MIN_EVENTS = 5; // 【測試參數,7.7.4】計入的結構化選擇少於這個數，就不硬分類
+const LIFE_TRAIT_UNCLEAR_TEXT = "這一生還看不太出特定樣子。";
+function lifeTraitTotalEvents(p){
+  if(!p) return 0;
+  const sb = p.setback||{};
+  return (p.riskEvents||0) + (p.deviation||0) + (p.relationEvents||0) + (sb.retry||0)+(sb.pivot||0)+(sb.rest||0) + Math.min(p.skips||0, 5);
+}
+// 每一型算一個分數，取最高且>0的一型；分數公式為【測試參數】
+function classifyLifeTrait(p){
+  if(!p || lifeTraitTotalEvents(p) < LIFE_TRAIT_MIN_EVENTS) return { type:null, text: LIFE_TRAIT_UNCLEAR_TEXT };
+  const sb = p.setback||{ retry:0, pivot:0, rest:0 };
+  const interestTurns = p.longestInterest ? (p.longestInterest.turns||0) : 0;
+  const scores = {
+    explorer:   p.risk>=2 && sb.retry>=1 && sb.retry>=sb.pivot && sb.retry>=sb.rest ? p.risk + sb.retry*2 : 0,
+    ownPath:    p.deviation>=2 && p.relation<=0 ? p.deviation*2 - p.relation : 0,
+    steadyCare: p.risk<=-2 && p.relation>=1 ? (-p.risk) + p.relation*2 : 0,
+    forPeople:  p.relation>=3 && (p.relationEvents||0) >= Math.max(p.riskEvents||0, p.deviation||0) ? p.relation*3 : 0,
+    planner:    p.skips>=5 && p.deviation<=1 ? Math.min(p.skips,20)/2 + (1-p.deviation) : 0,
+    slowDeep:   sb.rest>=1 && sb.rest>=sb.retry && interestTurns>=50 ? sb.rest*2 + interestTurns/50 : 0
+  };
+  let best = null, bestScore = 0;
+  Object.keys(scores).forEach(k=>{ if(scores[k]>bestScore){ best = k; bestScore = scores[k]; } });
+  if(!best) return { type:null, text: LIFE_TRAIT_UNCLEAR_TEXT };
+  return { type: best, label: LIFE_TRAITS[best].label, text: LIFE_TRAITS[best].desc };
+}
+// 特質卡的五條數值(0~1)：用這一生的計數做成簡單圖像(7.7.3，取代原提案的假遊戲截圖)
+function lifeTraitCardBars(p){
+  p = p || newPlayStyle();
+  const n = (v,max)=>clamp(v/max, 0, 1);
+  return [
+    { label:"往外闖", v: n((p.risk||0)+5, 10) },
+    { label:"走自己的路", v: n(p.deviation||0, 5) },
+    { label:"顧身邊的人", v: n((p.relation||0)+3, 8) },
+    { label:"快轉時間", v: n(p.skips||0, 20) },
+    { label:"長期投入", v: n(p.longestInterest ? p.longestInterest.turns : 0, 200) }
+  ];
+}
+function lifeTraitCardSvg(p, title){
+  const bars = lifeTraitCardBars(p);
+  const rows = bars.map((b,i)=>`<text x="10" y="${44+i*26}" font-size="12" fill="currentColor">${escapeHtml(b.label)}</text>
+    <rect x="96" y="${34+i*26}" width="160" height="12" rx="6" fill="currentColor" opacity="0.12"/>
+    <rect x="96" y="${34+i*26}" width="${Math.round(160*b.v)}" height="12" rx="6" fill="var(--stamp)"/>`).join("");
+  return `<svg class="trait-card" viewBox="0 0 270 170" width="100%" role="img" aria-label="${escapeHtml(title)}的特質卡" style="max-width:320px;color:var(--ink);">
+    <text x="10" y="18" font-size="13" font-weight="bold" fill="currentColor">${escapeHtml(title)}</text>${rows}</svg>`;
+}
+// 7.7.3：揭曉時引用這一生真實事件，從編年史撈兩三筆(只取系統產生的事件標題)
+function lifeTraitEvidence(chronicle){
+  const items = (chronicle||[]).filter(x=>!/^（傳承）/.test(x));
+  if(items.length<=3) return items;
+  const pickIdx = [Math.floor(items.length*0.2), Math.floor(items.length*0.55), items.length-1];
+  return [...new Set(pickIdx)].map(i=>items[i]);
+}
 function assembleEnding(s, r){
   // 客戶端先挑好素材，再把AI寫的文字貼回對應的段落；AI沒寫到的段落留空字串，不補猜測內容
   const material = buildLifeSummaryMaterial(s);
@@ -4370,6 +4433,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     parent_retirement_event_now: s.parentRetirementEventLog || null, // 4.2.2（2026-09-27）：父母剛退休
     divorce_recovery_event_now: s.divorceRecoveryEventLog || null, // 7.6.3（2026-09-27）：離婚後重新開始的選擇
     old_age_theme: computeOldAgeTheme(s), // 13.7.2（2026-09-27）：60歲以後本回合的主題方向
+    previous_generation_events: (timeCtx && timeCtx.prologue && s.prevGenerationEventTitles && s.prevGenerationEventTitles.length) ? s.prevGenerationEventTitles : null, // 7.7.5（2026-09-27）：只在傳承後的開場回合送上一代事件標題
     interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
     part_time_event_now: s.partTimeEventLog || null, // 3.4.2（2026-09-27）：這回合打工的時薪、時數、收入，已入帳
     illness_event_now: s.illnessEventLog,
@@ -5442,6 +5506,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     s.phase = "ending";
     // 七、7.1.4（9/20改版）：不再有title/summary，改為三層結構的人生總結
     s.ending = assembleEnding(s, r);
+    s.lifeTrait = classifyLifeTrait(s.playStyle); // 7.7.4【定案】死亡時判定
   }
 }
 
@@ -5587,6 +5652,12 @@ function succeedAsChild(childName){
     family: econ.tier, familyMonthlyIncome: econ.familyMonthlyIncome, familySavings: econ.familySavings, familyStructure, isPoliticianChild:false,
     inheritedParentingStyle, // 7.4.2（2026-09-27）：記下這一世繼承到的教養風格，供除錯與日後查詢
     familyBusinessFromPrevLife: heirOfFamilyBusiness, // 12.10交棒（2026-09-27）：出社會找工作時先出現一次「回來接家業」候選
+    // 七、7.7.4／7.7.5（2026-09-27）：世代傳承交棒時再判定一次上一代的特質，存進家族年表(每一代一格)；
+    // 下一代開局敘事只送上一代的事件標題(不送計數器與特質描述，7.7.2計數器不送AI)
+    familyChronicle: (prev.familyChronicle||[]).concat([{ name: prev.name, generation: (prev.reincarnations||0)+1, age: prev.age,
+      trait: classifyLifeTrait(prev.playStyle), playStyle: JSON.parse(JSON.stringify(prev.playStyle||newPlayStyle())),
+      events: lifeTraitEvidence(prev.chronicle) }]),
+    prevGenerationEventTitles: (prev.chronicle||[]).filter(x=>!/^（傳承）/.test(x)).slice(-6),
     collegeLocation:null,
     // 二、2.2（2026-09-23新增）：世代傳承的新主角一律從15歲高中入學前重新開始，同樣要有一次prologue開場段落
     timeState:{ stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0, prologue:true },
@@ -6171,6 +6242,101 @@ function bindArchiveList(){
     };
   });
 }
+// 七、7.7.3【定案】呈現：先出現特質卡、不寫描述 → 玩家從六個特質裡猜一個 → 揭曉判定結果＋這一生真實事件＋猜中/猜錯各一句收尾；
+// 猜的結果不影響任何數值。計數不足時跳過猜測，直接顯示「還看不太出特定樣子」。揭曉後可以存成分享卡(7.7.5)
+function renderLifeTraitModal(info){
+  const div = document.createElement("div");
+  div.id = "life-trait-modal";
+  div.className = "modal-backdrop";
+  const card = lifeTraitCardSvg(info.playStyle, `${info.name||""}的這一生`);
+  if(!info.trait || !info.trait.type){
+    div.innerHTML = `<div class="modal">${card}<p style="margin-top:10px;">${escapeHtml(LIFE_TRAIT_UNCLEAR_TEXT)}</p><button class="primary-btn" id="btn-trait-close">關閉</button></div>`;
+    document.body.appendChild(div);
+    document.getElementById("btn-trait-close").onclick = ()=>div.remove();
+    return;
+  }
+  div.innerHTML = `<div class="modal">
+      ${card}
+      <p style="margin-top:10px;">猜猜看，這一生比較像哪一種？</p>
+      ${Object.keys(LIFE_TRAITS).map(k=>`<button class="ghost-btn trait-guess-btn" data-key="${k}" style="display:block;width:100%;text-align:left;margin:4px 0;">${escapeHtml(LIFE_TRAITS[k].label)}</button>`).join("")}
+      <div id="trait-reveal" style="display:none;"></div>
+    </div>`;
+  document.body.appendChild(div);
+  div.querySelectorAll(".trait-guess-btn").forEach(btn=>{
+    btn.onclick = ()=>{
+      const hit = btn.dataset.key===info.trait.type;
+      div.querySelectorAll(".trait-guess-btn").forEach(b=>b.style.display="none");
+      const reveal = document.getElementById("trait-reveal");
+      reveal.style.display = "block";
+      reveal.innerHTML = `
+        <p style="font-size:15px;margin-top:8px;"><strong>${escapeHtml(info.trait.text)}</strong></p>
+        ${(info.events||[]).length ? `<ul style="font-size:13px;padding-left:18px;">${info.events.map(e=>`<li>${escapeHtml(e)}</li>`).join("")}</ul>` : ""}
+        <p style="font-size:13px;color:var(--ink-soft);">${hit ? "你比誰都清楚，這一生是怎麼過的。" : "原來從外面看，這一生是這個樣子。"}</p>
+        <button class="ghost-btn" id="btn-trait-share">存成圖片</button>
+        <button class="primary-btn" id="btn-trait-close" style="margin-left:6px;">關閉</button>`;
+      document.getElementById("btn-trait-close").onclick = ()=>div.remove();
+      document.getElementById("btn-trait-share").onclick = ()=>renderShareCardPicker(info);
+    };
+  });
+}
+// 七、7.7.5【定案】分享卡：玩家勾選要放的事件；只放系統產生的事件標題(編年史)，不放玩家自由輸入的文字
+function renderShareCardPicker(info){
+  const div = document.createElement("div");
+  div.id = "share-card-modal";
+  div.className = "modal-backdrop";
+  const items = (info.chronicle||[]).filter(x=>!/^（傳承）/.test(x));
+  div.innerHTML = `<div class="modal">
+      <h3>選幾件要放上去的事</h3>
+      <div style="max-height:240px;overflow:auto;text-align:left;">${items.map((e,i)=>`<label style="display:block;font-size:13px;margin:3px 0;"><input type="checkbox" class="share-ev" data-i="${i}" ${i<3?"checked":""}/> ${escapeHtml(e)}</label>`).join("") || `<p style="font-size:13px;">這一生沒有留下事件紀錄。</p>`}</div>
+      <p id="share-card-msg" style="font-size:12px;color:var(--ink-soft);"></p>
+      <button class="primary-btn" id="btn-share-save">存成圖片</button>
+      <button class="ghost-btn" id="btn-share-close" style="margin-left:6px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-share-close").onclick = ()=>div.remove();
+  document.getElementById("btn-share-save").onclick = ()=>{
+    const picked = [...div.querySelectorAll(".share-ev")].filter(x=>x.checked).map(x=>items[+x.dataset.i]).slice(0,6);
+    const url = drawShareCard(info, picked);
+    const msg = document.getElementById("share-card-msg");
+    if(!url){ msg.textContent = "這個瀏覽器不能產生圖片"; return; }
+    const link = document.createElement("a");
+    link.href = url; link.download = `${info.name||"人生"}的這一生.png`;
+    document.body.appendChild(link); link.click(); link.remove();
+    msg.textContent = "已存成圖片";
+  };
+}
+function drawShareCard(info, events){
+  const canvas = document.createElement("canvas");
+  canvas.width = 720; canvas.height = 420 + events.length*34;
+  const ctx = canvas.getContext && canvas.getContext("2d");
+  if(!ctx) return null;
+  ctx.fillStyle = "#f6f1e7"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = "#2b2622"; ctx.font = "bold 30px sans-serif"; ctx.fillText(`${info.name||""}的這一生`, 40, 60);
+  ctx.font = "22px sans-serif"; ctx.fillText(info.trait && info.trait.type ? info.trait.text : LIFE_TRAIT_UNCLEAR_TEXT, 40, 105);
+  lifeTraitCardBars(info.playStyle).forEach((b,i)=>{
+    const y = 150 + i*36;
+    ctx.fillStyle = "#2b2622"; ctx.font = "18px sans-serif"; ctx.fillText(b.label, 40, y+14);
+    ctx.fillStyle = "#e3dccf"; ctx.fillRect(170, y, 400, 16);
+    ctx.fillStyle = "#9c3b2e"; ctx.fillRect(170, y, Math.round(400*b.v), 16);
+  });
+  ctx.fillStyle = "#2b2622"; ctx.font = "18px sans-serif";
+  events.forEach((e,i)=>ctx.fillText("・"+e, 40, 360 + i*34));
+  return canvas.toDataURL("image/png");
+}
+// 七、7.7.4／7.7.5【定案】家族年表：每一代一格，點開就是那一代的特質卡
+function renderFamilyChronicleModal(list){
+  const div = document.createElement("div");
+  div.id = "family-chronicle-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `<div class="modal"><h3>家族年表</h3>
+      ${(list||[]).map((g,i)=>`<button class="ghost-btn fam-gen-btn" data-i="${i}" style="display:block;width:100%;text-align:left;margin:4px 0;">第${g.generation}代・${escapeHtml(g.name||"")}・${g.age||"?"}歲</button>`).join("")}
+      <button class="primary-btn" id="btn-fam-close" style="margin-top:10px;">關閉</button></div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-fam-close").onclick = ()=>div.remove();
+  div.querySelectorAll(".fam-gen-btn").forEach(btn=>{
+    btn.onclick = ()=>{ const g = list[+btn.dataset.i]; renderLifeTraitModal({ name:g.name, trait:g.trait, playStyle:g.playStyle, events:g.events, chronicle:g.events }); };
+  });
+}
 function renderArchiveView(){
   const a = state.archived;
   const segs = a.ending ? (a.ending.segments || (a.ending.summary ? [{label:"", text:a.ending.summary}] : [])) : [];
@@ -6185,6 +6351,8 @@ function renderArchiveView(){
     <h2 style="text-align:center;">${escapeHtml(a.name||"")}・第${(a.reincarnations||0)+1}世・${a.age}歲</h2>
     ${endingHtml}
     ${a.ending?.epitaph ? `<div class="end-title" style="font-size:17px;line-height:1.7;margin:14px 0;text-align:center;">${escapeHtml(a.ending.epitaph)}</div>` : ``}
+    <button class="ghost-btn" id="btn-archive-traits" style="display:block;margin:0 auto 10px;">看看這一生的樣子</button>
+    ${(a.familyChronicle && a.familyChronicle.length) ? `<button class="ghost-btn" id="btn-archive-family" style="display:block;margin:0 auto 10px;">家族年表（前${a.familyChronicle.length}代）</button>` : ``}
     ${(a.book && a.book.chapters && a.book.chapters.length) ? `<button class="ghost-btn" id="btn-archive-book" style="display:block;margin:0 auto 10px;">📚 人生之書（${a.book.chapters.filter(c=>c.status==="done").length}章）</button>` : ``}
     <div class="journal" style="max-height:none;">${logHtml || `<p style="color:var(--ink-soft);">沒有留下紀錄。</p>`}</div>
     <button class="ghost-btn" id="btn-archive-view-back" style="margin-top:10px;">← 回到人生回顧</button>
@@ -6193,6 +6361,12 @@ function renderArchiveView(){
 function bindArchiveView(){
   const bookBtn = document.getElementById("btn-archive-book");
   if(bookBtn) bookBtn.onclick = ()=>openBookPage(state.archived.book, { readOnly:true, owner: state.archived.name });
+  // 七、7.7.1【定案】人生特質放在人生回顧裡，玩家自己點才出現；判定結果優先用死亡時存下的，舊封存沒有就用封存的計數器現算
+  const a = state.archived;
+  document.getElementById("btn-archive-traits").onclick = ()=>renderLifeTraitModal({
+    name: a.name, trait: a.lifeTrait || classifyLifeTrait(a.playStyle), playStyle: a.playStyle, events: lifeTraitEvidence(a.chronicle), chronicle: a.chronicle||[] });
+  const famBtn = document.getElementById("btn-archive-family");
+  if(famBtn) famBtn.onclick = ()=>renderFamilyChronicleModal(a.familyChronicle);
   document.getElementById("btn-archive-view-back").onclick = ()=>{ state = { phase:"archiveList", items: state.backItems||[] }; render(); };
 }
 
