@@ -520,6 +520,62 @@ function annualTemperamentGrowth(s){
   const exposure = computeFinancialHealthForState(s) >= TEMPERAMENT_WEALTH_EXPOSURE_FH ? 1 : 0;
   return years * (1 + exposure);
 }
+// ========== 三、3.6 人格魅力風格滑動（2026-09-27補上，使用者授權Claude全權判斷，【測試參數】） ==========
+// 定案「比照同儕位置的光譜位移邏輯，長期選擇緩慢滑動到另一種風格」。AI每回合只在玩家行為明顯展現某種風格時回報style_signal
+// (六種之一)，程式累積次數；某個其他風格累積≥STYLE_SHIFT_MIN_SIGNALS，且比目前風格的累積多STYLE_SHIFT_LEAD以上才換，
+// 換了之後計數歸零重新累積，並寫一句進履歷、下一回合告訴AI。偶爾一兩次不會換，要長期持續才會
+const STYLE_SHIFT_MIN_SIGNALS = 8;
+const STYLE_SHIFT_LEAD = 4;
+function applyPersonalityStyleSignal(s, signal){
+  s.personalityStyleChangedNow = null;
+  if(!PERSONALITY_STYLES.includes(signal)) return;
+  s.styleSignals = s.styleSignals || {};
+  s.styleSignals[signal] = (s.styleSignals[signal]||0)+1;
+  if(signal===s.personalityStyle) return;
+  const cur = s.styleSignals[s.personalityStyle]||0;
+  if(s.styleSignals[signal] >= STYLE_SHIFT_MIN_SIGNALS && s.styleSignals[signal] - cur >= STYLE_SHIFT_LEAD){
+    const from = s.personalityStyle;
+    s.personalityStyle = signal;
+    s.styleSignals = {};
+    s.personalityStyleChangedNow = { from, to: signal };
+    s.chronicle.push(`（${s.age}歲）不知不覺，身上的氣質從${from.replace(/型$/,"")}變得比較${signal.replace(/型$/,"")}了`);
+  }
+}
+// ========== 三、3.2.3 邏輯能力後天成長（2026-09-27補上，使用者授權Claude全權判斷，【測試參數】） ==========
+// 原本邏輯能力只在開局設定，之後完全不變。3.2.3的成長來源：辯論社、數理強項科目、解謎/策略/財務決策。
+// 比照detectStudyIntent用玩家行動關鍵字判斷，另外興趣事件是「科技邏輯」且正向投入也算；每回合最多成長一次，
+// 基礎+LOGIC_GROWTH_PER_EVENT，套3.5.3邊際遞減。邏輯能力本身是隱藏數值，會經3.2.2的邏輯加成影響才識成長
+const LOGIC_GROWTH_PER_EVENT = 1.5;
+function detectLogicIntent(actionText){
+  return /辯論|數學|物理|化學|程式|寫code|解題|解謎|邏輯|下棋|圍棋|象棋|策略|推理|理財|投資|記帳|預算|分析/.test(actionText||"");
+}
+function applyLogicGrowth(s, actionText, interestEvent){
+  const byInterest = interestEvent && interestEvent.category==="科技邏輯" && interestEvent.reaction==="positive";
+  if(!detectLogicIntent(actionText) && !byInterest) return;
+  s.logicAbility = clamp(s.logicAbility + applyMarginalDiminish(LOGIC_GROWTH_PER_EVENT, s.logicAbility), 0, 100);
+}
+// ========== 三、3.4.2 打工薪資（2026-09-27補上，使用者授權Claude全權判斷） ==========
+// 原本打工收入只能靠AI在one_time_transaction自由填，沒有基準時薪。改成：沒有正職（學生、待業、半退休）的人這回合行動
+// 提到打工/兼職/家教等，程式依時薪×時數入帳，並告訴AI金額(part_time_event_now)。時薪：一般0.2、家教/技術型0.3~0.5，
+// 四捨五入到小數一位（3.4.2定案）；時數＝每週PART_TIME_HOURS_PER_WEEK小時×本回合週數，至少一個班(4小時)【測試參數】；
+// 總額四捨五入到整數（比照3.4.7結算類數字）。同時把「第一次打工」里程碑改由程式判定完成
+const PART_TIME_HOURS_PER_WEEK = 12; // 【測試參數,3.4.2】
+function detectPartTimeIntent(actionText){
+  return /打工|兼職|工讀|家教|排班|輪班|接案|去店裡上班/.test(actionText||"");
+}
+function applyPartTimeWork(s, actionText, win){
+  s.partTimeEventLog = null;
+  if(!detectPartTimeIntent(actionText)) return;
+  if(s.careerStatus===CAREER_STATUS.EMPLOYED || s.careerStatus===CAREER_STATUS.BUSINESS || s.careerStatus===CAREER_STATUS.RETIRED) return;
+  const skilled = /家教|程式|設計|翻譯|接案|技術/.test(actionText||"");
+  const hourly = skilled ? Math.round((0.3 + Math.random()*0.2)*10)/10 : 0.2;
+  const weeks = win && win.daysAdvanced ? win.daysAdvanced/7 : 1;
+  const hours = Math.max(4, Math.round(PART_TIME_HOURS_PER_WEEK*weeks));
+  const earning = Math.round(hourly*hours);
+  s.cash += earning;
+  s.partTimeEventLog = { hourly, hours, earning, skilled };
+  if(s.milestones && s.milestones.first_part_time_job!=="completed") s.milestones.first_part_time_job = "completed";
+}
 // 3.5.3 核心數值的邊際遞減與人脈閒置衰退（9/14整併QA 60局測試後定案，係數皆為【測試參數】未定案）
 // 可切換開關，方便回歸比較（呼應開發參數規格「十五、開發完成標準」）
 let ENABLE_MARGINAL_DIMINISH = true;
@@ -986,6 +1042,27 @@ function computeInterestHireBonusPp(s, targetCategory){
 // 8.2（9/16-v2.1補充）候選興趣進度(candidateProgress)與自律連續投入計數(positiveStreak)是兩個獨立欄位：
 //   candidateProgress只管candidate→active轉正，positive=+1/neutral=0/negative=-1(下限0)，單次negative不會讓進度整個消失
 //   positiveStreak仍是嚴格「連續」計數，供3.7.2自律判定使用，中斷(negative)一樣重新起算，這條規則v2.1未變動
+// 八、8.4【定案】興趣須能掛時間/金錢/健康/機會成本，不強制每個都有負面效果（2026-09-27補上，使用者授權Claude全權判斷，【測試參數】）：
+// 時間與機會成本已經有了——考前準備期選興趣會拖累成績(3.2.4)、正式副業佔時間(8.7)。這裡補金錢與健康：
+// 正向/中性投入的那一回合，依類別扣一點器材材料費(學生存款不足就不扣，比照3.4.10)，體能競技有機率小傷、科技邏輯有機率熬夜。
+// 商業交易類的財務風險8.4明定另外設計，這裡不掛；知識研究類不掛(不是每個興趣都要有負面效果)
+const INTEREST_COSTS = {
+  藝術創作: { money:1 }, 手作工藝: { money:2 }, 體能競技: { money:1, health:{ prob:0.1, amount:3, kind:"小傷" } },
+  科技邏輯: { money:1, health:{ prob:0.1, amount:2, kind:"熬夜" } }, 社交表演: { money:1 }
+};
+function applyInterestCost(s, interestEvent){
+  s.interestCostNow = null;
+  if(!interestEvent || !INTEREST_COSTS[interestEvent.category]) return;
+  if(interestEvent.reaction!=="positive" && interestEvent.reaction!=="neutral") return;
+  const def = INTEREST_COSTS[interestEvent.category];
+  const cost = { category: interestEvent.category, money:0, health:0, kind:null };
+  if(def.money && !(isStudentPhase(s) && s.cash < def.money)){ s.cash -= def.money; cost.money = def.money; }
+  if(def.health && Math.random() < def.health.prob){
+    s.stats.health = clamp(s.stats.health - def.health.amount, 0, 100);
+    cost.health = def.health.amount; cost.kind = def.health.kind;
+  }
+  if(cost.money || cost.health) s.interestCostNow = cost;
+}
 function applyInterestEvent(s, interestEvent){
   if(!interestEvent || !interestEvent.category || !INTEREST_CATEGORIES.includes(interestEvent.category)) return;
   // 三、3.2.4（2026-09-23拍板）：這回合的行動投入在興趣路徑上，算一次考前拖累計數，與study_count_this_term同時累積、同時歸零
@@ -2781,6 +2858,29 @@ function collegeYearLabel(s){
 // 九、9.8.1（2026-09-22新增）：休學選項可用條件——delay_years尚未達上限，且「加上這次休學半年後的預計畢業年齡」
 // 不得超過該科系畢業年齡上限（取代原本「delay_years封頂兩年已自然限制最多4次」的舊定案，該定案沒考慮到轉系後
 // 起始年齡已提高的情境）
+// 九、9.4【定案】延畢觸發原因接既有機制(3.2.4課業興趣連動、財務壓力)；9.8.1【定案】非休學型延畢沿用同一套機制：
+// 該學期不計入、重跑，delay_years+0.5（2026-09-27補上，使用者授權Claude全權判斷，門檻為【測試參數】）：
+// 大學期末考沒過，且這段準備期選興趣≥DELAY_INTEREST_COUNT_TRIGGER次(興趣拖累)、或財務健康度連續偏低(lowCashStreak達休學候選門檻)，
+// 延畢額度與畢業年齡上限還夠時(isAnotherLeaveFeasible)，考完直接回到這學期開頭重跑(那個假期沒得放)；時間照休學復學的做法記半年
+const DELAY_INTEREST_COUNT_TRIGGER = 3;
+function checkNonLeaveGraduationDelay(s, examCheck, interestCount){
+  if(examCheck.passed || s.timeState.stageMode!=="college" || s.studentStatus!=="enrolled") return false;
+  const byInterest = (interestCount||0) >= DELAY_INTEREST_COUNT_TRIGGER;
+  const byFinance = (s.lowCashStreak||0) >= WITHDRAWAL_STREAK_TRIGGER;
+  if(!byInterest && !byFinance) return false;
+  if(!isAnotherLeaveFeasible(s)) return false;
+  const cal = s.timeState.cal;
+  const halfStart = (s.timeState.segmentIndex % YEAR_SEGMENTS.length) < SEMESTER_PHASES.length ? 0 : SEMESTER_PHASES.length;
+  s.timeState.segmentIndex = halfStart;
+  s.timeState.turnsInSegment = 0;
+  s.studyCountThisTerm = 0; s.interestCountThisTerm = 0;
+  if(cal && cal.lastRoundEnd!=null) cal.yearBase = (cal.lastRoundEnd + 1) - SCHOOL_SEGMENT_OFFSET[halfStart];
+  s.collegeDelayYearsUsed = clamp((s.collegeDelayYearsUsed||0)+0.5, 0, COLLEGE_DELAY_CAP);
+  s.halfYearCarry = (s.halfYearCarry||0) + 1;
+  if(s.halfYearCarry>=2){ s.halfYearCarry = 0; s.age += 1; ageChildren(s, 1); }
+  s.universityEventLog = { type:"graduation_delayed", reason: byInterest ? "interest" : "finance" };
+  return true;
+}
 function isAnotherLeaveFeasible(s){
   const usedDelay = clamp(s.collegeDelayYearsUsed||0, 0, COLLEGE_DELAY_CAP);
   if(usedDelay >= COLLEGE_DELAY_CAP) return false;
@@ -3553,6 +3653,15 @@ function rollIllnessLevel(age){
   if(r<=w.acute+w.chronic) return "chronic";
   return "major";
 }
+const MAJOR_ILLNESS_TYPES = ["癌症","心血管疾病","中風","腎臟疾病","肺部疾病"]; // 【測試參數,13.3.5】
+const AGE_BAND_KEYS = LIFE_STAGE_ROUND_BUDGET.map(b=>`${b.minAge}-${b.maxAge}`);
+function rollMajorIllnessType(s, bandKey){
+  const byBand = s.majorIllnessTypeByBand || {};
+  const i = AGE_BAND_KEYS.indexOf(bandKey);
+  const blocked = new Set([...(byBand[AGE_BAND_KEYS[i-1]]||[]), ...(byBand[AGE_BAND_KEYS[i+1]]||[])]);
+  const pool = MAJOR_ILLNESS_TYPES.filter(x=>!blocked.has(x));
+  return pick(pool.length ? pool : MAJOR_ILLNESS_TYPES);
+}
 // 13.3.1【定案】疾病機率＝(年齡基礎疾病機率×健康修正倍率)＋高風險行為/職業加成，運算結構刻意與7.1.5一致，健康修正倍率沿用13.2.2推廣式
 // 【定案】擲骰與等級判定全由客戶端完成，AI只負責在已決定的框架內寫敘事，不自行判斷要不要生病
 function rollAnnualIllnessCheck(s){
@@ -3567,9 +3676,14 @@ function rollAnnualIllnessCheck(s){
   s.chronicConditions = s.chronicConditions || [];
   if(level==="chronic" && s.chronicConditions.length >= CHRONIC_CONDITION_MAX_CONCURRENT) level = "acute"; // 並存上限已達，降級為急性事件
   if(level==="major"){
+    // 13.3.5【定案】相鄰兩個年齡帶不重複觸發同類型重大疾病（2026-09-27補上，使用者授權Claude全權判斷）：重大疾病新增類型欄位，
+    // 從MAJOR_ILLNESS_TYPES裡排除前一個與後一個年齡帶已經得過的類型再抽；類型送給AI當敘事素材
+    const type = rollMajorIllnessType(s, bandKey);
     s.majorIllnessCountByBand[bandKey] = (s.majorIllnessCountByBand[bandKey]||0)+1;
-    s.majorIllness = { stage:"onset", turnsInStage:0, onsetTargetTurns: rnd(1,3) };
-    return { level:"major" };
+    s.majorIllnessTypeByBand = s.majorIllnessTypeByBand || {};
+    s.majorIllnessTypeByBand[bandKey] = (s.majorIllnessTypeByBand[bandKey]||[]).concat([type]);
+    s.majorIllness = { stage:"onset", turnsInStage:0, onsetTargetTurns: rnd(1,3), type };
+    return { level:"major", type };
   }
   if(level==="chronic"){
     s.chronicConditions.push({ id:"chronic_"+s.turnCount+"_"+rnd(1000,9999), controlledStreak:0, controlled:false });
@@ -4030,6 +4144,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     college_location: s.collegeLocation,
     stats:s.stats, happiness:s.happiness,
     appearance: s.appearance, personality_style: s.personalityStyle,
+    personality_style_changed_now: s.personalityStyleChangedNow || null, // 3.6（2026-09-27）：上一回合風格剛滑動
     conscientiousness: s.conscientiousness,
     detail_variance_multiplier: clamp(1-(s.conscientiousness.prudence-50)*0.01, 0.5, 1.5),
     achievement_probability_modifier_pp: +((s.conscientiousness.achievement-50)*0.3).toFixed(1),
@@ -4056,7 +4171,10 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     health_cap: computeHealthCap(s),
     chronic_conditions_count: (s.chronicConditions||[]).length,
     major_illness_stage: s.majorIllness ? s.majorIllness.stage : null,
+    major_illness_type: s.majorIllness ? (s.majorIllness.type||null) : null, // 13.3.5（2026-09-27）：重大疾病類型
     old_age_theme: computeOldAgeTheme(s), // 13.7.2（2026-09-27）：60歲以後本回合的主題方向
+    interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
+    part_time_event_now: s.partTimeEventLog || null, // 3.4.2（2026-09-27）：這回合打工的時薪、時數、收入，已入帳
     illness_event_now: s.illnessEventLog,
     major_illness_event_now: s.majorIllnessEventLog,
     parent_health_event_now: s.parentHealthEventLog,
@@ -4473,6 +4591,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
     stat_deltas: deltas, event_type, event_id, interest_event, emotional_tone,
     club_activity: Math.random()<0.15, // 3.8.2 mock版（2026-09-27）
     risky_activity: Math.random()<0.03, // 7.1.1 mock版（2026-09-27）
+    style_signal: Math.random()<0.2 ? pick(PERSONALITY_STYLES) : null, // 3.6 mock版（2026-09-27）
     attachment_shift, peer_position_shift, revealed_key_event:false,
     college_location_choice:null, fertility_stage_update:null,
     new_characters, character_updates, major_event_summary, major_event_type,
@@ -4555,6 +4674,7 @@ async function takeTurn(actionText, cost){
   // 二、2.5（9/16新增）：22歲以後改採加速曲線回合預算，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
   // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
   const adv = advanceStructuredTime(actionText);
+  applyPartTimeWork(state, actionText, adv.window); // 3.4.2（2026-09-27）：打工收入由程式依時薪×時數算好，AI只負責敘事
   // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
   // （呼應7.1.5死亡機制精神，不讓AI自由裁量這個數字），期中考不受影響、維持原本hint範圍由AI自由發揮
   const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance, interestCountBeforeAdvance) : null;
@@ -4565,6 +4685,7 @@ async function takeTurn(actionText, cost){
     state.examHistory = (state.examHistory||[]).concat([{ label: adv.currentLabel, type: adv.examType, score }]).slice(-6);
   }
   if(examCheck && !examCheck.passed) markPlayStyleSetback(state, "exam_fail", null); // 十六、16.2.3
+  if(examCheck) checkNonLeaveGraduationDelay(state, examCheck, interestCountBeforeAdvance); // 9.4（2026-09-27）：非休學型延畢
   // 2026-09-23修正（時間標籤慢一拍bug）：這回合顯示/送給AI的標籤改用currentLabel(這回合實際所在的段落)，
   // 不再用toLabel(換段後、下一回合才生效的段落)；jump提示(from/to)維持給跳過動作用，語意不變
   let timeCtx = { structured:true, label: adv.currentLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, interestCountAtExam: interestCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow, window: adv.window||null, prologue: wasPrologue };
@@ -4808,7 +4929,10 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 
   // 八、興趣系統v1（9/16新增）：AI只分類，候選成立/投入度/自律加成/副業契機一律由程式計算
   applyInterestEvent(s, r.interest_event);
+  applyInterestCost(s, r.interest_event); // 8.4（2026-09-27）：興趣的代價
   applyClubActivity(s, r.club_activity===true); // 3.8.2（2026-09-27）：社團參與
+  applyLogicGrowth(s, actionText, r.interest_event); // 3.2.3（2026-09-27）：邏輯能力後天成長
+  applyPersonalityStyleSignal(s, r.style_signal); // 3.6（2026-09-27）：人格魅力風格緩慢滑動
   if(r.risky_activity===true) s.riskyHobbyScore = (s.riskyHobbyScore||0)+1; // 7.1.1（2026-09-27）：極限運動/危險嗜好
   sweepInterestDecay(s);
 

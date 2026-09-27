@@ -10,6 +10,25 @@
 
 ---
 
+## 2026-09-27（續六：第三節第一批，使用者授權Claude全權判斷）
+
+**〔開發部〕**（數字皆為【測試參數】）
+- 3.4.2：`applyPartTimeWork()`在時間推進後、呼叫AI前執行：沒有正職的人行動提到打工/兼職/家教/接案等，依時薪(一般0.2、家教/技術0.3~0.5)×時數(每週12小時×本回合週數，至少4小時)入帳，`part_time_event_now`送AI；第一次打工里程碑改由程式完成。prompt要求AI不要再用one_time_transaction回報打工收入
+- 3.2.3：`applyLogicGrowth()`：行動關鍵字(辯論/數理/程式/解題/策略/理財等)或科技邏輯興趣正向投入，邏輯＋1.5套邊際遞減
+- 3.6：AI新欄位`style_signal`，`applyPersonalityStyleSignal()`累積，另一種風格≥8次且領先4次才換，換了寫履歷、`personality_style_changed_now`送AI
+- 8.4：`applyInterestCost()`依類別扣材料費(學生存款不足不扣)，體能競技10%小傷、科技邏輯10%熬夜；下一回合以`interest_cost_last_turn`告訴AI
+- 9.4：`checkNonLeaveGraduationDelay()`：大學期末考沒過＋(準備期興趣≥3次或財務長期偏低)＋額度夠 → 回到這學期開頭重跑、delay+0.5、halfYearCarry記半年、行事曆接續；`university_recent_event`告訴AI
+- 13.3.5：重大疾病新增類型(`rollMajorIllnessType()`，五種)，排除相鄰年齡帶得過的類型；`major_illness_type`送AI
+- `worker/prompt.js`：style_signal schema與說明、打工收入、延畢事件。**要重新部署Worker才會生效**
+- 設計文件03、08、09、13補上判斷說明；`00-總覽.md`更新日誌、QA手冊34.8同步
+
+**〔測試部〕**
+- 新增`tests/test-21-batch3a.mjs`：28/28通過，連跑3次穩定（含mock連續400回合）
+- 全套回歸全部通過
+- 需要真實API才能驗證、**未測試**：AI是否正確回報style_signal、是否照打工金額/延畢/疾病類型寫敘事
+
+---
+
 ## 2026-09-27（續五：第二節C批後七項，使用者授權Claude全權判斷）
 
 **〔開發部〕**（每項各自一個commit，數字皆為【測試參數】）
