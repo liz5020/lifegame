@@ -10,6 +10,23 @@
 
 ---
 
+## 2026-09-27（續八：第三節第三批，使用者授權Claude全權判斷）
+
+**〔開發部〕**（數字皆為【測試參數】）
+- 12.2：`checkJobSearchTrigger()`改成開一段求職期(`jobSearchPhase`，第一次5~6回合、之後3~5回合)，最後一回合結束才排入投遞彈窗；`job_search_phase`送AI寫混合內容
+- 12.9：`workplaceRelationCategory()`把職場說法歸成同事/主管/下屬/客戶或合作對象；創業彈窗改寫：依`partnerOptionProb()`(團隊值)出現「找某人合夥」選項(`findBusinessPartnerCandidate()`)，合夥時資金×0.5、事業收入×0.7(`businessIncomeFactor()`)、營運成功率+5；補上「先不創業」按鈕(原本現金足夠時只能按啟動)
+- 12.10：退休彈窗新增「自己決定怎麼安排」自訂輸入(視同繼續工作，文字送AI)；`retirementTenureAdjustment()`依`careerYearsWorked`微調替代率(±6個百分點)；`canHandOverBusiness()`／`handoverHeirCandidate()`：自營者可交棒給成年子女，世代傳承選到繼承人時`familyBusinessFromPrevLife`，下一世出社會先跳接手家業彈窗
+- 既有問題順手修正：自營者一般退休後事業原本仍是「經營中」，年度營運判定會繼續改寫月收入；改為退休時事業收起
+- `worker/prompt.js`：求職期寫法、職場關係用詞、合夥與退休自訂/交棒說明。**要重新部署Worker才會生效**
+
+**〔測試部〕**
+- 新增`tests/test-23-batch3c.mjs`：26/26通過，連跑3次穩定
+- 說明：mock長程測試的自動點擊只點彈窗第一顆按鈕、不會按投遞，所以mock人生本來就找不到工作；這項改成只確認有進入求職期
+- 全套回歸全部通過
+- 需要真實API才能驗證、**未測試**：AI是否照求職期混合寫法、是否用四種職場關係用詞
+
+---
+
 ## 2026-09-27（續七：第三節第二批，使用者授權Claude全權判斷）
 
 **〔開發部〕**（數字皆為【測試參數】）

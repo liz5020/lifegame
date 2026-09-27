@@ -1639,7 +1639,25 @@ function checkJobSearchTrigger(s){
   const graduatedNotWorking = (s.studentStatus==="graduated" || s.studentStatus==="withdrawn") &&
     !s.occupationCategory && s.careerStatus!==CAREER_STATUS.BUSINESS && s.careerStatus!==CAREER_STATUS.RETIRED && s.careerStatus!==CAREER_STATUS.SEMI_RETIRED;
   const searching = s.careerStatus===CAREER_STATUS.JOB_SEARCHING || s.careerStatus===CAREER_STATUS.UNEMPLOYED || graduatedNotWorking;
-  if(searching){
+  if(!searching){ s.jobSearchPhase = null; return; }
+  // 12.10交棒與9.3接手家業在下一世銜接（2026-09-27）：上一代把事業交給這一世的主角，出社會找工作時先問一次要不要回來接
+  if(s.familyBusinessFromPrevLife && !s.pendingFamilyBusinessOffer){
+    s.familyBusinessFromPrevLife = false;
+    s.pendingFamilyBusinessOffer = { foreshadowLine:null, parentName:null, fromPrevLife:true };
+    return;
+  }
+  // 十二、12.2【定案】求職期是段落型判定，佔3至5回合，畢業後第一次求職放寬至5至6回合，內部穿插家人詢問、同儕比較、打工過渡、
+  // 面試前準備（2026-09-27補上，使用者授權Claude全權判斷）：原本每回合都直接跳投遞彈窗。改成開一段求職期，
+  // 期間由AI依job_search_phase寫混合內容，最後一回合結束才跳投遞彈窗；沒錄取(或婉拒)就再開下一段求職期。
+  // 在職中的轉職(checkTransferCandidate)與職涯伏筆帶來的求職候選不走這段，照舊當回合處理
+  if(!s.jobSearchPhase){
+    const first = !s.occupationCategory && !s.everSearchedJob;
+    s.jobSearchPhase = { total: first ? rnd(5,6) : rnd(3,5), turn: 0, first };
+    s.everSearchedJob = true;
+  }
+  s.jobSearchPhase.turn++;
+  if(s.jobSearchPhase.turn >= s.jobSearchPhase.total){
+    s.jobSearchPhase = null;
     s.pendingJobSearch = { offers: buildJobSearchOffers(s), isTransfer:false, isFallback:(s.jobSearchStreak||0)>=JOB_SEARCH_STREAK_FALLBACK };
   }
 }
@@ -1790,9 +1808,23 @@ function computeStartupCapitalRequired(){
   const cat = findOccupationCategory("自營/家庭事業類");
   return Math.round((cat.salaryRange[0]+cat.salaryRange[1])/2 * 12);
 }
-function launchBusiness(s){
-  const capital = computeStartupCapitalRequired();
+// ========== 十二、12.9 創業合夥（2026-09-27補上，使用者授權Claude全權判斷，【測試參數】） ==========
+// 【定案】團隊值偏單打獨鬥的角色，合夥類選項出現權重降低但不鎖死。創業彈窗依PARTNER_OPTION_PROB(teamSolo)決定這次有沒有「找人合夥」選項：
+// 夥伴從關係值≥50的同事/合作對象/朋友裡挑關係值最高的一位（沒有就不出現）。合夥：啟動資金×0.5、之後事業收入分三成給對方(×0.7)、
+// 年度營運成功率+5個百分點(多一個人扛)
+const PARTNER_CAPITAL_SHARE = 0.5, PARTNER_INCOME_SHARE = 0.7, PARTNER_SUCCESS_BONUS_PP = 5;
+function partnerOptionProb(s){ return clamp(0.3 + (s.conscientiousness.teamSolo/100)*0.6, 0.2, 0.9); } // teamSolo越高越偏團隊
+function findBusinessPartnerCandidate(s){
+  const pool = (s.characters||[]).filter(c=>!c.deceased && !c.isChild && !c.romanceStatus && (c.affinity||0)>=50 &&
+    !/^(父親|母親|爸|媽|哥哥|弟弟|姊姊|姐姐|妹妹|爺爺|奶奶|阿公|阿嬤)/.test(c.relation||""));
+  return pool.sort((a,b)=>(b.affinity||0)-(a.affinity||0))[0] || null;
+}
+function businessIncomeFactor(s){ return s.businessPartner ? PARTNER_INCOME_SHARE : 1; }
+function launchBusiness(s, opts){
+  opts = opts||{};
+  const capital = Math.round(computeStartupCapitalRequired() * (opts.partnerName ? PARTNER_CAPITAL_SHARE : 1));
   if(s.cash < capital) return false; // 現金不足：客戶端直接擋下，不扣款、不建立事業
+  s.businessPartner = opts.partnerName || null; // 12.9（2026-09-27）
   // 十六、16.2.2：創業算高風險；在職時辭職創業同時算一次偏離常規；收攤後再創業算「重來」、失業後改創業算「轉向」
   logPlayStyleRisk(s, 1);
   if(s.careerStatus===CAREER_STATUS.EMPLOYED) logPlayStyleDeviation(s);
@@ -1806,10 +1838,10 @@ function launchBusiness(s){
   s.careerStatus = CAREER_STATUS.BUSINESS;
   s.riskyLifestyle = false; s.jobRiskSubtype = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
   s.consecutiveLossYears = 0;
-  s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE);
+  s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE * businessIncomeFactor(s));
   // 12.8.3：第一次創業改列客戶端結構化自動判斷
   if(s.milestones.first_startup!=="completed") s.milestones.first_startup = "completed";
-  s.careerEventLog = { type:"business_launch", success:true };
+  s.careerEventLog = { type:"business_launch", success:true, partner: s.businessPartner };
   return true;
 }
 // 十二、12.11.1（2026-09-22新增,Claude Code依使用者直接詢問後建議判斷,可覆寫）：接手家業已有既有客源/品牌/營運模式，
@@ -1822,14 +1854,15 @@ function rollAnnualBusinessCheck(s){
   const topInvestment = topMatchedActiveInterestInvestment(s, "自營/家庭事業類");
   const interestMod = Math.min(topInvestment*0.05, 5); // 8.4限制：興趣投入度只能是有上限的修正項，不得直接當成功率使用
   const inheritedMod = s.businessOrigin==="inherited" ? INHERITED_BUSINESS_SUCCESS_BONUS_PP : 0;
-  const probPct = clamp(45 + (s.conscientiousness.achievement-50)*0.3 + (s.stats.knowledge-50)*0.1 + (s.stats.network-50)*0.1 + interestMod + inheritedMod, 5, 95);
+  const partnerMod = s.businessPartner ? PARTNER_SUCCESS_BONUS_PP : 0; // 12.9（2026-09-27）
+  const probPct = clamp(45 + (s.conscientiousness.achievement-50)*0.3 + (s.stats.knowledge-50)*0.1 + (s.stats.network-50)*0.1 + interestMod + inheritedMod + partnerMod, 5, 95);
   const roll = rnd(1,100);
   // 技術判斷：三態切分非文件明文規定，成長取roll<=probPct，持平再取後20個百分點，其餘視為虧損
   let outcome;
   if(roll<=probPct){
     outcome = "growth";
     s.jobLevel = clamp((s.jobLevel||0)+1, 0, 3);
-    s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE);
+    s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE * businessIncomeFactor(s));
     s.consecutiveLossYears = 0;
     // 12.8.2（2026-09-27使用者同意Claude建議，【測試參數】）：營運成長的一年套3.7.3成就傾向健康扣分倍率，與升遷同一個公式（基礎3分）
     const healthCostMult = clamp(1+(s.conscientiousness.achievement-50)*0.01, 0.5, 1.5);
@@ -1908,17 +1941,37 @@ function canRetireEarly(s){
   return s.age>=RETIREMENT_EARLY_MIN_AGE && computeFinancialHealthForState(s)>=RETIREMENT_EARLY_FINANCIAL_HEALTH_MIN;
 }
 // choice: "on_time"/"delay"/"early"/"semi"/"no_retire"/"rest"(被迫退休的專心療養)/null(自訂輸入，視同no_retire)
-function resolveRetirementOffer(s, choice){
+// 12.10【定案】自營/家庭事業類退休可觸發「交棒」分支，接七、7.4世代傳承，並與9.3接手家業伏筆線在下一世銜接
+// （2026-09-27補上，使用者授權Claude全權判斷）：經營中的自營事業、有成年(≥20歲)在世子女時多一個「交棒給孩子」選項，
+// 交給關係值最高的一位。交棒＝退休(退休金照替代率)＋事業標記已交棒＋那位子女記為家業繼承人；
+// 世代傳承選到這位子女時，下一世出社會找工作時會先出現一次「回來接家業」的候選(沿用12.11.1接手家業流程)
+function handoverHeirCandidate(s){
+  return (s.characters||[]).filter(c=>c.isChild && !c.deceased && (c.age||0)>=20).sort((a,b)=>(b.affinity||0)-(a.affinity||0))[0] || null;
+}
+function canHandOverBusiness(s){
+  return s.occupationCategory==="自營/家庭事業類" && s.businessStatus==="經營中" && !!handoverHeirCandidate(s);
+}
+// 12.10【定案】退休金依年資微調（2026-09-27補上，【測試參數】）：替代率＋(累積工作年資−20)×0.3個百分點，加減最多6個百分點
+function retirementTenureAdjustment(s){
+  return clamp(((s.careerYearsWorked||0)-20)*0.003, -0.06, 0.06);
+}
+function resolveRetirementOffer(s, choice, customText){
   s.pendingRetirementOffer = null;
   // 2026-09-27修正：原本70歲以後只在UI把按鈕反灰，彈窗預設值仍是delay，直接按確定可無限延後；程式層在這裡把關
   if(choice==="delay" && s.age>=RETIREMENT_DELAY_MAX_AGE) choice = "on_time";
+  // 12.10【定案】第6個選項「自訂輸入」（2026-09-27補上）：視同繼續工作，玩家寫的內容交給AI寫進敘事
+  if(choice==="custom"){
+    s.careerEventLog = { type:"retirement", choice:"custom", text: String(customText||"").slice(0, CUSTOM_INPUT_MAX_CHARS) };
+    return;
+  }
+  if(choice==="handover" && !canHandOverBusiness(s)) return;
   if(!choice || choice==="delay" || choice==="no_retire"){
     s.careerEventLog = { type:"retirement", choice: choice||"no_retire" };
     return; // 繼續工作，不做任何狀態變動（呼應6.4永遠可以跳過）
   }
   if(choice==="early" && !canRetireEarly(s)) return; // 防呆：未達提早退休年齡或財務健康度門檻
   if(choice==="rest") choice = "on_time"; // 被迫退休的「專心療養」＝完全退休
-  const rate = RETIREMENT_REPLACEMENT_RATE[s.occupationCategory] || 0.45;
+  const rate = (RETIREMENT_REPLACEMENT_RATE[s.occupationCategory] || 0.45) + retirementTenureAdjustment(s);
   const preRetireSalary = s.monthlyIncome;
   s.retirementStatus = "已退休";
   completeMilestone(s, "retirement"); // 4.3.1（2026-09-27）
@@ -1928,6 +1981,15 @@ function resolveRetirementOffer(s, choice){
   // 自然只會影響下一次月結算，不會回溯這一回合已經算過的舊薪水，效果上等同「下一個完整月份起才變動」
   s.monthlyIncome = Math.round(preRetireSalary * rate * (choice==="semi" ? 0.5 : 1));
   s.careerEventLog = { type:"retirement", choice };
+  // 2026-09-27：自營事業的老闆退休後，年度營運判定原本會繼續跑、改寫月收入；退休(非交棒)時把事業收起來
+  if(choice!=="handover" && s.businessStatus==="經營中") s.businessStatus = "已收起";
+  if(choice==="handover"){
+    const heir = handoverHeirCandidate(s);
+    s.businessStatus = "已交棒";
+    heir.familyBusinessHeir = true;
+    s.chronicle.push(`（${s.age}歲）把一手經營的事業交給了${heir.name}`);
+    s.careerEventLog = { type:"retirement", choice, heir: heir.name };
+  }
   // 12.10【定案】退休不扣幸福感，代碼中不出現「若已退休則幸福感-x」的寫法（呼應3.8.4程式層禁令，本函式完全不觸碰幸福感相關欄位）
 }
 
@@ -2009,10 +2071,11 @@ function acceptFamilyBusinessOffer(s){
   s.occupationCategory = "自營/家庭事業類";
   s.businessStatus = "經營中";
   s.businessOrigin = "inherited"; // 供rollAnnualBusinessCheck()判斷是否套用接手家業的成功率加成
+  s.businessPartner = null;
   s.careerStatus = CAREER_STATUS.BUSINESS;
   s.riskyLifestyle = false; s.jobRiskSubtype = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
   s.consecutiveLossYears = 0;
-  s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE);
+  s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE * businessIncomeFactor(s));
   s.careerEventLog = { type:"family_business_takeover", success:true };
 }
 // pending: { foreshadowLine, parentName }；choice: "accept"/"decline"——不論接受或拒絕，該家長都標記familyBusinessOfferUsed，
@@ -2037,6 +2100,8 @@ function ensureCareerDefaults(s){
 // 每年判定一次的職涯檢查集合：裁員/創業年度營運/退休候選，比照7.1.5rollAnnualDeathCheck()「每滿一年才判定一次」的既有做法，與回合預算解耦
 function rollAnnualCareerChecks(s){
   ensureCareerDefaults(s);
+  // 12.10（2026-09-27）：累積工作年資(在職或經營事業的年數)，供退休金依年資微調
+  if(s.careerStatus===CAREER_STATUS.EMPLOYED || s.careerStatus===CAREER_STATUS.BUSINESS) s.careerYearsWorked = (s.careerYearsWorked||0)+1;
   const layoff = rollAnnualLayoffCheck(s);
   const business = rollAnnualBusinessCheck(s);
   checkRetirementCandidate(s);
@@ -3484,6 +3549,16 @@ function appendNpcSharedMemory(c, addition){
   while(c.summaryEntries.length>2) c.summaryEntries.shift();
   c.summary = c.summaryEntries.join("；");
 }
+// 十二、12.9【定案】4.1關係類別新增同事/主管/下屬/客戶或合作對象（2026-09-27補上）：AI的relation是自由字串，
+// 這裡把職場相關的說法歸到這四類顯示；prompt也要求AI建職場角色時直接用這四種寫法
+function workplaceRelationCategory(relation){
+  const r = String(relation||"");
+  if(/主管|上司|老闆|經理|組長|店長/.test(r)) return "主管";
+  if(/下屬|部屬|屬下|學弟妹.*公司|新人/.test(r)) return "下屬";
+  if(/客戶|合作|廠商|夥伴|業主/.test(r)) return "客戶或合作對象";
+  if(/同事|同仁|前同事/.test(r)) return "同事";
+  return null;
+}
 function relationCategoryLabel(c){
   // 4.4：關係類別新增「戀愛對象／曖昧對象」，由狀態機決定，不由AI自行填寫
   // 四、4.4.1（2026-09-20新增）：married/divorced狀態的關係類別分別為「配偶」「前配偶」，同樣由狀態機決定
@@ -3492,7 +3567,7 @@ function relationCategoryLabel(c){
   if(c.romanceStatus==="widowed") return "已故的配偶";
   if(c.romanceStatus==="ambiguous") return "曖昧對象";
   if(c.romanceStatus==="dating" || c.romanceStatus==="stable") return "戀愛對象";
-  return c.relation||"";
+  return workplaceRelationCategory(c.relation) || c.relation||"";
 }
 // 四、4.1.1（2026-09-22新增）：第3層一般關係值增減的累積提示門檻、每回合提示則數上限
 const RELATIONSHIP_HINT_ACCUM_THRESHOLD = 8; // 【測試參數,待驗證】
@@ -4279,7 +4354,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     // 十二、職涯系統（2026-09-20新增）：以下欄位僅供你敘事參考，狀態轉換/薪資/成敗全部由系統計算，你不用也不能自己判斷或回報
     career_status: s.careerStatus||CAREER_STATUS.NOT_EMPLOYED,
     job_level_label: s.occupationCategory ? jobLevelLabel(s.occupationCategory, s.jobLevel) : null,
-    job_risk_subtype: s.jobRiskSubtype || null, // 12.3（2026-09-27）：高風險工種（例如工地、遠洋船員、警消外勤），null代表一般工作
+    job_risk_subtype: s.jobRiskSubtype || null,
+    job_search_phase: s.jobSearchPhase ? { turn: s.jobSearchPhase.turn+1, total: s.jobSearchPhase.total, first_time: s.jobSearchPhase.first } : null, // 12.2（2026-09-27）：求職期第幾回合 // 12.3（2026-09-27）：高風險工種（例如工地、遠洋船員、警消外勤），null代表一般工作
     business_status: s.businessStatus||null,
     retirement_status: s.retirementStatus||"在職",
     career_event_now: s.careerEventLog,
@@ -5435,6 +5511,7 @@ function succeedAsChild(childName){
   const deceasedRelation = prev.gender==="男" ? "父親" : "母親";
   // 七、7.4.2／7.3.5.5：教養風格由這一世對該兒女的parenting_log換算得出（提前到建卡前算，家長卡的語氣要用到）
   const inheritedParentingStyle = computeInheritedParentingStyle(child);
+  const heirOfFamilyBusiness = !!child.familyBusinessHeir; // 12.10交棒（2026-09-27）：這位孩子是上一代事業的繼承人
   const inheritedStyleDef = PARENTING_STYLES.find(x=>x.label===inheritedParentingStyle) || null;
   // 7.4.2（2026-09-27補上）：換算出的教養風格原本只當骰依附/社交起點的偏向，家長卡語氣仍依關係值另外推；
   // 改成兩張家長卡的traits都以這個風格的parentTrait開頭（跟開局newRoll家長卡同一套描述），AI從家長卡讀到的語氣就是這一世實際的教養方式。
@@ -5453,7 +5530,8 @@ function succeedAsChild(childName){
     // 不會再被判定「需要協助/失能長照/再過世一次」
     active:false, deceased:true, healthStage:4, estateSettled:true, isChild:false,
     origin: "父母，從出生起", cohabiting: false, // 四、4.1（9/19新增）：世代傳承後從新主角視角重新寫，不沿用上一世「怎麼認識」的舊故事
-    age: prev.age // 十三、13.5.1：沿用上一世死亡當下的年齡，比隨機骰更準確
+    age: prev.age, // 十三、13.5.1：沿用上一世死亡當下的年齡，比隨機骰更準確
+    occupation: heirOfFamilyBusiness ? "自營業者" : undefined, handedOver: heirOfFamilyBusiness || undefined
   });
   let familyStructure;
   if(spouse){
@@ -5508,6 +5586,7 @@ function succeedAsChild(childName){
     birthday: rollBirthday(), // 一、1.2.9.11.1.1（2026-09-24定案）
     family: econ.tier, familyMonthlyIncome: econ.familyMonthlyIncome, familySavings: econ.familySavings, familyStructure, isPoliticianChild:false,
     inheritedParentingStyle, // 7.4.2（2026-09-27）：記下這一世繼承到的教養風格，供除錯與日後查詢
+    familyBusinessFromPrevLife: heirOfFamilyBusiness, // 12.10交棒（2026-09-27）：出社會找工作時先出現一次「回來接家業」候選
     collegeLocation:null,
     // 二、2.2（2026-09-23新增）：世代傳承的新主角一律從15歲高中入學前重新開始，同樣要有一次prologue開場段落
     timeState:{ stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0, prologue:true },
@@ -7192,28 +7271,40 @@ function renderBusinessLaunchModal(pending){
   const div = document.createElement("div");
   div.id = "business-launch-modal";
   div.className = "modal-backdrop";
+  // 12.9（2026-09-27）：合夥選項依團隊值機率出現；2026-09-27另補上現金足夠時也能選「先不創業」(原本只有一顆啟動按鈕)
+  const partner = findBusinessPartnerCandidate(s);
+  const offerPartner = partner && Math.random() < partnerOptionProb(s);
+  const partnerCapital = Math.round(capital*PARTNER_CAPITAL_SHARE);
   const affordable = s.cash >= capital;
+  const partnerAffordable = offerPartner && s.cash >= partnerCapital;
   div.innerHTML = `
     <div class="modal">
       <h3>要開始創業嗎？</h3>
       <p style="font-size:13px;">啟動門檻：現金需≥${capital}（目前現金：${Math.round(s.cash)}）</p>
-      <p style="font-size:16px;margin-top:6px;"><strong>${affordable ? "現金足夠，可以啟動" : "現金還不夠，這次無法啟動"}</strong></p>
-      <button class="primary-btn" id="btn-business-launch-confirm" style="margin-top:10px;">${affordable ? "啟動創業" : "先不創業"}</button>
+      ${affordable ? `<button class="primary-btn" id="btn-business-launch-solo" style="margin:10px 6px 0 0;">自己來，啟動創業</button>` : `<p style="font-size:14px;margin-top:6px;">現金還不夠自己一個人開始。</p>`}
+      ${offerPartner ? `<button class="ghost-btn" id="btn-business-launch-partner" ${partnerAffordable?"":"disabled"} style="display:block;margin:8px 0;${partnerAffordable?"":"opacity:0.4;"}">找${escapeHtml(partner.name)}合夥（啟動資金減半為${partnerCapital}，之後收入分三成給對方）</button>` : ""}
+      <button class="ghost-btn" id="btn-business-launch-decline" style="margin-top:10px;">先不創業</button>
     </div>`;
   document.body.appendChild(div);
-  document.getElementById("btn-business-launch-confirm").onclick = ()=>{
-    const launched = affordable && launchBusiness(s);
+  const finish = (launched)=>{
     // 十二、12.11.1（2026-09-22新增）：若這次創業候選來自職涯伏筆的創業線，結算候選狀態(接受/拒絕)
     if(pending && pending.foreshadowLine) closeForeshadowCandidate(s, pending.foreshadowLine, launched);
     div.remove(); saveGame(); render();
   };
+  const solo = document.getElementById("btn-business-launch-solo");
+  if(solo) solo.onclick = ()=> finish(launchBusiness(s));
+  const withPartner = document.getElementById("btn-business-launch-partner");
+  if(withPartner && partnerAffordable) withPartner.onclick = ()=> finish(launchBusiness(s, { partnerName: partner.name }));
+  document.getElementById("btn-business-launch-decline").onclick = ()=> finish(false);
 }
 // 十二、12.11.1（2026-09-22新增）：接手家業候選彈窗
 function renderFamilyBusinessOfferModal(pending){
   const s = state;
   const parent = s.characters.find(c=>c.name===pending.parentName);
   const parentRelation = parent ? parent.relation : "家人";
-  const bodyText = pending.foreshadowLine
+  const bodyText = pending.fromPrevLife
+    ? `上一代交到你手上的家業，這些年一直有人幫忙顧著，等你決定要不要回來接。`
+    : pending.foreshadowLine
     ? `家裡經營的生意一直需要人手，最近似乎在認真問你要不要回來接手。`
     : `${escapeHtml(parentRelation)}最近打算退休，問你要不要接手家裡經營的事業。`;
   const div = document.createElement("div");
@@ -7283,7 +7374,10 @@ function renderRetirementOfferModal(pending){
       + btn("delay","延後退休(最晚至70歲)", canDelay)
       + btn("early","提早退休"+earlyNote, canEarly)
       + btn("semi","半退休(兼職/接案/志工)")
-      + (canNotRetire ? btn("no_retire","不退休，繼續做下去") : "");
+      + (canNotRetire ? btn("no_retire","不退休，繼續做下去") : "")
+      + (canHandOverBusiness(s) ? btn("handover", `把事業交棒給${escapeHtml(handoverHeirCandidate(s).name)}`) : "")
+      + btn("custom","自己決定怎麼安排")
+      + `<div id="ret-custom-wrap" style="display:none;margin-top:6px;"><input type="text" id="ret-custom-input" style="width:100%;box-sizing:border-box;padding:6px;" placeholder="說說你打算怎麼過接下來的日子" /></div>`;
     defaultChoice = canDelay ? "delay" : "on_time";
   }
   div.innerHTML = `
@@ -7297,10 +7391,13 @@ function renderRetirementOfferModal(pending){
   let chosen = defaultChoice;
   div.querySelectorAll(".ret-btn").forEach(btn=>{
     if(btn.disabled) return;
-    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".ret-btn").forEach(b=>{ if(!b.disabled){ b.style.background=""; b.style.color=""; } }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".ret-btn").forEach(b=>{ if(!b.disabled){ b.style.background=""; b.style.color=""; } }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)";
+      const wrap = document.getElementById("ret-custom-wrap"); if(wrap) wrap.style.display = chosen==="custom" ? "block" : "none"; };
   });
   document.getElementById("btn-ret-confirm").onclick = ()=>{
-    resolveRetirementOffer(s, chosen);
+    const customText = (document.getElementById("ret-custom-input")||{}).value || "";
+    if(chosen==="custom" && countInputChars(customText) > CUSTOM_INPUT_MAX_CHARS) return; // 1.1.3：超過字數不送出
+    resolveRetirementOffer(s, chosen, customText);
     div.remove();
     saveGame(); render();
   };
