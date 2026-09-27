@@ -15,7 +15,7 @@ export const PRICE_PER_MTOK_USD = {
   output: 10.0
 };
 
-export const USAGE_CATEGORIES = ["turn", "chapter"];
+export const USAGE_CATEGORIES = ["turn", "chapter", "idle"]; // 10.6.4（2026-09-27）：放置摘要另立類別
 
 function num(v) { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; }
 
@@ -54,7 +54,10 @@ export function lifeUsageKey(key, slot, lifeId) { return "usage:life:" + key + "
 export function dayUsageKey(taipeiDate) { return "usage:day:" + taipeiDate; }
 
 // category: "turn"或"chapter"；countsAsTurn: 這次呼叫是不是一個新回合(重試/重新生成不算)；payloadChars: 請求字數
-export async function recordUsage(env, { key, slot, lifeId, category, usage, countsAsTurn, payloadChars, taipeiDate }) {
+// 六、6.5（2026-09-27補上）：lastTone＝這回合AI回報的emotional_tone，記成這條人生「最後一回合的情緒份量」，
+// 供/usage-summary分析流失：7天以上沒再玩的人生，最後一回合是什麼語氣(退出點是否集中在負面事件後)
+export const TONE_CODES = { uplifting: 1, warm: 2, unsettling: 3, heavy: 4 };
+export async function recordUsage(env, { key, slot, lifeId, category, usage, countsAsTurn, payloadChars, taipeiDate, lastTone }) {
   try {
     if (!USAGE_CATEGORIES.includes(category)) return;
     const t = extractUsage(usage);
@@ -64,10 +67,13 @@ export async function recordUsage(env, { key, slot, lifeId, category, usage, cou
     addTo(life[category], t, countsAsTurn);
     life.max_payload_chars = Math.max(life.max_payload_chars, num(payloadChars));
     life.updated = taipeiDate;
+    if (category === "turn" && countsAsTurn && TONE_CODES[lastTone]) life.last_tone = lastTone;
     // metadata讓/usage-summary用list一次讀完，不用逐筆get(KV metadata上限1024 bytes，只放數字)
     const meta = {
       t: life.turn.turns, c: life.turn.calls, i: life.turn.input, w: life.turn.cache_write, r: life.turn.cache_read, o: life.turn.output,
-      ci: life.chapter.input, cw: life.chapter.cache_write, cr: life.chapter.cache_read, co: life.chapter.output, cc: life.chapter.calls
+      ci: life.chapter.input, cw: life.chapter.cache_write, cr: life.chapter.cache_read, co: life.chapter.output, cc: life.chapter.calls,
+      ii: life.idle.input, iw: life.idle.cache_write, ir: life.idle.cache_read, io: life.idle.output, // 10.6.4放置摘要
+      ud: life.updated, lt: TONE_CODES[life.last_tone] || 0 // 6.5流失分析：最後活動日、最後一回合語氣
     };
     await env.SAVES.put(lk, JSON.stringify(life), { metadata: meta });
     // (b) 每日全站合計(台灣日期)
@@ -126,7 +132,14 @@ export async function buildUsageSummary(env, todayTaipei) {
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
   const played = lives.filter(m => num(m.t) > 0);
-  const lifeCost = (m) => costUSD({ input: m.i, cache_write: m.w, cache_read: m.r, output: m.o }) + costUSD({ input: m.ci, cache_write: m.cw, cache_read: m.cr, output: m.co });
+  const lifeCost = (m) => costUSD({ input: m.i, cache_write: m.w, cache_read: m.r, output: m.o }) + costUSD({ input: m.ci, cache_write: m.cw, cache_read: m.cr, output: m.co }) + costUSD({ input: m.ii, cache_write: m.iw, cache_read: m.ir, output: m.io });
+  // 6.5：流失分析——最後活動日距今≥7天的人生，依最後一回合語氣分組，並列出這些人生玩到第幾回合
+  const cutoff = addDays(todayTaipei, -7);
+  const churned = played.filter(m => typeof m.ud === "string" && m.ud <= cutoff);
+  const toneNames = ["unknown", "uplifting", "warm", "unsettling", "heavy"];
+  const byTone = {}; toneNames.forEach(n => byTone[n] = 0);
+  churned.forEach(m => { byTone[toneNames[num(m.lt)] || "unknown"] += 1; });
+  const churnTurns = churned.map(m => num(m.t)).sort((a, b) => a - b);
   const totalLifeCost = played.reduce((s, m) => s + lifeCost(m), 0);
   const totalLifeTurns = played.reduce((s, m) => s + num(m.t), 0);
   return {
@@ -140,6 +153,12 @@ export async function buildUsageSummary(env, todayTaipei) {
       avg_turns_per_life: played.length ? round(totalLifeTurns / played.length, 1) : null,
       avg_cost_per_life_usd: played.length ? round(totalLifeCost / played.length, 4) : null,
       avg_cost_per_turn_usd: totalLifeTurns ? round(totalLifeCost / totalLifeTurns, 5) : null
+    },
+    churn: {
+      note: "六、6.5：最後活動日距今7天以上的人生(不分是否已封存)，依最後一回合的emotional_tone分組；用來看退出點是否集中在負面事件後",
+      lives: churned.length,
+      last_tone: byTone,
+      median_turns_at_exit: churnTurns.length ? churnTurns[Math.floor(churnTurns.length / 2)] : null
     }
   };
 }

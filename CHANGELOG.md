@@ -10,6 +10,30 @@
 
 ---
 
+## 2026-09-27（續十：第三節第五批，十、10.6放置代活＋11.4＋6.5，使用者授權Claude全權判斷）
+
+**〔開發部〕Worker**（**要重新部署Worker**）
+- `ap.js`：`postCharge()`成功時記`lastActionDate`；`offlineDaysBetween()`／`claimIdle()`(完整離線天數×5，最多35，領過就歸零)；`preIdleSummary()`(每次放置最多3次摘要)；`chargeIdleRollback()`(扣5點、每次放置一次)
+- `worker.js`：新路由`POST /idle-claim`、`POST /idle-rollback`；AI請求新類型`kind:"idle_summary"`(驗證素材、不扣點、遙測記在idle類別)；一般回合遙測多記最後一回合的emotional_tone
+- `prompt.js`：新增`IDLE_SUMMARY_SYSTEM_PROMPT`與`IDLE_SUMMARY_TOOL`(retrospect/fragments/new_characters)
+- `usage.js`：類別新增idle；每條人生metadata加最後活動日與最後語氣；`/usage-summary`新增`churn`流失分析(6.5)
+
+**〔開發部〕前端**
+- 放置引擎：`idleTagWeights()`(10.6.9權重＋安全規則)、`pickIdleTag()`(75%性格／25%隨機)、`applyIdleTag()`、`nextIdleLine()`、`simulateIdleRound()`、`runIdleRounds()`；放置期間`s.idleMode`讓死亡、新的重大疾病、父母與配偶過世都不判定
+- 彈窗代選：`idleResolvePendingPopups()`處理21種彈窗，對應表`IDLE_POPUP_MAP`(【待確認】，已寫進設計文件10.6.10)；每個決定前存回溯快照(含還沒決定的彈窗)
+- 回來流程：遊戲畫面下方「放置代活：開／關」；`maybeRunIdle()`→`claimIdleRounds()`(mock本機算／真實模式問Worker)→跑完放置→`writeIdleSummary()`(AI一次或mock)→建新角色(只來自新朋友回合、最多2位)→摘要寫進日記→`renderIdleSummaryModal()`(回顧、關鍵片段、數值變化、展開每回合、可回到此處)
+- 回溯：`rollbackIdleDecision()`扣5點、還原快照、作廢回合標「已改寫」、重新跳出那個彈窗；放置結束後悔棋快照清掉
+- 重構：月結算抽成`applyMonthlySettlement()`、回合結束的彈窗分派抽成`dispatchPendingModals()`(內容不變，一般回合照舊)
+- 修正：新寫的權重抽選函式一開始叫`weightedPick`，蓋掉開局抽家庭結構用的同名函式，全套回歸抓到後改名`pickByWeightMap`
+
+**〔測試部〕**
+- 新增`tests/test-25-idle.mjs`：36/36通過，連跑3次穩定（Worker路由與天數、摘要額度、回溯扣點、遙測；mock放置35回合不死亡、彈窗代選與回溯點；回來流程與回溯；真實模式Worker算天數＋AI摘要）；`harness.mjs`的假上游加上submit_idle_summary
+- `test-8`：父母過世那段改成直接放一張父母卡(開局抽到隔代教養時沒有父母，測試會偶發失敗)
+- 全套回歸全部通過
+- 需要真實API才能驗證、**未測試**：AI摘要的寫法品質、新角色名字與性別是否相符
+
+---
+
 ## 2026-09-27（續九：第三節第四批，七、7.7人生特質，使用者授權Claude全權判斷）
 
 **〔開發部〕**

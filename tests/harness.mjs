@@ -36,6 +36,15 @@ export function makeFakeAnthropic(opts = {}) {
     let input;
     if (toolName === "submit_chapter") {
       input = opts.chapterInput ? opts.chapterInput(body) : { title: "第一章　夏天的尾巴", text: "你把書包丟在床上。\n\n窗外的蟬聲還沒停。".repeat(40) };
+    } else if (toolName === "submit_idle_summary") { // 10.6.4放置摘要(2026-09-27)
+      let payload = {};
+      try { payload = JSON.parse(body.messages[0].content); } catch (e) {}
+      const friend = (payload.idle_rounds || []).find(r => r.new_friend);
+      input = opts.idleInput ? opts.idleInput(payload, body) : {
+        retrospect: "你不在的這段時間，日子照樣過。",
+        fragments: (payload.key_rounds || []).map(i => ({ i, text: "那天傍晚，你在公園坐了很久。" })),
+        new_characters: friend ? [{ name: "陳郁婷", gender: "女", relation: "朋友", traits: "健談", origin: "放置期間的聚會", i: friend.i }] : []
+      };
     } else {
       let payload = {};
       try { payload = JSON.parse(body.messages[0].content); } catch (e) {}

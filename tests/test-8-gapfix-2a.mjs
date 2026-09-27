@@ -102,7 +102,9 @@ A.check("海外轉職錄取：父母同住標記解除", ev("state.characters.fi
 
 // 13.6 父母過世回合emotional_tone強制heavy
 ev("window.__tones=[]; const __ah=applyHappiness; applyHappiness=(s,t)=>{ window.__tones.push(t); return __ah(s,t); }");
-const parentName = ev("(state.characters.find(c=>c.origin==='父母，從出生起'&&!c.deceased)||{}).name");
+// 開局隨機抽到隔代教養時沒有父母卡，這裡直接放一張，避免測試不穩定
+ev("state.characters.push({name:'測試老爸',relation:'父親',gender:'男',origin:'父母，從出生起',age:80,healthStage:2,affinity:60,active:true,traits:'',summary:'',lastTurn:0})");
+const parentName = "測試老爸";
 ev(`finalizeParentDeath(state, ${JSON.stringify(parentName)})`);
 override = () => ({ emotional_tone: "uplifting" });
 await H.playTurn(g);

@@ -109,7 +109,8 @@ export function preCharge(rec, { nonce, isPrologue, lifeId }) {
   return { ok: true, charge: used };
 }
 // 呼叫AI之後：失敗就退點；成功的免費開場記下life_id
-export function postCharge(rec, pre, success, lifeId) {
+export function postCharge(rec, pre, success, lifeId, today) {
+  if (success && today) markAction(rec, today); // 10.6.2（2026-09-27）：有成功的回合就算這天有行動
   if (!success) {
     if (pre.charge) { refund(rec, pre.charge); rec.nonceCharged = null; }
     return;
@@ -165,4 +166,46 @@ export function isUsableChapterResponse(data) {
   if (!block || !block.input) return false;
   const { title, text } = block.input;
   return typeof title === "string" && title.trim().length > 0 && typeof text === "string" && text.trim().length >= 300;
+}
+
+// ========== 十、10.6 放置代活（2026-09-27，使用者授權Claude全權判斷） ==========
+// 10.6.2【定案】「離線日」＝一整天(台灣日期)沒有任何行動；回來那天不算。放置回合數＝完整離線天數×5，最多7天35回合。
+// 由伺服器計算：每次成功扣點的回合(postCharge)記下lastActionDate；領取放置(claimIdle)後把lastActionDate設成今天，同一段離線只能領一次。
+// 放置摘要(10.6.4)不扣點，但要有剛領過放置的額度(idleSummaryCalls)才能呼叫，避免被拿來免費呼叫AI
+export const IDLE_ROUNDS_PER_DAY = 5;
+export const IDLE_MAX_DAYS = 7;
+export const MAX_IDLE_SUMMARY_CALLS = 3;
+function dateToDayNumber(d) { const [y, m, dd] = String(d).split("-").map(Number); return Math.floor(Date.UTC(y, m - 1, dd) / 86400000); }
+export function offlineDaysBetween(lastActionDate, today) {
+  if (!lastActionDate || !today) return 0;
+  const gap = dateToDayNumber(today) - dateToDayNumber(lastActionDate) - 1; // 兩個日期之間「完整」的天數
+  return Math.max(0, Math.min(IDLE_MAX_DAYS, gap));
+}
+export function markAction(rec, today) { rec.lastActionDate = today; }
+export function claimIdle(rec, today) {
+  const days = offlineDaysBetween(rec.lastActionDate, today);
+  rec.lastActionDate = today;
+  if (days > 0) rec.idleSummaryCalls = MAX_IDLE_SUMMARY_CALLS; else rec.idleSummaryCalls = 0;
+  rec.idleRollbackAvailable = days > 0; // 10.6.5：每次放置只能回溯一次
+  return { offlineDays: days, rounds: days * IDLE_ROUNDS_PER_DAY };
+}
+export function preIdleSummary(rec) {
+  if (!((Number(rec.idleSummaryCalls) || 0) > 0)) return { ok: false, status: 402, error: { type: "idle_summary_not_available", message: "沒有可以寫摘要的放置紀錄" } };
+  rec.idleSummaryCalls -= 1;
+  return { ok: true };
+}
+export function isUsableIdleSummaryResponse(data) {
+  const block = data && Array.isArray(data.content) && data.content.find(b => b.type === "tool_use" && b.name === "submit_idle_summary");
+  if (!block || !block.input) return false;
+  const { retrospect, fragments } = block.input;
+  return typeof retrospect === "string" && retrospect.trim().length > 0 && Array.isArray(fragments);
+}
+// 10.6.5【定案】回溯重大決定花5點，扣點順序比照10.3.3(每日池→禮包點→購買點)，每次放置只能一次
+export const IDLE_ROLLBACK_COST = 5;
+export function chargeIdleRollback(rec) {
+  if (!rec.idleRollbackAvailable) return { ok: false, status: 409, error: { type: "idle_rollback_used", message: "這次放置已經回溯過了" } };
+  if (rec.daily + rec.gift + rec.purchased < IDLE_ROLLBACK_COST) return { ok: false, status: 402, error: { type: "insufficient_action_points", message: "行動點不足" } };
+  spend(rec, IDLE_ROLLBACK_COST);
+  rec.idleRollbackAvailable = false;
+  return { ok: true };
 }

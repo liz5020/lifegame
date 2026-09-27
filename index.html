@@ -3828,6 +3828,7 @@ function computeDeathProbability(s){
 // roll成功且尚未有前兆→這年先埋前兆(呼應7.1.2前兆機制，不能無預兆死亡)；roll成功且已有前兆→這年觸發死亡結局
 function rollAnnualDeathCheck(s){
   if(s.age<DEATH_MIN_AGE) return { justForeshadowed:false, deathTriggered:false };
+  if(s.idleMode) return { justForeshadowed:false, deathTriggered:false }; // 10.6.7【定案】放置期間不判定死亡
   const hit = Math.random() < computeDeathProbability(s);
   if(!hit) return { justForeshadowed:false, deathTriggered:false };
   if(!s.deathForeshadowed){
@@ -3887,6 +3888,7 @@ function rollAnnualIllnessCheck(s){
   const bandKey = chronicleLifeStageKey(s); // 沿用既有8段年齡帶定義做「每個年齡帶」判斷
   s.majorIllnessCountByBand = s.majorIllnessCountByBand || {};
   if(level==="major" && (s.majorIllnessCountByBand[bandKey]||0) >= MAJOR_ILLNESS_MAX_PER_AGEBAND) level = "acute"; // 上限已達，降級為急性事件
+  if(level==="major" && s.idleMode) return null; // 10.6.7【定案】放置期間不判定重大疾病(急性/慢性照常)
   s.chronicConditions = s.chronicConditions || [];
   if(level==="chronic" && s.chronicConditions.length >= CHRONIC_CONDITION_MAX_CONCURRENT) level = "acute"; // 並存上限已達，降級為急性事件
   if(level==="major"){
@@ -4035,6 +4037,7 @@ function rollParentHealthStageAdvance(s){
   // 從此不再老化、不會需要照顧或過世（服刑家長從第13回合起就是如此）。降級只代表近期沒出場，不代表不在世；
   // 已過世一律有deceased標記（含傳承時的上一代主角），所以只看deceased即可
   s.characters.filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && (c.healthStage||1)<4 && !c.deceased).forEach(c=>{
+    if(s.idleMode && ((c.age||0) >= PARENT_HEALTH_HARD_CAP_AGE || (c.healthStage||1)>=PARENT_HEALTH_LAST_LIVING_STAGE)) return; // 10.6.7：放置期間家人過世比照死亡排除，最後一個在世階段也不往下推
     if((c.age||0) >= PARENT_HEALTH_HARD_CAP_AGE){
       finalizeParentDeath(s, c.name);
       events.push({ parentName:c.name, newStage:4 });
@@ -4073,6 +4076,7 @@ function resolveEldercareDecision(s, parentName, choice){
       parent.affinity = clamp(parent.affinity + rnd(3,6), 0, 100);
       s.stats.health = clamp(s.stats.health - rnd(3,6), 0, 100);
       completeMilestone(s, "became_caregiver"); // 4.3.1（2026-09-27）
+      s.caringForParentName = parentName; // 10.6.9：放置時「顧家」的照顧父母狀態
     } else if(choice==="split"){
       // 13.5.2【定案】連動五、5.2家庭結構的手足角色卡，手足互動是支援或衝突取決於既有關係值，這裡採支援方向的預設效果
       const sibling = s.characters.find(c=>/^哥哥$|^弟弟$|^姊姊$|^妹妹$/.test(c.relation||""));
@@ -4153,6 +4157,7 @@ function checkParentRetirements(s){
 // 過世後：配偶卡標deceased、不再同住、配偶收入歸零；喪偶里程碑與履歷；這一回合幸福感以heavy計(比照13.6父母過世)，之後交回歸機制；
 // 戀愛狀態機照常可以開始新關係(沒有配偶就不會擋)。婚時沒有年齡的配偶卡(舊存檔)以玩家年齡補上
 function rollSpouseAnnualDeath(s){
+  if(s.idleMode) return null; // 10.6.7【定案】放置期間家人過世比照死亡排除
   const spouse = (s.characters||[]).find(c=>c.romanceStatus==="married" && !c.deceased);
   if(!spouse) return null;
   if(typeof spouse.age!=="number") spouse.age = s.age;
@@ -4924,6 +4929,7 @@ async function takeTurn(actionText, cost){
   const apBefore = { ...ensureAP(state) }; // 10.3.11：舊存檔第一次打Worker時，給Worker建立伺服器端紀錄用(扣點前的數字)
   const apUsed = spendAP(state, cost);
   state.turnCount += 1;
+  if(cost>0) state.lastActiveDate = taipeiDateString(); // 10.6.2：mock模式本機算離線天數用(真實模式由Worker記)
 
   // 九、9.5.1轉系候選判定需要「考前實際累積的讀書次數」，必須在advanceStructuredTime把studyCountThisTerm歸零之前先存一份快照，
   // 否則applyResult()拿到的會是考試結算後已經歸零的值。這份快照(studyCountAtExam)同時也用來修正buildUserMessage()的
@@ -5018,6 +5024,511 @@ async function takeTurn(actionText, cost){
   // 十、10.3.8：用掉最後1點時，這回合照常生成顯示、自動存檔後才跳出提示（死亡結局那回合不用提示）
   const apJustExhausted = cost>0 && state.phase==="playing" && totalAP(state)===0;
   if(examCheck){ renderExamCheckModal(examCheck); }
+  dispatchPendingModals(); // 2026-09-27：抽成函式，放置回溯(10.6.5)回到某個彈窗時也要能重新跳出
+  if(apJustExhausted) renderAPExhaustedModal(); // 最後才疊上去，確保在其他彈窗之上
+  updateDevUsageBox(); // 10.5：開發者面板的上一回合用量
+  processBookQueue(true); // 十五、背景寫章節(不等它，不影響這回合)；失敗的章節每回合自動重試一次，最多3次
+}
+
+// ========== 十、10.6 放置代活（2026-09-27實作，使用者授權Claude全權判斷；傾向標籤表與彈窗代選對應表為【草案】待確認） ==========
+// 10.6.1 玩家離線期間角色依性格自動推進；預設關閉、每條人生各自設定(state.idleEnabled)。回來時由程式一次補算。
+// 10.6.3 放置期間不生成選項、不呼叫AI：每回合依性格抽一個傾向標籤，套固定數值變化與模板短句；數值結算走既有公式。
+// 10.6.7 放置期間不判定死亡、重大疾病、家人過世(由各判定函式讀s.idleMode擋掉)；其他年度判定照常
+const IDLE_TAGS = ["努力","社交","安逸","冒險","逃避","顧家"];
+const IDLE_LINES = {
+  努力: ["這段時間把心力放在手邊的事上。","忙了一陣子，進度往前推了一點。","常常忙到很晚，但覺得踏實。"],
+  社交: ["跟朋友見了幾次面，聊得很開心。","參加了一場聚會，認識了新朋友。","主動聯絡了好久不見的人。"],
+  安逸: ["過得很平靜，沒什麼特別的事。","好好休息了一陣子。","照著自己的步調，慢慢過日子。"],
+  冒險: ["試了一件以前沒做過的事。","臨時起意去了一個沒去過的地方。","接下了一個有點沒把握的挑戰。"],
+  逃避: ["有些事一直拖著，還沒去面對。","這陣子不太想見人，多半待在家。","想做的事又往後延了。"],
+  顧家: ["花了不少時間陪家人。","家裡的事多半是自己在張羅。","跟家人一起吃了幾頓飯，聊了很多。"]
+};
+const IDLE_NEW_FRIEND_LINE = "參加了一場聚會，認識了新朋友。";
+const IDLE_MAX_NEW_CHARACTERS = 2;       // 10.6.3【定案】每次放置最多新增2位
+const IDLE_ROLLBACK_COST = 5;            // 10.6.5【定案】
+const IDLE_PERSONALITY_SHARE = 0.75;     // 10.6.9【草案】75%依性格、25%平均隨機
+function idleHasFamily(s){
+  return (s.characters||[]).some(c=>!c.deceased && (c.romanceStatus==="married" || (c.cohabiting && ["dating","stable"].includes(c.romanceStatus)) || (c.isChild && c.active!==false)))
+    || idleCaringForParent(s);
+}
+function idleCaringForParent(s){ return !!s.caringForParentName && (s.characters||[]).some(c=>c.name===s.caringForParentName && !c.deceased); }
+// 10.6.9【草案】權重公式；「團隊」＝teamSolo，數值越高越偏團隊(對照3.7.3：teamNetworkMult=1+(teamSolo−50)×0.01)
+function idleTagWeights(s){
+  const c = s.conscientiousness;
+  const w = {
+    努力: 1+(c.selfDiscipline-50)/50+(c.achievement-50)/100,
+    社交: 1+(c.teamSolo-50)/50,
+    安逸: 1-(c.achievement-50)/100,
+    冒險: 1-(c.prudence-50)/50,
+    逃避: 0.5-(c.responsibility-50)/100,
+    顧家: 1+(c.responsibility-50)/50
+  };
+  Object.keys(w).forEach(k=>{ if(w[k]<0.1) w[k] = 0.1; }); // 低於0.1以0.1計
+  if(s.stats.health<30){ w.努力 = 0; w.冒險 = 0; }     // 安全規則：健康低於30
+  if(!idleHasFamily(s)) w.顧家 = 0;                       // 安全規則：顧家只在有家庭狀態時
+  return w;
+}
+function pickByWeightMap(weights){ // 注意：不可叫weightedPick，會蓋掉開局抽家庭結構用的同名函式
+  const keys = Object.keys(weights).filter(k=>weights[k]>0);
+  const total = keys.reduce((a,k)=>a+weights[k],0);
+  if(!keys.length) return null;
+  let r = Math.random()*total;
+  for(const k of keys){ if(r<weights[k]) return k; r -= weights[k]; }
+  return keys[keys.length-1];
+}
+function pickIdleTag(s){
+  const w = idleTagWeights(s);
+  if(Math.random() < IDLE_PERSONALITY_SHARE) return pickByWeightMap(w);
+  const avail = Object.keys(w).filter(k=>w[k]>0);
+  return pick(avail);
+}
+// 同一標籤的短句輪流使用，不連續兩回合出現同一句
+function nextIdleLine(s, tag){
+  s.idleLineIndex = s.idleLineIndex || {};
+  const lines = IDLE_LINES[tag];
+  let i = ((s.idleLineIndex[tag] ?? -1) + 1) % lines.length;
+  if(lines[i]===s.idleLastLine) i = (i+1) % lines.length;
+  s.idleLineIndex[tag] = i;
+  s.idleLastLine = lines[i];
+  return lines[i];
+}
+// 10.6.9【草案】各標籤的數值變化，比手動遊玩保守，都在3.9.2單回合上下限內；不動做事態度光譜與依附風格
+function applyIdleTag(s, tag){
+  const st = s.stats;
+  if(tag==="努力"){
+    const wisdomMult = 0.5 + (s.wisdom/200), logicBonus = 1 + (s.logicAbility/400);
+    const teamKnowledgeMult = clamp(1+(50-s.conscientiousness.teamSolo)*0.01, 0.5, 1.5);
+    const raw = rollKnowledgeRawValue("ordinary", null, s) * wisdomMult * logicBonus * getDisciplineMultiplier(s) * teamKnowledgeMult;
+    st.knowledge = clamp(st.knowledge + applyMarginalDiminish(raw, st.knowledge), 0, 100);
+    st.health = clamp(st.health - 1, 0, 100);
+  } else if(tag==="社交"){
+    st.network = clamp(st.network + applyMarginalDiminish(2, st.network), 0, 100);
+    st.expression = clamp(st.expression + 1, 0, 100);
+    const friend = pick((s.characters||[]).filter(c=>!c.deceased && !c.isChild && !INTIMATE_RELATION_RE.test(c.relation||"") && !c.romanceStatus).concat([null]));
+    if(friend) friend.affinity = clamp(friend.affinity + 1, 0, 100);
+  } else if(tag==="安逸"){
+    st.health = clamp(st.health + 2, 0, 100);
+  } else if(tag==="冒險"){
+    st.expression = clamp(st.expression + 1, 0, 100);
+    st.network = clamp(st.network + applyMarginalDiminish(1, st.network), 0, 100);
+    st.health = clamp(st.health - 1, 0, 100);
+  } else if(tag==="逃避"){
+    st.health = clamp(st.health + 1, 0, 100);
+    st.network = clamp(st.network - 1, 0, 100);
+  } else if(tag==="顧家"){
+    (s.characters||[]).filter(c=>!c.deceased && c.cohabiting && (c.romanceStatus==="married" || c.isChild)).forEach(c=>{ c.affinity = clamp(c.affinity + 2, 0, 100); });
+    if(idleCaringForParent(s)) st.health = clamp(st.health - 1, 0, 100);
+  }
+}
+
+// ---------- 10.6.3 彈窗代選對應表【草案，待確認】：每個選項對應最接近的傾向標籤，再用當下的標籤權重在該彈窗的選項之間抽 ----------
+function idleChooseOption(s, options){ // options: [{key, tag}]（tag可為陣列）
+  const w = idleTagWeights(s);
+  const weights = {};
+  options.forEach(o=>{ const tags = [].concat(o.tag); weights[o.key] = tags.reduce((a,t)=>a+(w[t]||0.1),0)/tags.length || 0.1; });
+  return pickByWeightMap(weights) || options[0].key;
+}
+const IDLE_POPUP_MAP = {
+  sideBusiness: [{key:"kept",tag:["安逸","逃避","顧家"]},{key:"gig",tag:["努力","社交"]},{key:"formal",tag:"冒險"}],
+  transfer:     [{key:"stay",tag:["安逸","逃避","顧家"]},{key:"apply",tag:["冒險","努力"]}],
+  dualMajor:    [{key:"apply",tag:["努力","冒險"]},{key:"decline",tag:["安逸","逃避","社交","顧家"]}],
+  dualAbandon:  [{key:"keep",tag:["努力","冒險"]},{key:"abandon",tag:["安逸","逃避","顧家","社交"]}],
+  withdrawal:   [{key:"stay",tag:["努力","社交","顧家"]},{key:"leave",tag:["安逸","逃避"]},{key:"withdraw",tag:"冒險"}],
+  marriageCrisis:[{key:"repair",tag:["顧家","社交"]},{key:"maintain",tag:["安逸","逃避","努力"]},{key:"divorce",tag:"冒險"}],
+  relationship: [{key:"invest_time",tag:["顧家","社交"]},{key:"maintain_status_quo",tag:["安逸","逃避"]},{key:"divert_elsewhere",tag:["努力","冒險"]}],
+  divorceRecovery:[{key:"reclaim_life",tag:["安逸","逃避","冒險"]},{key:"pursue_passion",tag:"努力"},{key:"reconnect",tag:["社交","顧家"]}],
+  cohabitation: [{key:"move_in",tag:["顧家","社交","冒險"]},{key:"stay_separate",tag:["安逸","逃避","努力"]}],
+  promotion:    [{key:"accept",tag:["努力","冒險"]},{key:"decline",tag:["安逸","逃避","顧家"]}],
+  careerFork:   [{key:"stay",tag:["安逸","顧家","逃避"]},{key:"transfer",tag:["努力","社交"]},{key:"startup",tag:"冒險"}],
+  businessLaunch:[{key:"launch",tag:["冒險","努力"]},{key:"decline",tag:["安逸","逃避","顧家"]}],
+  familyBusiness:[{key:"accept",tag:["顧家","努力"]},{key:"decline",tag:["冒險","安逸","逃避"]}],
+  businessCont: [{key:"persist",tag:"努力"},{key:"inject",tag:"冒險"},{key:"close",tag:["安逸","逃避","顧家"]}],
+  eldercare:    [{key:"self",tag:"顧家"},{key:"hire",tag:["努力","冒險"]},{key:"split",tag:"社交"},{key:"limited",tag:["安逸","逃避"]}]
+};
+const IDLE_POPUP_TITLES = { sideBusiness:"副業契機", major:"選科系", transfer:"轉系", dualMajor:"雙主修", dualAbandon:"雙主修中途放棄", withdrawal:"休學／肄業",
+  parenting:"子女成長節點", marriageCrisis:"婚姻危機", divorce:"離婚結算", relationship:"關係投入", divorceRecovery:"一個人的生活", cohabitation:"同居",
+  jobSearch:"求職投遞", promotion:"升遷", careerFork:"職涯岔路", businessLaunch:"創業", familyBusiness:"接手家業", businessCont:"事業存續", retirement:"退休", eldercare:"照顧家人", exam:"期末考" };
+const IDLE_CHOICE_LABELS = { kept:"保持興趣原樣", gig:"接一些零星案子", formal:"認真發展成正式副業", stay:"維持現狀", apply:"申請", decline:"婉拒", keep:"撐下去", abandon:"放棄",
+  leave:"休學一學期", withdraw:"正式肄業", repair:"試著修復", maintain:"先維持現狀", divorce:"離婚", invest_time:"花時間經營", maintain_status_quo:"維持現狀", divert_elsewhere:"把時間轉到別處",
+  reclaim_life:"重新安排自己的生活", pursue_passion:"投入一直想做的事", reconnect:"跟老朋友重新聯絡", move_in:"搬去一起住", stay_separate:"先各自住", accept:"接受", transfer:"轉職", startup:"創業",
+  launch:"啟動創業", persist:"再撐一年", inject:"增資", close:"收攤", self:"自己照顧", hire:"請照服員或機構", split:"跟手足分工", limited:"交給手足、自己有限度參與",
+  on_time:"準時退休", delay:"延後退休", semi:"半退休", rest:"專心療養", no_retire:"不退休" };
+
+// 每回合結束後把這回合產生的彈窗依序代選；每個決定前都存一份回溯快照(10.6.5)
+function idleResolvePendingPopups(s, record){
+  const decide = (kind, key, detail)=>{ record.popups.push({ kind, title: IDLE_POPUP_TITLES[kind]||kind, choice: key, label: detail || IDLE_CHOICE_LABELS[key] || key }); };
+  // 回溯快照要保留「這個彈窗還沒決定」的狀態：patch把剛清掉的pending欄位放回快照裡，回溯後dispatchPendingModals()會重新跳出
+  const snap = (kind, patch)=>{ record.rollbackPoints.push({ kind, title: IDLE_POPUP_TITLES[kind]||kind, snapshot: JSON.stringify(Object.assign({}, s, { snapshot:null, idleRun:null }, patch||{})) }); };
+  let guard = 0;
+  while(guard++ < 12){
+    if(s.mealJustUnlocked){ s.mealJustUnlocked = false; continue; }
+    if(s.pendingSideBusinessCardId){
+      const card = (s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId); s.pendingSideBusinessCardId = null;
+      if(card){ snap("sideBusiness", { pendingSideBusinessCardId: card.id }); const k = idleChooseOption(s, IDLE_POPUP_MAP.sideBusiness); card.sideBusinessStatus = k; if(k==="formal") card.sideBusinessSince = s.turnCount; s.sideBusinessEventLog = { category:card.category, choice:k }; decide("sideBusiness", k); }
+      continue;
+    }
+    if(s.pendingMajorSelection){
+      s.pendingMajorSelection = false; snap("major", { pendingMajorSelection: true });
+      const m = pick(MAJOR_CATEGORIES); const five = m.isFiveYearEligible && Math.random()<0.5;
+      assignStudentMajor(s, m.key, five); decide("major", m.key, m.label); continue;
+    }
+    if(s.pendingTransferOffer){
+      s.pendingTransferOffer = false; snap("transfer", { pendingTransferOffer: true });
+      const k = idleChooseOption(s, IDLE_POPUP_MAP.transfer);
+      const target = pick(MAJOR_CATEGORIES.filter(m=>m.key!==s.studentMajorGroup && isTransferFeasible(s.age, m.isFiveYearEligible?5:4, s.collegeDelayYearsUsed)));
+      if(k==="apply" && target){ const r = resolveTransferOffer(s, "apply", target.key); decide("transfer", k, `申請轉到${target.label}，${r && r.success ? "成功":"沒有成功"}`); }
+      else { resolveTransferOffer(s, "stay", null); decide("transfer", "stay"); }
+      continue;
+    }
+    if(s.pendingDualMajorOffer){ s.pendingDualMajorOffer = false; snap("dualMajor", { pendingDualMajorOffer: true }); const k = idleChooseOption(s, IDLE_POPUP_MAP.dualMajor); resolveDualMajorOffer(s, k); decide("dualMajor", k); continue; }
+    if(s.pendingDualMajorAbandonOffer){ s.pendingDualMajorAbandonOffer = false; snap("dualAbandon", { pendingDualMajorAbandonOffer: true }); const k = idleChooseOption(s, IDLE_POPUP_MAP.dualAbandon); resolveDualMajorAbandonOffer(s, k); decide("dualAbandon", k); continue; }
+    if(s.pendingLeaveOffer){
+      const lo = s.pendingLeaveOffer; s.pendingLeaveOffer = null; snap("withdrawal", { pendingLeaveOffer: lo });
+      let k = idleChooseOption(s, IDLE_POPUP_MAP.withdrawal); if(k==="leave" && !isAnotherLeaveFeasible(s)) k = "stay";
+      resolveWithdrawalOffer(s, k); decide("withdrawal", k); continue;
+    }
+    if(s.pendingParentingNode){
+      const pn = s.pendingParentingNode; s.pendingParentingNode = null; snap("parenting", { pendingParentingNode: pn });
+      const child = s.characters.find(c=>c.name===pn.childName); const node = PARENTING_GROWTH_NODES[pn.nodeKey];
+      if(child && node){
+        const opts = parentingNodeOptionsFor(child, node);
+        // 顧家→溫暖最高、努力→要求最高、安逸/逃避→要求最低、社交/冒險→隨機
+        const tag = pickIdleTag(s);
+        const byWarmth = opts.slice().sort((a,b)=>b.warmth-a.warmth), byDemand = opts.slice().sort((a,b)=>b.demand-a.demand);
+        const o = tag==="顧家" ? byWarmth[0] : tag==="努力" ? byDemand[0] : (tag==="安逸"||tag==="逃避") ? byDemand[byDemand.length-1] : pick(opts);
+        resolveParentingGrowthNode(s, pn.childName, pn.nodeKey, o.id, ""); decide("parenting", o.id, `${node.label}：${o.text}`);
+      }
+      continue;
+    }
+    if(s.pendingMarriageCrisis){
+      const mc = s.pendingMarriageCrisis; s.pendingMarriageCrisis = null; snap("marriageCrisis", { pendingMarriageCrisis: mc });
+      const k = idleChooseOption(s, IDLE_POPUP_MAP.marriageCrisis); resolveMarriageCrisis(s, mc.spouseName, k); decide("marriageCrisis", k); continue;
+    }
+    if(s.pendingDivorceSettlement){
+      const ds = s.pendingDivorceSettlement; snap("divorce");
+      const hasKids = s.characters.some(c=>c.isChild && !c.deceased);
+      finalizeDivorce(s, ds.spouseName, s.propertyValue>0 ? "sell" : null, hasKids ? (pickIdleTag(s)==="顧家" ? "primary" : "joint") : null);
+      s.pendingDivorceSettlement = null; decide("divorce", "divorce", "完成離婚結算"); continue;
+    }
+    if(s.pendingRelationshipInvestment){
+      const ri = s.pendingRelationshipInvestment; s.pendingRelationshipInvestment = null; snap("relationship", { pendingRelationshipInvestment: ri });
+      const k = idleChooseOption(s, IDLE_POPUP_MAP.relationship); resolveRelationshipInvestment(s, ri.partnerName, k); decide("relationship", k); continue;
+    }
+    if(s.pendingDivorceRecovery){ s.pendingDivorceRecovery = null; snap("divorceRecovery", { pendingDivorceRecovery: true }); const k = idleChooseOption(s, IDLE_POPUP_MAP.divorceRecovery); resolveDivorceRecovery(s, k); decide("divorceRecovery", k); continue; }
+    if(s.pendingCohabitationOffer){
+      const co = s.pendingCohabitationOffer; s.pendingCohabitationOffer = null; snap("cohabitation", { pendingCohabitationOffer: co });
+      const k = idleChooseOption(s, IDLE_POPUP_MAP.cohabitation); resolveCohabitationOffer(s, co.partnerName, k); decide("cohabitation", k); continue;
+    }
+    if(s.pendingJobOffer){ acceptJobOffer(s); continue; }
+    if(s.pendingJobSearch){
+      const js = s.pendingJobSearch; s.pendingJobSearch = null; snap("jobSearch", { pendingJobSearch: js });
+      // 冒險→隨便投一類；其他→投錄取機率最高的一類(11.4明牌檢定照樣擲骰)
+      const tag = pickIdleTag(s);
+      const offer = tag==="冒險" ? pick(js.offers) : js.offers.slice().sort((a,b)=>b.probPct-a.probPct)[0];
+      const r = resolveJobApplication(s, offer.category, js.isTransfer, { isOverseas: js.isOverseas, foreshadowLine: js.foreshadowLine, creativeBonusPct: js.creativeBonusPct });
+      decide("jobSearch", "apply", `投遞${r.category}：擲出${r.roll}／門檻${r.probPct}%，${r.hired ? "錄取":"沒有錄取"}`); continue;
+    }
+    if(s.pendingPromotionOffer){
+      const po = s.pendingPromotionOffer; s.pendingPromotionOffer = null; snap("promotion", { pendingPromotionOffer: po });
+      const k = idleChooseOption(s, IDLE_POPUP_MAP.promotion); resolvePromotionOffer(s, k==="accept");
+      const log = s.careerEventLog||{}; decide("promotion", k, k==="accept" ? `爭取升遷：擲出${log.roll}／門檻${Math.round(log.probPct)}%，${log.success?"成功":"沒有成功"}` : "維持現狀"); continue;
+    }
+    if(s.pendingCareerForkOffer){ s.pendingCareerForkOffer = null; snap("careerFork", { pendingCareerForkOffer: {} }); const k = idleChooseOption(s, IDLE_POPUP_MAP.careerFork); resolveCareerForkOffer(s, k); decide("careerFork", k); continue; }
+    if(s.pendingBusinessLaunch){
+      const bl = s.pendingBusinessLaunch; s.pendingBusinessLaunch = null; snap("businessLaunch", { pendingBusinessLaunch: bl });
+      const k = idleChooseOption(s, IDLE_POPUP_MAP.businessLaunch);
+      const launched = k==="launch" && launchBusiness(s);
+      if(bl && bl.foreshadowLine) closeForeshadowCandidate(s, bl.foreshadowLine, launched);
+      decide("businessLaunch", k, launched ? "啟動創業" : (k==="launch" ? "想創業但現金不夠" : "先不創業")); continue;
+    }
+    if(s.pendingFamilyBusinessOffer){ const fb = s.pendingFamilyBusinessOffer; s.pendingFamilyBusinessOffer = null; snap("familyBusiness", { pendingFamilyBusinessOffer: fb }); const k = idleChooseOption(s, IDLE_POPUP_MAP.familyBusiness); resolveFamilyBusinessOffer(s, fb, k); decide("familyBusiness", k); continue; }
+    if(s.pendingBusinessContinuation){
+      s.pendingBusinessContinuation = null; snap("businessCont", { pendingBusinessContinuation: {} });
+      let k = idleChooseOption(s, IDLE_POPUP_MAP.businessCont); resolveBusinessContinuation(s, k); decide("businessCont", k); continue;
+    }
+    if(s.pendingRetirementOffer){
+      const ro = s.pendingRetirementOffer; s.pendingRetirementOffer = null; snap("retirement", { pendingRetirementOffer: ro });
+      const tag = pickIdleTag(s);
+      let k;
+      if(ro.forced) k = (tag==="努力"||tag==="冒險") ? "semi" : "rest";
+      else if(tag==="安逸"||tag==="逃避") k = s.age>=RETIREMENT_CANDIDATE_MIN_AGE ? "on_time" : (canRetireEarly(s) ? "early" : "delay");
+      else if(tag==="顧家"||tag==="社交") k = "semi";
+      else k = s.age<RETIREMENT_DELAY_MAX_AGE ? "delay" : "on_time";
+      resolveRetirementOffer(s, k); decide("retirement", k); continue;
+    }
+    if(s.pendingEldercareDecision){
+      const ec = s.pendingEldercareDecision; snap("eldercare");
+      const hasSibling = s.characters.some(c=>c.origin==="手足，從出生起" && !c.deceased);
+      const opts = IDLE_POPUP_MAP.eldercare.filter(o=>hasSibling || (o.key!=="split" && o.key!=="limited"));
+      const k = idleChooseOption(s, opts); resolveEldercareDecision(s, ec.parentName, k);
+      if(k==="self") s.caringForParentName = ec.parentName;
+      decide("eldercare", k); continue;
+    }
+    break;
+  }
+}
+
+// 一回合的放置：時間推進、年度判定(放置模式)、每月結算、標籤效果、既有每回合檢查、彈窗代選
+function simulateIdleRound(s, index){
+  const record = { i:index, popups:[], rollbackPoints:[], newFriend:false };
+  const before = { health:s.stats.health, knowledge:s.stats.knowledge, network:s.stats.network, expression:s.stats.expression, cash:s.cash, age:s.age };
+  const stageBefore = bookStageOf(s).label;
+  s.turnCount += 1;
+  const studyBefore = s.studyCountThisTerm||0, interestBefore = s.interestCountThisTerm||0;
+  const adv = advanceStructuredTime("（放置中）");
+  record.label = adv.currentLabel || computeTimeLabel(s);
+  if(adv.examTriggered && adv.examType==="期末考"){
+    // 10.6.3【定案】明牌節點也依性格代選，照樣擲骰，結果寫進摘要
+    const check = rollFinalExamCheck(s.stats.knowledge, studyBefore, interestBefore);
+    record.popups.push({ kind:"exam", title:"期末考", choice:"exam", label:`擲出${check.roll}，${check.finalScore}分，${check.passed?"通過":"沒過"}` });
+    checkNonLeaveGraduationDelay(s, check, interestBefore);
+  }
+  applyMonthlySettlement(s, adv.monthsCrossed||0);
+  const tag = pickIdleTag(s);
+  applyIdleTag(s, tag);
+  record.tag = tag;
+  record.line = nextIdleLine(s, tag);
+  record.newFriend = record.line===IDLE_NEW_FRIEND_LINE;
+  applyAcuteRecovery(s);
+  advanceMajorIllness(s); // 已經在治療中的照常推進；新的重大疾病不判定(rollAnnualIllnessCheck讀idleMode)
+  s.lowHealthStreak = s.stats.health<30 ? (s.lowHealthStreak||0)+1 : 0;
+  refreshAppearance(s);
+  checkCareerTriggers(s);
+  sweepUniversityState(s);
+  checkParentingGrowthNode(s);
+  checkRelationshipInvestmentNode(s);
+  sweepMarriageCrisisCandidate(s);
+  checkDivorceRecoveryNode(s);
+  checkCohabitationOffer(s, "");
+  refreshMilestoneLocks(s);
+  demoteStaleCharacters(null);
+  sweepInterestDecay(s);
+  idleResolvePendingPopups(s, record);
+  recordMilestoneChronicle(s, record.label);
+  const stageAfter = bookStageOf(s).label;
+  if(stageAfter!==stageBefore) record.stageChange = `從${stageBefore}進入${stageAfter}`;
+  record.changes = {};
+  ["health","knowledge","network","expression"].forEach(k=>{ const d = Math.round(s.stats[k]-before[k]); if(d) record.changes[k] = d; });
+  const dc = Math.round(s.cash-before.cash); if(dc) record.changes.cash = dc;
+  // 每個回合結束都清掉只給AI看一次的事件紀錄，避免累積到回來那一回合
+  s.careerEventLog = null; s.universityEventLog = null; s.parentingEventLog = null; s.relationshipInvestmentEventLog = null;
+  s.marriageCrisisEventLog = null; s.divorceEventLog = null; s.cohabitationEventLog = null; s.sideBusinessEventLog = null;
+  return record;
+}
+// 跑完整段放置：n回合(已由伺服器/本機算好)；回傳紀錄，存在state.idleRun
+function runIdleRounds(s, n){
+  s.idleMode = true;
+  const startSnapshot = JSON.stringify(Object.assign({}, s, { snapshot:null }));
+  const statBefore = { health:s.stats.health, knowledge:s.stats.knowledge, network:s.stats.network, expression:s.stats.expression, cash:s.cash, age:s.age };
+  const rounds = [];
+  try{
+    for(let i=0;i<n;i++){
+      if(s.phase!=="playing") break;
+      rounds.push(simulateIdleRound(s, i));
+    }
+  } finally {
+    s.idleMode = false;
+  }
+  const totals = {};
+  ["health","knowledge","network","expression"].forEach(k=>{ const d = Math.round(s.stats[k]-statBefore[k]); if(d) totals[k] = d; });
+  const dc = Math.round(s.cash-statBefore.cash); if(dc) totals.cash = dc;
+  s.idleRun = { rounds, totals, ageFrom: statBefore.age, ageTo: s.age, startSnapshot, rolledBack:false, summary:null, createdAt: s.turnCount };
+  s.snapshot = null; // 10.6.6【定案】一般悔棋不能撤銷放置結果
+  return s.idleRun;
+}
+// 10.6.4【定案】關鍵片段：程式挑影響最大的回合(有彈窗決定的優先，其次數值變化總量)，少量回合1-2則、滿35回合最多5則
+function pickIdleKeyRounds(rounds){
+  const limit = rounds.length<=10 ? 2 : rounds.length<=20 ? 3 : rounds.length<=30 ? 4 : 5;
+  const score = r => (r.popups.length*20) + Object.values(r.changes||{}).reduce((a,v)=>a+Math.abs(v),0) + (r.newFriend?5:0);
+  return rounds.slice().sort((a,b)=>score(b)-score(a)).slice(0, Math.min(limit, rounds.length)).map(r=>r.i).sort((a,b)=>a-b);
+}
+
+// 三、3.4.7週期性收支結算（2026-09-27從applyResult抽出，一般回合與放置代活(10.6.9「照3.4.7一般每月收支結算」)共用）
+function applyMonthlySettlement(s, monthsCrossed){
+  if(monthsCrossed>0){
+    // 十二、12.12（2026-09-20新增）：tenure_months隨月份邊界累加，供12.5升遷年資門檻／12.3薪資年資加成使用
+    if(s.careerStatus===CAREER_STATUS.EMPLOYED) s.tenureMonths = (s.tenureMonths||0) + monthsCrossed;
+    const totalExpenses = s.monthlyExpenses.reduce((sum,e)=>sum+e.amount,0);
+    // 3.4.8 基本生活開銷：所有人生階段皆適用，依居住狀態決定，不再以occupationCategory為開關
+    const livingCost = computeBaseLivingCost(s); // 3.4.11：已內含household共同生活分攤係數與子女扶養費
+    // 三、3.4.11（2026-09-20新增）：household合併收入＝玩家個人月收入＋配偶月收入(若已婚)。配偶收入獨立追蹤(s.spouseIncome)，
+    // 不直接併進s.monthlyIncome，避免玩家轉職時job_change覆寫monthlyIncome連帶把配偶收入也洗掉
+    // 八、8.7（2026-09-27）：副業三選一的後續差異，接零星案／正式副業各有一筆週期性副業收入，見computeSideBusinessIncome()
+    const householdMonthlyIncome = s.monthlyIncome + (s.spouseIncome||0) + computeSideBusinessIncome(s);
+    let net = Math.round((householdMonthlyIncome - totalExpenses - livingCost) * monthsCrossed);
+    // 5.5存款下限保護（9/14新增）：學生時期(尚無正職)存款不能變成負值，修正原本會出現NT$-35,950這種不合理負債的bug
+    if(isStudentPhase(s) && s.cash + net < 0) net = -s.cash;
+    s.cash += net;
+    s.lastSettlement = { months: monthsCrossed, net, income:householdMonthlyIncome, expenses:totalExpenses+livingCost };
+    // 資產模型（9/14新增）：房貸每月攤還本金（不含利息，簡化模型），還清時自動移除房貸支出項
+    if(s.mortgageBalance>0){
+      const mortgagePayment = s.monthlyExpenses.find(e=>e.label==="房貸")?.amount || 0;
+      s.mortgageBalance = Math.max(0, s.mortgageBalance - mortgagePayment*monthsCrossed);
+      if(s.mortgageBalance===0){
+        s.monthlyExpenses = s.monthlyExpenses.filter(e=>e.label!=="房貸");
+      }
+    }
+  } else {
+    s.lastSettlement = null;
+  }
+}
+// ========== 十、10.6 放置代活：回來時的流程（2026-09-27） ==========
+let idleCheckedLives = new Set();
+let idleInFlight = false;
+function mockIdleOfflineDays(s){ // mock模式：本機依最後一次玩的日期算(真實模式一律由Worker算，10.6.2)
+  if(!s.lastActiveDate) return 0;
+  const day = d=>Math.floor(Date.parse(d+"T00:00:00Z")/86400000);
+  return Math.max(0, Math.min(IDLE_MAX_DAYS_CLIENT, day(taipeiDateString()) - day(s.lastActiveDate) - 1));
+}
+const IDLE_MAX_DAYS_CLIENT = 7;
+async function claimIdleRounds(s){
+  if(USE_MOCK){
+    const days = mockIdleOfflineDays(s);
+    s.lastActiveDate = taipeiDateString();
+    return { rounds: days*5, offlineDays: days };
+  }
+  try{
+    const res = await fetch(WORKER_URL+"idle-claim", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)) }) });
+    const data = await res.json();
+    if(data && data.ap) syncServerAP(s, data.ap);
+    return { rounds: (data && data.rounds) || 0, offlineDays: (data && data.offlineDays) || 0 };
+  }catch(e){ console.warn("放置天數查詢失敗", e); return { rounds:0, offlineDays:0 }; }
+}
+async function maybeRunIdle(){
+  const s = state;
+  if(!s || s.phase!=="playing" || !s.idleEnabled || idleInFlight) return;
+  const lifeKey = ensureLifeId(s);
+  if(idleCheckedLives.has(lifeKey)) return;
+  idleCheckedLives.add(lifeKey);
+  idleInFlight = true;
+  try{
+    const claim = await claimIdleRounds(s);
+    if(state!==s || !claim.rounds) return;
+    const run = runIdleRounds(s, claim.rounds);
+    run.offlineDays = claim.offlineDays;
+    saveGame();
+    await writeIdleSummary(s);
+    saveGame(); render();
+    renderIdleSummaryModal();
+  } finally { idleInFlight = false; }
+}
+function buildIdleSummaryPayload(s){
+  const run = s.idleRun;
+  const stage = run.rounds.map(r=>r.stageChange).filter(Boolean);
+  return {
+    player_name: s.name, gender: s.gender, age_from: run.ageFrom, age_to: run.ageTo, offline_days: run.offlineDays||null,
+    idle_rounds: run.rounds.map(r=>({ i:r.i, t:r.label, tag:r.tag, line:r.line, changes:r.changes, popup: r.popups.map(p=>`${p.title}：${p.label}`).join("；")||null, new_friend: r.newFriend })),
+    key_rounds: pickIdleKeyRounds(run.rounds),
+    stage_change: stage.length ? stage.join("；") : null,
+    characters: (s.characters||[]).filter(c=>!c.deceased).slice(0,30).map(c=>({ name:c.name, relation:c.relation, gender:c.gender||null })),
+    new_character_limit: Math.min(IDLE_MAX_NEW_CHARACTERS, run.rounds.filter(r=>r.newFriend).length)
+  };
+}
+function mockIdleSummary(payload){
+  return {
+    retrospect: `（模擬摘要）你不在的這段時間，日子照樣過著，從${payload.age_from}歲走到${payload.age_to}歲。${payload.stage_change ? "這段時間"+payload.stage_change+"。" : ""}`,
+    fragments: payload.key_rounds.map(i=>({ i, text:`（模擬片段）第${i+1}回合：${(payload.idle_rounds.find(r=>r.i===i)||{}).line||""}` })),
+    new_characters: payload.idle_rounds.filter(r=>r.new_friend).slice(0, payload.new_character_limit).map((r,k)=>({ name: pick(["郁婷","柏翰","品妤","冠廷"])+(k+1), gender: k%2?"男":"女", relation:"朋友", traits:"在聚會上認識", origin:"放置期間參加聚會認識", i:r.i }))
+  };
+}
+async function writeIdleSummary(s){
+  const payload = buildIdleSummaryPayload(s);
+  let out = null;
+  if(USE_MOCK) out = mockIdleSummary(payload);
+  else{
+    try{
+      const res = await fetch(WORKER_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({
+        kind:"idle_summary", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
+        life_id: ensureLifeId(s), messages:[{ role:"user", content: JSON.stringify(payload) }] }) });
+      const data = await res.json();
+      const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_idle_summary");
+      if(block && block.input) out = block.input;
+    }catch(e){ console.warn("放置摘要生成失敗", e); }
+  }
+  if(!out) out = { retrospect:"你不在的這段時間，日子照樣一天一天過去。", fragments:[], new_characters:[] };
+  // 10.6.3【定案】新角色只能來自有「新朋友」標記的回合、每次最多2位；照一般回合規則建卡(同名改名)
+  const friendRounds = new Set(s.idleRun.rounds.filter(r=>r.newFriend).map(r=>r.i));
+  const created = [];
+  (out.new_characters||[]).filter(nc=>nc && nc.name && friendRounds.has(nc.i)).slice(0, IDLE_MAX_NEW_CHARACTERS).forEach(nc=>{
+    let name = String(nc.name).slice(0,12);
+    const exists = s.characters.find(c=>c.name===name);
+    if(exists) name = renameForConflict(s, name, nc.relation||"");
+    s.characters.push({ name, relation: nc.relation||"朋友", gender: CHARACTER_GENDERS.includes(nc.gender) ? nc.gender : genderFromRelation(nc.relation),
+      traits: nc.traits||"", dialogueStyle:"normal", affinity:50, summary:"", lastTurn:s.turnCount, active:true, isChild:false,
+      origin: nc.origin||"放置期間認識", createdByIdleRound: nc.i });
+    created.push(name);
+  });
+  s.idleRun.summary = { retrospect: String(out.retrospect||""), fragments: (out.fragments||[]).map(f=>({ i:f.i, text:String(f.text||"") })), newCharacters: created };
+  // 摘要也寫進日記，讓之後的回合AI讀得到這段時間(一般回合的recent_turns)
+  s.log.push({ age:s.age, timeLabel:"放置期間", subtitle:"不在的時候", text: [s.idleRun.summary.retrospect].concat(s.idleRun.summary.fragments.map(f=>f.text)).join("\n\n"),
+    turnSummary: s.idleRun.summary.retrospect.slice(0,80), statChanges: s.idleRun.totals });
+}
+const IDLE_STAT_LABELS = { health:"健康", knowledge:"才識", network:"人脈", expression:"表達力", cash:"存款" };
+function renderIdleSummaryModal(){
+  const s = state, run = s.idleRun;
+  if(!run || !run.summary) return;
+  const div = document.createElement("div");
+  div.id = "idle-summary-modal";
+  div.className = "modal-backdrop";
+  const totals = Object.keys(run.totals||{}).map(k=>`<div>${IDLE_STAT_LABELS[k]||k}　${run.totals[k]>0?"+":""}${run.totals[k]}</div>`).join("") || "<div>沒有明顯變化</div>";
+  const points = run.rolledBack ? [] : run.rounds.flatMap(r=>r.rollbackPoints.map((p,j)=>({ r:r.i, j, title:p.title, label:(r.popups.filter(x=>x.kind!=="exam")[j]||{}).label||"" })));
+  const rows = run.rounds.map(r=>`<div style="font-size:12.5px;margin:3px 0;${r.rewritten?'opacity:0.45;':''}">${escapeHtml(r.label||"")}｜${escapeHtml(r.line)}${r.popups.length?`<br><span style="color:var(--ink-soft);">${escapeHtml(r.popups.map(p=>p.title+"："+p.label).join("；"))}</span>`:""}${r.rewritten?"（已改寫）":""}</div>`).join("");
+  div.innerHTML = `<div class="modal" style="text-align:left;">
+      <h3>你不在的這段時間</h3>
+      <p>${escapeHtml(run.summary.retrospect)}</p>
+      ${run.summary.fragments.map(f=>`<p style="font-size:13.5px;">${escapeHtml(f.text)}</p>`).join("")}
+      ${run.summary.newCharacters.length ? `<p style="font-size:12.5px;color:var(--ink-soft);">新認識的人：${escapeHtml(run.summary.newCharacters.join("、"))}</p>` : ""}
+      <div style="font-size:13px;margin:8px 0;">${totals}</div>
+      ${points.length ? `<div style="font-size:12.5px;margin-top:6px;">可以回到其中一個決定重選（花${IDLE_ROLLBACK_COST}點，這次放置只能一次）：
+        ${points.map(p=>`<button class="ghost-btn idle-rollback-btn" data-r="${p.r}" data-j="${p.j}" style="display:block;width:100%;text-align:left;margin:3px 0;">可回到此處：第${p.r+1}回合・${escapeHtml(p.title)}（${escapeHtml(p.label)}）</button>`).join("")}</div>` : ""}
+      <button class="ghost-btn" id="btn-idle-expand" style="margin-top:6px;">展開每回合紀錄</button>
+      <div id="idle-rounds" style="display:none;max-height:260px;overflow:auto;">${rows}</div>
+      <button class="primary-btn" id="btn-idle-close" style="margin-top:10px;">繼續</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-idle-expand").onclick = ()=>{ const el = document.getElementById("idle-rounds"); el.style.display = el.style.display==="none" ? "block" : "none"; };
+  document.getElementById("btn-idle-close").onclick = ()=>div.remove();
+  div.querySelectorAll(".idle-rollback-btn").forEach(btn=>{
+    btn.onclick = async ()=>{ const ok = await rollbackIdleDecision(+btn.dataset.r, +btn.dataset.j); if(ok) div.remove(); };
+  });
+}
+// 10.6.5【定案】回溯：花5點回到放置期間某個彈窗決定之前，之後的放置回合作廢、不補回；數值年齡回到當時；
+// 作廢段落裡產生的新角色一併刪除(快照在建卡之前，還原後自然不存在)；每次放置只能回溯一次；摘要不重寫，作廢段落標示「已改寫」
+async function rollbackIdleDecision(roundIndex, pointIndex){
+  const s = state, run = s.idleRun;
+  if(!run || run.rolledBack) return false;
+  const round = run.rounds.find(r=>r.i===roundIndex);
+  const point = round && round.rollbackPoints[pointIndex];
+  if(!point) return false;
+  if(totalAP(s) < IDLE_ROLLBACK_COST){ alert("行動點不足，不能回溯"); return false; }
+  let apAfter = null;
+  if(USE_MOCK) spendAP(s, IDLE_ROLLBACK_COST);
+  else{
+    try{
+      const res = await fetch(WORKER_URL+"idle-rollback", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)) }) });
+      const data = await res.json();
+      if(!res.ok || !data.success){ alert((data && data.error && data.error.message) || "回溯失敗"); return false; }
+      apAfter = data.ap;
+    }catch(e){ alert("回溯失敗，請稍後再試"); return false; }
+  }
+  const ap = apAfter || ensureAP(s);
+  const restored = JSON.parse(point.snapshot);
+  run.rolledBack = true;
+  run.rounds.forEach(r=>{ r.rewritten = r.i>=roundIndex; }); // 從這個決定起(含這回合決定之後)都作廢
+  restored.idleRun = run;
+  restored.ap = Object.assign({}, ensureAP(restored), { daily:ap.daily, gift:ap.gift, purchased:ap.purchased });
+  restored.snapshot = null;
+  restored.log = (restored.log||[]).concat([{ age: restored.age, timeLabel:"放置期間", subtitle:"回到那個決定", text:`你回到放置期間第${roundIndex+1}回合的「${point.title}」，這一次由你自己決定。之後那段放置的日子已經改寫。`, turnSummary:`回到放置期間的${point.title}，自己重新決定`, statChanges:{} }]);
+  state = restored;
+  saveGame(); render();
+  dispatchPendingModals();
+  return true;
+}
+// 回合結束後依序跳出待處理的彈窗（2026-09-27從takeTurn抽出，內容不變）
+function dispatchPendingModals(){
+  if(state.pendingDivorceSettlement){ renderDivorceSettlementModal(state.pendingDivorceSettlement); return; } // 10.6.5：回溯到離婚結算時
   if(state.mealJustUnlocked){ state.mealJustUnlocked = false; renderMealUnlockModal(); }
   if(state.pendingSideBusinessCardId){ const cid = state.pendingSideBusinessCardId; state.pendingSideBusinessCardId = null; renderSideBusinessModal(cid); }
   // 九、大學科系系統：四個彈窗互斥，一次只處理一個，優先序為選科系＞轉系＞雙主修＞休學肄業
@@ -5045,11 +5556,7 @@ async function takeTurn(actionText, cost){
   else if(state.pendingRetirementOffer){ const ro = state.pendingRetirementOffer; state.pendingRetirementOffer = null; renderRetirementOfferModal(ro); }
   // 十三、13.5.2（2026-09-20新增）：照顧年邁父母的決策節點
   if(state.pendingEldercareDecision){ const ec = state.pendingEldercareDecision; state.pendingEldercareDecision = null; renderEldercareDecisionModal(ec); }
-  if(apJustExhausted) renderAPExhaustedModal(); // 最後才疊上去，確保在其他彈窗之上
-  updateDevUsageBox(); // 10.5：開發者面板的上一回合用量
-  processBookQueue(true); // 十五、背景寫章節(不等它，不影響這回合)；失敗的章節每回合自動重試一次，最多3次
 }
-
 function applyResult(r, timeCtx, forceEnding, actionText){
   const s = state;
   // 九、大學科系系統：university_recent_event只給AI看這一回合，用過就清掉，不然會被下一回合重複讀到
@@ -5227,32 +5734,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 
   // 財富真實金額制：先用「跨過的月份數」結算舊的月收支，再套用這回合新的職業/支出/一次性交易
   const monthsCrossed = structured ? (timeCtx.monthsCrossed||0) : Math.round((r.age_advance||0)*12);
-  if(monthsCrossed>0){
-    // 十二、12.12（2026-09-20新增）：tenure_months隨月份邊界累加，供12.5升遷年資門檻／12.3薪資年資加成使用
-    if(s.careerStatus===CAREER_STATUS.EMPLOYED) s.tenureMonths = (s.tenureMonths||0) + monthsCrossed;
-    const totalExpenses = s.monthlyExpenses.reduce((sum,e)=>sum+e.amount,0);
-    // 3.4.8 基本生活開銷：所有人生階段皆適用，依居住狀態決定，不再以occupationCategory為開關
-    const livingCost = computeBaseLivingCost(s); // 3.4.11：已內含household共同生活分攤係數與子女扶養費
-    // 三、3.4.11（2026-09-20新增）：household合併收入＝玩家個人月收入＋配偶月收入(若已婚)。配偶收入獨立追蹤(s.spouseIncome)，
-    // 不直接併進s.monthlyIncome，避免玩家轉職時job_change覆寫monthlyIncome連帶把配偶收入也洗掉
-    // 八、8.7（2026-09-27）：副業三選一的後續差異，接零星案／正式副業各有一筆週期性副業收入，見computeSideBusinessIncome()
-    const householdMonthlyIncome = s.monthlyIncome + (s.spouseIncome||0) + computeSideBusinessIncome(s);
-    let net = Math.round((householdMonthlyIncome - totalExpenses - livingCost) * monthsCrossed);
-    // 5.5存款下限保護（9/14新增）：學生時期(尚無正職)存款不能變成負值，修正原本會出現NT$-35,950這種不合理負債的bug
-    if(isStudentPhase(s) && s.cash + net < 0) net = -s.cash;
-    s.cash += net;
-    s.lastSettlement = { months: monthsCrossed, net, income:householdMonthlyIncome, expenses:totalExpenses+livingCost };
-    // 資產模型（9/14新增）：房貸每月攤還本金（不含利息，簡化模型），還清時自動移除房貸支出項
-    if(s.mortgageBalance>0){
-      const mortgagePayment = s.monthlyExpenses.find(e=>e.label==="房貸")?.amount || 0;
-      s.mortgageBalance = Math.max(0, s.mortgageBalance - mortgagePayment*monthsCrossed);
-      if(s.mortgageBalance===0){
-        s.monthlyExpenses = s.monthlyExpenses.filter(e=>e.label!=="房貸");
-      }
-    }
-  } else {
-    s.lastSettlement = null;
-  }
+  applyMonthlySettlement(s, monthsCrossed); // 2026-09-27：抽成函式，放置代活(10.6)共用同一套結算
 
   // 十二、職涯系統（2026-09-20新增，取代原本job_change由AI自由回報occupation_category/monthly_salary的舊機制）：
   // 求職/轉職/升遷/裁員/創業/退休全部改由結構化彈窗處理，觸發檢查見checkCareerTriggers(s)，AI不再回報薪資或職業類別
@@ -6069,6 +6551,7 @@ function render(loadingTurn){
   }
   app.innerHTML = renderPlaying(loadingTurn);
   bindPlaying();
+  if(!loadingTurn) maybeRunIdle(); // 10.6（2026-09-27）：放置代活開著時，回到遊戲畫面檢查一次離線天數
   const j = document.querySelector(".journal");
   if(j) j.scrollTop = j.scrollHeight;
   ensureDebugUI();
@@ -6532,6 +7015,7 @@ function renderPlaying(loadingTurn){
     <a id="link-memoir">📖 回憶錄（${s.log.length}則）</a>
     <a id="link-book">${bookLinkText(s)}</a>
     <a id="link-view-key">🔑 我的復原金鑰</a>
+    <a id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
     <a id="link-switch-life">🔄 切換其他人生</a>
     <a id="link-reset">刪除這段人生</a>
   </div>`;
@@ -6684,6 +7168,13 @@ function bindPlaying(){
   if(bookLink) bookLink.onclick = ()=>openBookPage(ensureBook(state), { owner: state.name });
   const viewKeyLink = document.getElementById("link-view-key");
   if(viewKeyLink) viewKeyLink.onclick = renderKeyViewModal;
+  // 十、10.6.1【定案】放置代活預設關閉，每條人生各自設定
+  const idleLink = document.getElementById("link-idle-toggle");
+  if(idleLink) idleLink.onclick = ()=>{
+    state.idleEnabled = !state.idleEnabled;
+    if(state.idleEnabled && !state.lastActiveDate) state.lastActiveDate = taipeiDateString();
+    saveGame(); render();
+  };
   const switchLifeLink = document.getElementById("link-switch-life");
   if(switchLifeLink) switchLifeLink.onclick = switchLife;
   updateCloudSyncStatusUI(); // 十、10.1補充：確保「重試同步」連結每次完整render()後也有被重新綁定

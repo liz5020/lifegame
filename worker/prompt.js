@@ -301,3 +301,30 @@ export const CHAPTER_TOOL = {
     required: ["title", "text"]
   }
 };
+
+// ========== 十、10.6.4 放置代活的回來摘要（2026-09-27，使用者授權Claude全權判斷） ==========
+export const IDLE_SUMMARY_SYSTEM_PROMPT = `你是「人生草稿」的敘事引擎。這是一款寫實的現代人生模擬文字遊戲。玩家離開了一段時間，這段時間角色依自己的性格照常過日子（放置代活）；現在玩家回來了，要你把這段時間寫成一份簡短的摘要。
+
+【任務】
+- payload的idle_rounds是放置期間每一回合的紀錄（i回合序號、t時期標籤、tag傾向標籤、line系統寫好的一句、changes數值變化、popup這回合系統代選的彈窗決定、new_friend這回合是否認識了新朋友）；stage_change不是null時代表這段時間換了人生階段；key_rounds是系統挑出影響最大的幾個回合序號。
+- retrospect：開頭回顧2到3句，用回望的語氣（一、1.2.8的「回顧」語調）：像多年後翻相簿，平靜、帶一點距離，不評價這段時間過得好不好；stage_change不是null時要在這裡提一句。
+- fragments：key_rounds裡的每一個回合各寫一則關鍵片段，每則2到3句，寫成一個具體的畫面（時間、地點、物件、一句台詞），回傳{i, text}，i照抄回合序號。
+- new_characters：只有new_friend為true的回合才能產生新角色，最多new_character_limit位；每位要有name（符合性別的台灣名字，不可跟characters裡的人撞名）、gender（男或女）、relation、traits、origin（簡短交代怎麼認識的，例如「放置期間參加聚會認識」）、i（是哪一回合認識的）。沒有new_friend回合就回傳空陣列。
+- 忠於紀錄：不得新增紀錄裡沒有的重大事件（交往、分手、生病、死亡、錄取、升遷、搬家、大筆金錢）；數字只能用紀錄裡的，不自己編。
+- 第二人稱、台灣繁體中文、短段落；不寫總結、不寫人生感悟。`;
+
+export const IDLE_SUMMARY_TOOL = {
+  name: "submit_idle_summary",
+  description: "回報放置期間的回來摘要。每次都必須呼叫這個工具剛好一次。",
+  input_schema: {
+    type: "object",
+    properties: {
+      retrospect: { type: "string", description: "開頭回顧2-3句" },
+      fragments: { type: "array", items: { type: "object", properties: { i: { type: "number" }, text: { type: "string" } }, required: ["i", "text"] } },
+      new_characters: { type: "array", items: { type: "object", properties: {
+        name: { type: "string" }, gender: { type: "string", enum: ["男", "女"] }, relation: { type: "string" },
+        traits: { type: "string" }, origin: { type: "string" }, i: { type: "number" } } } }
+    },
+    required: ["retrospect", "fragments", "new_characters"]
+  }
+};

@@ -51,11 +51,12 @@
 //   但每條人生每玩10回合才累積1章額度(ap.js的preChapter)；用量記為chapter類別
 
 import { convertAnthropicResponse } from "./s2t.js";
-import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL, CHAPTER_SYSTEM_PROMPT, CHAPTER_TOOL } from "./prompt.js";
+import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL, CHAPTER_SYSTEM_PROMPT, CHAPTER_TOOL, IDLE_SUMMARY_SYSTEM_PROMPT, IDLE_SUMMARY_TOOL } from "./prompt.js";
 import {
   AP_NEW_LIFE_GIFT, loadRecord, saveRecord, apKvKey, preCharge, postCharge, publicAP,
   isValidNonce, isValidLifeId, isUsableTurnResponse, taipeiDateString, nowMs,
-  addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse
+  addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse,
+  claimIdle, preIdleSummary, isUsableIdleSummaryResponse, chargeIdleRollback
 } from "./ap.js";
 import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual } from "./usage.js";
 
@@ -310,6 +311,96 @@ export function buildChapterRequest(messages) {
   };
 }
 
+function turnEmotionalTone(data) {
+  try {
+    const b = data && Array.isArray(data.content) && data.content.find(x => x.type === "tool_use" && x.input);
+    return b && typeof b.input.emotional_tone === "string" ? b.input.emotional_tone : null;
+  } catch (e) { return null; }
+}
+// ========== 十、10.6 放置代活（2026-09-27） ==========
+// POST /idle-claim {key, slot}：伺服器依最後一次行動日期算完整離線天數×5(最多35)，領過就把最後行動日設成今天
+async function handleIdleClaim(request, env, origin) {
+  let body;
+  try { body = await request.json(); }
+  catch (e) { return jsonResponse(origin, { success: false, error: "請求內容不是合法JSON" }, 400); }
+  const { key, slot } = body || {};
+  if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
+  if (!isValidSlot(slot)) return jsonResponse(origin, { success: false, error: "slot必須是0~2的整數" }, 400);
+  const raw = await env.SAVES.get(apKvKey(key, slot));
+  if (!raw) return jsonResponse(origin, { success: true, rounds: 0, offlineDays: 0 });
+  const { rec, today } = await loadRecord(env, key, slot, null);
+  const r = claimIdle(rec, today);
+  await saveRecord(env, key, slot, rec);
+  return jsonResponse(origin, { success: true, rounds: r.rounds, offlineDays: r.offlineDays, ap: publicAP(rec) });
+}
+// POST /idle-rollback {key, slot}：扣5點，回傳新餘額
+async function handleIdleRollback(request, env, origin) {
+  let body;
+  try { body = await request.json(); }
+  catch (e) { return jsonResponse(origin, { success: false, error: "請求內容不是合法JSON" }, 400); }
+  const { key, slot } = body || {};
+  if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
+  if (!isValidSlot(slot)) return jsonResponse(origin, { success: false, error: "slot必須是0~2的整數" }, 400);
+  const { rec } = await loadRecord(env, key, slot, null);
+  const r = chargeIdleRollback(rec);
+  await saveRecord(env, key, slot, rec);
+  if (!r.ok) return jsonResponse(origin, { success: false, error: r.error, ap: publicAP(rec) }, r.status);
+  return jsonResponse(origin, { success: true, ap: publicAP(rec) });
+}
+const MAX_IDLE_SUMMARY_PAYLOAD_CHARS = 30000;
+const MAX_IDLE_SUMMARY_TOKENS = 3000;
+export function validateIdleSummaryMessages(messages) {
+  if (!Array.isArray(messages) || messages.length !== 1) return { ok: false, error: "messages必須剛好1則" };
+  const m = messages[0];
+  if (!m || typeof m !== "object" || m.role !== "user" || typeof m.content !== "string") return { ok: false, error: "messages[0]格式錯誤" };
+  if (Object.keys(m).some(k => k !== "role" && k !== "content")) return { ok: false, error: "messages[0]含有不允許的欄位" };
+  if (m.content.length > MAX_IDLE_SUMMARY_PAYLOAD_CHARS) return { ok: false, error: "請求內容過長" };
+  let p;
+  try { p = JSON.parse(m.content); } catch (e) { return { ok: false, error: "content不是放置紀錄" }; }
+  if (!p || typeof p !== "object" || !Array.isArray(p.idle_rounds) || p.idle_rounds.length === 0 || p.idle_rounds.length > 35) return { ok: false, error: "idle_rounds數量不正確" };
+  if (p.idle_rounds.some(x => !x || typeof x !== "object" || typeof x.line !== "string" || x.line.length > 200)) return { ok: false, error: "idle_rounds格式錯誤" };
+  if (!Array.isArray(p.key_rounds) || p.key_rounds.length > 5) return { ok: false, error: "key_rounds格式錯誤" };
+  return { ok: true, payload: p, chars: m.content.length };
+}
+async function handleIdleSummary(body, env, origin, ctx) {
+  const check = validateIdleSummaryMessages(body.messages);
+  if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
+  const { key, slot, life_id: lifeId } = body;
+  if (!isValidKey(key) || !isValidSlot(slot)) return jsonResponse(origin, { error: { type: "invalid_request", message: "AI請求必須附帶金鑰與slot" } }, 400);
+  const safeLifeId = isValidLifeId(lifeId) ? lifeId : null;
+  const { rec } = await loadRecord(env, key, slot, null);
+  const pre = preIdleSummary(rec);
+  await saveRecord(env, key, slot, rec);
+  if (!pre.ok) return jsonResponse(origin, { error: pre.error }, pre.status);
+  let upstream, text, data = null;
+  try {
+    upstream = await callAnthropic(env, {
+      model: ALLOWED_MODEL, max_tokens: MAX_IDLE_SUMMARY_TOKENS, output_config: { effort: "low" },
+      tools: [IDLE_SUMMARY_TOOL], tool_choice: { type: "tool", name: IDLE_SUMMARY_TOOL.name },
+      system: [{ type: "text", text: IDLE_SUMMARY_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: body.messages[0].content }]
+    });
+    text = await upstream.text();
+    if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
+  } catch (err) {
+    return jsonResponse(origin, { error: { message: String(err) } }, 502);
+  }
+  const lifegame = { usable: !!(upstream.ok && data && isUsableIdleSummaryResponse(data)) };
+  if (upstream.ok && data && data.usage) {
+    const tokens = extractUsage(data.usage);
+    lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
+    const job = recordUsage(env, { key, slot, lifeId: safeLifeId, category: "idle", usage: data.usage, countsAsTurn: false, payloadChars: check.chars, taipeiDate: taipeiDateString(nowMs(env)) });
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
+  }
+  if (upstream.ok && data) {
+    let out = data;
+    try { out = convertAnthropicResponse(data); } catch (e) { /* 轉換失敗就用原文 */ }
+    out.lifegame = lifegame;
+    return new Response(JSON.stringify(out), { status: upstream.status, headers: corsHeaders(origin) });
+  }
+  return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
+}
+
 async function handleChapter(body, env, origin, ctx) {
   const check = validateChapterMessages(body.messages);
   if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
@@ -376,6 +467,7 @@ async function handleAIProxy(request, env, origin, ctx) {
   catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
   if (!body || typeof body !== "object") return jsonResponse(origin, { error: { message: "請求格式錯誤" } }, 400);
   if (body.kind === "chapter") return handleChapter(body, env, origin, ctx); // 十五、章節成書
+  if (body.kind === "idle_summary") return handleIdleSummary(body, env, origin, ctx); // 十、10.6.4放置摘要（2026-09-27）
 
   const check = validateTurnMessages(body.messages);
   if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
@@ -406,7 +498,7 @@ async function handleAIProxy(request, env, origin, ctx) {
     return jsonResponse(origin, { error: { message: String(err) }, lifegame: { ap: publicAP(rec) } }, 502);
   }
   const usable = !!(upstream.ok && data && isUsableTurnResponse(data));
-  postCharge(rec, pre, usable, safeLifeId);
+  postCharge(rec, pre, usable, safeLifeId, taipeiDateString(nowMs(env)));
   if (usable && (pre.charge || pre.freePrologue)) addChapterUnit(rec); // 十五、每成功一個新回合累積章節額度
   await saveRecord(env, key, slot, rec);
   const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable) };
@@ -417,7 +509,7 @@ async function handleAIProxy(request, env, origin, ctx) {
     const job = recordUsage(env, {
       key, slot, lifeId: safeLifeId, category: "turn", usage: data.usage,
       countsAsTurn: usable && !!(pre.charge || pre.freePrologue), payloadChars: check.chars,
-      taipeiDate: taipeiDateString(nowMs(env))
+      taipeiDate: taipeiDateString(nowMs(env)), lastTone: turnEmotionalTone(data) // 6.5（2026-09-27）
     });
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
   }
@@ -475,6 +567,8 @@ export default {
     if (url.pathname === "/load" && request.method === "GET") return handleLoad(request, env, origin);
     if (url.pathname === "/claim-gift" && request.method === "POST") return handleClaimGift(request, env, origin);
     if (url.pathname === "/ap" && request.method === "GET") return handleAPGet(request, env, origin);
+    if (url.pathname === "/idle-claim" && request.method === "POST") return handleIdleClaim(request, env, origin); // 10.6（2026-09-27）
+    if (url.pathname === "/idle-rollback" && request.method === "POST") return handleIdleRollback(request, env, origin); // 10.6.5（2026-09-27）
     if (url.pathname === "/archive" && request.method === "POST") return handleArchive(request, env, origin);
     if (url.pathname === "/archives" && request.method === "GET") return handleArchives(request, env, origin);
     if (url.pathname === "/archive" && request.method === "GET") return handleArchiveLoad(request, env, origin);
