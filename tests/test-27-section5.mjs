@@ -65,6 +65,14 @@ A.check("兩位都過世：和1位手足平分(3000)", ev("state.propertyValue")
 ev("delete state.familyHomeValue; state.family='富裕'; state.familyMonthlyIncome=200; Math.__r=Math.random; Math.random=()=>0; ensureFamilyHome(state); Math.random=Math.__r");
 A.check("富裕家庭擲到有房：價值＝月收入×120", ev("state.familyHomeValue") === 24000);
 
+// 1.2.8.7（2026-09-28）：生育/領養語氣軌由程式指定
+const tone = (fe) => JSON.parse(ev(`(()=>{ state.fertilityEventLog=${JSON.stringify(fe)}; state.divorceEventLog=null; state.parentDeathEventLog=null; state.spouseDeathEventLog=null; state.careerEventLog=null; state.marriageCrisisArc=null; const r=computeToneTrack(state,{},"",false); state.fertilityEventLog=null; return JSON.stringify(r); })()`));
+A.check("出生：回望軌高張力", (r => r.tone_track === "retrospect" && r.tension === "high")(tone({ type: "birth" })));
+A.check("領養成功：回望軌高張力", (r => r.tone_track === "retrospect" && r.tension === "high")(tone({ type: "adoption", success: true })));
+A.check("嘗試沒懷上：克制軌", tone({ type: "attempt", success: false }).tone_track === "restrained");
+ev("state.spouseDeathEventLog={spouseName:'x'}");
+A.check("喪偶回合：強制克制軌高張力", (r => r.tone_track === "restrained" && r.tension === "high")(JSON.parse(ev("JSON.stringify(computeToneTrack(state,{},'',false))"))));
+ev("state.spouseDeathEventLog=null");
 const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
 A.check("prompt：破格只看breakthrough_event_now", prompt.includes("「性格破格時刻」一律由系統判定"));
 A.check("prompt：生育由系統判定、職涯收入不回報、房產繼承", prompt.includes("fertility_event_now") && prompt.includes("職涯收入一律由系統計算") && prompt.includes("home_share"));

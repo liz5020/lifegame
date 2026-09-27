@@ -4428,7 +4428,15 @@ function computeToneTrack(s, timeCtx, actionText, forceEnding){
   const add = (track, tension, category, forced)=>hits.push({ track, tension, category, forced:!!forced });
   if(forceEnding) add("restrained","high","死亡相關(本人)",true);
   if(timeCtx && timeCtx.deathForeshadowNow) add("restrained","high","死亡相關(前兆)",true);
-  if(s.divorceEventLog || s.parentDeathEventLog) add("restrained","high","家庭成員重大變故",true);
+  if(s.divorceEventLog || s.parentDeathEventLog || s.spouseDeathEventLog) add("restrained","high","家庭成員重大變故",true); // 2026-09-28補上喪偶
+  // 1.2.8.7（2026-09-28使用者同意Claude建議）：生育/領養改由程式判定後可事先指定語氣軌——
+  // 出生、領養成功＝人生階段轉換級的回望軌高張力；嘗試沒懷上＝克制軌低張力；領養沒辦成＝克制軌低張力
+  const fe = s.fertilityEventLog;
+  if(fe){
+    if(fe.type==="birth" || (fe.type==="adoption" && fe.success)) add("retrospect","high","生育或領養(新成員加入)",false);
+    else if(!fe.success) add("restrained","low", fe.type==="adoption" ? "領養沒辦成" : "嘗試生育沒懷上", false);
+    else add("restrained","low","得知懷孕",false);
+  }
   if(timeCtx && timeCtx.prologue) add("restrained","low","開局家庭背景描述",false);
   if(timeCtx && timeCtx.examCheck) add("restrained","high","高張力明牌檢定(期末考成績公布)",false);
   else if(timeCtx && timeCtx.examTriggered) add("restrained","low","期中考/期末考(考試當下)",false);
@@ -5139,7 +5147,7 @@ async function takeTurn(actionText, cost){
   processBookQueue(true); // 十五、背景寫章節(不等它，不影響這回合)；失敗的章節每回合自動重試一次，最多3次
 }
 
-// ========== 十、10.6 放置代活（2026-09-27實作，使用者授權Claude全權判斷；傾向標籤表為【草案】；彈窗代選對應表2026-09-27使用者確認定案） ==========
+// ========== 十、10.6 放置代活（2026-09-27實作，使用者授權Claude全權判斷；傾向標籤表2026-09-28定案(數字仍為測試參數)；彈窗代選對應表2026-09-27使用者確認定案） ==========
 // 10.6.1 玩家離線期間角色依性格自動推進；預設關閉、每條人生各自設定(state.idleEnabled)。回來時由程式一次補算。
 // 10.6.3 放置期間不生成選項、不呼叫AI：每回合依性格抽一個傾向標籤，套固定數值變化與模板短句；數值結算走既有公式。
 // 10.6.7 放置期間不判定死亡、重大疾病、家人過世(由各判定函式讀s.idleMode擋掉)；其他年度判定照常
@@ -5155,13 +5163,13 @@ const IDLE_LINES = {
 const IDLE_NEW_FRIEND_LINE = "參加了一場聚會，認識了新朋友。";
 const IDLE_MAX_NEW_CHARACTERS = 2;       // 10.6.3【定案】每次放置最多新增2位
 const IDLE_ROLLBACK_COST = 5;            // 10.6.5【定案】
-const IDLE_PERSONALITY_SHARE = 0.75;     // 10.6.9【草案】75%依性格、25%平均隨機
+const IDLE_PERSONALITY_SHARE = 0.75;     // 10.6.9【定案,測試參數】75%依性格、25%平均隨機
 function idleHasFamily(s){
   return (s.characters||[]).some(c=>!c.deceased && (c.romanceStatus==="married" || (c.cohabiting && ["dating","stable"].includes(c.romanceStatus)) || (c.isChild && c.active!==false)))
     || idleCaringForParent(s);
 }
 function idleCaringForParent(s){ return !!s.caringForParentName && (s.characters||[]).some(c=>c.name===s.caringForParentName && !c.deceased); }
-// 10.6.9【草案】權重公式；「團隊」＝teamSolo，數值越高越偏團隊(對照3.7.3：teamNetworkMult=1+(teamSolo−50)×0.01)
+// 10.6.9【定案，數字為測試參數】權重公式；「團隊」＝teamSolo，數值越高越偏團隊(對照3.7.3：teamNetworkMult=1+(teamSolo−50)×0.01)
 function idleTagWeights(s){
   const c = s.conscientiousness;
   const w = {
@@ -5201,7 +5209,7 @@ function nextIdleLine(s, tag){
   s.idleLastLine = lines[i];
   return lines[i];
 }
-// 10.6.9【草案】各標籤的數值變化，比手動遊玩保守，都在3.9.2單回合上下限內；不動做事態度光譜與依附風格
+// 10.6.9【定案，數字為測試參數】各標籤的數值變化，比手動遊玩保守，都在3.9.2單回合上下限內；不動做事態度光譜與依附風格
 function applyIdleTag(s, tag){
   const st = s.stats;
   if(tag==="努力"){
