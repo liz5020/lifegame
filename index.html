@@ -490,6 +490,36 @@ function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
 function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
 function pick(arr){ return arr[rnd(0,arr.length-1)]; }
 
+// ========== 三、3.3 外表成長來源（2026-09-27補上，使用者授權Claude全權判斷，數字皆為【測試參數】） ==========
+// 顏值：先天骰值不變，另加兩項「會回來的」修正（天花板低、不大幅翻轉）：
+//   氣色＝健康<30扣5、<15扣10（熬夜/營養不良反映在臉上，健康回來就恢復）；保養＝出社會後財務健康度≥75加3、≥90加5（保養/醫美/穿搭）
+// 氣質：原本只有才識、表達力增量兩個來源，補上 ①每滿一歲+1（隨年齡自然累積）②財務健康度≥60的那一年再+1（見識）
+//   ③關鍵事件揭露那一次+2 ④性格破格時刻+2（歷練痕跡）
+const TEMPERAMENT_KEY_EVENT_BONUS = 2;
+const TEMPERAMENT_BREAKTHROUGH_BONUS = 2;
+const TEMPERAMENT_WEALTH_EXPOSURE_FH = 60;
+function looksModifier(s){
+  const h = s.stats ? s.stats.health : 50;
+  const complexion = h<15 ? -10 : h<30 ? -5 : 0;
+  let care = 0;
+  if(!isStudentPhase(s)){
+    const fh = computeFinancialHealthForState(s);
+    care = fh>=90 ? 5 : fh>=75 ? 3 : 0;
+  }
+  return complexion + care;
+}
+function refreshAppearance(s){
+  const effectiveLooks = clamp(s.looks + looksModifier(s), 0, 100);
+  s.appearance = clamp(Math.round(effectiveLooks*0.5+s.temperament*0.5),0,100);
+}
+function annualTemperamentGrowth(s){
+  if(s.temperamentAgeTick==null){ s.temperamentAgeTick = s.age; return 0; } // 舊存檔/新人生：從現在起算
+  const years = s.age - s.temperamentAgeTick;
+  if(years<=0) return 0;
+  s.temperamentAgeTick = s.age;
+  const exposure = computeFinancialHealthForState(s) >= TEMPERAMENT_WEALTH_EXPOSURE_FH ? 1 : 0;
+  return years * (1 + exposure);
+}
 // 3.5.3 核心數值的邊際遞減與人脈閒置衰退（9/14整併QA 60局測試後定案，係數皆為【測試參數】未定案）
 // 可切換開關，方便回歸比較（呼應開發參數規格「十五、開發完成標準」）
 let ENABLE_MARGINAL_DIMINISH = true;
@@ -4627,8 +4657,9 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   let tempGrowth = 0;
   if(knowledgeDelta>3) tempGrowth+=1;
   if((d.expression||0)>3) tempGrowth+=1;
+  tempGrowth += annualTemperamentGrowth(s); // 3.3（2026-09-27）：每滿一歲的年齡累積＋財富見識
   s.temperament = clamp(s.temperament+tempGrowth,0,100);
-  s.appearance = clamp(Math.round(s.looks*0.5+s.temperament*0.5),0,100);
+  refreshAppearance(s);
 
   // 健康連續偏低追蹤（呼應3.5.1過勞/憂鬱觸發門檻，僅供AI參考，不強制觸發）
   s.lowHealthStreak = s.stats.health<30 ? s.lowHealthStreak+1 : 0;
@@ -4667,7 +4698,13 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   applyInterestEvent(s, r.interest_event);
   sweepInterestDecay(s);
 
-  if(r.revealed_key_event && s.keyEvent) s.keyEvent.revealed = true;
+  if(r.revealed_key_event && s.keyEvent && !s.keyEvent.revealed){
+    s.keyEvent.revealed = true;
+    s.temperament = clamp(s.temperament + TEMPERAMENT_KEY_EVENT_BONUS, 0, 100); // 3.3（2026-09-27）：關鍵事件留下的歷練痕跡，揭露那一次加一次
+  }
+  // 3.3（2026-09-27）：性格破格時刻留下的歷練痕跡
+  if(breakthroughFired) s.temperament = clamp(s.temperament + TEMPERAMENT_BREAKTHROUGH_BONUS, 0, 100);
+  refreshAppearance(s);
   if(r.college_location_choice && !s.collegeLocation){
     s.collegeLocation = r.college_location_choice;
     // 5.5解鎖時機：大學選外縣市/出國，自動解鎖三餐全部三個選項
