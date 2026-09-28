@@ -73,7 +73,7 @@ A.check("gender_fill寫入後鎖定", ev("state.characters.find(c=>c.name==='林
 override = () => ({});
 
 // 同性戀愛線：曖昧→交往→穩定→結婚
-ev(`state.age=26; state.characters.push({name:'怡君',relation:'朋友',gender:'女',affinity:60,active:true,traits:'',summary:'',lastTurn:state.turnCount,isChild:false})`);
+ev(`state.age=26; state.characters.push({name:'怡君',relation:'朋友',gender:'女',age:26,affinity:60,active:true,traits:'',summary:'',lastTurn:state.turnCount,isChild:false})`);
 const seen = new Set();
 override = () => ({ character_updates: [{ name: "怡君", affinity_delta: 1, romantic_signal: "positive" }] });
 for (let i = 0; i < 16; i++) { await H.playTurn(g); seen.add(ev("state.characters.find(c=>c.name==='怡君').romanceStatus")); }

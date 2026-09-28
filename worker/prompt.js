@@ -37,6 +37,30 @@ D. 資訊呈現
 - 必須讓玩家知道的狀態變化（好感度、屬性、考試結果、新角色）由畫面UI負責呈現，敘事專注於場景，不需要在文中重複摘要這些變化。
 - chapter_subtitle：這回合的章節副標，含蓄、不劇透。畫面會顯示成「時期標籤｜副標」，時期標籤由系統產生，你只寫副標。
 
+【親密場景寫法（一、1.2.11敘事尺度，2026-09-28）】
+旗標依 npc_id 提供，對照場景中出現的人物使用。
+僅在該 NPC both_adult=true 且玩家已選擇親密選項或以自由輸入表達意願時使用。
+any_minor=true：可寫交往的情感與日常（告白、約會、吃醋、吵架、分手），肢體只到牽手、並肩、靠肩；不寫親吻，不寫任何性意味或身體親密。
+age_gap_cross=true：不寫任何戀愛內容。
+intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
+
+- 節奏：慢。先寫情緒與對白，再寫觸碰；觸碰由外而內（手→臉→頸側/鎖骨→腰背）。
+- 張力來源優先取自 NPC 卡的「重要共同記憶」與「origin」，讓每場戲長在兩人自己的故事上。
+- 可寫：非性徵部位的觸碰與親吻、衣物的動作（不寫衣下身體）、呼吸、心跳、體溫、聲音。
+- 必寫：一句意願確認（詢問、回應或主動的動作）。
+- 轉場：在性行為開始前收束。轉場手法輪替，不可連續兩場相同：
+  燈光變化／外界聲音（手機震動、樓下車聲、鄰居關門）／時間跳躍／視線移到某個物件／一句對白收尾。
+- 事後：可寫依偎、肌膚相貼、枕邊對話，一到三段即可。
+- 禁止：性徵部位、裸體外觀、性行為的動作與過程。
+- 避免重複：天氣不預設下雨；不固定使用「東西被碰倒」「關燈」等意象；場景地點依劇情決定。
+- 不主動推進：玩家未表達意願前，不可自行寫到親密場景。
+- 回傳 romantic_signal 時必須附上 npc_id。
+（說明：旗標在 payload 的 romance_flags，npc_id 就是角色姓名；romantic_signal 寫在 character_updates 裡該角色那一筆，那一筆的 name 就是 npc_id。romance_flags 沒有列出的角色視為沒有戀愛關係；角色年齡看 active_characters 的 age，age 是 null 時用 character_updates 的 age_fill 依既有敘事回填一個整數年齡。）
+- 親密選項：只有 romance_flags 裡 both_adult=true 的對象，才可以把親密選項放進 choices 的其中一個；any_minor=true 或 age_gap_cross=true 的對象不提供。
+- 性暴力永遠不以場景描寫、不作為隨機事件；劇情若觸及（例如某個角色的過去），只寫事後對人的影響，不寫經過。
+- 玩家自由輸入要求超出以上尺度時，比照超現實內容的處理：不拒絕、不寫錯誤訊息，在敘事中自然轉場或帶過，也不回報對應的 romantic_signal。
+- 新角色（new_characters）要填 age（整數）；同學、學長姐、學弟妹的年齡由系統推算，照填也會被系統的值取代。
+
 【語氣軌 tone_track 與張力 tension（一、1.2.8.2，由系統依事件類別指定，你照著寫，不得自行改判）】
 - restrained（克制軌）：物件反常代替情緒詞、動作卡在半途、身體細節洩漏情緒、話說一半、摘要與場景交錯（摘要只能用在轉場，不能取代核心場景）。
 - mutter（碎念軌）：吐槽式用字、自嘲不賣慘、衰事清單、短句急促與自己打斷自己的節奏、小事映照大事、角色自欺而旁白看穿（用行為呈現，不靠內心戲）。
@@ -237,7 +261,8 @@ export const TURN_RESULT_TOOL = {
             name:{type:"string"}, relation:{type:"string"}, traits:{type:"string"},
             gender:{type:"string", enum:["男","女"], description:"（四、4.1.3）角色性別，建卡時必填，之後固定不變；姓名要跟性別相符"},
             initial_affinity:{type:"number"}, is_child:{type:"boolean"}, origin:{type:"string"},
-            dialogue_style:{type:"string", enum:["terse","normal","talkative"], description:"（1.2.8.4.2）依角色性格一次設定，之後固定不變"}
+            dialogue_style:{type:"string", enum:["terse","normal","talkative"], description:"（1.2.8.4.2）依角色性格一次設定，之後固定不變"},
+            age:{type:["number","null"], description:"（四、4.1.4）角色年齡，整數，建卡時必填，之後由系統每年加一"}
           }
         }
       },
@@ -248,7 +273,8 @@ export const TURN_RESULT_TOOL = {
           properties: {
             name:{type:"string"}, affinity_delta:{type:"number"}, summary_add:{type:"string"},
             gender_fill:{type:["string","null"], enum:["男","女",null], description:"（四、4.1.3）只用在active_characters裡gender是null的角色：依既有敘事回填一次性別；已有gender的角色不要填，填了也會被忽略"},
-            romantic_signal:{type:["string","null"], description:"positive/negative，無戀愛/曖昧意味則null"},
+            age_fill:{type:["number","null"], description:"（四、4.1.4）只用在active_characters裡age是null的角色：依既有敘事回填一個整數年齡；已有年齡的不要填"},
+            romantic_signal:{type:["string","null"], description:"positive/negative，無戀愛/曖昧意味則null；npc_id就是這一筆的name（一、1.2.11.7）"},
             child_interaction:{type:["string","null"], enum:["closer","neutral","strained",null], description:"只用在自己的子女：closer/neutral/strained"}
           }
         }

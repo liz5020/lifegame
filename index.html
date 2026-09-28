@@ -4289,8 +4289,63 @@ function relationshipStatusLabel(c){
   if(c.affinity>=20) return "認識不深";
   return "關係生疏";
 }
+// ========== 一、1.2.11 敘事尺度(親密關係)／四、4.1.4 年齡欄位（2026-09-28定案）==========
+const ROMANCE_MIN_AGE = 12;          // 1.2.11.3.2：兩人皆須滿12歲才能進入戀愛狀態
+const MINOR_ROMANCE_MAX_AGE_GAP = 2; // 1.2.11.3.2：兩人皆未成年時年齡差不得超過2歲
+const ROMANCE_ACTIVE_STATUSES = ["ambiguous","dating","stable","married"]; // 1.2.11.4「曖昧中以上」(同居是stable＋cohabiting)
+// 4.1.4：程式能推算的年齡由程式給值——同學＝主角同齡、學長姐＋1～2、學弟妹−1～2；其餘由AI建卡時回報整數年齡，寫入後固定
+function inferNpcAgeFromRelation(s, relation){
+  const r = String(relation||"");
+  if(/學長|學姊|學姐/.test(r)) return s.age + rnd(1,2);
+  if(/學弟|學妹/.test(r)) return Math.max(0, s.age - rnd(1,2));
+  if(/同學|同班/.test(r)) return s.age;
+  return null;
+}
+function resolveNewCharacterAge(s, nc){
+  const inferred = inferNpcAgeFromRelation(s, nc.relation);
+  if(inferred!==null) return inferred;
+  const n = Math.round(Number(nc.age));
+  return Number.isFinite(n) && n>=0 && n<=120 ? n : null; // AI沒給或不合法：先空著，下次登場由age_fill補(補之前不能進入戀愛狀態)
+}
+// 1.2.11.7：依角色年齡算三個旗標；沒有年齡回傳null。生日跨線延續中(began_as_minors且一方已成年)視為any_minor、不算age_gap_cross
+function romanceAgeFlags(s, c){
+  if(!c || typeof c.age!=="number" || typeof s.age!=="number") return null;
+  const pAdult = s.age>=18, nAdult = c.age>=18;
+  const both_adult = pAdult && nAdult;
+  let any_minor = !both_adult, age_gap_cross = pAdult!==nAdult;
+  const continuing = !!c.beganAsMinors && age_gap_cross;
+  if(continuing){ any_minor = true; age_gap_cross = false; }
+  return { both_adult, any_minor, age_gap_cross, began_as_minors: !!c.beganAsMinors, continuing };
+}
+// 1.2.11.7 romantic_signal驗證：不符合條件的訊號一律不處理，關係階段不變(npc_id＝character_updates這一筆的角色姓名)
+function romanceSignalAllowed(s, c){
+  const f = romanceAgeFlags(s, c);
+  if(!f) return false;                                     // 沒有年齡資料
+  if(f.age_gap_cross) return false;                        // 一方成年一方未成年(且不是未成年時開始、延續中的關係)
+  if(s.age < ROMANCE_MIN_AGE || c.age < ROMANCE_MIN_AGE) return false;
+  if(s.age<18 && c.age<18 && Math.abs(s.age-c.age) > MINOR_ROMANCE_MAX_AGE_GAP) return false;
+  return true;
+}
+// 1.2.11.3.2：同居與結婚須兩人皆滿18歲(含生日跨線延續期間也不行)
+function romanceBothAdult(s, c){ const f = romanceAgeFlags(s, c); return !!(f && f.both_adult); }
+// 1.2.11.7：每回合送給AI——所有曖昧以上的NPC各自的旗標
+function buildRomanceFlags(s){
+  return (s.characters||[]).filter(c=>!c.deceased && ROMANCE_ACTIVE_STATUSES.includes(c.romanceStatus)).map(c=>{
+    const f = romanceAgeFlags(s, c);
+    return f ? { npc_id:c.name, both_adult:f.both_adult, any_minor:f.any_minor, age_gap_cross:f.age_gap_cross, began_as_minors:f.began_as_minors }
+             : { npc_id:c.name, both_adult:false, any_minor:true, age_gap_cross:false, began_as_minors:false, age_unknown:true };
+  });
+}
+// 1.2.11.7既有存檔：能從紀錄推算出關係開始時兩人皆未成年(現在兩人都還未成年)就補true，推算不出來一律false
+function ensureRomanceAgeMarks(s){
+  (s.characters||[]).forEach(c=>{
+    if(c.beganAsMinors!==undefined || !ROMANCE_ACTIVE_STATUSES.includes(c.romanceStatus)) return;
+    c.beganAsMinors = typeof c.age==="number" && s.age<18 && c.age<18;
+  });
+}
 function applyRomanceSignal(s, c, signal){
   if(!signal || !c) return;
+  if(!romanceSignalAllowed(s, c)) return; // 一、1.2.11.7（2026-09-28）
   c.romanceProgress = c.romanceProgress||0;
   c.romanceStableStreak = c.romanceStableStreak||0;
   c.romanceNegativeStreak = c.romanceNegativeStreak||0;
@@ -4300,6 +4355,7 @@ function applyRomanceSignal(s, c, signal){
     c.romanceNegativeStreak = 0;
     if(!c.romanceStatus && c.romanceProgress>=ROMANCE_AMBIGUOUS_PROGRESS){
       c.romanceStatus = "ambiguous";
+      c.beganAsMinors = s.age<18 && c.age<18; // 1.2.11.7：進入曖昧的那一刻寫入，之後不再變動
     } else if(c.romanceStatus==="ambiguous" && c.romanceProgress>=ROMANCE_DATING_PROGRESS){
       c.romanceStatus = "dating";
     } else if(c.romanceStatus==="dating"){
@@ -4333,6 +4389,7 @@ function applyMarriageDecisionCompletion(s){
   if(s.characters.some(c=>c.romanceStatus==="married")) return; // 已有配偶，不重複觸發
   const partner = s.characters.find(c=>c.romanceStatus==="stable");
   if(!partner) return;
+  if(!romanceBothAdult(s, partner)) return; // 一、1.2.11.3.2（2026-09-28）：結婚須兩人皆滿18歲
   partner.romanceStatus = "married";
   partner.relation = "配偶";
   if(typeof partner.age!=="number") partner.age = s.age + rnd(-3,3); // 13.7.2（2026-09-27）：配偶要有年齡才能做年度判定
@@ -4358,7 +4415,7 @@ function checkCohabitationOffer(s, actionText){
   if(s.characters.some(c=>c.cohabiting && c.romanceStatus==="stable")) return; // 已有其他同居對象
   if(s.milestones.moved_out!=="completed") return; // 還住在原生家庭，不出現這個彈窗
   if(!s.housing || (s.housing.type!=="rent" && s.housing.type!=="own")) return;
-  const partner = s.characters.find(c=>c.romanceStatus==="stable" && !c.cohabiting);
+  const partner = s.characters.find(c=>c.romanceStatus==="stable" && !c.cohabiting && romanceBothAdult(s, c)); // 1.2.11.3.2：同居須兩人皆滿18歲
   if(!partner) return;
   const durationOk = (s.turnCount - (partner.stableSinceTurn ?? s.turnCount)) >= COHABITATION_STABLE_TURNS;
   if(detectCohabitationIntent(actionText) || durationOk){
@@ -4369,7 +4426,7 @@ function checkCohabitationOffer(s, actionText){
 function resolveCohabitationOffer(s, partnerName, choice){
   if(choice==="move_in"){
     const partner = s.characters.find(c=>c.name===partnerName);
-    if(partner) partner.cohabiting = true;
+    if(partner && romanceBothAdult(s, partner)) partner.cohabiting = true;
   } else {
     s.cohabitationOfferCooldownUntilTurn = s.turnCount + COHABITATION_OFFER_COOLDOWN_TURNS;
   }
@@ -5104,8 +5161,10 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     affinity:c.affinity, summary:c.summary, is_child:!!c.isChild,
     dialogue_style: c.dialogueStyle||"normal", // 一、1.2.8.4.2（2026-09-24實作）：台詞句數上限，程式依{{名字|台詞}}標記截斷
     romance_status: c.romanceStatus||null, // 四、4.4戀愛狀態機（9/16新增）：null/ambiguous/dating/stable/breakup，僅供你參考語氣，不可自行變更
-    prev_life: c.prevLifeProfile && !c.deceased ? c.prevLifeProfile : undefined // 七、7.4.3.3.1：這位家長是上一世的主角，說話方式與生活狀態要跟上一世一致
+    prev_life: c.prevLifeProfile && !c.deceased ? c.prevLifeProfile : undefined, // 七、7.4.3.3.1：這位家長是上一世的主角，說話方式與生活狀態要跟上一世一致
+    age: typeof c.age==="number" ? c.age : null // 4.1.4：null代表還沒有年齡，登場時用age_fill回填一次
   }));
+  ensureRomanceAgeMarks(s);
   const financialHealth = computeFinancialHealthForState(s); // 9/16修正：學生時期改用家庭真實NT$數字，見3.4.6補充定案
   const payload = {
     player_name: s.name, gender: s.gender,
@@ -5156,7 +5215,9 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     divorce_recovery_event_now: s.divorceRecoveryEventLog || null, // 7.6.3（2026-09-27）：離婚後重新開始的選擇
     old_age_theme: computeOldAgeTheme(s), // 13.7.2（2026-09-27）：60歲以後本回合的主題方向
     previous_generation_events: (timeCtx && timeCtx.prologue && s.prevGenerationEventTitles && s.prevGenerationEventTitles.length) ? s.prevGenerationEventTitles : null, // 7.7.5（2026-09-27）：只在傳承後的開場回合送上一代事件標題
-    succession_opening_event: (timeCtx && timeCtx.prologue && s.successionOpening) ? s.successionOpening : null, // 7.4.3.3.1（2026-09-28）：上一代在孩子未滿15歲就過世，開場先交代再接遺產
+    succession_opening_event: (timeCtx && timeCtx.prologue && s.successionOpening) ? s.successionOpening : null,
+    romance_flags: buildRomanceFlags(s), // 一、1.2.11.7（2026-09-28）：曖昧以上的NPC各自的年齡旗標(npc_id＝角色姓名)
+    intimacy_mode: s.intimacyMode==="fade" ? "fade" : "full", // 1.2.11.7／十六、16.3.7：親密場景偏好，存在存檔裡 // 7.4.3.3.1（2026-09-28）：上一代在孩子未滿15歲就過世，開場先交代再接遺產
     interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
     part_time_event_now: s.partTimeEventLog || null,
     fertility_event_now: s.fertilityEventLog || null, // 7.3.2（2026-09-27）：這回合生育嘗試/懷孕/出生/領養的系統判定結果
@@ -6612,7 +6673,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
       origin: nc.origin||"", // 四、4.1（9/19新增）：認識時間／來源，AI建立新角色卡時提供
       // 七、7.3.5前置需求（2026-09-20新增）：子女出生/領養當下年齡為0，供成長節點與3.4.11扶養費三級判斷共用；
       // 四、4.1.2（2026-09-20新增）：子女預設同住(cohabiting)，直到7.3.5.2「成年離家」節點解除
-      age: nc.is_child ? 0 : undefined,
+      age: nc.is_child ? 0 : (resolveNewCharacterAge(s, nc) ?? undefined), // 4.1.4（2026-09-28）：所有角色卡必填年齡
       cohabiting: !!nc.is_child,
       parentingLog: nc.is_child ? [] : undefined
     });
@@ -6643,6 +6704,12 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     if(!c) return;
     // 4.1.3：gender建卡後鎖定，cu.gender一律不讀；gender_fill只對gender還是null的舊角色生效，寫入後鎖定
     if(!CHARACTER_GENDERS.includes(c.gender) && CHARACTER_GENDERS.includes(cu.gender_fill)) c.gender = cu.gender_fill;
+    // 4.1.4（2026-09-28）：沒有年齡的舊角色，登場時由AI回填一次(比照gender_fill)，寫入後固定；程式能推算的直接用推算值
+    if(typeof c.age!=="number"){
+      const inferred = inferNpcAgeFromRelation(s, c.relation);
+      const n = Math.round(Number(cu.age_fill));
+      if(inferred!==null) c.age = inferred; else if(Number.isFinite(n) && n>=0 && n<=120) c.age = n;
+    }
     const before = beforeRelationship.get(cu.name) || { romanceStatus:c.romanceStatus||null, label:relationshipStatusLabel(c) };
     // 七、7.3.5.4【定案】子女的非節點日常互動：AI輸出固定enum、程式查表換算（2026-09-27使用者同意Claude建議，【測試參數】）：
     // child_interaction closer/neutral/strained → +3/0/−3，不看AI給子女的affinity_delta；enum外或沒填視為0
@@ -7177,6 +7244,7 @@ function buildChapterMaterial(s, ch){
     turn_summaries: sampleChapterItems(ch.items).map(it=>({ t:it.t, s:it.s })),
     major_events: (ch.events||[]).slice(-60),
     characters: (s.characters||[]).slice(0,40).map(c=>({ name:c.name, relation:c.relation })),
+    romance_flags: buildRomanceFlags(s), intimacy_mode: s.intimacyMode==="fade" ? "fade" : "full", // 十六、16.3.7：人生之書套用同一尺度
     previous_chapter_title: prev ? prev.title : null
   };
 }
@@ -8248,6 +8316,7 @@ function renderMenuPanel(s){
     ${(s.familyChronicle && s.familyChronicle.length) ? `<a class="menu-item" id="link-family">🌳 家族年表（前${s.familyChronicle.length}代）</a>` : ``}
     <a class="menu-item" id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
     <div class="menu-sec">設定</div>
+    <a class="menu-item" id="link-intimacy-toggle">💞 親密場景：${s.intimacyMode==="fade" ? "淡化帶過" : "完整呈現"}</a>
     <a class="menu-item" id="link-view-key">🔑 我的復原金鑰</a>
     <div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>
     ${lastKnownWallet>0 ? `<div class="menu-note">👛 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
@@ -8512,6 +8581,12 @@ function bindPlaying(){
   if(idleLink) idleLink.onclick = ()=>{
     state.idleEnabled = !state.idleEnabled;
     if(state.idleEnabled && !state.lastActiveDate) state.lastActiveDate = taipeiDateString();
+    saveGame(); render();
+  };
+  // 十六、16.3.7（2026-09-28）：親密場景偏好，存在存檔(跨裝置同步)，下一回合起生效
+  const intimacyLink = document.getElementById("link-intimacy-toggle");
+  if(intimacyLink) intimacyLink.onclick = ()=>{
+    state.intimacyMode = state.intimacyMode==="fade" ? "full" : "fade";
     saveGame(); render();
   };
   const switchLifeLink = document.getElementById("link-switch-life");

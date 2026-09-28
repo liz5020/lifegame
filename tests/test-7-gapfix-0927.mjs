@@ -129,7 +129,7 @@ A.check("AI回false但有子女：結局畫面出現傳承選項", endingHtml.in
 
 // 4.1.1 結婚／離婚第1層提示
 ev(`state.phase='playing'; state.ending=null; state.characters.forEach(c=>{ if(c.romanceStatus==='married') c.romanceStatus=null; });
-    state.characters.push({name:'阿哲',relation:'戀愛對象',romanceStatus:'stable',affinity:80,active:true,traits:'',summary:'',lastTurn:state.turnCount,isChild:false});
+    state.characters.push({name:'阿哲',relation:'戀愛對象',romanceStatus:'stable',age:30,affinity:80,active:true,traits:'',summary:'',lastTurn:state.turnCount,isChild:false});
     state.milestones.marriage_decision='available'`);
 override = () => ({ milestone_updates: [{ id: "marriage_decision", status: "completed" }] });
 await H.playTurn(g);

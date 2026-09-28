@@ -10,6 +10,30 @@
 
 ---
 
+## 2026-09-28（續十三：一、1.2.11敘事尺度(親密關係)實作）
+
+**〔整理〕設計文件**
+- 一、1.2.11.7 npc_id條目由【待確認】改【定案】(使用者確認文件時一併同意：npc_id＝角色姓名)，補實作說明
+
+**〔開發部〕**
+- `index.html`：
+  - 4.1.4年齡欄位：`inferNpcAgeFromRelation()`(同學＝主角同齡、學長姐＋1～2、學弟妹−1～2)、`resolveNewCharacterAge()`(其餘用AI建卡回報的整數)；`character_updates.age_fill`只對沒有年齡的角色回填一次；既有的`ageChildren()`已讓所有有年齡的角色每年＋1
+  - 1.2.11.7：`romanceAgeFlags()`(both_adult／any_minor／age_gap_cross，生日跨線延續中視為any_minor)、`romanceSignalAllowed()`(沒年齡、一方成年一方未成年、未滿12歲、兩人未成年差超過2歲都不處理)接在`applyRomanceSignal()`開頭；進入曖昧時寫`beganAsMinors`；`ensureRomanceAgeMarks()`舊存檔補標記
+  - 1.2.11.3.2：同居彈窗、搬去一起住、結婚都要兩人皆滿18歲(`romanceBothAdult()`)
+  - payload：角色卡帶`age`、`romance_flags`、`intimacy_mode`；人生之書章節素材同樣帶旗標與偏好
+  - 16.3.7：選單設定區「💞 親密場景：完整呈現／淡化帶過」，存在存檔(`state.intimacyMode`)，下一回合起生效
+- `worker/prompt.js`：【親密場景寫法】整段放進【寫作規則】(章節成書共用)，補npc_id對應、親密選項門檻、性暴力、超出尺度輸入、新角色年齡的說明；schema加`new_characters.age`、`character_updates.age_fill`。**要重新部署Worker才會生效**
+
+**〔測試部〕**
+- 新增`tests/test-37-intimacy-scale.mjs`：38/38通過(年齡推算與AI回報、age_fill回填一次後固定、每年＋1、三種旗標、未成年可交往到stable、年齡差、未滿12歲、跨線不處理、沒年齡不處理、began_as_minors與生日跨線延續、同居與結婚須皆成年、兩人成年後自動切換、romance_flags、既有存檔補標記、偏好開關與存檔、章節素材、prompt整段與不附範例、schema)
+- `test-10`、`test-7`：測試裡的戀愛對象補上成年年齡(新規則下沒有年齡不能進入戀愛狀態)
+- `node run-all.mjs`全部通過(USE_MOCK＋假上游，未打真實API)；過程中`test-6-book`偶發失敗一次，單獨重跑與全套重跑都通過
+- **需要真實API測試**：AI是否依旗標書寫(未成年只到牽手、跨線不寫戀愛)、淡化帶過是否寫到擁吻即轉場、成年組是否有意願確認與轉場輪替、是否不主動推進親密場景、新角色是否回報年齡、age_fill是否回填、超出尺度輸入是否自然帶過
+
+**舊存檔**：可以繼續玩；沒有年齡的舊角色要等AI下次讓他登場回填年齡後才能推進戀愛關係；已經在曖昧以上的關係依現在的年齡補`beganAsMinors`
+
+---
+
 ## 2026-09-28（續十二：待確認事項1～8定案實作——命運的骰子、結局頁與回顧這一生(F批)、傳承時間線、學生證章；敘事尺度寫入設計文件）
 
 **〔整理〕設計文件**
