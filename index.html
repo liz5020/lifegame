@@ -1577,7 +1577,10 @@ const MAJOR_OCCUPATION_MATCH = {
   理工資訊: ["受雇專業/白領類"], 商管財經: ["受雇專業/白領類","自營/家庭事業類"],
   人文語言傳播: ["受雇專業/白領類"], 醫藥護理: ["受雇專業/白領類"],
   教育: ["軍公教/警消類","受雇專業/白領類"], 藝術設計表演: ["自由/創作類"],
-  法律政治: ["受雇專業/白領類","軍公教/警消類"], 服務社工餐旅: ["勞力/服務類"]
+  法律政治: ["受雇專業/白領類","軍公教/警消類"],
+  // 9.2（2026-09-27修改）：社工→受雇專業/白領類；餐旅、觀光、運動休閒→勞力/服務類（創業開店、教練接案為次要對應，依上面原則不計入）。
+  // 程式只記到學群(studentMajorGroup)、沒有記到系別，所以整個學群兩類都算對應
+  服務社工餐旅: ["受雇專業/白領類","勞力/服務類"]
 };
 // 12.3【定案,測試參數】落點百分位＝clamp(才識÷100×0.5＋職級加成＋年資加成,0,1)；職級加成新人0/熟手0.12/資深0.24/管理職0.36；年資加成＝min(同職級年資年數×0.02,0.08)
 function computeSalaryPercentile(s){
@@ -2336,6 +2339,7 @@ async function tryLoadSlot(key, slot, allowLocalFallback){
     const data = await res.json();
     if(data && data.success){
       state = data.state;
+      if(state && state.characters) ensureCharacterGenders(state); // 4.1.3：舊存檔遷移
       try{ localStorage.setItem(STORAGE_KEY+":"+slot, JSON.stringify(state)); }catch(e){}
       render();
       refreshServerAP(); // 10.3.11：行動點以伺服器端為準，讀檔後同步一次
@@ -2346,7 +2350,7 @@ async function tryLoadSlot(key, slot, allowLocalFallback){
   if(allowLocalFallback){
     try{
       const raw = localStorage.getItem(STORAGE_KEY+":"+slot);
-      if(raw){ state = JSON.parse(raw); render(); return true; }
+      if(raw){ state = JSON.parse(raw); if(state && state.characters) ensureCharacterGenders(state); render(); return true; } // 4.1.3：舊存檔遷移
     }catch(e){}
   }
   return false;
@@ -2487,7 +2491,8 @@ function rollSibling(usedNames){
   const free = pool.filter(n=>!(usedNames && usedNames.has(n)));
   return {
     name: pick(free.length ? free : pool),
-    relation: pick(isMale ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE)
+    relation: pick(isMale ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE),
+    gender: isMale ? "男" : "女" // 4.1.3
   };
 }
 
@@ -2729,7 +2734,8 @@ function newRoll(carry, identity){
     const aff = clamp(rnd(style.affinityRange[0],style.affinityRange[1]), 0, 100);
     characters.push({
       name: relationLabel==="父親" ? "爸爸" : "媽媽",
-      relation: relationLabel, dialogueStyle: rollDialogueStyle(), // 一、1.2.8.4.2：家人卡開局時同樣設定
+      relation: relationLabel, gender: FAMILY_ROLE_GENDER[relationLabel], // 4.1.3：家人卡依稱謂寫入
+      dialogueStyle: rollDialogueStyle(), // 一、1.2.8.4.2：家人卡開局時同樣設定
       traits: style.parentTrait + "；" + occ.trait,
       affinity: aff, summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "父母，從出生起", // 四、4.1（9/19新增）：家人是先天既有關係，不是AI敘事中新認識的
@@ -2750,7 +2756,7 @@ function newRoll(carry, identity){
     const style = pick(PARENTING_STYLES);
     characters.push({
       name: relationLabel==="父親" ? "爸爸" : "媽媽",
-      relation: relationLabel+"（不同住）", dialogueStyle: rollDialogueStyle(),
+      relation: relationLabel+"（不同住）", gender: FAMILY_ROLE_GENDER[relationLabel], dialogueStyle: rollDialogueStyle(),
       traits: style.parentTrait + "；" + occ.trait + "；離婚後不同住，依探視安排見面",
       affinity: clamp(rnd(style.affinityRange[0],style.affinityRange[1]) - 10, 0, 100),
       summary:"", lastTurn:turnCount, active:true, isChild:false,
@@ -2772,7 +2778,7 @@ function newRoll(carry, identity){
     const gp = pick([["阿公","爺爺"],["阿嬤","奶奶"]]);
     presentParentStyles.push("隔代教養");
     characters.push({
-      name: gp[0], relation: gp[1], dialogueStyle: rollDialogueStyle(),
+      name: gp[0], relation: gp[1], gender: genderFromRelation(gp[1]), dialogueStyle: rollDialogueStyle(), // 4.1.3
       traits:"疼愛藏在生活提醒裡，用詞偏舊式，很少直接過問交友或行程",
       affinity: rnd(55,75), summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "隔代教養，從出生起", cohabiting: true,
@@ -2787,7 +2793,7 @@ function newRoll(carry, identity){
     presentParentStyles.push("服刑家長");
     characters.push({
       name: incarcerated==="父親" ? "爸爸" : "媽媽",
-      relation: incarcerated+"（服刑中）", dialogueStyle: rollDialogueStyle(),
+      relation: incarcerated+"（服刑中）", gender: FAMILY_ROLE_GENDER[incarcerated], dialogueStyle: rollDialogueStyle(),
       traits:"透過書信或有限探視保持聯繫，內容報喜不報憂，關係停留在某個時間點",
       affinity: rnd(30,50), summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "父母，從出生起", age: 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX)
@@ -2847,7 +2853,7 @@ function newRoll(carry, identity){
     const sib = rollSibling(usedFamilyNames);
     usedFamilyNames.add(sib.name);
     characters.push({
-      name: sib.name, relation: sib.relation, dialogueStyle: rollDialogueStyle(),
+      name: sib.name, relation: sib.relation, gender: sib.gender, dialogueStyle: rollDialogueStyle(),
       traits: pick(SIBLING_TRAITS), affinity: rnd(45,75),
       summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "手足，從出生起", cohabiting: true
@@ -2900,7 +2906,7 @@ function newRoll(carry, identity){
     ap: carry?.ap ? { ...carry.ap, giftPending:false } : newLifeAP(),
     lifeId: newLifeId(), // 2026-09-25：每一世都換新id(轉世丹也是新的一世)
     turnCount,
-    characters: withRelationGenders(characters), // 4.1（2026-09-27）：家人卡建立時就依稱謂記下性別
+    characters, // 4.1.3：每張家人卡建卡時已寫入gender
     chronicle: carry?.chronicleCarry ? [carry.chronicleCarry] : [],
     log:[],
     choices:[],
@@ -3607,22 +3613,23 @@ function advanceStageYear(s, mode, yearsToAdd){
   }
 }
 
-// 四、4.1／一、1.2.5【定案】角色卡記錄性別，一旦生成保持一致（2026-09-27新增gender欄位）：
-// AI建卡時在new_characters回傳gender；家人卡依稱謂推得；舊存檔或AI沒給時，能從稱謂推得就補上，推不出來維持null(不猜)
+// 四、4.1.3【定案】NPC角色卡性別欄位gender（2026-09-28，取代9/27版的「AI沒給就留null」）：值為「男」或「女」，建卡時寫入後鎖定，
+// character_updates不得修改。家人卡(父母/繼父母/祖父母/手足/子女)依稱謂查FAMILY_ROLE_GENDER寫入、不經AI；
+// AI新建角色讀new_characters的gender，缺漏或不合法時客戶端補骰。舊存檔：家人卡依稱謂補齊，其餘設為null，
+// 等該角色下次出場由AI在character_updates以一次性gender_fill回填(只對null生效)
 const CHARACTER_GENDERS = ["男","女"];
-const MALE_RELATION_RE = /^(父親|爸爸|爸|哥哥|弟弟|兒子|爺爺|阿公|外公|祖父|先生|老公|丈夫|叔叔|伯伯|舅舅)/;
-const FEMALE_RELATION_RE = /^(母親|媽媽|媽|姊姊|姐姐|妹妹|女兒|奶奶|阿嬤|外婆|祖母|太太|老婆|妻子|阿姨|姑姑|嬸嬸)/;
-function genderFromRelation(relation){
-  const r = String(relation||"");
-  if(MALE_RELATION_RE.test(r)) return "男";
-  if(FEMALE_RELATION_RE.test(r)) return "女";
-  return null;
+function genderFromRelation(relation){ // 只認家人稱謂(沿用1.2.9.13的FAMILY_ROLE_PATTERNS)，其餘回傳null
+  const role = familyRoleOf(relation);
+  return (role && FAMILY_ROLE_GENDER[role]) || null;
 }
-function withRelationGenders(chars){
-  chars.forEach(c=>{ if(!CHARACTER_GENDERS.includes(c.gender)) c.gender = genderFromRelation(c.relation); });
-  return chars;
+function rollNpcGender(){ return Math.random()<0.5 ? "男" : "女"; }
+// AI建卡：先讀AI給的gender；缺漏時稱謂是家人稱謂就照稱謂(避免「哥哥」被骰成女性)，再不行才補骰
+function resolveNewCharacterGender(nc){
+  if(nc && nc.is_child){ const g = genderFromRelation(nc.relation); if(g) return g; } // 子女依「兒子／女兒」對照，對照不到才讀nc.gender
+  if(nc && CHARACTER_GENDERS.includes(nc.gender)) return nc.gender;
+  return genderFromRelation(nc && nc.relation) || rollNpcGender();
 }
-function ensureCharacterGenders(s){
+function ensureCharacterGenders(s){ // 舊存檔遷移：沒有gender欄位的角色，家人依稱謂補齊，其餘設為null(等gender_fill)
   (s.characters||[]).forEach(c=>{ if(!CHARACTER_GENDERS.includes(c.gender)) c.gender = genderFromRelation(c.relation); });
 }
 function activeCharacters(){
@@ -5619,7 +5626,7 @@ async function writeIdleSummary(s){
     let name = String(nc.name).slice(0,12);
     const exists = s.characters.find(c=>c.name===name);
     if(exists) name = renameForConflict(s, name, nc.relation||"");
-    s.characters.push({ name, relation: nc.relation||"朋友", gender: CHARACTER_GENDERS.includes(nc.gender) ? nc.gender : genderFromRelation(nc.relation),
+    s.characters.push({ name, relation: nc.relation||"朋友", gender: resolveNewCharacterGender(nc),
       traits: nc.traits||"", dialogueStyle:"normal", affinity:50, summary:"", lastTurn:s.turnCount, active:true, isChild:false,
       origin: nc.origin||"放置期間認識", createdByIdleRound: nc.i });
     created.push(name);
@@ -5996,7 +6003,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     if(nc.is_child) s.birthNow.created = true;
     s.characters.push({
       name, relation:nc.relation||"", traits:nc.traits||"",
-      gender: CHARACTER_GENDERS.includes(nc.gender) ? nc.gender : genderFromRelation(nc.relation), // 4.1/1.2.5（2026-09-27）
+      gender: resolveNewCharacterGender(nc), // 4.1.3：讀AI給的gender，缺漏或不合法時客戶端補骰
       dialogueStyle: DIALOGUE_STYLE_LIMITS[nc.dialogue_style] ? nc.dialogue_style : "normal", // 一、1.2.8.4.2：建卡時設定一次，之後固定不變
       affinity: clamp(nc.initial_affinity ?? 50,0,100),
       summary:"", lastTurn:s.turnCount, active:true, isChild:!!nc.is_child,
@@ -6032,6 +6039,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   (r.character_updates||[]).forEach(cu=>{
     const c = s.characters.find(x=>x.name===cu.name);
     if(!c) return;
+    // 4.1.3：gender建卡後鎖定，cu.gender一律不讀；gender_fill只對gender還是null的舊角色生效，寫入後鎖定
+    if(!CHARACTER_GENDERS.includes(c.gender) && CHARACTER_GENDERS.includes(cu.gender_fill)) c.gender = cu.gender_fill;
     const before = beforeRelationship.get(cu.name) || { romanceStatus:c.romanceStatus||null, label:relationshipStatusLabel(c) };
     // 七、7.3.5.4【定案】子女的非節點日常互動：AI輸出固定enum、程式查表換算（2026-09-27使用者同意Claude建議，【測試參數】）：
     // child_interaction closer/neutral/strained → +3/0/−3，不看AI給子女的affinity_delta；enum外或沒填視為0
@@ -6249,7 +6258,7 @@ async function succeedAsChild(childName){
   const spouse = prev.characters.find(c=>c.romanceStatus==="married" && c.active!==false);
   const otherKids = prev.characters.filter(c=>c.isChild && c.name!==childName);
 
-  const deceasedRelation = prev.gender==="男" ? "父親" : "母親";
+  const deceasedRelation = prev.gender==="男" ? "父親" : "母親"; // 4.1.3：依上一代主角性別
   // 七、7.4.2／7.3.5.5：教養風格由這一世對該兒女的parenting_log換算得出（提前到建卡前算，家長卡的語氣要用到）
   const inheritedParentingStyle = computeInheritedParentingStyle(child);
   const heirOfFamilyBusiness = !!child.familyBusinessHeir; // 12.10交棒（2026-09-27）：這位孩子是上一代事業的繼承人
@@ -6261,7 +6270,7 @@ async function succeedAsChild(childName){
   const styleTraitPrefix = inheritedStyleDef ? inheritedStyleDef.parentTrait : null;
   const characters = [];
   characters.push({
-    name: prev.name, relation: deceasedRelation, dialogueStyle: rollDialogueStyle(),
+    name: prev.name, relation: deceasedRelation, gender: prev.gender==="女" ? "女" : "男", dialogueStyle: rollDialogueStyle(),
     traits: styleTraitPrefix ? (styleTraitPrefix + (child.summary ? "；過去點滴："+child.summary : "")) : deriveParentTraitFromAffinity(child.affinity, child.summary),
     affinity: child.affinity, summary: child.summary||"", lastTurn:0,
     // 2026-09-22修正（bug回報：世代傳承後上一代主角被當成活著的父母）：
@@ -6275,10 +6284,13 @@ async function succeedAsChild(childName){
     occupation: heirOfFamilyBusiness ? "自營業者" : undefined, handedOver: heirOfFamilyBusiness || undefined
   });
   let familyStructure;
+  // 舊存檔配偶卡gender可能還是null(尚未gender_fill)：先看稱謂有沒有寫明(丈夫/妻子等)，再不行才補骰寫入
+  const spouseGender = spouse ? (CHARACTER_GENDERS.includes(spouse.gender) ? spouse.gender
+    : /^(前)?(丈夫|老公|先生)/.test(spouse.relation||"") ? "男" : /^(前)?(妻子|老婆|太太)/.test(spouse.relation||"") ? "女" : rollNpcGender()) : null;
   if(spouse){
     characters.push({
-      // 4.1（2026-09-27）：另一位家長的稱謂依配偶卡記錄的性別，沒有記錄才沿用「跟過世的一方相反」的舊假設
-      name: spouse.name, relation: spouse.gender==="男" ? "父親" : spouse.gender==="女" ? "母親" : (deceasedRelation==="父親" ? "母親" : "父親"), gender: spouse.gender || null, dialogueStyle: spouse.dialogueStyle || rollDialogueStyle(),
+      // 4.1.3【定案】另一位家長的稱謂依配偶卡的gender決定(父親／母親)，同性伴侶即為兩位父親或兩位母親；取代「配偶取玩家稱謂相反」的舊寫法
+      name: spouse.name, relation: spouseGender==="男" ? "父親" : "母親", gender: spouseGender, dialogueStyle: spouse.dialogueStyle || rollDialogueStyle(),
       // 2026-09-22修正（bug回報：在世配偶被當成新角色重新產生）：年齡/健康階段/同住狀態/關係值一律沿用傳承前資料，不重新骰——
       // married的配偶在目前架構下不會有獨立死亡判定，傳承當下必然還在世，也不會被finalizeDivorce解除同住，cohabiting因此必為true
       traits: styleTraitPrefix ? (styleTraitPrefix + "；" + (spouse.traits||"忙碌但關心家裡")) : (spouse.traits||"忙碌但關心家裡"), affinity: spouse.affinity, summary: spouse.summary||"",
@@ -6292,10 +6304,10 @@ async function succeedAsChild(childName){
   // （目前架構沒有「兩位家長皆已不在」的既有分類，沒有配偶時沿用原本就有的單親－喪親判斷）
   familyStructure = "單親－喪親";
   otherKids.forEach(k=>{
-    // bug修正（9/14）：手足稱謂要跟這個孩子原本的性別(由k.relation「兒子」/「女兒」推得)一致，不能亂配
-    const kidIsMale = k.relation==="兒子" ? true : k.relation==="女兒" ? false : Math.random()<0.5;
+    // 4.1.3：手足稱謂依子女卡的gender(沒有才依「兒子／女兒」稱謂，再沒有才補骰)
+    const kidGender = CHARACTER_GENDERS.includes(k.gender) ? k.gender : (genderFromRelation(k.relation) || rollNpcGender());
     characters.push({
-      name:k.name, relation: pick(kidIsMale ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE), dialogueStyle: k.dialogueStyle || rollDialogueStyle(),
+      name:k.name, relation: pick(kidGender==="男" ? SIBLING_RELATIONS_MALE : SIBLING_RELATIONS_FEMALE), gender: kidGender, dialogueStyle: k.dialogueStyle || rollDialogueStyle(),
       traits: (k.traits||"")+"（同樣是上一代留下的孩子）", affinity: clamp(k.affinity+rnd(-10,10),0,100),
       summary:k.summary||"", lastTurn:0, active:true, isChild:false, origin: "手足，從出生起", cohabiting: true
     });
@@ -6318,7 +6330,7 @@ async function succeedAsChild(childName){
   const temperament = rollSocialStart(inheritedParentingStyle, peerPosition);
   const appearance = clamp(Math.round(looks*0.5+temperament*0.5),0,100);
   const personalityStyle = pick(PERSONALITY_STYLES);
-  const childGender = child.relation==="女兒" ? "女" : child.relation==="兒子" ? "男" : pick(["男","女"]);
+  const childGender = CHARACTER_GENDERS.includes(child.gender) ? child.gender : (genderFromRelation(child.relation) || rollNpcGender()); // 4.1.3：直接讀子女卡gender
 
   state = {
     version:4, phase:"setup",
@@ -6354,7 +6366,7 @@ async function succeedAsChild(childName){
     // 十、10.3.6：世代傳承不算新人生，上一代的每日池/禮包點/購買點全部由下一代繼承，不另發禮包
     ap: { ...ensureAP(prev), giftPending:false }, turnCount:0,
     lifeId: newLifeId(), // 2026-09-25：世代傳承是新的一世，換新id
-    characters: withRelationGenders(characters), // 4.1（2026-09-27）：家人卡建立時就依稱謂記下性別
+    characters, // 4.1.3：每張家人卡建卡時已寫入gender
     chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`],
     log:[], choices:[], reincarnations:(prev.reincarnations||0)+1,
     undosLeft:3, snapshot:null, ending:null,
