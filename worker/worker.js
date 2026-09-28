@@ -49,6 +49,13 @@
 //   POST / 的body帶 kind:"chapter" 時是章節成書：{kind, key, slot, life_id, chapter_id, messages}
 //   system/工具一樣由Worker決定(prompt.js的CHAPTER_SYSTEM_PROMPT/CHAPTER_TOOL)；不扣行動點，
 //   但每條人生每玩10回合才累積1章額度(ap.js的preChapter)；用量記為chapter類別
+//
+// 2026-09-28新增（十五、15.1世代傳承保留上一代的人生之書）：
+//   POST /family-book       body: {key, id, book:{owner, chapters:[...]}}  傳承時把上一代寫好的章節另存一筆，存檔裡只記id
+//   GET  /family-book?key=...&id=...  讀回來唯讀閱讀
+//   另外存是因為一本書約100KB，直接塞進存檔傳個幾代就會撞到MAX_STATE_BYTES(1MB)。人生回顧沒有真正刪除的功能，這些書不刪
+//
+// 2026-09-28新增（十、10.5平均每條人生花費分兩種）：/archive與「同一個slot換了新life_id」時，把舊的一世標成已結束(usage.js的markLifeEnded)
 
 import { convertAnthropicResponse } from "./s2t.js";
 import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL, CHAPTER_SYSTEM_PROMPT, CHAPTER_TOOL, IDLE_SUMMARY_SYSTEM_PROMPT, IDLE_SUMMARY_TOOL } from "./prompt.js";
@@ -58,7 +65,7 @@ import {
   addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse,
   claimIdle, preIdleSummary, isUsableIdleSummaryResponse, chargeIdleRollback
 } from "./ap.js";
-import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual } from "./usage.js";
+import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual, markLifeEnded } from "./usage.js";
 
 const MAX_SLOTS = 3;
 const MAX_KEY_LENGTH = 100;
@@ -106,6 +113,9 @@ function kvKey(key, slot) {
 }
 function archiveKvKey(key, id) {
   return "archive:" + key + ":" + id;
+}
+function familyBookKvKey(key, id) {
+  return "familybook:" + key + ":" + id;
 }
 function isValidArchiveId(id) {
   return typeof id === "string" && /^[a-z0-9]+$/.test(id) && id.length <= MAX_ARCHIVE_ID_LENGTH;
@@ -205,6 +215,7 @@ async function handleArchive(request, env, origin) {
   if (record.length > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "存檔內容過大" }, 400);
   // KV metadata讓/archives清單不用逐筆讀完整存檔
   await env.SAVES.put(archiveKvKey(key, id), record, { metadata: safeMeta });
+  if (isValidLifeId(state.lifeId)) await markLifeEnded(env, key, slot, state.lifeId); // 10.5（2026-09-28）
   await env.SAVES.delete(kvKey(key, slot));
   await env.SAVES.delete(apKvKey(key, slot)); // 10.3.11：人生結束，這條人生的點數紀錄一起刪掉(禮包點消失)
   const add = Math.max(0, Math.floor(Number(purchased) || 0));
@@ -243,6 +254,32 @@ async function handleArchiveLoad(request, env, origin) {
     const parsed = JSON.parse(raw);
     return jsonResponse(origin, { success: true, meta: parsed.meta || {}, state: parsed.state });
   } catch (e) { return jsonResponse(origin, { success: false, error: "存檔資料損毀" }, 500); }
+}
+
+// 十五、15.1（2026-09-28）：世代傳承保留上一代的人生之書(唯讀)
+async function handleFamilyBookSave(request, env, origin) {
+  let body;
+  try { body = await request.json(); }
+  catch (e) { return jsonResponse(origin, { success: false, error: "請求內容不是合法JSON" }, 400); }
+  const { key, id, book } = body || {};
+  if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
+  if (!isValidArchiveId(id)) return jsonResponse(origin, { success: false, error: "書的id格式不正確" }, 400);
+  if (!book || typeof book !== "object" || !Array.isArray(book.chapters)) return jsonResponse(origin, { success: false, error: "缺少book.chapters" }, 400);
+  const record = JSON.stringify({ owner: String(book.owner || "").slice(0, 20), chapters: book.chapters });
+  if (record.length > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "書的內容過大" }, 400);
+  await env.SAVES.put(familyBookKvKey(key, id), record);
+  return jsonResponse(origin, { success: true });
+}
+async function handleFamilyBookLoad(request, env, origin) {
+  const url = new URL(request.url);
+  const key = url.searchParams.get("key");
+  const id = url.searchParams.get("id");
+  if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
+  if (!isValidArchiveId(id)) return jsonResponse(origin, { success: false, error: "書的id格式不正確" }, 400);
+  const raw = await env.SAVES.get(familyBookKvKey(key, id));
+  if (!raw) return jsonResponse(origin, { success: false, error: "找不到這本書" }, 404);
+  try { return jsonResponse(origin, Object.assign({ success: true }, JSON.parse(raw))); }
+  catch (e) { return jsonResponse(origin, { success: false, error: "資料損毀" }, 500); }
 }
 
 async function handleLoad(request, env, origin) {
@@ -480,6 +517,13 @@ async function handleAIProxy(request, env, origin, ctx) {
   const isPrologue = !!(check.payload.time_context && check.payload.time_context.is_prologue === true);
 
   const { rec } = await loadRecord(env, key, slot, apHint);
+  // 10.5（2026-09-28）：同一個slot換了新的life_id＝上一世已經結束(世代傳承、轉世丹)，回應送出後把舊的一世標成已結束
+  const endedLifeId = (safeLifeId && rec.currentLifeId && rec.currentLifeId !== safeLifeId) ? rec.currentLifeId : null;
+  if (safeLifeId) rec.currentLifeId = safeLifeId;
+  if (endedLifeId) {
+    const endJob = markLifeEnded(env, key, slot, endedLifeId);
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(endJob); else await endJob;
+  }
   const pre = preCharge(rec, { nonce, isPrologue, lifeId: safeLifeId });
   if (!pre.ok) {
     await saveRecord(env, key, slot, rec);
@@ -572,6 +616,8 @@ export default {
     if (url.pathname === "/archive" && request.method === "POST") return handleArchive(request, env, origin);
     if (url.pathname === "/archives" && request.method === "GET") return handleArchives(request, env, origin);
     if (url.pathname === "/archive" && request.method === "GET") return handleArchiveLoad(request, env, origin);
+    if (url.pathname === "/family-book" && request.method === "POST") return handleFamilyBookSave(request, env, origin); // 15.1（2026-09-28）
+    if (url.pathname === "/family-book" && request.method === "GET") return handleFamilyBookLoad(request, env, origin);
 
     if (request.method !== "POST") return new Response("Only POST is allowed", { status: 405 });
     return handleAIProxy(request, env, origin, ctx);

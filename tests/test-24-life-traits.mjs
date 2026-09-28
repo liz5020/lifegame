@@ -50,7 +50,7 @@ doc.querySelectorAll(".modal-backdrop").forEach(x => x.remove());
 
 // 傳承：家族年表與下一代開局素材
 await H.startNewLife(g);
-ev(`state.playStyle=Object.assign(newPlayStyle(),{skips:20,deviation:0,riskEvents:1}); state.chronicle=["（18歲）高中畢業","（40歲）買了房子"];
+await ev(`state.playStyle=Object.assign(newPlayStyle(),{skips:20,deviation:0,riskEvents:1}); state.chronicle=["（18歲）高中畢業","（40歲）買了房子"];
     state.characters.push({name:'小寶',relation:'兒子',gender:'男',isChild:true,age:20,affinity:60,active:true,traits:'',summary:'',lastTurn:0,parentingLog:[]});
     state.ending={ successionAvailable:true, lifeSummary:'', epitaph:'' }; state.phase='ending'; succeedAsChild('小寶')`);
 A.check("傳承：上一代特質存進家族年表", ev("state.familyChronicle.length") === 1 && ev("state.familyChronicle[0].trait.type") === "planner");

@@ -55,7 +55,7 @@ A.check("舊存檔：家人卡依稱謂補上、同學維持null", ev("state.cha
 ev(`state.characters.push({name:'阿偉',relation:'配偶',gender:'男',romanceStatus:'married',cohabiting:true,affinity:70,active:true,traits:'',summary:'',lastTurn:0},
     {name:'小寶',relation:'兒子',gender:'男',isChild:true,age:20,affinity:60,active:true,traits:'',summary:'',lastTurn:0,parentingLog:[]});
     state.gender='男'; state.ending={ successionAvailable:true, lifeSummary:'', epitaph:'' }; state.phase='ending'`);
-ev("succeedAsChild('小寶')");
+await ev("succeedAsChild('小寶')");
 A.check("同性配偶傳承：另一位家長仍是父親、性別男", ev("state.characters.filter(c=>c.name==='阿偉').every(c=>c.relation==='父親' && c.gender==='男')"), ev("JSON.stringify(state.characters.filter(c=>c.name==='阿偉'))"));
 
 // prompt

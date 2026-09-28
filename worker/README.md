@@ -48,3 +48,5 @@ npm run test:s2t
 ```bash
 curl -H "Authorization: Bearer 你的管理密碼" https://life-game.smile80275.workers.dev/usage-summary
 ```
+
+`per_life`（2026-09-28起）分兩組：`all`＝全部人生（含還在玩的，會被拉低），`ended`＝已結束的人生（闔卷、刪除，或同一個格子已經換到下一世）。定價參考以`ended`為準；改版前就結束的人生沒有標記，會算在`all`裡

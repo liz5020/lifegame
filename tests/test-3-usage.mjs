@@ -68,8 +68,8 @@ A.check("今日chapter另列", S.today.chapter.calls === 1 && near(S.today.chapt
 A.check("近7日包含昨天、不含8天前", S.last_7_days.turn.calls === 7 && S.last_7_days.from === "2026-09-19", { c: S.last_7_days.turn.calls, f: S.last_7_days.from });
 // 每條人生：ua(4呼叫/2回合+章節)、ub(2/2)、uc(2/2)
 const uaCost = 0.066 + 0.02 * 3 + (4000 * 2 + 3000 * 10) / 1e6, ubCost = 0.04, ucCost = 4;
-A.check("平均每條人生花費＝各人生總花費平均(含章節)", S.per_life.lives_counted === 3 && near(S.per_life.avg_cost_per_life_usd, Math.round((uaCost + ubCost + ucCost) / 3 * 1e4) / 1e4), S.per_life);
-A.check("平均每條人生回合數", S.per_life.avg_turns_per_life === 2);
+A.check("平均每條人生花費＝各人生總花費平均(含章節)", S.per_life.all.lives_counted === 3 && near(S.per_life.all.avg_cost_per_life_usd, Math.round((uaCost + ubCost + ucCost) / 3 * 1e4) / 1e4), S.per_life);
+A.check("平均每條人生回合數", S.per_life.all.avg_turns_per_life === 2);
 A.check("摘要附上單價與查詢日期", S.price.checked_on === "2026-09-25" && S.price.model === "claude-sonnet-5");
 // 前端開發者面板
 const envF = H.makeEnv();

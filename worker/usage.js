@@ -50,6 +50,17 @@ function normalize(rec) {
   return r;
 }
 
+// metadata讓/usage-summary用list一次讀完，不用逐筆get(KV metadata上限1024 bytes，只放數字)
+function lifeMeta(life) {
+  return {
+    t: life.turn.turns, c: life.turn.calls, i: life.turn.input, w: life.turn.cache_write, r: life.turn.cache_read, o: life.turn.output,
+    ci: life.chapter.input, cw: life.chapter.cache_write, cr: life.chapter.cache_read, co: life.chapter.output, cc: life.chapter.calls,
+    ii: life.idle.input, iw: life.idle.cache_write, ir: life.idle.cache_read, io: life.idle.output, // 10.6.4放置摘要
+    ud: life.updated, lt: TONE_CODES[life.last_tone] || 0, // 6.5流失分析：最後活動日、最後一回合語氣
+    e: life.ended ? 1 : 0 // 10.5（2026-09-28）：這一世已結束
+  };
+}
+
 export function lifeUsageKey(key, slot, lifeId) { return "usage:life:" + key + ":" + slot + ":" + (lifeId || "unknown"); }
 export function dayUsageKey(taipeiDate) { return "usage:day:" + taipeiDate; }
 
@@ -68,14 +79,7 @@ export async function recordUsage(env, { key, slot, lifeId, category, usage, cou
     life.max_payload_chars = Math.max(life.max_payload_chars, num(payloadChars));
     life.updated = taipeiDate;
     if (category === "turn" && countsAsTurn && TONE_CODES[lastTone]) life.last_tone = lastTone;
-    // metadata讓/usage-summary用list一次讀完，不用逐筆get(KV metadata上限1024 bytes，只放數字)
-    const meta = {
-      t: life.turn.turns, c: life.turn.calls, i: life.turn.input, w: life.turn.cache_write, r: life.turn.cache_read, o: life.turn.output,
-      ci: life.chapter.input, cw: life.chapter.cache_write, cr: life.chapter.cache_read, co: life.chapter.output, cc: life.chapter.calls,
-      ii: life.idle.input, iw: life.idle.cache_write, ir: life.idle.cache_read, io: life.idle.output, // 10.6.4放置摘要
-      ud: life.updated, lt: TONE_CODES[life.last_tone] || 0 // 6.5流失分析：最後活動日、最後一回合語氣
-    };
-    await env.SAVES.put(lk, JSON.stringify(life), { metadata: meta });
+    await env.SAVES.put(lk, JSON.stringify(life), { metadata: lifeMeta(life) });
     // (b) 每日全站合計(台灣日期)
     const dk = dayUsageKey(taipeiDate);
     const day = normalize(JSON.parse((await env.SAVES.get(dk)) || "null"));
@@ -85,6 +89,24 @@ export async function recordUsage(env, { key, slot, lifeId, category, usage, cou
   } catch (e) {
     // 遙測失敗不影響遊戲
     try { console.warn("usage record failed", String(e)); } catch (_) {}
+  }
+}
+
+// 10.5（2026-09-28）：把一世標成已結束，供/usage-summary分開算「已結束的人生平均」。
+// 呼叫時機：/archive(就此闔卷、刪除人生)，以及同一個slot的回合請求換了新的life_id(世代傳承、轉世丹)。
+// 這一世沒有任何用量紀錄就不建立(沒花錢的人生不列入平均)。失敗不影響遊戲
+export async function markLifeEnded(env, key, slot, lifeId) {
+  try {
+    if (!lifeId) return;
+    const lk = lifeUsageKey(key, slot, lifeId);
+    const raw = await env.SAVES.get(lk);
+    if (!raw) return;
+    const life = normalize(JSON.parse(raw));
+    if (life.ended) return;
+    life.ended = true;
+    await env.SAVES.put(lk, JSON.stringify(life), { metadata: lifeMeta(life) });
+  } catch (e) {
+    try { console.warn("mark life ended failed", String(e)); } catch (_) {}
   }
 }
 
@@ -140,19 +162,26 @@ export async function buildUsageSummary(env, todayTaipei) {
   const byTone = {}; toneNames.forEach(n => byTone[n] = 0);
   churned.forEach(m => { byTone[toneNames[num(m.lt)] || "unknown"] += 1; });
   const churnTurns = churned.map(m => num(m.t)).sort((a, b) => a - b);
-  const totalLifeCost = played.reduce((s, m) => s + lifeCost(m), 0);
-  const totalLifeTurns = played.reduce((s, m) => s + num(m.t), 0);
+  const lifeAverages = (list) => {
+    const cost = list.reduce((s, m) => s + lifeCost(m), 0);
+    const turns = list.reduce((s, m) => s + num(m.t), 0);
+    return {
+      lives_counted: list.length,
+      avg_turns_per_life: list.length ? round(turns / list.length, 1) : null,
+      avg_cost_per_life_usd: list.length ? round(cost / list.length, 4) : null,
+      avg_cost_per_turn_usd: turns ? round(cost / turns, 5) : null
+    };
+  };
   return {
     success: true,
     price: { model: PRICE_MODEL, checked_on: PRICE_CHECKED_ON, per_mtok_usd: PRICE_PER_MTOK_USD },
     today: Object.assign({ date: days[0].date, max_payload_chars: today.max_payload_chars }, perCategory([today])),
     last_7_days: Object.assign({ from: days[6].date, to: days[0].date, max_payload_chars: Math.max(...days.map(d => d.rec.max_payload_chars)) }, perCategory(days.map(d => d.rec))),
+    // 10.5（2026-09-28）：同時回傳「已結束的人生平均」與「全部人生平均(含進行中)」
     per_life: {
-      lives_counted: played.length,
-      note: "全期間、每條人生(含還在進行中的)的累計；含章節成書的花費。進行中的人生會拉低平均，等封存的人生變多後再看比較準",
-      avg_turns_per_life: played.length ? round(totalLifeTurns / played.length, 1) : null,
-      avg_cost_per_life_usd: played.length ? round(totalLifeCost / played.length, 4) : null,
-      avg_cost_per_turn_usd: totalLifeTurns ? round(totalLifeCost / totalLifeTurns, 5) : null
+      note: "全期間的累計，含章節成書與放置摘要的花費；「一世」以life_id計(世代傳承、轉世丹都換新的一世)。ended＝已闔卷/刪除，或同一格子已經換到下一世；all含還在進行中的人生，會被拉低。2026-09-28改版前就結束的人生沒有標記，會算在進行中",
+      all: lifeAverages(played),
+      ended: lifeAverages(played.filter(m => num(m.e) > 0))
     },
     churn: {
       note: "六、6.5：最後活動日距今7天以上的人生(不分是否已封存)，依最後一回合的emotional_tone分組；用來看退出點是否集中在負面事件後",

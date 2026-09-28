@@ -10,6 +10,29 @@
 
 ---
 
+## 2026-09-28（續二：全設計文件未定案標記拍板；15.1世代傳承保留人生之書；10.5兩種平均）
+
+**〔整理〕設計文件**（claude.ai網頁版結論，使用者同意Claude建議）
+- 03：3.9單回合變動上限7條由【定案草稿】改為【定案】(數字為測試參數)；3.2.2 milestone舊字「具體數字待定」改為10~15
+- 10：10.4總字數上限40,000字、10.5「回合數只算成功的新回合」改為【定案】；10.5平均每條人生花費改為兩個數字，補上「已結束」的判定方式與已知限制
+- 15：15.1世代傳承改為保留上一代的書(轉世丹維持不保留)；15.6補上放在家族年表、傳承前等章節寫完、書另存Worker
+- 01：1.2.8.7生育/領養【待確認,狀態歸屬問題】更正為已於9/27改由程式掌管(7.3.2)
+- 00-總覽.md目錄與更新日誌；CLAUDE.md刪掉A10「2000~2100回合待決定」殘留敘述；QA手冊34.6 A10殘留段落加註為歷史紀錄
+- 網頁版寫的「10.3.8世代傳承沿用同一個格子」實際在10.3.6；10.3.11四條已於本日稍早定案、十五其餘條目9/27已定案，不重複改
+
+**〔開發部〕**
+- `index.html`：`succeedAsChild()`改成async，傳承前呼叫新的`preserveFamilyBook()`：比照endLife先等沒寫完的章節(失敗的再試一次，最多90秒)，只留寫好章節的閱讀用欄位，POST到Worker `/family-book`，家族年表那一代記`book:{id,chapterCount}`；上傳失敗改記`book:{inline:{chapters},chapterCount}`。`renderFamilyChronicleModal()`每一代多一個「📚 ○○的人生之書（N章）」按鈕(`loadFamilyBook()`從Worker讀、記憶體快取)，唯讀打開；遊戲畫面下方新增「🌳 家族年表（前N代）」入口。轉世丹流程不變
+- `worker/worker.js`：新增`POST/GET /family-book`(KV key `familybook:<金鑰>:<id>`，1MB上限，其他金鑰讀不到)；AI回合請求在行動點紀錄記`currentLifeId`，同一個slot換了新life_id就把舊的一世標成已結束；`/archive`時把那一世標成已結束
+- `worker/usage.js`：新增`markLifeEnded()`，人生用量metadata多一個`e`(已結束)；`/usage-summary`的`per_life`改成`{note, all:{...}, ended:{...}}`，各含人生數、平均回合數、平均每條人生花費、平均每回合花費
+- **要重新部署Worker才會生效**（`cd worker && npx wrangler deploy`）。舊存檔不受影響；已經傳承過的人生，上一代的書當時沒留，救不回來
+
+**〔測試部〕**
+- 新增`tests/test-28-family-book.mjs`（33項）：傳承前重試失敗章節、書存Worker不進存檔、遊戲畫面入口、家族年表按鈕、唯讀閱讀與全文、重新整理後從Worker讀、兩代各自的書、沒有章節不留書、Worker存不進去時整本留存檔、讀不到時提示、轉世丹不保留、/family-book驗證(格式/1MB/別的金鑰/非白名單)、換life_id與/archive標記已結束、兩種平均數字
+- `tests/test-3-usage.mjs`：`per_life`欄位路徑改為`per_life.all`
+- 需要真實環境才能驗證、**未測試**：部署後的Worker實際存取/family-book
+
+---
+
 ## 2026-09-28（續：8.9興趣對應職業補測試、8.7第60行補充）
 
 **〔整理〕設計文件**

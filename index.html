@@ -6186,10 +6186,15 @@ function deriveParentTraitFromAffinity(aff, summary){
 function eligibleChildren(){
   return state.characters.filter(c=>c.isChild);
 }
-function succeedAsChild(childName){
+let succeeding = false; // 十五、15.1：保存上一代的書要等網路，避免連點選了兩個孩子
+async function succeedAsChild(childName){
   const prev = state;
   const child = prev.characters.find(c=>c.name===childName && c.isChild);
-  if(!child) return;
+  if(!child || succeeding) return;
+  succeeding = true;
+  let familyBook = null;
+  try{ familyBook = await preserveFamilyBook(prev); } finally { succeeding = false; }
+  if(state!==prev) return; // 等待期間畫面已經換掉(例如切換人生)，不再繼續傳承
   // 2026-09-22修正：配偶認定改用romanceStatus==="married"（比照7.6.2sweepMarriageCrisisCandidate既有寫法），
   // 不再用relation字串regex比對——離婚後的「前配偶」relation仍含「配偶」兩字，regex會誤判成現任配偶
   const spouse = prev.characters.find(c=>c.romanceStatus==="married" && c.active!==false);
@@ -6278,7 +6283,8 @@ function succeedAsChild(childName){
     // 下一代開局敘事只送上一代的事件標題(不送計數器與特質描述，7.7.2計數器不送AI)
     familyChronicle: (prev.familyChronicle||[]).concat([{ name: prev.name, generation: (prev.reincarnations||0)+1, age: prev.age,
       trait: classifyLifeTrait(prev.playStyle), playStyle: JSON.parse(JSON.stringify(prev.playStyle||newPlayStyle())),
-      events: lifeTraitEvidence(prev.chronicle) }]),
+      events: lifeTraitEvidence(prev.chronicle),
+      book: familyBook }]), // 十五、15.1（2026-09-28）：上一代的人生之書，唯讀；{id,chapters}存在Worker，上傳失敗才整本{inline}放存檔裡
     prevGenerationEventTitles: (prev.chronicle||[]).filter(x=>!/^（傳承）/.test(x)).slice(-6),
     collegeLocation:null,
     // 二、2.2（2026-09-23新增）：世代傳承的新主角一律從15歲高中入學前重新開始，同樣要有一次prologue開場段落
@@ -6558,6 +6564,51 @@ async function waitForBook(maxMs){
     if(!p) return;
     await Promise.race([p, new Promise(r=>setTimeout(r, Math.max(0, deadline-Date.now())))]);
   }
+}
+// 十五、15.1（2026-09-28使用者確認）：世代傳承保留上一代的人生之書(唯讀)，轉世丹不保留。
+// 比照「就此闔卷」先等還沒寫完的章節(最多90秒)，再把寫好的章節另存到Worker(/family-book)，家族年表只記id——
+// 一本書約100KB，直接放存檔傳幾代就會超過Worker的1MB上限。上傳失敗(離線等)才把章節整本留在存檔裡，至少不會弄丟
+const FAMILY_BOOK_CHAPTER_FIELDS = ["id","index","label","part","title","text","ageFrom","ageTo"];
+async function preserveFamilyBook(prev){
+  if(!prev.book || !prev.book.chapters.length) return null;
+  if(prev.book.chapters.some(c=>c.status!=="done")){
+    prev.book.chapters.forEach(c=>{ if(c.status==="failed") c.status = "pending"; });
+    document.getElementById("app").insertAdjacentHTML("afterbegin", `<div class="loading" id="book-finishing">正在把最後一章寫進人生之書…</div>`);
+    await waitForBook(90000);
+    document.getElementById("book-finishing")?.remove();
+  }
+  closeBookPage();
+  const chapters = prev.book.chapters.filter(c=>c.status==="done").map(c=>{
+    const o = { status:"done" };
+    FAMILY_BOOK_CHAPTER_FIELDS.forEach(k=>{ if(c[k]!==undefined) o[k] = c[k]; });
+    return o;
+  });
+  if(!chapters.length) return null;
+  const id = "fb" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(key){
+    try{
+      const res = await fetch(WORKER_URL+"family-book", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ key, id, book:{ owner: prev.name, chapters } }) });
+      const data = await res.json();
+      if(res.ok && data && data.success===true){ familyBookCache[id] = { chapters }; return { id, chapterCount: chapters.length }; }
+    }catch(e){ console.warn("上一代的人生之書上傳失敗，改整本留在存檔裡", e); }
+  }
+  return { inline: { chapters }, chapterCount: chapters.length };
+}
+const familyBookCache = {};
+async function loadFamilyBook(ref){
+  if(!ref) return null;
+  if(ref.inline) return ref.inline;
+  if(familyBookCache[ref.id]) return familyBookCache[ref.id];
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(!key) return null;
+  try{
+    const res = await fetch(WORKER_URL+"family-book?key="+encodeURIComponent(key)+"&id="+encodeURIComponent(ref.id));
+    const data = await res.json();
+    if(res.ok && data && data.success===true){ familyBookCache[ref.id] = { chapters: data.chapters||[] }; return familyBookCache[ref.id]; }
+  }catch(e){ console.warn("讀取上一代的人生之書失敗", e); }
+  return null;
 }
 function showBookToast(){
   if(!state || (state.phase!=="playing" && state.phase!=="ending")) return;
@@ -6952,12 +7003,26 @@ function renderFamilyChronicleModal(list){
   div.id = "family-chronicle-modal";
   div.className = "modal-backdrop";
   div.innerHTML = `<div class="modal"><h3>家族年表</h3>
-      ${(list||[]).map((g,i)=>`<button class="ghost-btn fam-gen-btn" data-i="${i}" style="display:block;width:100%;text-align:left;margin:4px 0;">第${g.generation}代・${escapeHtml(g.name||"")}・${g.age||"?"}歲</button>`).join("")}
+      ${(list||[]).map((g,i)=>`<button class="ghost-btn fam-gen-btn" data-i="${i}" style="display:block;width:100%;text-align:left;margin:4px 0;">第${g.generation}代・${escapeHtml(g.name||"")}・${g.age||"?"}歲</button>
+        ${g.book ? `<button class="ghost-btn fam-book-btn" data-i="${i}" style="display:block;width:100%;text-align:left;margin:0 0 8px;padding-left:22px;font-size:13px;">📚 ${escapeHtml(g.name||"")}的人生之書（${g.book.chapterCount||0}章）</button>` : ``}`).join("")}
+      <div id="fam-book-msg" style="font-size:12px;color:var(--ink-soft);min-height:1em;"></div>
       <button class="primary-btn" id="btn-fam-close" style="margin-top:10px;">關閉</button></div>`;
   document.body.appendChild(div);
   document.getElementById("btn-fam-close").onclick = ()=>div.remove();
   div.querySelectorAll(".fam-gen-btn").forEach(btn=>{
     btn.onclick = ()=>{ const g = list[+btn.dataset.i]; renderLifeTraitModal({ name:g.name, trait:g.trait, playStyle:g.playStyle, events:g.events, chronicle:g.events }); };
+  });
+  // 十五、15.1（2026-09-28）：上一代的人生之書，唯讀
+  div.querySelectorAll(".fam-book-btn").forEach(btn=>{
+    btn.onclick = async ()=>{
+      const g = list[+btn.dataset.i];
+      const msg = document.getElementById("fam-book-msg");
+      if(msg) msg.textContent = "正在翻開這本書…";
+      const book = await loadFamilyBook(g.book);
+      if(!book){ if(msg) msg.textContent = "這本書暫時打不開，請確認網路後再試一次。"; return; }
+      div.remove();
+      openBookPage(book, { readOnly:true, owner: g.name });
+    };
   });
 }
 function renderArchiveView(){
@@ -7154,6 +7219,7 @@ function renderPlaying(loadingTurn){
   <div class="footer-actions">
     <a id="link-memoir">📖 回憶錄（${s.log.length}則）</a>
     <a id="link-book">${bookLinkText(s)}</a>
+    ${(s.familyChronicle && s.familyChronicle.length) ? `<a id="link-family">🌳 家族年表（前${s.familyChronicle.length}代）</a>` : ``}
     <a id="link-view-key">🔑 我的復原金鑰</a>
     <a id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
     <a id="link-switch-life">🔄 切換其他人生</a>
@@ -7306,6 +7372,8 @@ function bindPlaying(){
   if(memoirLink) memoirLink.onclick = renderMemoirModal;
   const bookLink = document.getElementById("link-book");
   if(bookLink) bookLink.onclick = ()=>openBookPage(ensureBook(state), { owner: state.name });
+  const familyLink = document.getElementById("link-family"); // 十五、15.1（2026-09-28）：遊玩中也能翻上一代的書
+  if(familyLink) familyLink.onclick = ()=>renderFamilyChronicleModal(state.familyChronicle);
   const viewKeyLink = document.getElementById("link-view-key");
   if(viewKeyLink) viewKeyLink.onclick = renderKeyViewModal;
   // 十、10.6.1【定案】放置代活預設關閉，每條人生各自設定

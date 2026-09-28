@@ -12,7 +12,7 @@ async function setupAndSucceed({ log, childAff, withSpouse }) {
       ${withSpouse ? "state.characters.push({name:'阿偉',relation:'配偶',gender:'男',romanceStatus:'married',cohabiting:true,affinity:72,active:true,traits:'木訥、愛釣魚',summary:'',lastTurn:0});" : ""}
       state.characters.push({name:'小寶',relation:'兒子',gender:'男',isChild:true,age:20,affinity:${childAff},active:true,traits:'',summary:'一起去過墾丁',lastTurn:0,parentingLog:${JSON.stringify(log)}});
       state.ending={ successionAvailable:true, lifeSummary:'', epitaph:'' }; state.phase='ending';`);
-  ev("succeedAsChild('小寶')");
+  await ev("succeedAsChild('小寶')");
 }
 const strict = [{ demand_delta: 2, warmth_delta: -1 }, { demand_delta: 3, warmth_delta: -1 }];
 await setupAndSucceed({ log: strict, childAff: 40, withSpouse: true });
