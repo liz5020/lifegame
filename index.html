@@ -958,6 +958,7 @@ function applyFertilityTurn(s, actionText){
   if(!detectFertilityIntent(actionText) || !hasFertilityPartner(s)) return;
   const prob = computeFertilityProbability(s);
   const success = Math.random() < prob;
+  recordFateRoll(s, "fertility", "生育嘗試", prob, success, success ? "懷孕了" : "這次沒有懷上", false); // 16.7.2.5
   s.fertilityAttempts = (s.fertilityAttempts||0)+1;
   if(success){
     s.pregnancy = { dueDay: (cal ? cal.lastRoundEnd : 0) + FERTILITY_PREGNANCY_DAYS };
@@ -1438,6 +1439,45 @@ function chronicleLifeStageKey(s){
   if(isStudentPhase(s)) return "student";
   const bucket = LIFE_STAGE_ROUND_BUDGET.find(b=>s.age>=b.minAge && s.age<=b.maxAge);
   return bucket ? `${bucket.minAge}-${bucket.maxAge}` : "career_other";
+}
+// ========== 十六、16.7.2.5 命運的骰子紀錄 fateRolls（2026-09-28定案）==========
+// 紀錄層：重大疾病治療結果、生育嘗試、年度營運判定、裁員四類，每次判定都記(死亡、疾病是否發生、候選判定、父母健康不記)。
+// 保留規則：總上限20筆、每個人生階段(四、4.5八段)最多4筆；超過時刪最不意外的(|機率−0.5|最小，同分刪較舊)。
+// 花絮層：只有以小搏大(成功機率≤30%且成功、≥70%且失敗)才能寫成花絮；生育嘗試只有成功的能寫。門檻為測試參數
+const FATE_ROLLS_MAX = 20;
+const FATE_ROLLS_MAX_PER_STAGE = 4;
+const FATE_TIDBIT_LOW = 0.30;  // 【測試參數】
+const FATE_TIDBIT_HIGH = 0.70; // 【測試參數】
+function fateSurprise(r){ return Math.abs((r.probability||0) - 0.5); }
+function recordFateRoll(s, category, event, probability, success, resultText, isOpenCheck){
+  s.fateRolls = s.fateRolls || [];
+  const rec = { round: s.turnCount||0, age: s.age, stage: chronicleLifeStageKey(s), category, event: String(event||""),
+    probability: Math.round(clamp(probability,0,1)*1000)/1000, success: !!success, resultText: String(resultText||""), isOpenCheck: !!isOpenCheck };
+  s.fateRolls.push(rec);
+  const evictFrom = (pool)=>{
+    // 最不意外的先走；同樣意外刪較舊的(陣列越前面越舊)
+    let worst = null;
+    pool.forEach(r=>{ if(!worst || fateSurprise(r) < fateSurprise(worst)) worst = r; });
+    s.fateRolls.splice(s.fateRolls.indexOf(worst), 1);
+  };
+  const sameStage = s.fateRolls.filter(r=>r.stage===rec.stage);
+  if(sameStage.length > FATE_ROLLS_MAX_PER_STAGE) evictFrom(sameStage);
+  else if(s.fateRolls.length > FATE_ROLLS_MAX) evictFrom(s.fateRolls);
+  return rec;
+}
+function isFateTidbitEligible(r){
+  if(r.category==="fertility" && !r.success) return false;
+  return (r.success && r.probability<=FATE_TIDBIT_LOW) || (!r.success && r.probability>=FATE_TIDBIT_HIGH);
+}
+// 花絮用：最意外的前N筆以小搏大紀錄；隱藏判定的機率改成文字(不在事後揭露沒公開過的數字)
+function fateTidbitCandidates(s, n){
+  return (s.fateRolls||[]).filter(isFateTidbitEligible).slice().sort((a,b)=>fateSurprise(b)-fateSurprise(a)).slice(0, n||3);
+}
+function fateProbabilityWords(r){
+  if(r.isOpenCheck) return `只有${Math.round(r.probability*100)}%的機會`;
+  const p = r.probability;
+  if(p<=0.1) return "幾乎沒有機會"; if(p<=0.2) return "機會很小"; if(p<=0.3) return "機會不大";
+  if(p>=0.9) return "幾乎十拿九穩"; if(p>=0.8) return "把握很大"; return "看起來很有把握";
 }
 function shouldRecordJudgedMajorEvent(s, majorEventType){
   if(majorEventType!=="achievement" && majorEventType!=="setback") return true; // 非敘事判斷型（例如既有里程碑類），不受此上限管
@@ -2244,6 +2284,9 @@ function rollAnnualLayoffCheck(s){
   const tenureYears = (s.tenureMonths||0)/12;
   const discount = Math.max(0.5, Math.pow(0.9, Math.floor(tenureYears/LAYOFF_TENURE_DISCOUNT_INTERVAL_YEARS)));
   const hit = Math.random() < (baseProb*discount);
+  // 16.7.2.5：沒被裁算成功，成功機率＝1−這一年的裁員機率；前兆那一年還沒被裁，也算成功
+  const layoffNow = hit && !!s.layoffForeshadowed;
+  recordFateRoll(s, "layoff", `${s.occupationCategory||"工作"}的年度裁員`, 1-(baseProb*discount), !layoffNow, layoffNow ? "被裁員了" : "這一年沒有被裁員", false);
   if(!hit) return { justForeshadowed:false, layoffTriggered:false };
   // 12.7【定案】裁員前需有前兆，比照7.1.2前兆機制的兩段式關卡設計精神
   if(!s.layoffForeshadowed){ s.layoffForeshadowed = true; return { justForeshadowed:true, layoffTriggered:false }; }
@@ -2334,6 +2377,9 @@ function rollAnnualBusinessCheck(s){
   if(s.consecutiveLossYears>=2 && !s.pendingBusinessContinuation && (s.businessContinuationCooldown||0)<=0){
     s.pendingBusinessContinuation = {};
   }
+  // 16.7.2.5：沒有虧損算成功，成功機率＝成長＋持平的機率
+  recordFateRoll(s, "business", "年度營運", Math.min(probPct+20,100)/100, outcome!=="loss",
+    outcome==="growth" ? "這一年生意成長" : outcome==="flat" ? "這一年生意持平" : "這一年虧損", false);
   return { outcome, roll, probPct };
 }
 function resolveBusinessContinuation(s, choice){ // "close"/"persist"/"inject"
@@ -4461,6 +4507,8 @@ function advanceMajorIllness(s){
         outcome = "worsen"; // 【定案】惡化不直接判定死亡，只是把健康壓低，死亡仍走七、7.1.5的年度判定
         s.stats.health = clamp(s.stats.health - rnd(15,30), 0, 100);
       }
+      recordFateRoll(s, "illness_treatment", `${mi.type||"重大疾病"}的治療`, 0.40, outcome==="recover",
+        outcome==="recover" ? "治療後康復" : outcome==="chronic" ? "帶著病繼續生活" : "病情惡化", false); // 16.7.2.5
       s.majorIllness = null;
       return { stage:"fork", outcome };
     }
@@ -5447,6 +5495,7 @@ function snapshotForUndo(){
     mutterStreak:state.mutterStreak||0, foreshadows:state.foreshadows||[], foreshadowSeq:state.foreshadowSeq||0,
     renameNotices:state.renameNotices||[], foreshadowFadeNotices:state.foreshadowFadeNotices||[],
     playStyle: state.playStyle||newPlayStyle(), // 十六、16.2：反悔時行為計數也回到上一回合
+    fateRolls: state.fateRolls||[], chronicleSeen: state.chronicleSeen, // 十六、16.7.2.5命運的骰子紀錄、16.6重大事件比對長度也回到上一回合
     // 十五、人生之書（2026-09-25）：反悔時目前這一章的素材也要回到上一回合；已經收成的章節另外處理(見applySnapshot)
     bookDraft: state.book ? { draft: state.book.draft||null, chronicleSeen: state.book.chronicleSeen||0 } : null
   }));
