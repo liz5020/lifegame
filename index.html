@@ -1778,7 +1778,7 @@ function detectOverseasIntent(actionText){
 // 12.6.1【定案】海外型轉職：在職時才成立（屬於轉職的子情境），現金門檻沿用海外線伏筆的FORESHADOW_OVERSEAS_CASH_MONTHS，不足時客戶端直接擋下
 function checkOverseasTransferCandidate(s){
   if(s.careerStatus!==CAREER_STATUS.EMPLOYED || s.pendingJobSearch || (s.careerTransferCooldown||0)>0) return;
-  if(s.cash < computeBaseLivingCost(s)*FORESHADOW_OVERSEAS_CASH_MONTHS){
+  if(s.cash < computeBasicLivingCost(s)*FORESHADOW_OVERSEAS_CASH_MONTHS){
     s.careerEventLog = { type:"overseas_blocked", reason:"cash" }; // 讓AI知道這次因為手頭不夠沒走成
     return;
   }
@@ -2153,7 +2153,7 @@ function sweepCareerForeshadowCandidates(s){
       entry.status = "candidate";
     } else if(entry.line==="海外線"){
       if(s.pendingJobSearch) return;
-      if(s.cash < computeBaseLivingCost(s)*FORESHADOW_OVERSEAS_CASH_MONTHS){ entry.status = "declined"; return; } // 現金不足，候選不成立，不扣款
+      if(s.cash < computeBasicLivingCost(s)*FORESHADOW_OVERSEAS_CASH_MONTHS){ entry.status = "declined"; return; } // 現金不足，候選不成立，不扣款
       s.pendingJobSearch = { offers: buildJobSearchOffers(s), isTransfer:true, isFallback:false, foreshadowLine: entry.line, isOverseas:true };
       entry.status = "candidate";
     } else if(entry.line==="接手家業"){
@@ -2454,8 +2454,12 @@ const SIBLING_TRAITS = ["競爭心強，什麼都要比一下","很罩你，關�
 // 導致「柏勳」這種普遍認知男性的名字配到「姊姊」這種問題，違反1.2.5姓名性別一致性規則。改成先骰性別，
 // 姓名跟稱謂都從對應性別的池子挑，兩者保證一致。
 // 五、5.5 生活方式選擇（9/14新增，玩家開局自選，不是骰定，跟5.4七步驟骰定順序分開處理）
-const SPENDING_HABITS = { "精打細算":0.4, "普通花費":0.6, "隨性大方":0.8 };
-const MEAL_EXPENSE_MULT = { "家裡包辦":0.6, "自己打理":0.85, "外食為主":1.2 };
+// 三、3.4.10（2026-09-28改版，【測試參數，待驗證】）：生活開銷＝基本需求×三餐倍率＋可支配的錢×花錢習慣比例。
+// 原本開銷＝零用錢×花錢習慣×三餐(等比例)，家境再好大方花也一樣見底；出社會後又是固定小數字，月薪150怎麼花都剩140。
+// 改成只花掉「多出來的錢」的幾成，賺越多剩越多；只有收入勉強夠基本需求又吃外食的人會見底
+const SPENDING_HABITS = { "精打細算":0.3, "普通花費":0.6, "隨性大方":0.9 }; // 可支配的錢花掉幾成
+const MEAL_EXPENSE_MULT = { "家裡包辦":0.8, "自己打理":1.0, "外食為主":1.1 };   // 乘在基本需求上
+const STUDENT_BASIC_NEED = 25; // 學生期基本需求(遊戲幣/月)，不分家境
 // 三餐事件觸發機率倍率，只適用「自己打理」vs「外食為主」，家裡包辦不適用這組（敘事情境本質不同）
 const MEAL_EVENT_MULT = {
   "自己打理": { socialEncounter:0.7, healthBonusHit:1.2, timeConsumingMilestone:0.85 },
@@ -2666,14 +2670,10 @@ function computeChildSupportCost(s){
   // 被降為背景角色後扶養費就停了）。改看是否仍在世，成年與否由childSupportAmount()依年齡處理
   return (s.characters||[]).filter(c=>c.isChild && !c.deceased).reduce((sum,c)=>sum+childSupportAmount(c.age),0);
 }
-function computeBaseLivingCost(s){
-  // 9/14改版：學生時期改用5.5生活方式選擇的公式，遊戲內單位，不對應NT$；出社會後維持既有housing分級公式
-  // 2026-09-27：學生判斷改用studentStatus（3.4.8明文禁止以occupationCategory判斷），畢業未就業/收攤者走housing分級，不會變0
-  if(isStudentPhase(s)){
-    const habitPct = SPENDING_HABITS[s.spendingHabit] ?? SPENDING_HABITS["普通花費"];
-    const mealMult = MEAL_EXPENSE_MULT[s.mealArrangement] ?? MEAL_EXPENSE_MULT["自己打理"];
-    return Math.round(s.monthlyIncome * habitPct * mealMult);
-  }
+// 3.4.10（2026-09-28）：基本需求(未乘三餐)。學生期固定STUDENT_BASIC_NEED；出社會後照3.4.8居住分級，已婚/同居套3.4.11分攤係數
+// 2026-09-27：學生判斷改用studentStatus（3.4.8明文禁止以occupationCategory判斷），畢業未就業/收攤者走housing分級，不會變0
+function livingBasicNeed(s){
+  if(isStudentPhase(s)) return STUDENT_BASIC_NEED;
   const tier = livingCostTierForState(s);
   let amount = LIVING_COST_BASE[tier] * LIVING_COST_MULTIPLIER;
   // 三、3.4.11（2026-09-20新增，2026-09-22拆分同居/已婚兩組係數，取代原本「與伴侶共同生活時整體×0.75」算不出household_status的舊做法）：
@@ -2684,8 +2684,26 @@ function computeBaseLivingCost(s){
   } else if(householdStatus==="同居"){
     amount = amount * HOUSEHOLD_COHABITING_LIVING_MULTIPLIER;
   }
+  return amount;
+}
+// 基本生活開銷＝基本需求×三餐倍率＋子女扶養費＋慢性病費用；不含可支配花費。
+// 醫療費、出國伏筆門檻這些「以生活費為量級」的計算用這個，不會因為收入高、花錢大方就跟著變貴
+function computeBasicLivingCost(s){
+  const meal = MEAL_EXPENSE_MULT[s.mealArrangement] ?? MEAL_EXPENSE_MULT["自己打理"];
   // 十三、13.3.3（2026-09-20新增）：慢性病每項每月低費用等級固定支出，掛在這裡與子女扶養費同一套週期性結算路徑
-  return Math.round(amount) + computeChildSupportCost(s) + (s.chronicConditions||[]).length*CHRONIC_CONDITION_MONTHLY_COST;
+  return Math.round(livingBasicNeed(s) * meal) + computeChildSupportCost(s) + (s.chronicConditions||[]).length*CHRONIC_CONDITION_MONTHLY_COST;
+}
+// 每月生活開銷(結算用)＝基本生活開銷＋可支配的錢×花錢習慣比例。
+// 可支配的錢＝每月收入(含配偶、副業)−基本需求−固定支出(房租房貸等monthlyExpenses、扶養費、慢性病)，不足時為0；
+// 學生期收入＝零用錢(打工收入是一次性入帳，不算在這裡)
+function computeBaseLivingCost(s){
+  const meal = MEAL_EXPENSE_MULT[s.mealArrangement] ?? MEAL_EXPENSE_MULT["自己打理"];
+  const income = s.monthlyIncome + (s.spouseIncome||0) + computeSideBusinessIncome(s);
+  const fixed = s.monthlyExpenses.reduce((sum,e)=>sum+e.amount,0) + computeChildSupportCost(s) + (s.chronicConditions||[]).length*CHRONIC_CONDITION_MONTHLY_COST;
+  const disposable = Math.max(0, income - livingBasicNeed(s) - fixed);
+  const habit = SPENDING_HABITS[s.spendingHabit] ?? SPENDING_HABITS["普通花費"];
+  // 加總後才四捨五入一次，避免兩段各自進位多算1
+  return Math.round(livingBasicNeed(s) * meal + disposable * habit) + computeChildSupportCost(s) + (s.chronicConditions||[]).length*CHRONIC_CONDITION_MONTHLY_COST;
 }
 
 function newRoll(carry, identity){
@@ -3958,7 +3976,7 @@ function rollAnnualIllnessCheck(s){
   s.stats.health = clamp(s.stats.health - rnd(5,15), 0, 100); // 【測試參數,待驗證,13.3.2】
   // 13.3.2【定案】急性事件套3.4.5低/中費用等級、後續回合回升（2026-09-27使用者同意Claude建議，【測試參數】）：
   // 醫療費扣1個月基本生活開銷；接下來ACUTE_RECOVERY_TURNS回合每回合健康+ACUTE_RECOVERY_PER_TURN（不超過健康上限），見applyResult
-  const medicalCost = computeBaseLivingCost(s);
+  const medicalCost = computeBasicLivingCost(s); // 2026-09-28：改用不含可支配花費的基本生活開銷
   s.cash -= medicalCost;
   s.acuteRecoveryTurns = ACUTE_RECOVERY_TURNS;
   return { level:"acute", medicalCost };
@@ -4023,7 +4041,7 @@ function advanceMajorIllness(s){
   }
   if(mi.stage==="treatment"){
     s.stats.health = clamp(s.stats.health - rnd(2,5), 0, 100); // 【測試參數,待驗證】治療期健康持續扣分
-    s.cash -= Math.round(computeBaseLivingCost(s)*MAJOR_TREATMENT_COST_MONTHS_PER_TURN); // 13.3.4：3.4.5高費用等級的醫療支出（2026-09-27）
+    s.cash -= Math.round(computeBasicLivingCost(s)*MAJOR_TREATMENT_COST_MONTHS_PER_TURN); // 13.3.4：3.4.5高費用等級的醫療支出（2026-09-27）
     if(mi.turnsInStage>=mi.treatmentTargetTurns){
       // 【定案】岔路點三者在幸福感計算上地位平等，不預設哪個是正確結果；技術判斷：機率式自動判定，非玩家選項(文件未列出玩家可選的具體選項文字)
       const roll = rnd(1,100);
@@ -4530,6 +4548,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     can_afford_medical: { 低: financialHealth>=20, 中: financialHealth>=50, 高: financialHealth>=75 },
     is_student: isStudentPhase(s),
     spending_habit: s.spendingHabit, meal_arrangement: s.mealArrangement,
+    money_situation: computeMoneySituation(s), // 五、5.5（2026-09-28）：當月手頭狀態 寬裕/剛好/吃緊/見底，純描寫用
+    lifestyle_changed_now: s.lifestyleChangeLog || null, // 五、5.5（2026-09-28）：玩家剛在生活方式小卡調整過，只通知這一回合
     meal_event_multipliers: s.mealArrangement ? MEAL_EVENT_MULT[s.mealArrangement] || null : null,
     occupation_category: s.occupationCategory, housing: s.housing,
     // 十二、職涯系統（2026-09-20新增）：以下欄位僅供你敘事參考，狀態轉換/薪資/成敗全部由系統計算，你不用也不能自己判斷或回報
@@ -5428,7 +5448,7 @@ function simulateIdleRound(s, index){
   ["health","knowledge","network","expression"].forEach(k=>{ const d = Math.round(s.stats[k]-before[k]); if(d) record.changes[k] = d; });
   const dc = Math.round(s.cash-before.cash); if(dc) record.changes.cash = dc;
   // 每個回合結束都清掉只給AI看一次的事件紀錄，避免累積到回來那一回合
-  s.careerEventLog = null; s.universityEventLog = null; s.parentingEventLog = null; s.relationshipInvestmentEventLog = null;
+  s.careerEventLog = null; s.universityEventLog = null; s.parentingEventLog = null; s.lifestyleChangeLog = null; s.relationshipInvestmentEventLog = null;
   s.marriageCrisisEventLog = null; s.divorceEventLog = null; s.cohabitationEventLog = null; s.sideBusinessEventLog = null;
   return record;
 }
@@ -5460,6 +5480,30 @@ function pickIdleKeyRounds(rounds){
   return rounds.slice().sort((a,b)=>score(b)-score(a)).slice(0, Math.min(limit, rounds.length)).map(r=>r.i).sort((a,b)=>a-b);
 }
 
+// 三、3.4.7（2026-09-28）結算小字：收入、支出分列，支出只列合計。3個月以內照這回合實際推進天數換算、寫「本回合結餘」；
+// 超過3個月改成區間總結。舊存檔的紀錄沒有分列數字，維持舊格式
+function signed(n){ return (n>=0?"+":"−") + Math.abs(n).toLocaleString(); }
+function settlementText(st, cashNow){
+  const bal = (st.balanceAfter ?? cashNow).toLocaleString();
+  if(st.incomeTotal===undefined) return `本回合結算：${st.months}個月淨${st.net>=0?'收入':'支出'} ${Math.abs(st.net).toLocaleString()}；目前存款 ${bal}`;
+  const net = st.rawNet ?? st.net;
+  if(st.months > 3) return `這段期間收入約 ${st.incomeTotal.toLocaleString()}，支出約 ${st.expenseTotal.toLocaleString()}，結餘 ${signed(net)}；目前存款 ${bal}`;
+  return `${st.student?"零用錢":"收入"} +${st.incomeTotal.toLocaleString()}，生活開銷 −${st.expenseTotal.toLocaleString()}，本回合結餘 ${signed(net)}；目前存款 ${bal}`;
+}
+// 三、3.4.7（2026-09-28）：每月收入、每月生活開銷(基本開銷＋房租房貸＋扶養費＋慢性病費用)，生活方式小卡與手頭狀態共用
+function monthlyBudget(s){
+  const income = s.monthlyIncome + (s.spouseIncome||0) + computeSideBusinessIncome(s);
+  const expenses = s.monthlyExpenses.reduce((sum,e)=>sum+e.amount,0) + computeBaseLivingCost(s);
+  return { income: Math.round(income), expenses: Math.round(expenses) };
+}
+// 五、5.5（2026-09-28）當月手頭狀態：依結餘÷收入分四級，學生期與出社會後共用；只給AI敘事參考
+const MONEY_SITUATION_COMFORT_RATIO = 0.25; // 【測試參數，待驗證】
+function computeMoneySituation(s){
+  const { income, expenses } = monthlyBudget(s);
+  const bal = income - expenses;
+  if(bal < 0) return s.cash > 0 ? "吃緊" : "見底";
+  return (income > 0 && bal/income >= MONEY_SITUATION_COMFORT_RATIO) ? "寬裕" : "剛好";
+}
 // 三、3.4.7週期性收支結算（2026-09-27從applyResult抽出，一般回合與放置代活(10.6.9「照3.4.7一般每月收支結算」)共用）
 function applyMonthlySettlement(s, monthsCrossed){
   if(monthsCrossed>0){
@@ -5472,11 +5516,15 @@ function applyMonthlySettlement(s, monthsCrossed){
     // 不直接併進s.monthlyIncome，避免玩家轉職時job_change覆寫monthlyIncome連帶把配偶收入也洗掉
     // 八、8.7（2026-09-27）：副業三選一的後續差異，接零星案／正式副業各有一筆週期性副業收入，見computeSideBusinessIncome()
     const householdMonthlyIncome = s.monthlyIncome + (s.spouseIncome||0) + computeSideBusinessIncome(s);
-    let net = Math.round((householdMonthlyIncome - totalExpenses - livingCost) * monthsCrossed);
+    const rawNet = Math.round((householdMonthlyIncome - totalExpenses - livingCost) * monthsCrossed);
+    let net = rawNet;
     // 5.5存款下限保護（9/14新增）：學生時期(尚無正職)存款不能變成負值，修正原本會出現NT$-35,950這種不合理負債的bug
     if(isStudentPhase(s) && s.cash + net < 0) net = -s.cash;
     s.cash += net;
-    s.lastSettlement = { months: monthsCrossed, net, income:householdMonthlyIncome, expenses:totalExpenses+livingCost };
+    // 3.4.7（2026-09-28）：結算小字收入、支出分列；存款觸底時結餘照實列負數(rawNet)，存款維持0
+    s.lastSettlement = { months: monthsCrossed, net, rawNet, income:householdMonthlyIncome, expenses:totalExpenses+livingCost,
+      incomeTotal: Math.round(householdMonthlyIncome*monthsCrossed), expenseTotal: Math.round((totalExpenses+livingCost)*monthsCrossed),
+      student: isStudentPhase(s) };
     // 資產模型（9/14新增）：房貸每月攤還本金（不含利息，簡化模型），還清時自動移除房貸支出項
     if(s.mortgageBalance>0){
       const mortgagePayment = s.monthlyExpenses.find(e=>e.label==="房貸")?.amount || 0;
@@ -5691,6 +5739,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 十二、職涯系統（2026-09-20新增）：career_event_now只給AI看這一回合，用過就清掉
   s.careerEventLog = null;
   s.sideBusinessEventLog = null; // 8.7（2026-09-27）
+  s.lifestyleChangeLog = null; // 5.5（2026-09-28）
   // 十三、健康衰退與老年階段（2026-09-20新增）：以下event log只給AI看這一回合，用過就清掉
   s.illnessEventLog = null;
   s.majorIllnessEventLog = null;
@@ -7181,6 +7230,7 @@ function renderPlaying(loadingTurn){
   ${renderProgressStrip(s)}
   <div class="ledger">
     <div class="ledger-row"><span class="lbl">存款</span><span class="dots"></span><span class="val">${s.cash.toLocaleString()}</span></div>
+    ${renderLifestyleCard(s, loadingTurn)}
     ${s.propertyValue>0 ? `<div class="ledger-row"><span class="lbl">房產淨值</span><span class="dots"></span><span class="val">${(s.propertyValue-s.mortgageBalance).toLocaleString()}</span></div>` : ``}
     ${ledgerRow("健康", s.stats.health)}
     ${ledgerRow("才識", s.stats.knowledge)}
@@ -7190,7 +7240,7 @@ function renderPlaying(loadingTurn){
   </div>
   ${renderTracks(s)}
   <div class="journal">
-    ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text, true)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("")}
+    ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text, true)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">${settlementText(e.settlement, s.cash)}</p>` : ``}</div>`).join("")}
     ${loadingTurn ? renderTurnLoading() : ""}
   </div>
   ${!loadingTurn ? `
@@ -7372,6 +7422,8 @@ function bindPlaying(){
   if(memoirLink) memoirLink.onclick = renderMemoirModal;
   const bookLink = document.getElementById("link-book");
   if(bookLink) bookLink.onclick = ()=>openBookPage(ensureBook(state), { owner: state.name });
+  const lifestyleCard = document.getElementById("lifestyle-card"); // 五、5.5（2026-09-28）
+  if(lifestyleCard && lifestyleCard.dataset.busy!=="1") lifestyleCard.onclick = renderLifestyleModal; // 等AI時不能改
   const familyLink = document.getElementById("link-family"); // 十五、15.1（2026-09-28）：遊玩中也能翻上一代的書
   if(familyLink) familyLink.onclick = ()=>renderFamilyChronicleModal(state.familyChronicle);
   const viewKeyLink = document.getElementById("link-view-key");
@@ -7419,7 +7471,7 @@ function renderMemoirModal(){
   const div = document.createElement("div");
   div.id = "memoir-modal";
   div.className = "modal-backdrop";
-  const entriesHtml = s.log.map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text, true)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合結算：${e.settlement.months}個月淨${e.settlement.net>=0?'收入':'支出'} ${Math.abs(e.settlement.net).toLocaleString()}；目前存款 ${(e.settlement.balanceAfter??s.cash).toLocaleString()}</p>` : ``}</div>`).join("");
+  const entriesHtml = s.log.map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text, true)}${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">${settlementText(e.settlement, s.cash)}</p>` : ``}</div>`).join("");
   div.innerHTML = `
     <div class="modal" style="max-width:560px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
       <h3>回憶錄</h3>
@@ -7463,30 +7515,91 @@ function renderAPExhaustedModal(){
   document.getElementById("btn-ap-exhausted-ok").onclick = ()=>div.remove();
 }
 
-// 五、5.5 三餐解決方式解鎖後，讓玩家重新選一次（9/14新增）
+// 五、5.5.3（2026-09-28改版）：三餐解鎖時機不變，但視窗不再直接選，改成導去數值面板的生活方式小卡
 function renderMealUnlockModal(){
   const div = document.createElement("div");
   div.id = "meal-unlock-modal";
   div.className = "modal-backdrop";
-  const options = ["家裡包辦","自己打理","外食為主"];
   div.innerHTML = `
     <div class="modal">
       <h3>生活圈變了，三餐怎麼安排？</h3>
-      <p>現在三個選項都開放了，要不要重新想一下三餐怎麼解決？（不改也可以，維持原本「${escapeHtml(state.mealArrangement)}」）</p>
-      ${options.map(m=>`<button class="ghost-btn meal-unlock-btn" data-meal="${m}" style="margin:4px 6px 0 0;${state.mealArrangement===m?'background:var(--ink);color:var(--paper);':''}">${m}</button>`).join("")}
-      <button class="primary-btn" id="btn-meal-unlock-confirm" style="margin-top:14px;">確定</button>
+      <p>現在可以自己決定三餐怎麼解決了。</p>
+      <button class="primary-btn" id="btn-meal-unlock-go">去調整</button>
+      <button class="ghost-btn" id="btn-meal-unlock-later">之後再說</button>
     </div>`;
   document.body.appendChild(div);
-  let chosen = state.mealArrangement;
-  div.querySelectorAll(".meal-unlock-btn").forEach(btn=>{
-    btn.onclick = ()=>{ chosen = btn.dataset.meal; div.querySelectorAll(".meal-unlock-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
-  });
-  document.getElementById("btn-meal-unlock-confirm").onclick = ()=>{
-    state.mealArrangement = chosen;
-    if(chosen==="自己打理") state.cookingInterestSeed = true;
-    div.remove();
-    saveGame(); render();
+  document.getElementById("btn-meal-unlock-go").onclick = ()=>{ div.remove(); renderLifestyleModal(); };
+  document.getElementById("btn-meal-unlock-later").onclick = ()=>div.remove();
+}
+
+// 五、5.5（2026-09-28新增）生活方式小卡：數值面板存款下方，列出目前設定與每月收支，點開可調整。
+// 可擴充：之後其他「行為偏好」類設定加進LIFESTYLE_SETTINGS即可；居住狀態、買房等大額事項維持走里程碑，不放這裡
+const MEAL_HOME_LOCKED_REASON = "家裡目前不方便幫忙準備";
+const LIFESTYLE_SETTINGS = [
+  { key:"spendingHabit", label:"花錢習慣", options:()=>Object.keys(SPENDING_HABITS).map(v=>({ value:v })) },
+  { key:"mealArrangement", label:"三餐方式", options:(s)=>Object.keys(MEAL_EXPENSE_MULT).map(v=>{
+      // 5.5.2資格判定＋5.5.3解鎖：開局不符資格且還沒解鎖時，家裡包辦反灰
+      const locked = v==="家裡包辦" && !s.mealCareEligibleAtStart && !s.mealFullyUnlocked;
+      return { value:v, locked, reason: locked ? MEAL_HOME_LOCKED_REASON : "" };
+    }) }
+];
+function renderLifestyleCard(s, loadingTurn){
+  if(!s.spendingHabit && !s.mealArrangement) return ``;
+  const b = monthlyBudget(s);
+  return `<div class="lifestyle-card" id="lifestyle-card" role="button" tabindex="0" data-busy="${loadingTurn?1:0}" style="margin:2px 0 8px;padding:6px 10px;border:1px dashed var(--line);border-radius:4px;font-size:12px;color:var(--ink-soft);cursor:${loadingTurn?'default':'pointer'};">
+      <div>生活方式：${LIFESTYLE_SETTINGS.map(x=>escapeHtml(s[x.key]||"—")).join("・")}　<span style="text-decoration:underline;">${loadingTurn?'':'調整'}</span></div>
+      <div>每月收入 ${b.income.toLocaleString()}　每月生活開銷 ${b.expenses.toLocaleString()}</div>
+    </div>`;
+}
+function renderLifestyleModal(){
+  const s = state;
+  if(!s || s.phase!=="playing") return;
+  document.getElementById("lifestyle-modal")?.remove();
+  const draft = {}; LIFESTYLE_SETTINGS.forEach(x=>draft[x.key] = s[x.key]);
+  const div = document.createElement("div");
+  div.id = "lifestyle-modal";
+  div.className = "modal-backdrop";
+  const paint = ()=>{
+    const preview = monthlyBudget(Object.assign({}, s, draft));
+    const bal = preview.income - preview.expenses;
+    div.innerHTML = `
+      <div class="modal" style="text-align:left;">
+        <h3>生活方式</h3>
+        ${LIFESTYLE_SETTINGS.map(x=>`
+          <div class="k" style="margin:10px 0 6px;">${x.label}</div>
+          ${x.options(s).map(o=>`<button class="ghost-btn ls-opt" data-key="${x.key}" data-val="${escapeHtml(o.value)}" ${o.locked?'disabled':''}
+              style="margin:0 6px 6px 0;${o.locked?'opacity:.45;':''}${draft[x.key]===o.value?'background:var(--ink);color:var(--paper);':''}">${escapeHtml(o.value)}</button>`).join("")}
+          ${x.options(s).filter(o=>o.locked).map(o=>`<div style="font-size:11px;color:var(--ink-soft);">${escapeHtml(o.value)}：${escapeHtml(o.reason)}</div>`).join("")}`).join("")}
+        <p id="lifestyle-preview" style="font-size:13px;margin-top:12px;">調整後每月生活開銷約 ${preview.expenses.toLocaleString()}，結餘約 ${signed(bal)}</p>
+        <p style="font-size:11px;color:var(--ink-soft);">下一回合起生效，不花行動點。</p>
+        <button class="primary-btn" id="btn-lifestyle-save">確定</button>
+        <button class="ghost-btn" id="btn-lifestyle-cancel">取消</button>
+      </div>`;
+    div.querySelectorAll(".ls-opt").forEach(btn=>btn.onclick = ()=>{ if(btn.disabled) return; draft[btn.dataset.key] = btn.dataset.val; paint(); });
+    document.getElementById("btn-lifestyle-cancel").onclick = ()=>div.remove();
+    document.getElementById("btn-lifestyle-save").onclick = ()=>{ div.remove(); applyLifestyleChange(draft); };
   };
+  document.body.appendChild(div);
+  paint();
+}
+function applyLifestyleChange(draft){
+  const s = state;
+  const from = {}, to = {};
+  LIFESTYLE_SETTINGS.forEach(x=>{
+    const v = draft[x.key];
+    if(!v || v===s[x.key]) return;
+    const opt = x.options(s).find(o=>o.value===v);
+    if(!opt || opt.locked) return; // 防呆：鎖住的選項不能選
+    from[x.key] = s[x.key]; to[x.key] = v; s[x.key] = v;
+  });
+  if(!Object.keys(to).length) return;
+  if(to.mealArrangement==="自己打理") s.cookingInterestSeed = true; // 5.5／3.4.10興趣系統伏筆(原本只寫在解鎖視窗)
+  // 下一回合payload通知AI一次(同一回合改好幾次，保留最早的from)
+  const prev = s.lifestyleChangeLog;
+  s.lifestyleChangeLog = { from: Object.assign({}, from, prev ? prev.from : {}), to: Object.assign({}, prev ? prev.to : {}, to) };
+  Object.keys(s.lifestyleChangeLog.to).forEach(k=>{ if(s.lifestyleChangeLog.from[k]===s.lifestyleChangeLog.to[k]){ delete s.lifestyleChangeLog.from[k]; delete s.lifestyleChangeLog.to[k]; } });
+  if(!Object.keys(s.lifestyleChangeLog.to).length) s.lifestyleChangeLog = null;
+  saveGame(); render();
 }
 
 // 四、4.1.1顯示規則（9/16新增）：點擊NPC卡片叫出的詳細頁，純讀取不涉及遊戲決策，關閉即結束不寫入存檔

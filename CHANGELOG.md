@@ -10,6 +10,26 @@
 
 ---
 
+## 2026-09-28（續三：收支分開呈現、生活方式倍率改版、生活方式小卡、手頭狀態）
+
+**〔整理〕設計文件**
+- 03：3.4.7結算小字改分列；3.4.8、3.4.10生活開銷改新公式(使用者提出賺得多的人不該見底)，烹飪種子補充
+- 05：5.5開頭、5.5.1數字、5.5.3解鎖視窗改版、新增5.5.5生活方式小卡與手頭狀態
+- 使用者同意Claude建議的四點：出社會後也適用同一套公式、下一回合起生效(照3.4.7現行規則)、不到一個月寫「本回合結餘」、16.3.2/16.3.4找不到略過
+
+**〔開發部〕**
+- `index.html`：生活開銷改成「基本需求×三餐倍率＋可支配的錢×花錢比例」：`SPENDING_HABITS`改為可支配花掉幾成(0.3/0.6/0.9)、`MEAL_EXPENSE_MULT`改0.8/1.0/1.1，新增`STUDENT_BASIC_NEED`(25)、`livingBasicNeed()`、`computeBasicLivingCost()`(不含可支配花費，醫療費與出國伏筆門檻改用這個)，`computeBaseLivingCost()`學生與出社會共用新公式；`applyMonthlySettlement()`的`lastSettlement`多記`rawNet`/`incomeTotal`/`expenseTotal`/`student`，新增`settlementText()`(舊紀錄維持舊格式)；新增`monthlyBudget()`、`computeMoneySituation()`；數值面板存款下方新增生活方式小卡(`renderLifestyleCard()`/`renderLifestyleModal()`/`applyLifestyleChange()`，設定清單`LIFESTYLE_SETTINGS`可擴充)；`renderMealUnlockModal()`改成「去調整」「之後再說」；payload新增`money_situation`、`lifestyle_changed_now`(用過就清)
+- `worker/prompt.js`：財富段落補手頭狀態(純描寫、不回報金額、同一狀態不連續提)與生活方式調整兩條。**要重新部署Worker才會生效**
+- 舊存檔可以繼續玩(新欄位都有預設)，但倍率改了，舊存檔的開銷會從下一回合起變多
+
+**〔測試部〕**
+- 新增`tests/test-29-lifestyle.mjs`（47項）：倍率與乘積範圍、學生/出社會開銷、扶養費慢性病不乘、結算小字四種格式、觸底照實列負數、一週按比例、手頭狀態四級與邊界、小卡位置與內容、反灰原因、預覽、取消、不花行動點、下一回合payload通知一次、改回原樣取消通知、烹飪種子、鎖住選項擋下、解鎖視窗兩顆按鈕、prompt文字
+- 新增`tests/sim-lifestyle-savings.mjs`：九種組合存款走勢模擬(可指定家境與跑到幾歲，不納入run-all)。清寒只有隨性大方＋外食約第20個月見底，小康、富裕九種組合都不見底；小康跑到35歲九種組合都沒有存款≤0
+- 全套回歸通過
+- 需要真實API、**未測試**：AI是否照money_situation自然描寫且不連續提、lifestyle_changed_now是否寫得自然、是否仍會亂回報金額
+
+---
+
 ## 2026-09-28（續二：全設計文件未定案標記拍板；15.1世代傳承保留人生之書；10.5兩種平均）
 
 **〔整理〕設計文件**（claude.ai網頁版結論，使用者同意Claude建議）
