@@ -4663,7 +4663,10 @@ function rollParentHealthStageAdvance(s){
   // 已過世一律有deceased標記（含傳承時的上一代主角），所以只看deceased即可
   s.characters.filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && (c.healthStage||1)<4 && !c.deceased).forEach(c=>{
     if(s.idleMode && ((c.age||0) >= PARENT_HEALTH_HARD_CAP_AGE || (c.healthStage||1)>=PARENT_HEALTH_LAST_LIVING_STAGE)) return; // 10.6.7：放置期間家人過世比照死亡排除，最後一個在世階段也不往下推
-    if((c.age||0) >= PARENT_HEALTH_HARD_CAP_AGE){
+    // 13.5加註（2026-09-28）：傳承中的上一代死亡時間依七、7.4.3.3.1鎖定，狀態機的死亡結果對他停用，其餘(需要協助、失能)照常
+    const locked = typeof c.lockedDeathChildAge==="number";
+    if(locked && (c.healthStage||1)>=PARENT_HEALTH_LAST_LIVING_STAGE) return;
+    if(!locked && (c.age||0) >= PARENT_HEALTH_HARD_CAP_AGE){
       finalizeParentDeath(s, c.name);
       events.push({ parentName:c.name, newStage:4 });
       return;
@@ -4779,6 +4782,12 @@ function settleFamilyHomeInheritance(s){
   s.familyHomeInherited = true;
   return share;
 }
+// 七、7.4.3.3.1（2026-09-28）：傳承中的上一代到鎖定的年紀過世(孩子幾歲都會照時間走)，每回合在呼叫AI前檢查
+function checkLockedParentDeath(s){
+  const c = (s.characters||[]).find(x=>typeof x.lockedDeathChildAge==="number" && !x.deceased);
+  if(c && s.age >= c.lockedDeathChildAge){ c.healthStage = 4; finalizeParentDeath(s, c.name); return true; }
+  return false;
+}
 function finalizeParentDeath(s, parentName){
   const parent = s.characters.find(c=>c.name===parentName);
   if(!parent) return;
@@ -4787,7 +4796,8 @@ function finalizeParentDeath(s, parentName){
   parent.deceased = true;
   parent.estateSettled = true;
   // 13.6【定案,測試參數】遺產依家境與是否有房產，一次性變動現金；簡化估算，非精算遺產稅/繼承法規則
-  const inheritance = s.familySavings ? Math.round(s.familySavings*0.1) : rnd(5,20);
+  // 七、7.4.3.3.2（2026-09-28）：傳承中的上一代，遺產是上一世結束時就固定的份額
+  const inheritance = typeof parent.lockedEstateShare==="number" ? parent.lockedEstateShare : (s.familySavings ? Math.round(s.familySavings*0.1) : rnd(5,20));
   s.cash += inheritance;
   // 13.6【定案】喪禮回合採強制過渡回合的敘事處理已交由system prompt guidance；結構化紀錄部分：直接寫入L3人生履歷
   s.chronicle.push(`（${s.age}歲）${parent.relation}過世了`);
@@ -4811,6 +4821,7 @@ function finalizeParentDeath(s, parentName){
   const homeShare = settleFamilyHomeInheritance(s); // 13.6（2026-09-27）：最後一位家長過世時繼承房子
   if(homeShare) s.chronicle.push(`（${s.age}歲）繼承了家裡的房子${siblings.length ? "（和手足平分）" : ""}`);
   s.parentDeathEventLog = { parentName, relation:parent.relation, inheritance, home_share: homeShare || null, siblings_estate: siblings.length ? siblings : null,
+    prev_life_parent: typeof parent.lockedDeathChildAge==="number" || undefined, same_illness_as_prev_life: parent.prevLifeIllness || undefined, // 7.4.3.3.3
     other_parent: otherParent ? { name: otherParent.name, new_health_stage: otherParentStage } : null };
 }
 
@@ -5083,7 +5094,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     name:c.name, relation:c.relation, traits:c.traits, gender:c.gender||null, // 4.1/1.2.5：已記錄的性別，引用時必須一致
     affinity:c.affinity, summary:c.summary, is_child:!!c.isChild,
     dialogue_style: c.dialogueStyle||"normal", // 一、1.2.8.4.2（2026-09-24實作）：台詞句數上限，程式依{{名字|台詞}}標記截斷
-    romance_status: c.romanceStatus||null // 四、4.4戀愛狀態機（9/16新增）：null/ambiguous/dating/stable/breakup，僅供你參考語氣，不可自行變更
+    romance_status: c.romanceStatus||null, // 四、4.4戀愛狀態機（9/16新增）：null/ambiguous/dating/stable/breakup，僅供你參考語氣，不可自行變更
+    prev_life: c.prevLifeProfile && !c.deceased ? c.prevLifeProfile : undefined // 七、7.4.3.3.1：這位家長是上一世的主角，說話方式與生活狀態要跟上一世一致
   }));
   const financialHealth = computeFinancialHealthForState(s); // 9/16修正：學生時期改用家庭真實NT$數字，見3.4.6補充定案
   const payload = {
@@ -5135,6 +5147,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     divorce_recovery_event_now: s.divorceRecoveryEventLog || null, // 7.6.3（2026-09-27）：離婚後重新開始的選擇
     old_age_theme: computeOldAgeTheme(s), // 13.7.2（2026-09-27）：60歲以後本回合的主題方向
     previous_generation_events: (timeCtx && timeCtx.prologue && s.prevGenerationEventTitles && s.prevGenerationEventTitles.length) ? s.prevGenerationEventTitles : null, // 7.7.5（2026-09-27）：只在傳承後的開場回合送上一代事件標題
+    succession_opening_event: (timeCtx && timeCtx.prologue && s.successionOpening) ? s.successionOpening : null, // 7.4.3.3.1（2026-09-28）：上一代在孩子未滿15歲就過世，開場先交代再接遺產
     interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
     part_time_event_now: s.partTimeEventLog || null,
     fertility_event_now: s.fertilityEventLog || null, // 7.3.2（2026-09-27）：這回合生育嘗試/懷孕/出生/領養的系統判定結果
@@ -5654,6 +5667,7 @@ async function takeTurn(actionText, cost){
   const adv = advanceStructuredTime(actionText);
   applyPartTimeWork(state, actionText, adv.window); // 3.4.2（2026-09-27）：打工收入由程式依時薪×時數算好，AI只負責敘事
   applyFertilityTurn(state, actionText); // 7.3.2（2026-09-27）：生育/領養的大方向由程式判定
+  if(!state.timeState.prologue) checkLockedParentDeath(state); // 七、7.4.3.3.1（2026-09-28）：傳承中的上一代到鎖定年紀過世
   // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
   // （呼應7.1.5死亡機制精神，不讓AI自由裁量這個數字），期中考不受影響、維持原本hint範圍由AI自由發揮
   const examCheck = (adv.examTriggered && adv.examType==="期末考") ? rollFinalExamCheck(state.stats.knowledge, studyCountBeforeAdvance, interestCountBeforeAdvance) : null;
@@ -6840,6 +6854,20 @@ async function succeedAsChild(childName){
   const otherKids = prev.characters.filter(c=>c.isChild && c.name!==childName);
 
   const deceasedRelation = prev.gender==="男" ? "父親" : "母親"; // 4.1.3：依上一代主角性別
+  // 七、7.4.3.3.1（2026-09-28定案）：上一代在「上一世享年」過世；孩子經歷那一刻的年紀＝上一世享年－生下這個孩子時的年紀＝子女卡當下的年紀。
+  // 孩子15歲開局時上一代還在世，到那個年紀才過世並觸發遺產事件；那時孩子未滿15歲的，開局即是遺產事件
+  const childAgeAtParentDeath = typeof child.age==="number" ? Math.max(0, Math.round(child.age)) : Math.max(0, prev.age-30); // 舊存檔子女卡沒有年齡時，假設30歲生的
+  const parentAgeAtBirth = prev.age - childAgeAtParentDeath;
+  const prevAliveAtStart = childAgeAtParentDeath >= 15;
+  // 7.4.3.3.2：遺產＝上一世結束時的現金＋房產淨值(房產價值－房貸餘額)，最低0、不繼承債務、不計遺產稅；有多名子女時平分；金額固定不因多活幾年增減
+  const estateTotal = Math.max(0, (prev.cash||0) + (prev.propertyValue||0) - (prev.mortgageBalance||0));
+  const heirsCount = Math.max(1, prev.characters.filter(c=>c.isChild && !c.deceased).length);
+  const estateShare = Math.round(estateTotal / heirsCount);
+  // 7.4.3.3.3：上一世如果因病過世，過世事件要提到同一種疾病(取最近一次重大疾病類型；沒有就看慢性病)
+  const prevIllness = (prev.majorIllness && prev.majorIllness.type) || (()=>{ const byBand = prev.majorIllnessTypeByBand||{}; const all = Object.values(byBand).flat(); return all.length ? all[all.length-1] : null; })() || ((prev.chronicConditions||[]).length ? "慢性病" : null);
+  // 上一世角色當父母時的一致性：把上一世的人生總結與人生特質一併給AI
+  const prevTrait = classifyLifeTrait(prev.playStyle);
+  const prevLifeProfile = { summary: (prev.ending && prev.ending.overview) || "", trait: prevTrait.type ? prevTrait.text : "", epitaph: (prev.ending && prev.ending.epitaph) || "" };
   // 七、7.4.2／7.3.5.5：教養風格由這一世對該兒女的parenting_log換算得出（提前到建卡前算，家長卡的語氣要用到）
   const inheritedParentingStyle = computeInheritedParentingStyle(child);
   const heirOfFamilyBusiness = !!child.familyBusinessHeir; // 12.10交棒（2026-09-27）：這位孩子是上一代事業的繼承人
@@ -6854,14 +6882,16 @@ async function succeedAsChild(childName){
     name: prev.name, relation: deceasedRelation, gender: prev.gender==="女" ? "女" : "男", dialogueStyle: rollDialogueStyle(),
     traits: styleTraitPrefix ? (styleTraitPrefix + (child.summary ? "；過去點滴："+child.summary : "")) : deriveParentTraitFromAffinity(child.affinity, child.summary),
     affinity: child.affinity, summary: child.summary||"", lastTurn:0,
-    // 2026-09-22修正（bug回報：世代傳承後上一代主角被當成活著的父母）：
-    // 上一代主角在傳承當下已經過世，標記deceased/active:false/healthStage:4(過世)、cohabiting:false，
-    // 並直接視為estateSettled(遺產已經透過下面econ=rollEconomicTierForced(...prev.cash)在傳承流程內一次結算完畢)，
-    // 這樣13.5 rollParentHealthStageAdvance()的過濾條件(active!==false && !deceased)會自然跳過這張角色卡，
-    // 不會再被判定「需要協助/失能長照/再過世一次」
-    active:false, deceased:true, healthStage:4, estateSettled:true, isChild:false,
-    origin: "父母，從出生起", cohabiting: false, // 四、4.1（9/19新增）：世代傳承後從新主角視角重新寫，不沿用上一世「怎麼認識」的舊故事
-    age: prev.age, // 十三、13.5.1：沿用上一世死亡當下的年齡，比隨機骰更準確
+    // 七、7.4.3.3.1（2026-09-28定案，取代2026-09-22「開局時上一代已過世」的做法）：孩子15歲開局時上一代還在世，
+    // 以父母身分出現，死亡鎖定在孩子childAgeAtParentDeath歲那年(lockedDeathChildAge)，13.5健康狀態機照常但不會讓他過世；
+    // 開局前就已過世的(孩子未滿15歲)，照舊標為已故，遺產在開局時入帳(successionOpening)
+    active: prevAliveAtStart, deceased: !prevAliveAtStart, healthStage: prevAliveAtStart ? 1 : 4, estateSettled: !prevAliveAtStart, isChild:false,
+    origin: "父母，從出生起", cohabiting: prevAliveAtStart, // 四、4.1（9/19新增）：世代傳承後從新主角視角重新寫，不沿用上一世「怎麼認識」的舊故事
+    age: prevAliveAtStart ? parentAgeAtBirth + 15 : prev.age,
+    lockedDeathChildAge: prevAliveAtStart ? childAgeAtParentDeath : undefined,
+    lockedEstateShare: prevAliveAtStart ? estateShare : undefined,
+    prevLifeIllness: prevIllness || undefined,
+    prevLifeProfile,
     occupation: heirOfFamilyBusiness ? "自營業者" : undefined, handedOver: heirOfFamilyBusiness || undefined
   });
   let familyStructure;
@@ -6884,6 +6914,12 @@ async function succeedAsChild(childName){
   // 不可能是「雙親同住」；依實際是否還有一位在世同住家長，對應到既有分類裡最貼近的「單親－喪親」
   // （目前架構沒有「兩位家長皆已不在」的既有分類，沒有配偶時沿用原本就有的單親－喪親判斷）
   familyStructure = "單親－喪親";
+  // 7.4.3.3.1：上一代開局時在世，就不是喪親；沒有在世配偶時，離過婚或從沒結婚算單親－離異、喪偶算單親－喪親
+  if(prevAliveAtStart){
+    const hadDivorce = prev.characters.some(c=>c.romanceStatus==="divorced");
+    const widowed = prev.characters.some(c=>c.romanceStatus==="widowed");
+    familyStructure = spouse ? "雙親同住" : (widowed && !hadDivorce ? "單親－喪親" : "單親－離異");
+  }
   otherKids.forEach(k=>{
     // 4.1.3：手足稱謂依子女卡的gender(沒有才依「兒子／女兒」稱謂，再沒有才補骰)
     const kidGender = CHARACTER_GENDERS.includes(k.gender) ? k.gender : (genderFromRelation(k.relation) || rollNpcGender());
@@ -6938,7 +6974,10 @@ async function succeedAsChild(childName){
     wisdom, logicAbility, looks, temperament, appearance, personalityStyle,
     conscientiousness:{ selfDiscipline:50, prudence:50, achievement:50, responsibility:50, teamSolo:50 },
     stats:{ health, knowledge:talent, network:econ.network, expression },
-    cash: econ.savings, propertyValue:0, mortgageBalance:0, monthlyIncome: econ.allowance, monthlyExpenses:[],
+    cash: econ.savings + (prevAliveAtStart ? 0 : estateShare), propertyValue:0, mortgageBalance:0, monthlyIncome: econ.allowance, monthlyExpenses:[],
+    familyHomeValue: 0, // 7.4.3.3.2：上一代的房產已經算進遺產，不再另外骰原生家庭的房子，避免重複繼承
+    // 7.4.3.3.1：上一代在孩子未滿15歲就過世時，開局即是遺產事件，開場文字先交代「你○歲時，父親／母親就離開了」再接遺產
+    successionOpening: prevAliveAtStart ? null : { child_age: childAgeAtParentDeath, relation: deceasedRelation, parent_name: prev.name, estate: estateShare, heirs: heirsCount, illness: prevIllness || null },
     occupationCategory:null, housing:null, fertilityJourney:null,
     lowHealthStreak:0, networkIdleStreak:0, riskyLifestyle:false, deathForeshadowed:false,
     happiness:50, happinessBaseline:50, happinessRegressionCounter:0, milestoneSkipReason:{},
@@ -6948,7 +6987,8 @@ async function succeedAsChild(childName){
     ap: { ...ensureAP(prev), giftPending:false }, turnCount:0,
     lifeId: newLifeId(), // 2026-09-25：世代傳承是新的一世，換新id
     characters, // 4.1.3：每張家人卡建卡時已寫入gender
-    chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`],
+    chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`]
+      .concat(prevAliveAtStart ? [] : [`（${childAgeAtParentDeath}歲）${deceasedRelation}就離開了，留下一筆遺產`]),
     log:[], choices:[], reincarnations:(prev.reincarnations||0)+1,
     undosLeft:3, snapshot:null, ending:null,
     // 5.5生活方式選擇：世代傳承沒有結構化的教養風格/職業資料可判斷資格，簡化為預設可選（家族已有一定資源與歷史）
