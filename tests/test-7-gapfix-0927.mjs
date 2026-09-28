@@ -164,6 +164,38 @@ A.check("候選/背景興趣不計", ev("computeInterestHireBonusPp(state,'自�
 ev("state.interestCandidates=[{category:'商業交易',status:'active',investment:80},{category:'藝術創作',status:'active',investment:100}]");
 A.check("創業相關興趣只看手作/商業：取商業80", ev("topMatchedActiveInterestInvestment(state,'自營/家庭事業類')") === 80);
 A.check("不穩定/待業類沒有任何興趣對應", ev("Object.values(INTEREST_OCCUPATION_MATCH).flat().includes('不穩定/待業類')") === false);
+// 2026-09-28補：8.9七類逐一對照、刻意不對應的三類、投入度換算點、疊加上限、不影響薪資/職級
+const ALL_OCC = ["自由/創作類","自營/家庭事業類","勞力/服務類","受雇專業/白領類","軍公教/警消類","不穩定/待業類","政治人物子女(自身從政)","長期不在身邊類"];
+const EXPECT_89 = {
+  藝術創作: ["自由/創作類"], 手作工藝: ["自營/家庭事業類","勞力/服務類"], 知識研究: ["受雇專業/白領類","軍公教/警消類"],
+  體能競技: ["勞力/服務類","軍公教/警消類"], 科技邏輯: ["受雇專業/白領類","勞力/服務類"],
+  社交表演: ["自由/創作類","受雇專業/白領類"], 商業交易: ["自營/家庭事業類","受雇專業/白領類"]
+};
+A.check("8.9對應表剛好七類", ev("Object.keys(INTEREST_OCCUPATION_MATCH).length") === 7);
+for (const [cat, targets] of Object.entries(EXPECT_89)) {
+  ev(`state.interestCandidates=[{category:'${cat}',status:'active',investment:100}]`);
+  const got = ALL_OCC.filter(o => ev(`computeInterestHireBonusPp(state,${JSON.stringify(o)})`) === 10);
+  A.check(`${cat}只對到${targets.join("、")}`, JSON.stringify(got.sort()) === JSON.stringify([...targets].sort()), got);
+}
+ev("state.interestCandidates=Object.keys(INTEREST_OCCUPATION_MATCH).map(c=>({category:c,status:'active',investment:100}))");
+for (const o of ["不穩定/待業類","政治人物子女(自身從政)","長期不在身邊類"])
+  A.check(`七類全滿投入：${o}加成恆為0`, ev(`computeInterestHireBonusPp(state,${JSON.stringify(o)})`) === 0);
+for (const [inv, want] of [[0,0],[9,0],[10,1],[55,5],[100,10]]) {
+  ev(`state.interestCandidates=[{category:'藝術創作',status:'active',investment:${inv}}]`);
+  A.check(`投入度${inv} → +${want}`, ev("computeInterestHireBonusPp(state,'自由/創作類')") === want);
+}
+ev(`state.stats.knowledge=100; state.stats.network=100; state.conscientiousness.achievement=100; state.studentMajorGroup='藝術設計表演';
+    state.interestCandidates=[{category:'藝術創作',status:'active',investment:100}]`);
+const stackBd = ev("JSON.stringify(hireProbabilityBreakdown(state,'自由/創作類',{creativeBonusPct:10}))");
+const stack = JSON.parse(stackBd);
+A.check("科系對口＋伏筆＋興趣疊加：三項都在明細", ["科系對口","職涯伏筆","相關興趣投入"].every(l => stack.items.some(x => x.label === l)), stack.items);
+A.check("疊加後錄取機率仍≤90", stack.raw > 90 && stack.total === 90, stack);
+ev("state.stats.knowledge=60; state.jobLevel=1; state.tenureMonths=24; state.interestCandidates=[]");
+const salary0 = ev("computeCareerSalary(state,'自由/創作類')"), pct0 = ev("computeSalaryPercentile(state)");
+ev("state.interestCandidates=Object.keys(INTEREST_OCCUPATION_MATCH).map(c=>({category:c,status:'active',investment:100}))");
+A.check("興趣投入度不影響薪資落點/薪資", ev("computeSalaryPercentile(state)") === pct0 && ev("computeCareerSalary(state,'自由/創作類')") === salary0);
+A.check("興趣投入度不改職級", ev("state.jobLevel") === 1);
+ev("state.stats.knowledge=50; state.stats.network=50; state.conscientiousness.achievement=50; state.studentMajorGroup=null; state.jobLevel=0; state.tenureMonths=0");
 ev("state.interestCandidates=[]");
 
 // 13.2 健康經營年 → cap+5
