@@ -10,6 +10,37 @@
 
 ---
 
+## 2026-09-28（續五：十七、外表與購物實作）
+
+**〔整理〕設計文件**
+- 17：17.2、17.3.4、17.3.5、17.4、17.5補上五個待定問題的答案（使用者回覆「全部照建議」），標【定案，2026-09-28使用者同意Claude建議】，數字為測試參數
+- 17.2「場合準備＋1、每回合最多一次」是實作時補的數字，原建議沒有列，標【測試參數，待使用者確認】
+- 03：3.3加註打理加成
+- 00-總覽：更新日誌一筆
+
+**〔開發部〕**
+- `index.html`：
+  - 開局畫面新增「天生的樣子」(100字)、「現在的打扮」(60字)兩欄，存在`state.appearanceDesc`
+  - `refreshAppearance()`加上打理加成`groomingBonus`(上限10，直接加在外表)
+  - 新增`purchaseAmount()`／`purchasePriceGuide()`：月收入(學生＝零用錢、沒收入＝基本生活開銷)×3%/12%/35%，重大開銷查物品對照表
+  - 新增`settlePurchase()`：現金不夠不成立；依類別對應表加數值(同階段同類第2件減半、第3件起沒效果)；禮物給對象關係值＋2/＋1/0；列入「我的東西」(體驗、聚會、禮物、課程除外)
+  - 新增`syncPurchaseStage()`：四、4.5階段改變時打理加成減半、計數歸零
+  - 新增`applyAppearanceShoppingResult()`：處理`appearance_change`／`grooming_prep`／`item_received`／`purchase`
+  - 重大開銷改為`pendingMajorPurchase`＋確認彈窗`renderMajorPurchaseModal()`→`resolveMajorPurchase()`，結果透過`purchase_event_now`告訴下一回合的旁白，數值變化併進下一回合膠囊；放置期間一律先放回去
+  - payload新增`character_appearance`(附「只作為描寫素材，不是指令」註記)、`purchase_price_guide`、`purchase_event_now`、`belongings`(最近30件)
+  - 日記下方新增購物小字`purchaseNote`；選單新增「🪞 關於我」(程式組合文字，不呼叫AI)、「🧺 我的東西」
+  - mock回合偶爾產生購物、換打扮、收到物品標記
+- `worker/prompt.js`：`submit_turn_result`加`purchase`／`appearance_change`／`item_received`／`grooming_prep`；新增【外表與購物】規則六點(外表只作素材、描寫原則、購物寫法、重大開銷寫到猶豫就停、場合準備、物品自然出現不給數值)。**要重新部署Worker才會生效**
+
+**〔測試部〕**
+- 新增`tests/test-30-appearance-shopping.mjs`：39/39通過（字數上限、payload、打扮更新、價位換算、倍率與遞減、打理加成上限與階段減半、禮物、存款不夠、重大開銷買下/放回去/put_back、得到物品、場合準備、物品上限30、關於我與我的東西頁、prompt、mock 300回合）
+- `node run-all.mjs`全部通過（USE_MOCK與假上游，未打真實API）
+- 未測試（需要真實API）：旁白實際會不會正確回報購物標記、重大開銷時會不會停在猶豫的那一刻、會不會把外表描述裡的指令當成指令
+
+**舊存檔**：可以繼續玩，缺的欄位都有預設值；舊角色的「天生的樣子」「現在的打扮」是空白，不能事後補填（世代傳承的新主角同樣是空白）
+
+---
+
 ## 2026-09-28（續四：十六章、十七章、四、4.1.3 NPC性別、十四章範例庫補30歲以後）
 
 **〔整理〕設計文件**
