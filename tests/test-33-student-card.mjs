@@ -76,5 +76,28 @@ ev("state.studentCard=null; state.studentDepartment=null");
 const picked = JSON.parse(ev(`(()=>{ const out=[]; for(let i=0;i<40;i++){ const s={age:18, name:'x'}; const m=pick(MAJOR_CATEGORIES); const d=pick(MAJOR_DEPARTMENTS[m.key]); enrollInDepartment(s,m.key,d); out.push([m.key,d,s.collegeYearsRequired,s.studentCard.school]); } return JSON.stringify(out); })()`));
 A.check("放置代選用的enrollInDepartment：系別屬於該學群、年限正確、有校名", picked.every(([k, d, y, sch]) => depts[k].includes(d) && y === (["醫學", "牙醫", "獸醫"].includes(d) ? 5 : 4) && !!sch));
 
+// 5. 16.8（2026-09-28定案）學號規則與轉系/雙主修章
+A.check("學號：19歲入學為05開頭", ev("(()=>{ const s={age:19}; return makeStudentId(s); })()").startsWith("05"));
+ev(`state.age=19; enrollInDepartment(state,'理工資訊','資訊工程'); state.timeState.stageMode='college'; state.studentStatus='enrolled'; state.timeState.yearInStage=2;
+  window.__rf = rollFinalExamCheck; rollFinalExamCheck = ()=>({ passed:true, roll:50 })`);
+const idBefore = ev("state.studentCard.studentId"), schoolBefore = ev("state.studentCard.school");
+ev("resolveTransferOffer(state,'apply','商管財經'); rollFinalExamCheck = window.__rf");
+const card2 = JSON.parse(ev("JSON.stringify(state.studentCard)"));
+A.check("轉系後保留原學生證：校名、學號、原系別不變", card2.studentId === idBefore && card2.school === schoolBefore && card2.dept === "資訊工程" && card2.groupKey === "理工資訊");
+A.check("原系別旁加蓋「二年級轉入○○系」章，○○系屬於新學群", card2.stamps && card2.stamps.length === 1 && /^二年級轉入(企業管理|財務金融|會計|行銷|國際貿易)系$/.test(card2.stamps[0].text), card2.stamps);
+A.check("轉系後系別與學群更新成新的", ev("state.studentMajorGroup") === "商管財經" && ev("MAJOR_DEPARTMENTS['商管財經'].includes(state.studentDepartment)"));
+ev("resolveDualMajorOffer(state,'apply')");
+const card3 = JSON.parse(ev("JSON.stringify(state.studentCard)"));
+A.check("雙主修加蓋「雙主修○○系」章(其他學群、4年制)", card3.stamps.length === 2 && /^雙主修.+系$/.test(card3.stamps[1].text) && !ev("MAJOR_DEPARTMENTS['商管財經'].includes(state.dualMajorDepartment)") && !ev("FIVE_YEAR_DEPARTMENTS.includes(state.dualMajorDepartment)"), card3.stamps);
+A.check("系名本來就以「系」結尾時不重複(法律學系→法律學系)", ev("deptWithXi('法律學系')") === "法律學系" && ev("deptWithXi('會計')") === "會計系");
+ev("resolveDualMajorOffer(state,'decline')");
+A.check("拒絕雙主修不蓋章", JSON.parse(ev("JSON.stringify(state.studentCard)")).stamps.length === 2);
+ev("render(); document.getElementById('link-student-card') && document.getElementById('link-student-card').click()");
+const vw = doc.getElementById("student-card-modal");
+A.check("學生證正面顯示加蓋的章", vw && vw.querySelectorAll(".sid-extra-stamp").length === 2 && /年級轉入/.test(vw.textContent));
+if (vw) doc.getElementById("btn-student-card-close").click();
+ev("state.studentCard = null; resolveDualMajorOffer(state,'apply')");
+A.check("沒有學生證的舊存檔不補發也不報錯", ev("state.studentCard") === null);
+
 A.check("整段沒有jsdom錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
 process.exit(A.report() ? 0 : 1);

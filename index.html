@@ -411,6 +411,8 @@
   .sid-fields div{display:flex;gap:8px;}
   .sid-fields dt{color:var(--ink-soft);width:52px;flex-shrink:0;}
   .sid-fields dd{margin:0;font-weight:700;}
+  .sid-stamps{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;}
+  .sid-extra-stamp{display:inline-block;border:1.5px solid var(--stamp);color:var(--stamp);border-radius:6px;padding:0 6px;font-size:10.5px;font-family:var(--serif);font-weight:700;transform:rotate(-4deg);opacity:.9;background:rgba(255,251,244,.8);}
   .sid-emblem{position:absolute;right:10px;bottom:8px;width:70px;height:70px;color:var(--stamp);opacity:.12;}
   .sid-back-body{padding:14px;font-size:12.5px;}
   .sid-back-body .k{color:var(--ink-soft);margin-top:4px;}
@@ -3719,6 +3721,13 @@ const MAJOR_ICON_PATHS = {
 function majorIconSvg(key, cls){
   return `<svg class="${cls||"major-ic"}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MAJOR_ICON_PATHS[key]||""}</svg>`;
 }
+const GRADE_WORDS = ["一","二","三","四","五"];
+function deptWithXi(dept){ return /系$/.test(dept) ? dept : dept + "系"; }
+// 16.8（2026-09-28定案）：轉系、雙主修在學生證加蓋章；休學、復學不蓋章。沒有學生證的舊存檔不補發
+function addStudentCardStamp(s, text, kind){
+  if(!s.studentCard) return;
+  s.studentCard.stamps = (s.studentCard.stamps||[]).concat([{ text, kind, age: s.age }]);
+}
 // 16.8：入學——寫入學群/修業年限(9.1)，並建立學生證(校名、學號入學時決定後不變)
 function enrollInDepartment(s, groupKey, dept){
   const cat = findMajorCategory(groupKey);
@@ -5204,6 +5213,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
       major_group: s.studentMajorGroup ? findMajorCategory(s.studentMajorGroup)?.label : null,
       program_year: collegeYearLabel(s),
       dual_major_status: s.dualMajorStatus,
+      dual_major_department: s.dualMajorStatus==="active" ? (s.dualMajorDepartment||null) : null, // 16.8（2026-09-28）
       leave_status: s.leaveStatus
     },
     university_recent_event: s.universityEventLog, // 例如{type:"transfer_success",major:"..."}，剛發生的轉系/休學/肄業結果，自然帶進敘事即可，不用你去決定要不要發生
@@ -8871,6 +8881,7 @@ function renderStudentCardFaces(card, name){
           <div><dt>姓名</dt><dd>${escapeHtml(name||"")}</dd></div>
           <div><dt>學群</dt><dd>${escapeHtml(card.groupLabel||"")}</dd></div>
           <div><dt>系別</dt><dd>${escapeHtml(card.dept||"")}</dd></div>
+          ${(card.stamps||[]).length ? `<div class="sid-stamps">${card.stamps.map(st=>`<span class="sid-extra-stamp">${escapeHtml(st.text)}</span>`).join("")}</div>` : ``}
           <div><dt>入學年齡</dt><dd>${escapeHtml(String(card.entryAge))}歲</dd></div>
         </dl>
       </div>
@@ -9058,9 +9069,14 @@ function resolveTransferOffer(s, mainChoice, targetKey){
     const roll = examCheck.roll, probPct = null;
     if(success){
       const isFive = cat.isFiveYearEligible && isTransferFeasible(s.age,5,s.collegeDelayYearsUsed);
+      const gradeBefore = s.timeState.yearInStage || 1;
       assignStudentMajor(s, targetKey, isFive);
       s.timeState.yearInStage = 1; // 9.5.1【定案】不做學分抵免判斷，一律從大一重新起算
-      s.universityEventLog = { type:"transfer_success", major: cat.label };
+      // 十六、16.8（2026-09-28定案）：保留原學生證，原系別旁加蓋「○年級轉入○○系」章；轉系只選到學群，系別由程式從9.2清單代選
+      const dept = pick((MAJOR_DEPARTMENTS[targetKey]||[]).filter(d=>isFive ? FIVE_YEAR_DEPARTMENTS.includes(d) : !FIVE_YEAR_DEPARTMENTS.includes(d))) || pick(MAJOR_DEPARTMENTS[targetKey]||[cat.label]);
+      s.studentDepartment = dept;
+      addStudentCardStamp(s, `${GRADE_WORDS[gradeBefore-1]||gradeBefore}年級轉入${deptWithXi(dept)}`, "transfer");
+      s.universityEventLog = { type:"transfer_success", major: cat.label, department: dept };
     } else {
       s.universityEventLog = { type:"transfer_failed", major: cat.label };
     }
@@ -9099,6 +9115,13 @@ function renderDualMajorOfferModal(){
 function resolveDualMajorOffer(s, choice){
   // 9.5.2【定案】zero-cost：不論選哪邊都不動collegeDelayYearsUsed
   s.dualMajorStatus = choice==="apply" ? "active" : null; // decline時歸零而非設abandoned，abandoned專指「進行中才放棄」
+  if(choice==="apply"){
+    // 十六、16.8（2026-09-28定案）：雙主修加蓋「雙主修○○系」章；雙主修原本沒有選科系，由程式從其他學群的系別清單(9.2)代選
+    const other = pick(MAJOR_CATEGORIES.filter(m=>m.key!==s.studentMajorGroup));
+    const dept = pick((MAJOR_DEPARTMENTS[other.key]||[]).filter(d=>!FIVE_YEAR_DEPARTMENTS.includes(d))) || other.label;
+    s.dualMajorDepartment = dept;
+    addStudentCardStamp(s, `雙主修${deptWithXi(dept)}`, "dual");
+  }
   if(choice!=="apply") s.dualMajorOfferDeclined = true; // 2026-09-27：原本decline後才識≥70的玩家下一回合會再跳
 }
 // 9.5.2（9/16補充）雙主修中途放棄彈窗：candidate成立條件見checkDualMajorAbandonCandidate()
