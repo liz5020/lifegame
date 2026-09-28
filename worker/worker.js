@@ -58,12 +58,13 @@
 // 2026-09-28新增（十、10.5平均每條人生花費分兩種）：/archive與「同一個slot換了新life_id」時，把舊的一世標成已結束(usage.js的markLifeEnded)
 
 import { convertAnthropicResponse } from "./s2t.js";
-import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL, CHAPTER_SYSTEM_PROMPT, CHAPTER_TOOL, IDLE_SUMMARY_SYSTEM_PROMPT, IDLE_SUMMARY_TOOL } from "./prompt.js";
+import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL, CHAPTER_SYSTEM_PROMPT, CHAPTER_TOOL, IDLE_SUMMARY_SYSTEM_PROMPT, IDLE_SUMMARY_TOOL, LIFE_REVIEW_SYSTEM_PROMPT, LIFE_REVIEW_TOOL } from "./prompt.js";
 import {
   AP_NEW_LIFE_GIFT, loadRecord, saveRecord, apKvKey, preCharge, postCharge, publicAP,
   isValidNonce, isValidLifeId, isUsableTurnResponse, taipeiDateString, nowMs,
   addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse,
-  claimIdle, preIdleSummary, isUsableIdleSummaryResponse, chargeIdleRollback
+  claimIdle, preIdleSummary, isUsableIdleSummaryResponse, chargeIdleRollback,
+  canAffordLifeReview, chargeLifeReview, isUsableLifeReviewResponse
 } from "./ap.js";
 import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual, markLifeEnded } from "./usage.js";
 
@@ -438,6 +439,65 @@ async function handleIdleSummary(body, env, origin, ctx) {
   return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
 }
 
+// 十六、16.7.2（2026-09-28）：回顧這一生——人生軌跡＋人生花絮一次產生。餘額不足直接擋；AI產生成功才扣5點
+const MAX_LIFE_REVIEW_PAYLOAD_CHARS = 30000;
+const MAX_LIFE_REVIEW_TOKENS = 3000;
+export function validateLifeReviewMessages(messages) {
+  if (!Array.isArray(messages) || messages.length !== 1) return { ok: false, error: "messages必須剛好1則" };
+  const m = messages[0];
+  if (!m || typeof m !== "object" || m.role !== "user" || typeof m.content !== "string") return { ok: false, error: "messages[0]格式錯誤" };
+  if (Object.keys(m).some(k => k !== "role" && k !== "content")) return { ok: false, error: "messages[0]含有不允許的欄位" };
+  if (m.content.length > MAX_LIFE_REVIEW_PAYLOAD_CHARS) return { ok: false, error: "請求內容過長" };
+  let p;
+  try { p = JSON.parse(m.content); } catch (e) { return { ok: false, error: "content不是回顧素材" }; }
+  if (!p || typeof p !== "object" || !Array.isArray(p.stages) || p.stages.length === 0 || p.stages.length > 12) return { ok: false, error: "stages數量不正確" };
+  if (!Array.isArray(p.tidbits) || p.tidbits.length > 30) return { ok: false, error: "tidbits數量不正確" };
+  return { ok: true, payload: p, chars: m.content.length };
+}
+async function handleLifeReview(body, env, origin, ctx) {
+  const check = validateLifeReviewMessages(body.messages);
+  if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
+  const { key, slot, life_id: lifeId } = body;
+  if (!isValidKey(key) || !isValidSlot(slot)) return jsonResponse(origin, { error: { type: "invalid_request", message: "AI請求必須附帶金鑰與slot" } }, 400);
+  const safeLifeId = isValidLifeId(lifeId) ? lifeId : null;
+  const today = taipeiDateString(nowMs(env));
+  {
+    const { rec } = await loadRecord(env, key, slot, null);
+    if (!canAffordLifeReview(rec)) return jsonResponse(origin, { error: { type: "insufficient_action_points", message: "行動點不足" }, lifegame: { ap: publicAP(rec) } }, 402);
+  }
+  let upstream, text, data = null;
+  try {
+    upstream = await callAnthropic(env, {
+      model: ALLOWED_MODEL, max_tokens: MAX_LIFE_REVIEW_TOKENS, output_config: { effort: "low" },
+      tools: [LIFE_REVIEW_TOOL], tool_choice: { type: "tool", name: LIFE_REVIEW_TOOL.name },
+      system: [{ type: "text", text: LIFE_REVIEW_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: body.messages[0].content }]
+    });
+    text = await upstream.text();
+    if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
+  } catch (err) {
+    return jsonResponse(origin, { error: { message: String(err) } }, 502);
+  }
+  const usable = !!(upstream.ok && data && isUsableLifeReviewResponse(data));
+  // 成功才扣點(重新讀一次紀錄再扣)
+  const { rec } = await loadRecord(env, key, slot, null);
+  if (usable) { chargeLifeReview(rec); await saveRecord(env, key, slot, rec); }
+  const lifegame = { usable, ap: publicAP(rec) };
+  if (upstream.ok && data && data.usage) {
+    const tokens = extractUsage(data.usage);
+    lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
+    const job = recordUsage(env, { key, slot, lifeId: safeLifeId, category: "review", usage: data.usage, countsAsTurn: false, payloadChars: check.chars, taipeiDate: today });
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
+  }
+  if (usable) {
+    let out = data;
+    try { out = convertAnthropicResponse(data); } catch (e) { /* 轉換失敗就用原文 */ }
+    out.lifegame = lifegame;
+    return new Response(JSON.stringify(out), { status: 200, headers: corsHeaders(origin) });
+  }
+  return jsonResponse(origin, { error: { type: "upstream_unusable", message: "回顧生成失敗，沒有扣點" }, lifegame }, upstream.ok ? 502 : upstream.status);
+}
+
 async function handleChapter(body, env, origin, ctx) {
   const check = validateChapterMessages(body.messages);
   if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
@@ -505,6 +565,7 @@ async function handleAIProxy(request, env, origin, ctx) {
   if (!body || typeof body !== "object") return jsonResponse(origin, { error: { message: "請求格式錯誤" } }, 400);
   if (body.kind === "chapter") return handleChapter(body, env, origin, ctx); // 十五、章節成書
   if (body.kind === "idle_summary") return handleIdleSummary(body, env, origin, ctx); // 十、10.6.4放置摘要（2026-09-27）
+  if (body.kind === "life_review") return handleLifeReview(body, env, origin, ctx); // 十六、16.7.2回顧這一生（2026-09-28）
 
   const check = validateTurnMessages(body.messages);
   if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);

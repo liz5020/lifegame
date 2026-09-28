@@ -15,7 +15,7 @@ export const PRICE_PER_MTOK_USD = {
   output: 10.0
 };
 
-export const USAGE_CATEGORIES = ["turn", "chapter", "idle"]; // 10.6.4（2026-09-27）：放置摘要另立類別
+export const USAGE_CATEGORIES = ["turn", "chapter", "idle", "review"]; // 10.6.4（2026-09-27）：放置摘要另立類別；16.7.2（2026-09-28）：回顧這一生另立類別
 
 function num(v) { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; }
 
@@ -56,6 +56,7 @@ function lifeMeta(life) {
     t: life.turn.turns, c: life.turn.calls, i: life.turn.input, w: life.turn.cache_write, r: life.turn.cache_read, o: life.turn.output,
     ci: life.chapter.input, cw: life.chapter.cache_write, cr: life.chapter.cache_read, co: life.chapter.output, cc: life.chapter.calls,
     ii: life.idle.input, iw: life.idle.cache_write, ir: life.idle.cache_read, io: life.idle.output, // 10.6.4放置摘要
+    vi: life.review.input, vw: life.review.cache_write, vr: life.review.cache_read, vo: life.review.output, // 16.7.2回顧這一生
     ud: life.updated, lt: TONE_CODES[life.last_tone] || 0, // 6.5流失分析：最後活動日、最後一回合語氣
     e: life.ended ? 1 : 0 // 10.5（2026-09-28）：這一世已結束
   };
@@ -154,7 +155,7 @@ export async function buildUsageSummary(env, todayTaipei) {
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
   const played = lives.filter(m => num(m.t) > 0);
-  const lifeCost = (m) => costUSD({ input: m.i, cache_write: m.w, cache_read: m.r, output: m.o }) + costUSD({ input: m.ci, cache_write: m.cw, cache_read: m.cr, output: m.co }) + costUSD({ input: m.ii, cache_write: m.iw, cache_read: m.ir, output: m.io });
+  const lifeCost = (m) => costUSD({ input: m.i, cache_write: m.w, cache_read: m.r, output: m.o }) + costUSD({ input: m.ci, cache_write: m.cw, cache_read: m.cr, output: m.co }) + costUSD({ input: m.ii, cache_write: m.iw, cache_read: m.ir, output: m.io }) + costUSD({ input: m.vi, cache_write: m.vw, cache_read: m.vr, output: m.vo });
   // 6.5：流失分析——最後活動日距今≥7天的人生，依最後一回合語氣分組，並列出這些人生玩到第幾回合
   const cutoff = addDays(todayTaipei, -7);
   const churned = played.filter(m => typeof m.ud === "string" && m.ud <= cutoff);
@@ -179,7 +180,7 @@ export async function buildUsageSummary(env, todayTaipei) {
     last_7_days: Object.assign({ from: days[6].date, to: days[0].date, max_payload_chars: Math.max(...days.map(d => d.rec.max_payload_chars)) }, perCategory(days.map(d => d.rec))),
     // 10.5（2026-09-28）：同時回傳「已結束的人生平均」與「全部人生平均(含進行中)」
     per_life: {
-      note: "全期間的累計，含章節成書與放置摘要的花費；「一世」以life_id計(世代傳承、轉世丹都換新的一世)。ended＝已闔卷/刪除，或同一格子已經換到下一世；all含還在進行中的人生，會被拉低。2026-09-28改版前就結束的人生沒有標記，會算在進行中",
+      note: "全期間的累計，含章節成書、放置摘要與回顧這一生的花費；「一世」以life_id計(世代傳承、轉世丹都換新的一世)。ended＝已闔卷/刪除，或同一格子已經換到下一世；all含還在進行中的人生，會被拉低。2026-09-28改版前就結束的人生沒有標記，會算在進行中",
       all: lifeAverages(played),
       ended: lifeAverages(played.filter(m => num(m.e) > 0))
     },

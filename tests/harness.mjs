@@ -36,6 +36,13 @@ export function makeFakeAnthropic(opts = {}) {
     let input;
     if (toolName === "submit_chapter") {
       input = opts.chapterInput ? opts.chapterInput(body) : { title: "第一章　夏天的尾巴", text: "你把書包丟在床上。\n\n窗外的蟬聲還沒停。".repeat(40) };
+    } else if (toolName === "submit_life_review") { // 十六、16.7.2回顧這一生(2026-09-28)
+      let payload = {};
+      try { payload = JSON.parse(body.messages[0].content); } catch (e) {}
+      input = opts.reviewInput ? opts.reviewInput(payload, body) : {
+        trajectory: (payload.stages || []).map(g => ({ stage: g.stage, text: g.stage_label + "的那幾年，你一直在路上。" })),
+        tidbits: (payload.tidbits || []).map((t, i) => ({ i, text: "你一直不知道的事：" + t.category + "。" }))
+      };
     } else if (toolName === "submit_idle_summary") { // 10.6.4放置摘要(2026-09-27)
       let payload = {};
       try { payload = JSON.parse(body.messages[0].content); } catch (e) {}

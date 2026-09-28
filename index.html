@@ -420,22 +420,40 @@
   @keyframes enroll-stamp{0%{transform:rotate(-8deg) scale(1.6);opacity:0;}100%{transform:rotate(-8deg) scale(1);opacity:.9;}}
   .mp-nav{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:10px;font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums;}
   .mp-hint{font-size:12px;color:var(--ink-soft);margin:8px 0 0;}
-  /* 十六、16.7 結局人生回顧頁 */
-  .ending{padding:28px 18px 34px;text-align:center;}
-  .end-card{position:relative;padding:30px 20px 24px;margin-bottom:22px;}
-  .end-card .stamp{margin:0 auto 14px;}
-  .end-share{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;border:1px solid rgba(74,46,31,.15);background:rgba(255,255,255,.55);color:var(--stamp);font-size:16px;cursor:pointer;}
-  .end-kicker{font-size:12px;color:var(--ink-soft);letter-spacing:2px;}
-  .end-name{font-family:var(--serif);font-size:26px;letter-spacing:4px;margin:4px 0 12px;}
+  /* 十六、16.7 結局人生回顧頁(16.7.0版面) */
+  .ending{padding:30px 18px 34px;text-align:center;}
+  .end-kicker{font-size:12.5px;color:var(--ink-soft);letter-spacing:2px;}
+  .end-name{font-family:var(--serif);font-size:28px;letter-spacing:4px;margin:4px 0 16px;}
+  .end-stamp{margin:0 auto 18px;}
+  .end-overview{font-size:15.5px;line-height:1.95;text-align:left;margin:0 0 16px;}
   .end-epitaph{font-family:var(--serif);font-size:17px;line-height:1.9;color:var(--stamp);margin:0;}
-  .end-caption{font-size:11.5px;color:var(--ink-soft);margin-top:6px;}
-  .end-recap{text-align:left;}
-  .end-recap h3{font-family:var(--serif);font-size:18px;margin:0 0 12px;text-align:center;letter-spacing:2px;}
-  .end-seg{margin-bottom:14px;}
-  .end-seg-label{font-size:12px;color:var(--stamp);margin-bottom:4px;letter-spacing:1px;}
-  .end-seg p{font-family:var(--serif);font-size:15px;line-height:1.9;margin:0;}
-  .end-trans{font-family:var(--serif);font-size:14px;color:var(--ink-soft);font-style:italic;margin:0 0 14px;padding-left:12px;border-left:2px solid rgba(200,85,61,.3);}
-  .end-book-link{font-size:14px;margin:6px 0 22px;}
+  .end-caption{font-size:11.5px;color:var(--ink-soft);margin:6px 0 20px;}
+  .end-stats{padding:12px 14px 14px;margin-bottom:18px;}
+  .end-radar{width:100%;max-width:280px;height:auto;display:block;margin:0 auto;}
+  .end-radar .rg{fill:none;stroke:rgba(74,46,31,.15);stroke-width:1;}
+  .end-radar .rv{fill:rgba(224,131,106,.35);stroke:var(--bar);stroke-width:2;}
+  .end-radar text{font-size:10px;fill:var(--ink-soft);font-family:var(--sans);}
+  .end-cash{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--line);margin-top:8px;padding-top:10px;font-size:13px;color:var(--ink-soft);}
+  .end-cash b{font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .end-people h3,.end-review h3{font-family:var(--serif);font-size:17px;margin:0 0 10px;letter-spacing:2px;}
+  .end-people{margin-bottom:18px;}
+  .end-people-row{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;}
+  .end-person{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12.5px;}
+  .end-review{padding:16px;margin-bottom:18px;text-align:left;}
+  .end-review h3{text-align:center;}
+  .rv-note{font-size:12.5px;color:var(--ink-soft);margin:6px 0;}
+  .rv-teaser{border-left:2px solid rgba(200,85,61,.4);padding:4px 0 4px 12px;margin:10px 0;}
+  .rv-teaser p{margin:4px 0 0;font-size:15px;line-height:1.85;}
+  .rv-free{font-size:11px;color:var(--stamp);letter-spacing:1px;}
+  .end-review .primary-btn{width:100%;margin-top:6px;}
+  .rv-tabs{display:flex;gap:6px;margin-bottom:10px;}
+  .rv-tab{flex:1;padding:8px;border-radius:999px;border:1px solid rgba(74,46,31,.15);background:rgba(255,255,255,.5);cursor:pointer;font-family:var(--sans);font-size:13px;color:var(--ink);}
+  .rv-tab.on{border-color:var(--stamp);color:var(--stamp);background:rgba(200,85,61,.08);}
+  .rv-traj,.rv-tidbits{list-style:none;margin:0;padding:0;}
+  .rv-traj li,.rv-tidbits li{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14.5px;line-height:1.8;}
+  .rv-traj li:last-child,.rv-tidbits li:last-child{border-bottom:none;}
+  .rv-stage{font-size:11.5px;color:var(--stamp);font-family:var(--sans);}
+  .end-actions .ghost-btn{width:100%;margin:0 0 10px;}
   .end-next{display:grid;grid-template-columns:1fr;gap:10px;}
   .end-next.two{grid-template-columns:1fr 1fr;}
   .end-next .primary-btn{margin:0;padding:12px 10px;font-size:14.5px;}
@@ -443,7 +461,8 @@
   .end-kids-title{font-size:13px;color:var(--ink-soft);margin-bottom:8px;}
   .end-kids .choice-btn{display:block;width:100%;margin-bottom:6px;}
   .end-share-msg{font-size:12px;color:var(--ink-soft);min-height:18px;margin:10px 0 0;}
-  .end-close{display:block;margin:18px auto 0;color:var(--ink-soft);font-size:13px;}
+  .end-book-link{display:block;margin:14px auto 0;font-size:14px;}
+  .end-close{display:block;margin:14px auto 0;color:var(--ink-soft);font-size:13px;}
   .ending .foot-mark{margin-top:30px;}
 
   /* 16.4.4 減少動態模式：取消位移、縮放、彈跳，只保留150ms淡入；背景色塊停止飄動 */
@@ -1318,7 +1337,88 @@ function buildLifeSummaryMaterial(s){
         direction: delta>0 ? "up" : "down" });
     }
   }
-  return { segments, transitions };
+  // 十六、16.7.0（2026-09-28）：人生總結的性格描述要跟7.7人生特質一致，生成時一併提供；試看花絮的素材由客戶端先挑好
+  const trait = classifyLifeTrait(s.playStyle);
+  const tidbits = buildTidbitMaterials(s, { segments, transitions });
+  const teaser = pickTeaserTidbit(tidbits);
+  return { segments, transitions, life_trait: trait.type ? { label: trait.label, text: trait.text } : { label: null, text: trait.text },
+    teaser_tidbit_material: teaser };
+}
+// ========== 十六、16.7.2.3 人生花絮素材（2026-09-28）==========
+// 花絮只寫玩家遊玩時看不到、但程式有記錄的事實；挑選由客戶端決定，AI只負責寫成句子。
+// 類別優先順序照16.7.2.3表格：開局設定揭曉 → 性格悄悄的改變 → 別人眼中的你 → 命運的骰子 → 科系埋下的伏筆；每階段1到3則【測試參數】
+const TIDBIT_PER_STAGE_MAX = 3; // 【測試參數,16.7.2.3】
+const TIDBIT_CATEGORY_ORDER = ["opening","change","others_view","fate","major_foreshadow"];
+function buildTidbitMaterials(s, material){
+  const out = [];
+  const stages = (material.segments||[]).map(x=>x.stage);
+  const firstStage = stages[0] || "student";
+  // 開局設定揭曉：家境與開局的性格傾向(依附兩軸起點、同儕位置)
+  const init = s.openingProfile || null; // 舊存檔沒有就只寫家境
+  out.push({ stage:firstStage, category:"opening", facts:{ family: s.family || null, family_structure: s.familyStructure || null,
+    attachment_start: init ? { anxiety:init.anxiety, avoidance:init.avoidance } : null, peer_position_start: init ? init.peerPosition : (s.peerPosition||null) } });
+  // 性格悄悄的改變：光譜位移(同L2變化句的素材)
+  (material.transitions||[]).forEach(t=>out.push({ stage:t.after_stage, category:"change", facts:{ axis_label:t.axis_label, from:t.from, to:t.to, direction:t.direction, from_stage_label:t.from_stage_label, to_stage_label:t.to_stage_label } }));
+  // 別人眼中的你(16.7.2.4)：有重要共同記憶的NPC，依好感度取前3位；不替NPC編內心話
+  const lastStage = stages[stages.length-1] || firstStage;
+  (s.characters||[]).filter(c=>c.summary && String(c.summary).trim()).sort((a,b)=>(b.affinity||0)-(a.affinity||0)).slice(0,3).forEach(c=>{
+    const seg = (material.segments||[]).find(g=>(g.key_npcs||[]).some(n=>n.name===c.name));
+    out.push({ stage: seg ? seg.stage : lastStage, category:"others_view", facts:{ name:c.name, relation:relationCategoryLabel(c), affinity_words: relationshipStatusLabel(c), origin:c.origin||"", shared_memory:String(c.summary).slice(0,120) } });
+  });
+  // 命運的骰子(16.7.2.5)：只取以小搏大的紀錄，最意外的3筆
+  fateTidbitCandidates(s, 3).forEach(r=>out.push({ stage: stages.includes(r.stage) ? r.stage : lastStage, category:"fate",
+    facts:{ age:r.age, event:r.event, probability_words: fateProbabilityWords(r), result_text:r.resultText, is_open_check:r.isOpenCheck } }));
+  // 科系埋下的伏筆(9.3)：權重最高的伏筆線
+  if(s.studentMajorGroup && MAJOR_FORESHADOW_WEIGHT_TABLE[s.studentMajorGroup]){
+    const w = MAJOR_FORESHADOW_WEIGHT_TABLE[s.studentMajorGroup];
+    const top = Object.keys(w).filter(k=>w[k]==="高");
+    if(top.length) out.push({ stage:firstStage, category:"major_foreshadow", facts:{ major:(findMajorCategory(s.studentMajorGroup)||{}).label||"", department:s.studentDepartment||null, leaning:top } });
+  }
+  // 每階段最多3則，依類別優先序
+  const byStage = {};
+  out.sort((a,b)=>TIDBIT_CATEGORY_ORDER.indexOf(a.category)-TIDBIT_CATEGORY_ORDER.indexOf(b.category)).forEach(t=>{
+    byStage[t.stage] = byStage[t.stage] || [];
+    if(byStage[t.stage].length < TIDBIT_PER_STAGE_MAX) byStage[t.stage].push(t);
+  });
+  return Object.values(byStage).flat();
+}
+// 16.7.0試看：優先從命運的骰子類挑一則；沒有就照16.7.2.3的優先順序
+function pickTeaserTidbit(list){
+  return (list||[]).find(t=>t.category==="fate") || (list||[]).slice().sort((a,b)=>TIDBIT_CATEGORY_ORDER.indexOf(a.category)-TIDBIT_CATEGORY_ORDER.indexOf(b.category))[0] || null;
+}
+// AI沒寫到時的備案句子(試看花絮)
+function fallbackTidbitText(t, s){
+  if(!t) return "";
+  const f = t.facts||{};
+  if(t.category==="fate") return `${f.age}歲那年的${f.event}，其實${f.probability_words}，結果${f.result_text}。`;
+  if(t.category==="opening") return `${s.name}一開始出生在${f.family||"一個普通"}的家，${f.family_structure?"家裡是"+f.family_structure+"，":""}後來的很多事，是從那裡慢慢長出來的。`;
+  if(t.category==="change") return `從${f.from_stage_label}到${f.to_stage_label}，${s.name}做事的樣子悄悄變了。`;
+  if(t.category==="others_view") return `在${f.name}那裡，一直記得：${f.shared_memory}。`;
+  if(t.category==="major_foreshadow") return `念${f.department||f.major}的那幾年，其實比較容易把人帶往${f.leaning.join("、")}。`;
+  return "";
+}
+// 16.7.0人生總結的備案：程式組句。依①創業②做最久的職業③婚姻與子女④最高學歷(碩士以上)⑤傳承挑最多3項【測試參數】；不列負面經歷
+const OCCUPATION_PHRASE = {
+  "受雇專業/白領類":"在公司上班", "軍公教/警消類":"當公務員", "勞力/服務類":"做服務業", "自由/創作類":"接案創作",
+  "自營/家庭事業類":"經營自己的店", "長期不在身邊類":"長年在外地工作", "政治人物子女(自身從政)":"從政"
+};
+function composeLifeOverviewFallback(s){
+  const items = [];
+  const startedBusiness = s.milestones && s.milestones.first_startup==="completed";
+  if(startedBusiness) items.push("自己創過業");
+  const months = s.occupationMonths || {};
+  const longest = Object.keys(months).filter(k=>OCCUPATION_PHRASE[k] && !(startedBusiness && k==="自營/家庭事業類")).sort((a,b)=>months[b]-months[a])[0];
+  if(longest && months[longest]>=12) items.push(`${OCCUPATION_PHRASE[longest]}${Math.round(months[longest]/12)}年`);
+  const kids = (s.characters||[]).filter(c=>c.isChild && !c.deceased).length;
+  const married = (s.characters||[]).some(c=>c.romanceStatus==="married" || c.romanceStatus==="widowed");
+  if(kids>0) items.push(`養大${kids}個孩子`); else if(married) items.push("成了家");
+  // ④最高學歷：遊戲目前沒有研究所，碩士以上不會出現
+  if(s.familyBusinessHandedTo || (s.chronicle||[]).some(x=>/把一手經營的事業交給了/.test(x))) items.push("把事業交給了下一代");
+  const picked = items.slice(0,3);
+  if(!picked.length) return "";
+  const family = picked.find(x=>/孩子|成了家/.test(x));
+  const rest = picked.filter(x=>x!==family);
+  return rest.join("、") + (family ? (rest.length ? "，" : "") + family : "") + "。";
 }
 // ========== 七、7.7 人生特質（2026-09-27實作，使用者授權Claude全權判斷） ==========
 // 7.7.4【定案】六種行為組合、名稱改白話(7.7.3)；門檻【測試參數】先定一版，等真實遊玩資料再調(7.7.4)。
@@ -1395,6 +1495,14 @@ function assembleEnding(s, r){
       tone:m.tone, resume_entries:m.resume_entries, key_npcs:m.key_npcs, text: byStage[m.stage] || "" })),
     transitions: material.transitions.map(t=>({ after_stage:t.after_stage, text: byTrans[t.after_stage] || "" })),
     epitaph: ls.epitaph || "",
+    // 十六、16.7.0：人生總結由AI寫(同一次呼叫)，沒寫到就用程式組句；都沒有就不顯示
+    overview: String(ls.overview||"").trim() || composeLifeOverviewFallback(s),
+    overviewSource: String(ls.overview||"").trim() ? "ai" : (composeLifeOverviewFallback(s) ? "fallback" : "none"),
+    lifeTrait: material.life_trait || null,
+    // 十六、16.7.0試看：一則免費花絮，素材客戶端挑好，AI寫句子；AI沒寫就用程式句子
+    teaser: material.teaser_tidbit_material ? { stage: material.teaser_tidbit_material.stage, category: material.teaser_tidbit_material.category,
+      text: String(ls.teaser_tidbit||"").trim() || fallbackTidbitText(material.teaser_tidbit_material, s) } : null,
+    review: null, // 16.7.2「回顧這一生」解鎖後才有
     successionAvailable: !!r.succession_available
   };
 }
@@ -3253,6 +3361,7 @@ function newRoll(carry, identity){
     age:15, luckHidden,
     birthday: rollBirthday(), // 一、1.2.9.11.1.1（2026-09-24定案）：開局隨機給一個生日，只作為行事曆事件，不改變年齡(年齡依學年增加)
     family: economicTier, familyMonthlyIncome, familySavings, familyStructure, isPoliticianChild,
+    openingProfile: { anxiety, avoidance, peerPosition }, // 十六、16.7.2.3花絮「開局設定揭曉」：開局骰定的性格傾向(之後會變，這裡留原點)
     collegeLocation: null,
     // 二、2.2（2026-09-23新增）：prologue開場段落只出現這一次，見startLife()/advanceStructuredTime()
     timeState: { stageMode:"highschool", segmentIndex:0, yearInStage:1, adultTurnsInYear:0, turnsInSegment:0, prologue:true },
@@ -5353,7 +5462,9 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
           text:`（模擬${m.tone}）${m.stage_label}那幾年，${s.name}${m.key_npcs.length?("身邊有"+m.key_npcs.map(n=>n.name).join("、")+"，"):""}${m.resume_entries.length?m.resume_entries.join("；"):"日子就這樣一天一天過去"}。` })),
         transitions: material.transitions.map(t=>({ after_stage:t.after_stage,
           text:`（模擬變化句）從${t.from_stage_label}到${t.to_stage_label}，做事的樣子跟以前不太一樣了。` })),
-        epitaph:`（模擬墓誌銘）${s.name}，走過${s.age}年，留下一些人記得的事。`
+        epitaph:`（模擬墓誌銘）${s.name}，走過${s.age}年，留下一些人記得的事。`,
+        overview: MOCK_ENDING_OVERVIEW_FAIL ? "" : `（模擬人生總結）${s.name}在不同的地方待過，也換過幾次方向。${material.life_trait && material.life_trait.label ? "這一生"+material.life_trait.label+"。" : ""}身邊的人記得，${s.name}總是會把晚到的人的那一份留下來。`,
+        teaser_tidbit: MOCK_ENDING_OVERVIEW_FAIL ? "" : (material.teaser_tidbit_material ? "（模擬試看）"+fallbackTidbitText(material.teaser_tidbit_material, s) : "")
       }
     };
   }
@@ -5464,6 +5575,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
 }
 // 7.1.4（9/20整節改版）：原本的ENDING_DEFINITIONS標籤計分制與computeEndingTitle()已整套移除，
 // 不再有「結局標籤」這個東西。改為buildLifeSummaryMaterial()/assembleEnding()的人生總結，見上方7.1.4區塊。
+let MOCK_ENDING_OVERVIEW_FAIL = false; // 🛠測試用：模擬AI沒寫人生總結，走程式組句備案
 let MOCK_AI_DELAY_MS = 450; // 1.1.4（2026-09-25）：🛠面板可調，測試等待畫面用(例如拉到20000)
 async function mockCallAI(actionText, forceEnding, timeCtx){
   await new Promise(r=>setTimeout(r, MOCK_AI_DELAY_MS));
@@ -5973,6 +6085,11 @@ function applyMonthlySettlement(s, monthsCrossed){
   if(monthsCrossed>0){
     // 十二、12.12（2026-09-20新增）：tenure_months隨月份邊界累加，供12.5升遷年資門檻／12.3薪資年資加成使用
     if(s.careerStatus===CAREER_STATUS.EMPLOYED) s.tenureMonths = (s.tenureMonths||0) + monthsCrossed;
+    // 十六、16.7.0人生總結備案要知道「做最久的職業」：在職或經營事業期間，依職業類別累計月數
+    if((s.careerStatus===CAREER_STATUS.EMPLOYED || s.careerStatus===CAREER_STATUS.BUSINESS) && s.occupationCategory){
+      s.occupationMonths = s.occupationMonths || {};
+      s.occupationMonths[s.occupationCategory] = (s.occupationMonths[s.occupationCategory]||0) + monthsCrossed;
+    }
     const totalExpenses = s.monthlyExpenses.reduce((sum,e)=>sum+e.amount,0);
     // 3.4.8 基本生活開銷：所有人生階段皆適用，依居住狀態決定，不再以occupationCategory為開關
     const livingCost = computeBaseLivingCost(s); // 3.4.11：已內含household共同生活分攤係數與子女扶養費
@@ -9499,44 +9616,80 @@ function renderEldercareDecisionModal(pending){
   };
 }
 
+// ========== 十六、16.7 結局人生回顧頁（2026-09-28定案版面，16.7.0）==========
+// 由上到下：結局標題 → 享年N歲・定稿印章 → 人生總結 → 墓誌銘 → 雷達圖＋最終存款 → 重要的人 → 回顧這一生(付費) → 分享這一生、開始下一世；
+// 下方保留「翻開人生之書」「闔上這份草稿」(寫入時的處理，見16.7.0說明)。七、7.1.4的L1/L2照舊產生存檔，不在這一頁顯示
+const LIFE_REVIEW_COST = 5; // 16.7.2.1【定案】比照十、10.6.5；金流上線後改定價
+const ENDING_RADAR_STATS = [["health","健康"],["knowledge","才識"],["expression","表達力"],["appearance","外表"],["network","人脈"]];
+function endingStatValue(s, k){ return Math.round(k==="appearance" ? (s.appearance||0) : ((s.stats||{})[k]||0)); }
+function renderEndingRadar(s){
+  const cx=110, cy=104, R=78;
+  const pt = (i, r)=>{ const ang = -Math.PI/2 + i*2*Math.PI/5; return [cx + r*Math.cos(ang), cy + r*Math.sin(ang)]; };
+  const ring = (f)=>ENDING_RADAR_STATS.map((_,i)=>pt(i, R*f).map(v=>v.toFixed(1)).join(",")).join(" ");
+  const vals = ENDING_RADAR_STATS.map(([k])=>clamp(endingStatValue(s,k),0,100));
+  const poly = vals.map((v,i)=>pt(i, R*v/100).map(x=>x.toFixed(1)).join(",")).join(" ");
+  const labels = ENDING_RADAR_STATS.map(([k,l],i)=>{ const [x,y] = pt(i, R+18); return `<text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle">${l} ${vals[i]}</text>`; }).join("");
+  return `<svg class="end-radar" viewBox="0 0 220 210" role="img" aria-label="五項能力：${ENDING_RADAR_STATS.map(([k,l],i)=>l+vals[i]).join("、")}">
+    ${[1,0.66,0.33].map(f=>`<polygon points="${ring(f)}" class="rg"/>`).join("")}
+    ${ENDING_RADAR_STATS.map((_,i)=>{ const [x,y]=pt(i,R); return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="rg"/>`; }).join("")}
+    <polygon points="${poly}" class="rv"/>${labels}</svg>`;
+}
+// 重要的人：關係等級(16.3.5五段)最高的前四位；同級時最近一次互動較近者優先
+function endingImportantPeople(s){
+  return (s.characters||[]).slice().sort((a,b)=>(relationDotCount(b)-relationDotCount(a)) || ((b.lastTurn||0)-(a.lastTurn||0))).slice(0,4);
+}
+function renderLifeReviewBlock(s, opts){
+  const e = s.ending||{};
+  const readOnly = opts && opts.readOnly;
+  if(e.review){
+    const tab = lifeReviewTab;
+    const tidbits = e.review.tidbits||[];
+    return `<section class="end-review glass" id="end-review">
+      <h3>回顧這一生</h3>
+      <div class="rv-tabs" role="tablist"><button class="rv-tab${tab==="trajectory"?" on":""}" data-tab="trajectory" role="tab">人生軌跡</button><button class="rv-tab${tab==="tidbits"?" on":""}" data-tab="tidbits" role="tab">人生花絮</button></div>
+      ${tab==="trajectory" ? `<ol class="rv-traj">${(e.review.trajectory||[]).map(t=>`<li><span class="rv-stage">${escapeHtml(t.label||"")}</span><span class="serif">${escapeHtml(t.text||"")}</span></li>`).join("")}</ol>`
+        : `<ul class="rv-tidbits">${tidbits.map(t=>`<li><span class="rv-stage">${escapeHtml(t.label||"")}</span><span class="serif">${escapeHtml(t.text||"")}</span></li>`).join("") || `<li class="serif">這一生沒有留下可以揭曉的花絮。</li>`}</ul>`}
+    </section>`;
+  }
+  const ap = s.phase==="ending" ? totalAP(s) : 0;
+  return `<section class="end-review glass" id="end-review">
+    <h3>回顧這一生</h3>
+    <p class="rv-note">解鎖後可以看「人生軌跡」與「人生花絮」——那些玩的時候看不到、但一直記著的事。</p>
+    ${e.teaser && e.teaser.text ? `<div class="rv-teaser"><span class="rv-free">試看一則花絮</span><p class="serif">${escapeHtml(e.teaser.text)}</p></div>` : ``}
+    ${readOnly ? `<p class="rv-note">這一生已經闔上，封測期間不能再解鎖。</p>` : `
+    <button class="primary-btn" id="btn-review-unlock" ${ap<LIFE_REVIEW_COST||lifeReviewBusy?"disabled":""}>${lifeReviewBusy ? "旁白正在整理這一生…" : `解鎖回顧這一生（${LIFE_REVIEW_COST}點）`}</button>
+    ${ap<LIFE_REVIEW_COST && !lifeReviewBusy ? `<p class="rv-note">行動點不足${LIFE_REVIEW_COST}點（目前${ap}點）。</p>` : ``}
+    <p class="rv-note" id="review-msg" aria-live="polite"></p>`}
+  </section>`;
+}
+let lifeReviewTab = "trajectory";
+let lifeReviewBusy = false;
 function renderEnding(){
   const s = state;
+  const e = s.ending || {};
   const kids = eligibleChildren();
-  // 7.4.1【定案】有兒女就提供延續選項（2026-09-27修正：原本還要AI回傳succession_available=true，AI漏填時有子女的玩家會失去傳承選項；
-  // 有沒有子女是客戶端確定的事，不再假手AI。successionAvailable欄位保留記錄，不參與判斷）
+  // 7.4.1【定案】有兒女就提供延續選項（有沒有子女是客戶端確定的事，不假手AI）
   const canSucceed = kids.length>0;
-  // 七、7.1.4（9/20改版）：不顯示任何標籤、分數、排名。
-  // 依序是 L1段落回顧 →（階段之間）L2變化句 → L3墓誌銘。
-  // 舊存檔相容：9/20以前的存檔只有title/summary，沒有segments，降級成單段顯示不讓畫面爆掉。
-  const segs = s.ending.segments || (s.ending.summary ? [{label:"", text:s.ending.summary}] : []);
-  const transByStage = {};
-  (s.ending.transitions||[]).forEach(t=>{ if(t && t.after_stage) transByStage[t.after_stage] = t.text||""; });
-  const summaryHtml = segs.map(seg=>{
-    const trans = transByStage[seg.stage];
-    return `
-    <div class="end-seg">
-      ${seg.label ? `<div class="end-seg-label">${escapeHtml(seg.label)}${seg.age_from!=null?`（${seg.age_from}－${seg.age_to}歲）`:""}</div>` : ``}
-      <p>${escapeHtml(seg.text||"")}</p>
-    </div>
-    ${trans ? `<p class="end-trans">${escapeHtml(trans)}</p>` : ``}`;
-  }).join("");
-  // 十六、16.7（2026-09-28 claude.ai定案結構）：結局卡 → 人生回顧(L1/L2展開不收合) → 翻開人生之書 → 下一步按鈕 → 闔上這份草稿。
-  // 原本的六格數值(含不該給玩家看的福緣)拿掉；雷達圖、重要的人、付費人生軌跡入口新結構沒有列，待使用者確認後再決定
-  // 結局卡標題：七、7.1.4.1不輸出標籤，先用「人生草稿・第N世」＋名字【待確認】；印章用16.2.4的特殊印章字「定稿」
+  const people = endingImportantPeople(s);
   return `
   <div class="ending">
-    <section class="end-card glass" id="end-card">
-      <button class="end-share" id="btn-ending-share" aria-label="分享這一生" title="分享這一生">↗</button>
-      <div class="stamp big restamp"><b>${s.age}</b>歲・定稿</div>
-      <div class="end-kicker">人生草稿・第${(s.reincarnations||0)+1}世</div>
-      <h2 class="end-name">${escapeHtml(s.name)}</h2>
-      ${s.ending.epitaph ? `<p class="end-epitaph">${escapeHtml(s.ending.epitaph)}</p><div class="end-caption">旁白為這一生留下的話</div>` : ``}
+    <div class="end-kicker">人生草稿・第${(s.reincarnations||0)+1}世</div>
+    <h2 class="end-name">${escapeHtml(s.name)}</h2>
+    <div class="stamp big restamp end-stamp"><b>${s.age}</b>歲・定稿</div>
+    ${e.overview ? `<p class="end-overview serif" id="end-overview">${escapeHtml(e.overview)}</p>` : ``}
+    ${e.epitaph ? `<p class="end-epitaph">${escapeHtml(e.epitaph)}</p><div class="end-caption">旁白為這一生留下的話</div>` : ``}
+    <section class="end-stats glass">
+      ${renderEndingRadar(s)}
+      <div class="end-cash"><span>最終存款</span><b>${(s.cash||0).toLocaleString()}</b></div>
     </section>
-    ${summaryHtml ? `<section class="end-recap"><h3>人生回顧</h3>${summaryHtml}</section>` : ``}
-    <button class="text-btn end-book-link" id="btn-ending-book">翻開人生之書 →</button>
-    <div class="end-next${canSucceed?" two":""}">
-      ${canSucceed ? `<button class="primary-btn" id="btn-succeed-open">選一個孩子接著寫</button>` : ``}
-      <button class="primary-btn" id="btn-reincarnate">再寫一次人生</button>
+    ${people.length ? `<section class="end-people"><h3>重要的人</h3><div class="end-people-row">${people.map(c=>`<div class="end-person"><span class="avatar lg">${escapeHtml(String(c.name||"？").slice(0,1))}</span><span>${escapeHtml(c.name)}</span></div>`).join("")}</div></section>` : ``}
+    ${renderLifeReviewBlock(s)}
+    <div class="end-actions">
+      <button class="ghost-btn" id="btn-ending-share">分享這一生</button>
+      <div class="end-next${canSucceed?" two":""}">
+        ${canSucceed ? `<button class="primary-btn" id="btn-succeed-open">選一個孩子接著寫</button>` : ``}
+        <button class="primary-btn" id="btn-reincarnate">再寫一次人生</button>
+      </div>
     </div>
     ${canSucceed ? `
     <div class="end-kids glass" id="end-kids" hidden>
@@ -9544,15 +9697,21 @@ function renderEnding(){
       ${kids.map(k=>`<button class="choice-btn" data-child="${escapeHtml(k.name)}">${escapeHtml(k.name)}（${escapeHtml(k.relation)}）</button>`).join("")}
     </div>` : ``}
     <p class="end-share-msg" id="end-share-msg" aria-live="polite"></p>
+    <button class="text-btn end-book-link" id="btn-ending-book">翻開人生之書 →</button>
     <button class="text-btn end-close" id="btn-reset-end">闔上這份草稿</button>
     <div class="foot-mark">人生草稿</div>
   </div>`;
+}
+function bindLifeReviewBlock(){
+  document.querySelectorAll(".rv-tab").forEach(b=>{ b.onclick = ()=>{ lifeReviewTab = b.dataset.tab; render(); }; });
+  const unlock = document.getElementById("btn-review-unlock");
+  if(unlock) unlock.onclick = unlockLifeReview;
 }
 function bindEnding(){
   const endingBook = document.getElementById("btn-ending-book");
   if(endingBook) endingBook.onclick = ()=>openBookPage(ensureBook(state), { owner: state.name });
   document.getElementById("btn-reincarnate").onclick = reincarnate;
-  document.getElementById("btn-reset-end").onclick = ()=>endLife("ended"); // 16.7：「闔上這份草稿」取代「就此闔卷」，進唯讀封存區(10.3.7)
+  document.getElementById("btn-reset-end").onclick = ()=>endLife("ended"); // 「闔上這份草稿」：進唯讀封存區(10.3.7)
   const kidsOpen = document.getElementById("btn-succeed-open");
   if(kidsOpen) kidsOpen.onclick = ()=>{ const k = document.getElementById("end-kids"); if(k){ k.hidden = !k.hidden; if(!k.hidden && k.scrollIntoView) k.scrollIntoView({block:"nearest", behavior: reducedMotion() ? "auto" : "smooth"}); } };
   document.querySelectorAll(".choice-btn[data-child]").forEach(btn=>{
@@ -9560,17 +9719,130 @@ function bindEnding(){
   });
   const share = document.getElementById("btn-ending-share");
   if(share) share.onclick = shareThisLife;
+  bindLifeReviewBlock();
 }
-// 16.7「分享這一生」：手機支援系統分享就叫出分享面板，不支援就把文字複製起來。只放名字、享年、墓誌銘，不放玩家自由輸入的內容【實作方式待確認】
+// ---------- 16.7.2 回顧這一生：解鎖(人生軌跡＋人生花絮同一次AI呼叫產生，產生後存進狀態不再扣點) ----------
+function buildLifeReviewMaterial(s){
+  const material = buildLifeSummaryMaterial(s);
+  const segs = (s.ending && s.ending.segments && s.ending.segments.length ? s.ending.segments : material.segments.map(m=>({ stage:m.stage, label:m.stage_label, age_from:m.age_from, age_to:m.age_to, resume_entries:m.resume_entries, key_npcs:m.key_npcs })));
+  // 保險：沒有任何已完結的人生階段時(例如極短的人生)，用整段人生履歷湊成一個「這一生」階段
+  const stageList = segs.length ? segs : [{ stage:"whole", label:"這一生", age_from:15, age_to:s.age, resume_entries:(s.chronicle||[]).slice(-4), key_npcs:[] }];
+  return {
+    player_name: s.name, gender: s.gender, age_at_end: s.age,
+    stages: stageList.map(g=>({ stage:g.stage, stage_label:g.label, age_from:g.age_from, age_to:g.age_to, resume_entries:(g.resume_entries||[]).slice(0,4), key_npcs:(g.key_npcs||[]).map(n=>n.name||n).slice(0,3) })),
+    tidbits: buildTidbitMaterials(s, material)
+  };
+}
+async function callLifeReviewAI(s, m){
+  const res = await fetch(WORKER_URL, { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ kind:"life_review", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
+      life_id: ensureLifeId(s), messages:[{ role:"user", content: JSON.stringify(m) }] }) });
+  const text = await res.text();
+  let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）"); }
+  if(data && data.lifegame && data.lifegame.ap) syncServerAP(s, data.lifegame.ap);
+  if(!res.ok){ const err = new Error(data?.error?.message || ("回顧生成失敗 "+res.status)); if(res.status===402) err.apInsufficient = true; throw err; }
+  const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_life_review");
+  if(!block || !block.input) throw new Error("回應裡沒有submit_life_review");
+  return block.input;
+}
+async function mockLifeReview(s, m){
+  await new Promise(r=>setTimeout(r, MOCK_CHAPTER_DELAY_MS));
+  return {
+    trajectory: m.stages.map(g=>({ stage:g.stage, text:`（模擬軌跡）${g.stage_label}：${(g.resume_entries||[]).slice(0,2).join("；") || "日子一天一天過去"}。` })),
+    tidbits: m.tidbits.map((t,i)=>({ i, text:"（模擬花絮）"+fallbackTidbitText(t, s) }))
+  };
+}
+async function unlockLifeReview(){
+  const s = state;
+  if(lifeReviewBusy || !s.ending || s.ending.review) return;
+  const msg = ()=>document.getElementById("review-msg");
+  if(totalAP(s) < LIFE_REVIEW_COST){ if(msg()) msg().textContent = "行動點不足。"; return; }
+  lifeReviewBusy = true; render();
+  const m = buildLifeReviewMaterial(s);
+  try{
+    const out = USE_MOCK ? await mockLifeReview(s, m) : await callLifeReviewAI(s, m);
+    if(state!==s) return;
+    // 16.7.2.1：扣這條人生剩下的點數(扣點順序比照10.3.3)。真實模式由Worker成功後才扣、回傳餘額(API失敗不扣點)
+    if(USE_MOCK) spendAP(s, LIFE_REVIEW_COST);
+    const labelOf = (stage)=>{ const g = m.stages.find(x=>x.stage===stage); return g ? g.stage_label : lifeStageLabel(stage); };
+    const byStage = {}; (out.trajectory||[]).forEach(t=>{ if(t && t.stage) byStage[t.stage] = String(t.text||"").trim(); });
+    s.ending.review = {
+      trajectory: m.stages.map(g=>({ stage:g.stage, label:g.stage_label, text: byStage[g.stage] || "" })).filter(t=>t.text),
+      tidbits: (out.tidbits||[]).map(t=>{ const src = m.tidbits[t.i]; return src ? { stage:src.stage, label:labelOf(src.stage), category:src.category, text:String(t.text||"").trim() } : null; }).filter(t=>t && t.text),
+      unlockedAtTurn: s.turnCount
+    };
+    lifeReviewBusy = false;
+    saveGame(); render();
+  }catch(err){
+    console.warn("回顧這一生生成失敗", err);
+    lifeReviewBusy = false; render();
+    const el = document.getElementById("review-msg");
+    if(el) el.textContent = err && err.apInsufficient ? "行動點不足。" : "旁白剛剛恍神了一下，沒有扣點，稍後再試一次。";
+  }
+}
+// ---------- 16.7.0 分享這一生：圖片分享卡(沿用7.7分享卡的canvas產生方式) ----------
+const SHARE_URL = "https://lifegamepage.smile80275.workers.dev/";
+function wrapCanvasText(ctx, text, maxWidth){
+  const lines = []; let line = "";
+  for(const ch of Array.from(String(text||""))){
+    if(ctx.measureText(line+ch).width > maxWidth && line){ lines.push(line); line = ch; } else line += ch;
+  }
+  if(line) lines.push(line);
+  return lines;
+}
+function drawEndingShareCard(s){
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080; canvas.height = 1350;
+  const ctx = canvas.getContext && canvas.getContext("2d");
+  if(!ctx) return null;
+  const W = canvas.width, serif = '"Noto Serif TC","Songti TC",serif', sans = '"PingFang TC","Noto Sans TC",sans-serif';
+  ctx.fillStyle = "#F7F0E3"; ctx.fillRect(0,0,W,canvas.height);
+  [[180,260,340,"rgba(232,96,76,.28)"],[900,1100,380,"rgba(240,160,75,.28)"],[960,120,280,"rgba(185,211,234,.4)"]].forEach(([x,y,r,c])=>{ ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); });
+  ctx.textAlign = "center"; ctx.fillStyle = "#8A6F5E"; ctx.font = `34px ${sans}`;
+  ctx.fillText(`人生草稿・第${(s.reincarnations||0)+1}世`, W/2, 150);
+  ctx.fillStyle = "#4A2E1F"; ctx.font = `bold 76px ${serif}`; ctx.fillText(s.name||"", W/2, 250);
+  // 享年N歲・定稿印章
+  ctx.save(); ctx.translate(W/2, 400); ctx.rotate(-8*Math.PI/180);
+  ctx.strokeStyle = "#C8553D"; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(0,0,92,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle = "#C8553D"; ctx.font = `bold 64px ${serif}`; ctx.fillText(String(s.age), 0, 10); ctx.font = `28px ${sans}`; ctx.fillText("歲・定稿", 0, 52);
+  ctx.restore();
+  let y = 580;
+  const e = s.ending||{};
+  if(e.overview){
+    ctx.fillStyle = "#4A2E1F"; ctx.font = `38px ${serif}`; ctx.textAlign = "left";
+    wrapCanvasText(ctx, e.overview, W-200).slice(0,9).forEach(l=>{ ctx.fillText(l, 100, y); y += 60; });
+    y += 30;
+  }
+  if(e.epitaph){
+    ctx.fillStyle = "#C8553D"; ctx.font = `40px ${serif}`; ctx.textAlign = "center";
+    wrapCanvasText(ctx, e.epitaph, W-240).slice(0,4).forEach(l=>{ ctx.fillText(l, W/2, y); y += 62; });
+  }
+  ctx.textAlign = "center"; ctx.fillStyle = "rgba(74,46,31,.45)"; ctx.font = `30px ${serif}`;
+  ctx.fillText("人生草稿", W/2, canvas.height-110); ctx.font = `24px ${sans}`; ctx.fillText(SHARE_URL.replace(/^https:\/\//,"").replace(/\/$/,""), W/2, canvas.height-66);
+  return canvas;
+}
 async function shareThisLife(){
   const s = state;
-  const text = `${s.name}，享年${s.age}歲。${s.ending && s.ending.epitaph ? "「"+s.ending.epitaph+"」" : ""}——人生草稿`;
   const msg = document.getElementById("end-share-msg");
+  const canvas = drawEndingShareCard(s);
+  if(!canvas){ if(msg) msg.textContent = "這個瀏覽器不能產生圖片，可以截圖這一頁。"; return; }
+  const fileName = `${s.name||"人生"}的人生草稿.png`;
+  const blob = await new Promise(r=>{ try{ canvas.toBlob ? canvas.toBlob(b=>r(b), "image/png") : r(null); }catch(e){ r(null); } });
   try{
-    if(navigator.share){ await navigator.share({ title:"人生草稿", text, url:"https://lifegamepage.smile80275.workers.dev/" }); return; }
-    await navigator.clipboard.writeText(text + " https://lifegamepage.smile80275.workers.dev/");
-    if(msg) msg.textContent = "已複製，可以貼給想分享的人。";
-  }catch(e){ if(msg && !(e && e.name==="AbortError")) msg.textContent = "這個瀏覽器不能直接分享，可以截圖這一頁。"; }
+    if(blob && typeof File!=="undefined" && navigator.canShare && navigator.share){
+      const file = new File([blob], fileName, { type:"image/png" });
+      if(navigator.canShare({ files:[file] })){ await navigator.share({ files:[file], title:"人生草稿", url: SHARE_URL }); return; }
+    }
+  }catch(e){ if(e && e.name==="AbortError") return; }
+  // 不支援分享面板：下載圖片並複製網址
+  try{
+    const a = document.createElement("a");
+    a.href = blob ? URL.createObjectURL(blob) : canvas.toDataURL("image/png"); a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){}
+  let copied = false;
+  try{ await navigator.clipboard.writeText(SHARE_URL); copied = true; }catch(e){}
+  if(msg) msg.textContent = copied ? "已存下分享卡，網址也複製好了。" : "已存下分享卡。";
 }
 
 // ---------- DEBUG 測試面板（僅 USE_MOCK=true 時出現，正式模式完全不會被建立）----------
