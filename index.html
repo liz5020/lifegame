@@ -191,8 +191,12 @@
     font-size:11.5px;color:var(--stamp);letter-spacing:1px;border-bottom:1px solid var(--stamp);
     display:inline-block;padding-bottom:2px;margin-bottom:8px;
   }
-  .entry p{margin:0 0 10px;font-size:15.5px;line-height:1.8;}
+  /* 16.3.8.2（2026-09-28）：段落各自排版，段與段之間空出約一行字高(1em)；字級與行高維持原樣 */
+  .entry p{margin:0 0 1em;font-size:15.5px;line-height:1.8;}
   .entry p:last-child{margin-bottom:0;}
+  /* 16.3.8.2 選擇行：比正文小一號、淡色、前加「→」、靠左；分隔線：淡色細線、約正文四成寬、置中 */
+  .entry .choice-line{font-family:var(--serif);font-size:14px;line-height:1.6;color:var(--ink-soft);text-align:left;margin:0 0 10px;}
+  .entry .turn-divider{border:none;border-top:1px solid var(--line);width:40%;margin:0 auto 1em;}
   .entry-summary{display:flex;align-items:center;gap:8px;padding:9px 14px;opacity:.55;cursor:pointer;font-size:12.5px;
     border-radius:14px;background:rgba(255,255,255,.3);transition:opacity var(--t-std) var(--ease);}
   .entry-summary .s-tag{color:var(--stamp);white-space:nowrap;}
@@ -230,9 +234,11 @@
   .breath i:nth-child(3){animation-delay:.4s;}
   @keyframes breath{0%,100%{opacity:.2;transform:scale(.85);}40%{opacity:1;transform:scale(1);}}
 
-  /* 16.3.3 底部行動區(固定) */
-  .actions{position:sticky;bottom:0;z-index:20;border-radius:18px 18px 0 0;border-bottom:none;padding:12px 14px calc(10px + env(safe-area-inset-bottom));}
-  .choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  /* 16.3.3 底部行動區(固定)。16.3.8.3（2026-09-28）：底部只留一條細列(自由輸入、送出、反悔、字數)，選項改放正文最後 */
+  .actions{position:sticky;bottom:0;z-index:20;border-radius:18px 18px 0 0;border-bottom:none;padding:8px 14px calc(6px + env(safe-area-inset-bottom));}
+  .choices{display:grid;grid-template-columns:1fr;gap:8px;}
+  .story-choices{margin:0 0 12px;}
+  @media (min-width:768px){ .choices{grid-template-columns:1fr 1fr;} } /* 手機一欄直排、電腦兩欄 */
   .choice-btn{
     text-align:left;background:rgba(255,255,255,.55);border:1px solid rgba(74,46,31,.14);border-radius:14px;
     padding:10px 12px;font-family:var(--sans);font-size:13.5px;line-height:1.45;color:var(--ink);cursor:pointer;
@@ -5397,7 +5403,9 @@ async function callAI(actionText, forceEnding, timeCtx){
 // 造成畫面上選項整組消失（玩家只剩自訂輸入可用）。改成序列化整個input物件做全欄位掃描，涵蓋任何欄位藏汙染的情況
 function isMalformedTurnResult(input){
   if(!input || typeof input!=="object") return true;
-  if(typeof input.narrative!=="string" || !input.narrative.trim()) return true;
+  // 一、1.2.9.16（2026-09-28）：narrative改交段落清單(字串陣列)，舊格式(單一字串)仍接受
+  if(!narrativeParagraphs(input.narrative).length) return true;
+  if(Array.isArray(input.narrative) && input.narrative.some(p=>typeof p!=="string")) return true;
   if(typeof input.turn_summary!=="string" || !input.turn_summary.trim()) return true;
   if(!Array.isArray(input.choices)) return true;
   if(!input.is_ending && input.choices.length===0) return true; // 非結局回合choices不該是空陣列，呼應一、1.2.7「給3到4個選項」定案
@@ -5532,8 +5540,8 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
     // 這裡只模擬「AI把挑好的素材寫成回顧語氣」這一步，不再有任何標題/標籤
     const material = buildLifeSummaryMaterial(s);
     return {
-      action_result:"", scene_day_offset:0, scene_summary:"（模擬）午後，在家裡", chapter_subtitle:"尋常的午後", foreshadow_new:[], foreshadow_updates:[],
-      narrative:`很多年後的一個尋常午後，${s.name}闔上了眼睛。屋子裡有人輕聲說話，陽光照進來，像每一個平凡的下午一樣。`,
+      action_result:[], scene_day_offset:0, scene_summary:"（模擬）午後，在家裡", chapter_subtitle:"尋常的午後", foreshadow_new:[], foreshadow_updates:[],
+      narrative:[`很多年後的一個尋常午後，${s.name}闔上了眼睛。`, `屋子裡有人輕聲說話，陽光照進來，像每一個平凡的下午一樣。`],
       turn_summary:`${s.name}離世`,
       age_advance:0, stat_deltas:{wealth:0,health:0,network:0}, event_type:null, event_id:null, interest_event:null,
       emotional_tone:"warm",
@@ -5628,8 +5636,13 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
   const sceneDate = win ? calFormat(win.start+clamp(scene_day_offset,0,maxOff)) : "";
   const npcForLine = pick(activeCharacters().filter(c=>!c.isChild)) || null;
   const mockLine = npcForLine ? `{{${npcForLine.name}|${pick(["嗯。","你今天怎麼這麼早？我還以為你會睡到中午。算了，早餐在桌上。記得吃。別又放到涼掉。","好啦好啦。"])}}}` : "";
-  const docBox = Math.random()<0.1 ? `\n\n〔文件:${pick(["成績單","存摺明細","訊息"])}〕\n（模擬文件內容）\n〔/文件〕` : "";
-  const action_result = (timeCtx && timeCtx.prologue) ? "" : `（模擬行動結果）你照著「${String(actionText||"").slice(0,20)}」做了，${npcForLine ? npcForLine.name+"看了你一眼，"+mockLine : "沒有人多說什麼。"}`;
+  // 一、1.2.9.16（2026-09-28）mock版：正文交段落清單；文件框的開頭、每行內容、結尾各一段；
+  // MOCK_LITERAL_NEWLINE_RATE的機率模擬AI把段落寫成含字面「\n」的單一字串(舊格式)，測16.3.8.1清理與備用拆段
+  const docBox = Math.random()<0.1 ? [`〔文件:${pick(["成績單","存摺明細","訊息"])}〕`, "（模擬文件內容）", "〔/文件〕"] : [];
+  const action_result = (timeCtx && timeCtx.prologue) ? [] : [`（模擬行動結果）你照著「${String(actionText||"").slice(0,20)}」做了。`,
+    npcForLine ? `${npcForLine.name}看了你一眼：${mockLine}` : "沒有人多說什麼。"];
+  let narrativeParas = [narrative, "（模擬新場景）隔天的光線從窗簾縫裡漏進來。"].concat(docBox);
+  if(Math.random()<MOCK_LITERAL_NEWLINE_RATE) narrativeParas = narrativeParas.join("\\n\\n") + "\\\\n";
   const open = openForeshadows(s);
   const foreshadow_new = (open.length<FORESHADOW_MAX_OPEN && Math.random()<0.1) ? [`（模擬伏筆）${s.age}歲時抽屜裡那封沒拆的信`] : [];
   const foreshadow_updates = (open.length && Math.random()<0.1) ? [{ id:pick(open).id, status:pick(["resolved","faded"]) }] : [];
@@ -5638,7 +5651,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
     chapter_subtitle: pick(["沒寄出的訊息","雨停之前","多出來的碗筷","第三節下課"]),
     tone_switch: Math.random()<0.05 ? pick(["key_event_reveal","relationship_turning"]) : null, // 1.2.8.7 mock版
     foreshadow_new, foreshadow_updates,
-    narrative: narrative + docBox, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
+    narrative: narrativeParas, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
     stat_deltas: deltas, event_type, event_id, interest_event, emotional_tone,
     club_activity: Math.random()<0.15, // 3.8.2 mock版（2026-09-27）
     risky_activity: Math.random()<0.03, // 7.1.1 mock版（2026-09-27）
@@ -5660,6 +5673,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
 // 7.1.4（9/20整節改版）：原本的ENDING_DEFINITIONS標籤計分制與computeEndingTitle()已整套移除，
 // 不再有「結局標籤」這個東西。改為buildLifeSummaryMaterial()/assembleEnding()的人生總結，見上方7.1.4區塊。
 let MOCK_ENDING_OVERVIEW_FAIL = false; // 🛠測試用：模擬AI沒寫人生總結，走程式組句備案
+let MOCK_LITERAL_NEWLINE_RATE = 0.15; // 十六、16.3.8.1測試用：mock正文偶爾交回含字面「\n」的單一字串
 let MOCK_AI_DELAY_MS = 450; // 1.1.4（2026-09-25）：🛠面板可調，測試等待畫面用(例如拉到20000)
 async function mockCallAI(actionText, forceEnding, timeCtx){
   await new Promise(r=>setTimeout(r, MOCK_AI_DELAY_MS));
@@ -5770,7 +5784,8 @@ async function takeTurn(actionText, cost){
   // bug修正（9/14，人生草稿0914測試.pdf）：技術錯誤/破碎原始文字絕對不能外洩給玩家；
   // 失敗先重試一次，重試仍失敗才顯示中性容錯敘事，不附帶任何e.message或原始內容
   try{
-    const callOnce = ()=> USE_MOCK ? mockCallAI(actionText, forceEnding, timeCtx) : callAI(actionText, forceEnding, timeCtx);
+    // 一、1.2.9.16／十六、16.3.8.1（2026-09-28）：AI交回的段落清單先清理，再接成以空行分段的字串，下游沿用原本的字串處理
+    const callOnce = async ()=> normalizeTurnResultText(await (USE_MOCK ? mockCallAI(actionText, forceEnding, timeCtx) : callAI(actionText, forceEnding, timeCtx)));
     let result;
     try{
       result = await callOnce();
@@ -6840,12 +6855,19 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   applyForeshadowUpdates(s, r);
   // 一、1.2.9.11.3（2026-09-24新增）：敘事分成「行動結果」＋「時間推進後的新場景」兩段依序呈現；
   // 1.2.8.4.2：{{名字|台詞}}依角色dialogue_style截斷後換成「台詞」，沒用這個格式的文字照常顯示
-  const composedText = [r.action_result, r.narrative].map(t=>String(t||"").trim()).filter(Boolean).join("\n\n");
-  const dialogue = processDialogueMarkup(s, composedText);
-  dialogue.notes.forEach(n=>{ console.warn("[台詞上限]", n); addReviewFlag(s, "dialogue_limit", n); });
+  // 十六、16.3.8（2026-09-28）：行動結果與新場景分開存，畫面上中間加分隔線；text仍存兩段合併的全文(回憶錄、AI的recent_turns等沿用)
+  const markup = t=> t ? processDialogueMarkup(s, t) : { text:"", notes:[] };
+  const resultDialogue = markup(narrativeParagraphs(r.action_result).join("\n\n"));
+  const sceneDialogue = markup(narrativeParagraphs(r.narrative).join("\n\n"));
+  resultDialogue.notes.concat(sceneDialogue.notes).forEach(n=>{ console.warn("[台詞上限]", n); addReviewFlag(s, "dialogue_limit", n); });
+  const resultText = String(resultDialogue.text||"").trim(), sceneText = String(sceneDialogue.text||"").trim();
+  // 16.3.8.2選擇行：玩家選的選項或自己打的行動；開場回合沒有上一個選擇
+  const chosenAction = (timeCtx && timeCtx.prologue) ? null : (String(actionText||"").trim() || null);
   // 一、1.2.9.6：回合標題副標(AI產生)，畫面顯示「時期標籤｜副標」
   const subtitle = r.chapter_subtitle ? String(r.chapter_subtitle).trim().slice(0,30) : "";
-  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:dialogue.text, turnSummary:r.turn_summary||"", settlement:s.lastSettlement, statChanges, relationshipHints, purchaseNote: purchaseNotes.join("；")||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
+  // 兩段不重複存：text是全文，sceneAt是新場景在text裡的起點(存檔大小不變)，行動結果＝text.slice(0,sceneAt)
+  const fullText = [resultText, sceneText].filter(Boolean).join("\n\n");
+  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", settlement:s.lastSettlement, statChanges, relationshipHints, purchaseNote: purchaseNotes.join("；")||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
   // 足夠涵蓋單一人生全程(~1200-1400回合)不流失；每世reincarnate/succeedAsChild時log都會重置為[]，不會跨世累積
   if(s.log.length>2000) s.log.shift();
@@ -8179,7 +8201,8 @@ function apTooltipText(s){
 // 主畫面只留「讀故事」和「做選擇」：頂部狀態列＋故事區(最新一回合完整卡片、上一回合一行摘要)＋底部行動區；
 // 數值、通訊錄、選單收進三個由下往上的滑出面板。面板內容一直在DOM裡(用class開關)，既有的id/綁定都不變
 let openPanel = null;          // "stats" | "roster" | "menu" | null，重新render時保留開著的面板
-let prevEntryExpanded = false; // 上一回合摘要是否展開
+let prevEntryExpanded = false; // （16.3.8起不再使用，保留宣告避免舊程式碼參照出錯）
+const expandedOldEntries = new Set(); // 16.3.2／16.3.8.2（2026-09-28）：主畫面上展開中的舊回合(日記索引)
 let pendingChoiceIdx = null;   // 16.4.2第1步：等待旁白時，被按下的選項保持原樣、其他淡成半透明
 let lastKnownWallet = 0;       // 十、10.3.3金鑰錢包：選人生畫面讀到的數字(封測期間都是0)
 function stageLabelForStamp(s){ return stageLabel(s.age); }
@@ -8189,40 +8212,64 @@ function renderAgeStamp(age, label, extraClass){
   return `<div class="stamp ${extraClass||""}${long?" long":""}" id="${extraClass&&extraClass.includes("tb-stamp")?"age-stamp":""}"><b>${escapeHtml(String(age))}</b><span class="stamp-lbl">歲・${escapeHtml(label)}</span></div>`;
 }
 function plainEntryText(text){
-  return String(text||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」").replace(/\s+/g, " ").trim();
+  return cleanNarrativeText(text).replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」").replace(/\s+/g, " ").trim();
 }
-function renderEntryBody(e){
-  return `${renderParagraphs(e.text, true)}
+// 十六、16.3.8.2（2026-09-28）一回合由上到下：「→ 你的選擇」行 → 行動結果 → 淡色分隔線 → 新場景 → 數值變化與收支結算。
+// 開場回合沒有選擇行與行動結果；行動結果為空時省略分隔線。16.3.8之前的舊日記沒有分開存兩段，也沒記選擇，照原本整段顯示
+function renderEntryBody(e, withTag){
+  const text = String(e.text||"");
+  const split = Number.isInteger(e.sceneAt) && e.sceneAt>=0 && e.sceneAt<=text.length;
+  const resultText = split ? text.slice(0, e.sceneAt).trim() : "";
+  const sceneText = split ? text.slice(e.sceneAt).trim() : text;
+  const story = split
+    ? `${resultText ? renderParagraphs(resultText, true) : ``}${resultText && sceneText ? `<hr class="turn-divider" aria-hidden="true">` : ``}${renderParagraphs(sceneText, true)}`
+    : renderParagraphs(text, true);
+  return `${e.action ? `<div class="choice-line">→ ${escapeHtml(e.action)}</div>` : ``}${withTag ? `<div class="age-tag">${renderEntryTag(e)}</div>` : ``}${story}
     <div class="entry-meta">${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.settlement ? `<p class="small-line late">${settlementText(e.settlement, state.cash)}</p>` : ``}</div>`;
 }
-function renderEntrySummary(e, extraClass){
-  return `<div class="entry-summary ${extraClass||""} ${prevEntryExpanded?"open":""}" id="prev-entry-summary" role="button" tabindex="0">
+// 16.3.2（2026-09-28改定）：最新一回合完整卡片之上，保留更早的3個回合，各收合成一行摘要，點開展開(展開後同樣套用16.3.8.2排版)
+const OLD_ENTRY_SUMMARY_COUNT = 3;
+function renderEntrySummary(e, idx, extraClass, busy){
+  const open = !busy && expandedOldEntries.has(idx);
+  return `<div class="entry-summary ${extraClass||""} ${open?"open":""}" data-log-idx="${idx}" ${busy?`data-busy="1"`:``} role="button" tabindex="0" aria-expanded="${open?"true":"false"}">
     <span class="s-tag">${renderEntryTag(e)}</span><span class="s-text">${escapeHtml(plainEntryText(e.text).slice(0,60))}</span><span class="s-arrow" aria-hidden="true">⌄</span>
   </div>
-  ${prevEntryExpanded && !extraClass ? `<div class="entry entry-expanded glass">${renderEntryBody(e)}</div>` : ``}`;
+  ${open ? `<div class="entry entry-expanded glass">${renderEntryBody(e, false)}</div>` : ``}`;
+}
+function renderOldSummaries(log, idxs, busy){
+  return idxs.map((i,k)=>renderEntrySummary(log[i], i, busy && k===idxs.length-1 ? "anim-collapse" : "", busy)).join("");
+}
+// 16.3.8.3：四個選項放在正文最後面(數值變化與收支結算列之後)，跟著正文一起捲動；手機一欄直排、電腦兩欄(CSS)
+function renderStoryChoices(s, busy, apOut){
+  const choices = s.choices||[];
+  if(!choices.length) return ``;
+  return `<div class="choices story-choices" id="story-choices">
+      ${choices.map((c,i)=>`<button class="choice-btn${busy && pendingChoiceIdx===i?" chosen":""}" data-choice="${i}" ${(apOut||busy)?"disabled":""}>${escapeHtml(c)}</button>`).join("")}
+    </div>`;
 }
 function renderStory(s, loadingTurn){
   const log = s.log||[];
-  const last = log[log.length-1], prev = log[log.length-2];
+  const okIdxs = log.map((e,i)=>i).filter(i=>!log[i].error);
+  const last = log[log.length-1];
   if(loadingTurn){
-    // 16.4.2第2、3步：舊回合收合成一行摘要(透明度55%)，下方出現等待旁白的空卡片
-    return `${last ? renderEntrySummary(last, "anim-collapse") : ``}${renderTurnLoading()}`;
+    // 16.4.2第2、3步：舊回合收合成一行摘要(剛讀完的那一則透明度55%)，下方出現等待旁白的空卡片
+    return `${renderOldSummaries(log, okIdxs.slice(-OLD_ENTRY_SUMMARY_COUNT), true)}${renderTurnLoading()}`;
   }
   if(!last) return ``;
   // 16.3.6 旁白錯誤：保留原文案，旁邊加「再試一次」按鈕(只有最新一則、且記得當時的行動才能重試)
   if(last.error){
-    return `${prev ? renderEntrySummary(prev) : ``}
+    return `${renderOldSummaries(log, okIdxs.slice(-OLD_ENTRY_SUMMARY_COUNT), false)}
     <div class="narrator-error glass"><span>旁白剛剛恍神了一下</span>${last.retryAction!=null ? `<button class="ghost-btn" id="btn-retry-turn">再試一次</button>` : ``}</div>`;
   }
-  return `${prev ? renderEntrySummary(prev) : ``}
-  <div class="entry card glass" id="latest-entry" data-log-len="${log.length}"><div class="age-tag">${renderEntryTag(last)}</div>${renderEntryBody(last)}</div>`;
+  return `${renderOldSummaries(log, okIdxs.slice(0,-1).slice(-OLD_ENTRY_SUMMARY_COUNT), false)}
+  <div class="entry card glass" id="latest-entry" data-log-len="${log.length}">${renderEntryBody(last, true)}</div>
+  ${renderStoryChoices(s, false, totalAP(s)===0)}`;
 }
 function renderPlaying(loadingTurn){
   const s = state;
   const apOut = totalAP(s)===0; // 十、10.3.8：點數歸零時選項/自由輸入都停用，直到補回來
   const timeLabel = s.timeState ? computeTimeLabel(s) : stageLabel(s.age);
   const progress = s.timeState ? computeStageProgress(s) : null;
-  const choices = s.choices||[];
   const busy = !!loadingTurn;
   const canUndo = !!(s.snapshot && s.undosLeft>0);
   return `
@@ -8247,10 +8294,7 @@ function renderPlaying(loadingTurn){
   <main class="journal">${renderStory(s, loadingTurn)}</main>
   <footer class="actions glass">
     ${apOut && !busy ? `<div class="ap-out">行動點已用完，下次補點：台灣時間 00:00（每日池補到 ${AP_DAILY_REFILL} 點）</div>` : ``}
-    <div class="choices${choices.length<=1?" one-col":""}">
-      ${choices.map((c,i)=>`<button class="choice-btn${busy && pendingChoiceIdx===i?" chosen":""}" data-choice="${i}" ${(apOut||busy)?"disabled":""}>${escapeHtml(c)}</button>`).join("")}
-    </div>
-    <div class="custom-row">
+    <div class="custom-row" style="margin-top:0;">
       <input id="custom-input" placeholder="或者，自己寫下你想做的事…" ${(apOut||busy)?"disabled":""}>
       <button id="btn-custom" class="send-btn" aria-label="送出" title="每回合消耗 1 點行動點" ${(apOut||busy)?"disabled":""}>➤</button>
     </div>
@@ -8369,8 +8413,8 @@ function playTurnEffects(loadingTurn){
   // 16.4.2第7步：頂部存款由舊數字滾到新數字(慢)
   const cashEl = document.getElementById("tb-cash");
   if(cashEl && cashFrom!==null && cashFrom!==s.cash) rollNumber(cashEl, cashFrom, s.cash, rm ? 0 : 600, rm ? 0 : lateAt);
-  // 16.4.2第8步：自動捲到新卡片頂端
-  scrollToCard(card, rm);
+  // 16.4.2第8步／16.3.8.4（2026-09-28）：自動捲到新回合的「→ 你的選擇」行，開場回合沒有選擇行就捲到正文開頭；不捲到頁面最底部
+  scrollToCard(card.querySelector(".choice-line") || card, rm);
 }
 function rollNumber(el, from, to, duration, delay){
   if(!duration){ el.textContent = to.toLocaleString(); return; }
@@ -8464,9 +8508,26 @@ function rosterCard(c,isBg){
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 }
+// 十六、16.3.8.1（2026-09-28）正文換行清理：字面上的「\n」(含多包一層的「\\n」)轉成真正的換段、\r統一成\n；
+// 呈現時才清理，舊存檔本身不改動。80字是給AI的寫作準則，程式不切長段落
+function cleanNarrativeText(text){
+  return String(text==null ? "" : text).replace(/\r\n?/g, "\n").replace(/\\+n/g, "\n");
+}
+// 段落清單(陣列)或單一字串(舊格式／AI沒照格式交)都拆成段落：依換行拆、連續換行合併、頭尾空白去掉、空段落丟掉
+function narrativeParagraphs(x){
+  const parts = Array.isArray(x) ? x : [x];
+  return parts.flatMap(p=>cleanNarrativeText(p).split(/\n+/)).map(p=>p.trim()).filter(Boolean);
+}
+// 一、1.2.9.16：AI回傳後先把行動結果、新場景接成「段落以空行分隔」的字串，之後的台詞處理、存檔、recent_turns都沿用字串
+function normalizeTurnResultText(r){
+  if(!r || typeof r!=="object") return r;
+  r.action_result = narrativeParagraphs(r.action_result).join("\n\n");
+  r.narrative = narrativeParagraphs(r.narrative).join("\n\n");
+  return r;
+}
 function renderPlainParagraphs(text, linkNames){
   // 1.2.8.4.2防呆：舊日記或沒被處理到的{{名字|台詞}}標記，一律當成「台詞」顯示
-  return String(text).replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」").split(/\n{1,}/).map(p=>p.trim()).filter(Boolean)
+  return narrativeParagraphs(String(text==null ? "" : text).replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」"))
     .map(p=>`<p>${linkNpcNames(escapeHtml(p), linkNames)}</p>`).join("");
 }
 // 四、4.1.1【定案】查看入口含「劇情中提及的角色名」（2026-09-27補上）：把已跳脫的段落裡出現的角色名包成可點的span，
@@ -8484,7 +8545,7 @@ document.addEventListener("click", e=>{
 });
 // 一、1.2.9.4（2026-09-24實作）：〔文件:標題〕…〔/文件〕渲染成獨立文件框，其餘照一般段落顯示
 function renderParagraphs(text, linkNames){
-  return String(text).split(/(〔文件[:：][^〕]*〕[\s\S]*?〔\/文件〕)/).map(part=>{
+  return cleanNarrativeText(text).split(/(〔文件[:：][^〕]*〕[\s\S]*?〔\/文件〕)/).map(part=>{
     const m = part.match(/^〔文件[:：]([^〕]*)〕([\s\S]*?)〔\/文件〕$/);
     if(!m) return renderPlainParagraphs(part, linkNames);
     return `<div class="doc-box"><div class="doc-title">${escapeHtml(m[1].trim())}</div>${renderPlainParagraphs(m[2], linkNames)}</div>`;
@@ -8515,9 +8576,15 @@ function bindPlaying(){
   document.querySelectorAll("#panel-menu .menu-card, #panel-menu .menu-item").forEach(el=>{
     el.addEventListener("click", ()=>{ if(el.id!=="link-idle-toggle") setPanel(null); }, true);
   });
-  // 16.3.2：上一回合摘要點一下展開，再點收回
-  const prevSummary = document.getElementById("prev-entry-summary");
-  if(prevSummary && !prevSummary.classList.contains("anim-collapse")) prevSummary.onclick = ()=>{ prevEntryExpanded = !prevEntryExpanded; render(); };
+  // 16.3.2：舊回合摘要點一下展開，再點收回(等待旁白時不能點)
+  document.querySelectorAll(".entry-summary[data-log-idx]").forEach(el=>{
+    if(el.dataset.busy==="1") return;
+    el.onclick = ()=>{
+      const i = +el.dataset.logIdx;
+      if(expandedOldEntries.has(i)) expandedOldEntries.delete(i); else expandedOldEntries.add(i);
+      render();
+    };
+  });
   // 16.3.6：旁白錯誤「再試一次」——拿掉錯誤那則，用同一個行動重新送一次(失敗的那次沒有扣點，見10.3.1)
   const retryBtn = document.getElementById("btn-retry-turn");
   if(retryBtn) retryBtn.onclick = ()=>{

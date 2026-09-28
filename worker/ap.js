@@ -128,7 +128,11 @@ export function isUsableTurnResponse(data) {
   if (!block) return false;
   const input = block.input;
   if (!input || typeof input !== "object") return false;
-  if (typeof input.narrative !== "string" || !input.narrative.trim()) return false;
+  // 一、1.2.9.16（2026-09-28）：narrative改交段落清單(字串陣列)；舊格式(單一字串)仍接受
+  const narr = input.narrative;
+  const narrOk = typeof narr === "string" ? !!narr.trim()
+    : (Array.isArray(narr) && narr.some(p => typeof p === "string" && p.trim()) && narr.every(p => typeof p === "string"));
+  if (!narrOk) return false;
   if (typeof input.turn_summary !== "string" || !input.turn_summary.trim()) return false;
   if (!Array.isArray(input.choices)) return false;
   if (!input.is_ending && input.choices.length === 0) return false;
