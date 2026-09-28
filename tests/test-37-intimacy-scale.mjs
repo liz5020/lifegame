@@ -94,17 +94,15 @@ A.check("1.2.11.7 romance_flags只列曖昧以上的NPC，依npc_id(姓名)", rf
 e2("state.age = 16; addNpcOld = null; state.characters.push({name:'舊戀人',relation:'朋友',gender:'男',age:16,affinity:70,active:true,romanceStatus:'dating',traits:'',summary:'',lastTurn:0}); state.characters.push({name:'舊戀人2',relation:'朋友',gender:'男',age:30,affinity:70,active:true,romanceStatus:'dating',traits:'',summary:'',lastTurn:0}); ensureRomanceAgeMarks(state)");
 A.check("1.2.11.7 既有存檔：推算得出兩人皆未成年才補true，推算不出一律false", e2("state.characters.find(c=>c.name==='舊戀人').beganAsMinors") === true && e2("state.characters.find(c=>c.name==='舊戀人2').beganAsMinors") === false);
 
-// 偏好開關
+// 偏好開關：16.3.7（2026-09-28改定）不在選單顯示，一律完整呈現；舊存檔存過fade也照送full
 e2("state.phase='playing'; render()");
-const link = d2.getElementById("link-intimacy-toggle");
-A.check("16.3.7 設定區有「親密場景：完整呈現」(預設)", link && /親密場景：完整呈現/.test(link.textContent));
-link.click();
-A.check("切換成淡化帶過、存在存檔裡", e2("state.intimacyMode") === "fade" && /淡化帶過/.test(d2.getElementById("link-intimacy-toggle").textContent) && JSON.parse(m.win.localStorage.getItem("life_sim_save_v1:0") || "{}").intimacyMode === "fade");
+A.check("16.3.7 選單沒有親密場景開關", !d2.getElementById("link-intimacy-toggle"));
+e2("state.intimacyMode='fade'");
 const p2 = JSON.parse(e2("buildUserMessage('x', false, {structured:true,label:'x'})"));
-A.check("每回合送intimacy_mode=fade", p2.intimacy_mode === "fade");
+A.check("舊存檔intimacyMode=fade：每回合仍送intimacy_mode=full", p2.intimacy_mode === "full");
 e2("ensureBook(state)");
 const chMat = JSON.parse(e2("JSON.stringify(buildChapterMaterial(state, {index:1, items:[{t:'x',s:'y'}], events:[], ageFrom:15, ageTo:16}))"));
-A.check("16.3.7 人生之書章節素材同樣帶intimacy_mode與romance_flags", chMat.intimacy_mode === "fade" && Array.isArray(chMat.romance_flags));
+A.check("16.3.7 人生之書章節素材帶intimacy_mode=full與romance_flags", chMat.intimacy_mode === "full" && Array.isArray(chMat.romance_flags));
 A.check("整段沒有jsdom錯誤(規則)", m.errors.length === 0, m.errors.map(String).slice(0, 3));
 
 // ================= prompt =================

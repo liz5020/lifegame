@@ -179,6 +179,10 @@
     color:var(--ink);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
     transition:transform var(--t-fast) var(--ease);}
   .round-btn:active{transform:scale(.94);}
+  /* 測試選單(開發用，正式上線刪除)：紫色與其他圓鈕區隔 */
+  .round-btn.test-btn{background:#6B4FA0;border-color:#6B4FA0;color:#fff;}
+  .dev-fab{position:fixed;top:10px;right:10px;z-index:310;box-shadow:0 2px 8px rgba(0,0,0,.25);}
+  #panel-test .menu-note{word-break:break-all;}
   .tb-sub{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px;color:var(--ink-soft);gap:8px;}
   .tb-sub .right{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums;}
   .demo-tag{font-size:10.5px;color:var(--stamp);border:1px solid rgba(200,85,61,.45);border-radius:999px;padding:0 8px;white-space:nowrap;}
@@ -284,6 +288,17 @@
   .stat-bar .track{height:7px;border-radius:4px;background:rgba(74,46,31,.08);overflow:hidden;}
   .stat-bar .fill{height:100%;border-radius:4px;background:var(--bar);transition:width var(--t-slow) var(--ease);}
   .stat-bar .num{text-align:right;font-variant-numeric:tabular-nums;}
+  /* 16.3.4數值說明（2026-09-28）：滑鼠移過去／鍵盤聚焦／手機點一下(.tip-open)時，在該列下方顯示半透明小框 */
+  .has-tip{position:relative;cursor:help;}
+  .has-tip:focus{outline:none;}
+  .stat-tip{display:none;grid-column:1 / -1;margin-top:6px;padding:8px 10px;border-radius:10px;background:rgba(74,46,31,.82);color:#fff;
+    font-size:12px;line-height:1.6;animation:fade-in 150ms var(--ease) both;}
+  .stat-tip b{display:block;font-size:11px;opacity:.75;font-weight:400;margin-top:2px;}
+  .stat-tip b:first-child{margin-top:0;}
+  @media (hover:hover){ .has-tip:hover > .stat-tip{display:block;} }
+  .has-tip:focus-visible > .stat-tip,.has-tip.tip-open > .stat-tip{display:block;}
+  .ledger-row.has-tip{flex-wrap:wrap;}
+  .ledger-row.has-tip .stat-tip{flex-basis:100%;}
   .sheet .ledger{padding:6px 0 0;border:none;background:transparent;margin-top:10px;}
   .ledger-row{display:flex;align-items:baseline;gap:8px;font-size:13.5px;padding:3px 0;}
   .ledger-row .lbl{white-space:nowrap;color:var(--ink-soft);font-size:12.5px;}
@@ -5223,7 +5238,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     previous_generation_events: (timeCtx && timeCtx.prologue && s.prevGenerationEventTitles && s.prevGenerationEventTitles.length) ? s.prevGenerationEventTitles : null, // 7.7.5（2026-09-27）：只在傳承後的開場回合送上一代事件標題
     succession_opening_event: (timeCtx && timeCtx.prologue && s.successionOpening) ? s.successionOpening : null,
     romance_flags: buildRomanceFlags(s), // 一、1.2.11.7（2026-09-28）：曖昧以上的NPC各自的年齡旗標(npc_id＝角色姓名)
-    intimacy_mode: s.intimacyMode==="fade" ? "fade" : "full", // 1.2.11.7／十六、16.3.7：親密場景偏好，存在存檔裡 // 7.4.3.3.1（2026-09-28）：上一代在孩子未滿15歲就過世，開場先交代再接遺產
+    intimacy_mode: "full", // 1.2.11.7／十六、16.3.7（2026-09-28改定）：不開放開關，一律完整呈現；舊存檔存過fade也不再生效 // 7.4.3.3.1（2026-09-28）：上一代在孩子未滿15歲就過世，開場先交代再接遺產
     interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
     part_time_event_now: s.partTimeEventLog || null,
     fertility_event_now: s.fertilityEventLog || null, // 7.3.2（2026-09-27）：這回合生育嘗試/懷孕/出生/領養的系統判定結果
@@ -5368,6 +5383,7 @@ async function callAI(actionText, forceEnding, timeCtx){
   // 十、10.3.11：Worker回傳的伺服器端餘額(成功或失敗都有)，一律以它為準
   if(data && data.lifegame && data.lifegame.ap){ syncServerAP(state, data.lifegame.ap); lastCallServerAP = data.lifegame.ap; }
   if(data && data.lifegame) lastTurnServerInfo = data.lifegame;
+  if(data && data.lifegame && data.lifegame.usage) addDevUsage(state, data.lifegame.usage); // 測試選單：這一世累計用量
   if(res.status===402 || res.status===429){
     const err = new Error(res.status===402 ? "行動點不足（伺服器端）" : "這一回合重新生成次數已達上限");
     err.noRetry = true; err.apInsufficient = res.status===402;
@@ -6288,6 +6304,7 @@ async function writeIdleSummary(s){
         kind:"idle_summary", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
         life_id: ensureLifeId(s), messages:[{ role:"user", content: JSON.stringify(payload) }] }) });
       const data = await res.json();
+      if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, data.lifegame.usage);
       const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_idle_summary");
       if(block && block.input) out = block.input;
     }catch(e){ console.warn("放置摘要生成失敗", e); }
@@ -6857,7 +6874,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 1.2.8.4.2：{{名字|台詞}}依角色dialogue_style截斷後換成「台詞」，沒用這個格式的文字照常顯示
   // 十六、16.3.8（2026-09-28）：行動結果與新場景分開存，畫面上中間加分隔線；text仍存兩段合併的全文(回憶錄、AI的recent_turns等沿用)
   const markup = t=> t ? processDialogueMarkup(s, t) : { text:"", notes:[] };
-  const resultDialogue = markup(narrativeParagraphs(r.action_result).join("\n\n"));
+  // 16.3.8.2：開場回合沒有行動結果(AI仍回了也不顯示)
+  const resultDialogue = markup((timeCtx && timeCtx.prologue) ? "" : narrativeParagraphs(r.action_result).join("\n\n"));
   const sceneDialogue = markup(narrativeParagraphs(r.narrative).join("\n\n"));
   resultDialogue.notes.concat(sceneDialogue.notes).forEach(n=>{ console.warn("[台詞上限]", n); addReviewFlag(s, "dialogue_limit", n); });
   const resultText = String(resultDialogue.text||"").trim(), sceneText = String(sceneDialogue.text||"").trim();
@@ -7266,7 +7284,7 @@ function buildChapterMaterial(s, ch){
     turn_summaries: sampleChapterItems(ch.items).map(it=>({ t:it.t, s:it.s })),
     major_events: (ch.events||[]).slice(-60),
     characters: (s.characters||[]).slice(0,40).map(c=>({ name:c.name, relation:c.relation })),
-    romance_flags: buildRomanceFlags(s), intimacy_mode: s.intimacyMode==="fade" ? "fade" : "full", // 十六、16.3.7：人生之書套用同一尺度
+    romance_flags: buildRomanceFlags(s), intimacy_mode: "full", // 十六、16.3.7：人生之書套用同一尺度(2026-09-28起一律完整呈現)
     previous_chapter_title: prev ? prev.title : null
   };
 }
@@ -7284,7 +7302,7 @@ async function callChapterAI(s, ch){
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("章節回應不是合法JSON（HTTP "+res.status+"）"); }
   if(!res.ok) throw new Error("章節生成失敗 "+res.status+"："+(data?.error?.message||""));
-  if(data && data.lifegame && data.lifegame.usage) lastChapterUsage = data.lifegame.usage;
+  if(data && data.lifegame && data.lifegame.usage){ lastChapterUsage = data.lifegame.usage; addDevUsage(s, data.lifegame.usage); }
   const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_chapter");
   if(!block || !block.input) throw new Error("回應裡沒有submit_chapter");
   return block.input;
@@ -8216,11 +8234,15 @@ function plainEntryText(text){
 }
 // 十六、16.3.8.2（2026-09-28）一回合由上到下：「→ 你的選擇」行 → 行動結果 → 淡色分隔線 → 新場景 → 數值變化與收支結算。
 // 開場回合沒有選擇行與行動結果；行動結果為空時省略分隔線。16.3.8之前的舊日記沒有分開存兩段，也沒記選擇，照原本整段顯示
-function renderEntryBody(e, withTag){
+// 日記拆回「行動結果」「新場景」兩段(sceneAt)；16.3.8之前的舊日記沒有sceneAt，整段算新場景
+function splitEntryText(e){
   const text = String(e.text||"");
   const split = Number.isInteger(e.sceneAt) && e.sceneAt>=0 && e.sceneAt<=text.length;
-  const resultText = split ? text.slice(0, e.sceneAt).trim() : "";
-  const sceneText = split ? text.slice(e.sceneAt).trim() : text;
+  return { split, resultText: split ? text.slice(0, e.sceneAt).trim() : "", sceneText: split ? text.slice(e.sceneAt).trim() : text };
+}
+function renderEntryBody(e, withTag){
+  const text = String(e.text||"");
+  const { split, resultText, sceneText } = splitEntryText(e);
   const story = split
     ? `${resultText ? renderParagraphs(resultText, true) : ``}${resultText && sceneText ? `<hr class="turn-divider" aria-hidden="true">` : ``}${renderParagraphs(sceneText, true)}`
     : renderParagraphs(text, true);
@@ -8281,6 +8303,7 @@ function renderPlaying(loadingTurn){
         <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" title="${apTooltipText(s)}">⚡ 行動點 ${totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
       </div>
       <div class="tb-btns">
+        ${devToolsOn() ? `<button class="round-btn test-btn" data-panel="test" aria-label="測試選單" title="測試選單（開發用）">🧪</button>` : ``}
         <button class="round-btn" data-panel="stats" aria-label="數值" title="數值">📊</button>
         <button class="round-btn" data-panel="roster" aria-label="通訊錄" title="通訊錄">👥</button>
         <button class="round-btn" data-panel="menu" aria-label="選單" title="選單">☰</button>
@@ -8307,20 +8330,41 @@ function renderPlaying(loadingTurn){
   <div class="sheet-backdrop${openPanel?" open":""}" id="sheet-backdrop"></div>
   ${renderStatsPanel(s, loadingTurn)}
   ${renderRosterPanel(s)}
-  ${renderMenuPanel(s)}`;
+  ${renderMenuPanel(s)}
+  ${devToolsOn() ? renderTestPanel(s) : ``}`;
 }
 function sheetHead(title){
   return `<div class="sheet-grip"></div><div class="sheet-head"><h3>${title}</h3><button class="sheet-close" aria-label="關閉">×</button></div>`;
 }
 // 16.3.4 數值面板：存款大字 → 生活方式小卡(5.5.5) → 房產淨值 → 五項能力進度條 → 課業、興趣(3.2.4)
+// 十六、16.3.4數值說明（2026-09-28）：滑鼠移過去／手機點一下，半透明小框顯示「用在哪裡」與「怎麼增減」；只講方向，不寫公式與數字。
+// 內容逐條對照程式實際用途：才識→考試/錄取/薪水/自營事業、人脈→錄取/自營事業/幸福感歸屬、健康→疾病與死亡機率/被迫退休/生育/氣色；
+// 表達力、外表目前沒有程式判定直接讀取，只給旁白當敘事素材
+const STAT_TIPS = {
+  存款: ["日常開銷、購物、醫療和買房頭期款都從這裡出；手頭寬不寬也會寫進故事", "每月收入扣掉開銷自動結算；打工、購物、醫療、意外之財也會增減"],
+  房產淨值: ["房子的市值扣掉還沒還完的房貸，賣房時會換成現金", "每月繳房貸，淨值就跟著變多"],
+  健康: ["關係到生病和壽命，太差會被迫退休，也影響懷孕機會和氣色", "年紀越大上限越低。運動、休息、規律作息會回升；熬夜、過勞、生病、受傷會下降"],
+  才識: ["影響考試成績、找工作能不能錄取、薪水高低，自己開店時也看它", "讀書、上課、鑽研會成長；天資高的人長得快，越高越難再往上"],
+  表達力: ["旁白寫你說話、跟人相處的樣子時會參考；進步多了也會慢慢養出氣質", "上台、參加社團、多跟人溝通、上表達課都會成長"],
+  外表: ["長相加上氣質，旁白寫別人第一眼對你的印象時會參考", "打理自己、保養穿搭、累積閱歷會加分；身體太差時氣色會變差"],
+  人脈: ["影響找工作能不能錄取、自己開店的經營，也關係到心裡的歸屬感", "主動聯絡、參加聚會、跟人合作會增加；很久沒經營會慢慢變淡"]
+};
+function statTipAttr(label){
+  const t = STAT_TIPS[label];
+  return t ? ` data-tip="${escapeHtml(label)}" tabindex="0" role="button" aria-describedby="tip-${escapeHtml(label)}"` : ``;
+}
+function statTipBox(label){
+  const t = STAT_TIPS[label];
+  return t ? `<span class="stat-tip" id="tip-${escapeHtml(label)}" role="tooltip"><b>用在哪裡</b>${escapeHtml(t[0])}<br><b>怎麼增減</b>${escapeHtml(t[1])}</span>` : ``;
+}
 function renderStatsPanel(s, loadingTurn){
   const stats = [["健康", s.stats.health], ["才識", s.stats.knowledge], ["表達力", s.stats.expression], ["外表", s.appearance], ["人脈", s.stats.network]];
   return `<section class="sheet${openPanel==="stats"?" open":""}" id="panel-stats" aria-label="數值">
     ${sheetHead("數值")}
-    <div class="cash-block"><div class="cash-lbl">存款</div><div class="cash-big">${s.cash.toLocaleString()}</div></div>
+    <div class="cash-block has-tip"${statTipAttr("存款")}><div class="cash-lbl">存款</div><div class="cash-big">${s.cash.toLocaleString()}</div>${statTipBox("存款")}</div>
     ${renderLifestyleCard(s, loadingTurn)}
-    ${s.propertyValue>0 ? `<div class="ledger-row"><span class="lbl">房產淨值</span><span class="dots"></span><span class="val">${(s.propertyValue-s.mortgageBalance).toLocaleString()}</span></div>` : ``}
-    <div class="stat-bars">${stats.map(([k,v])=>{ const n = Math.round(v); return `<div class="stat-bar"><span>${k}</span><span class="track"><span class="fill" style="display:block;width:${clamp(n,0,100)}%"></span></span><span class="num">${n}</span></div>`; }).join("")}</div>
+    ${s.propertyValue>0 ? `<div class="ledger-row has-tip"${statTipAttr("房產淨值")}><span class="lbl">房產淨值</span><span class="dots"></span><span class="val">${(s.propertyValue-s.mortgageBalance).toLocaleString()}</span>${statTipBox("房產淨值")}</div>` : ``}
+    <div class="stat-bars">${stats.map(([k,v])=>{ const n = Math.round(v); return `<div class="stat-bar has-tip"${statTipAttr(k)}><span>${k}</span><span class="track"><span class="fill" style="display:block;width:${clamp(n,0,100)}%"></span></span><span class="num">${n}</span>${statTipBox(k)}</div>`; }).join("")}</div>
     ${renderTracks(s)}
   </section>`;
 }
@@ -8360,7 +8404,6 @@ function renderMenuPanel(s){
     ${(s.familyChronicle && s.familyChronicle.length) ? `<a class="menu-item" id="link-family">🌳 家族年表（前${s.familyChronicle.length}代）</a>` : ``}
     <a class="menu-item" id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
     <div class="menu-sec">設定</div>
-    <a class="menu-item" id="link-intimacy-toggle">💞 親密場景：${s.intimacyMode==="fade" ? "淡化帶過" : "完整呈現"}</a>
     <a class="menu-item" id="link-view-key">🔑 我的復原金鑰</a>
     <div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>
     ${lastKnownWallet>0 ? `<div class="menu-note">👛 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
@@ -8370,7 +8413,7 @@ function renderMenuPanel(s){
 }
 function setPanel(name){
   openPanel = name;
-  ["stats","roster","menu"].forEach(k=>{ const el = document.getElementById("panel-"+k); if(el) el.classList.toggle("open", k===name); });
+  ["stats","roster","menu","test"].forEach(k=>{ const el = document.getElementById("panel-"+k); if(el) el.classList.toggle("open", k===name); });
   const bd = document.getElementById("sheet-backdrop");
   if(bd) bd.classList.toggle("open", !!name);
 }
@@ -8557,6 +8600,15 @@ function renderEntryTag(e){
   return escapeHtml(label) + (e.subtitle ? "｜"+escapeHtml(e.subtitle) : "");
 }
 function bindPlaying(){
+  // 16.3.4數值說明：手機沒有滑鼠，點一下顯示、再點一下收起(同時只開一個)；點面板其他地方收起
+  const statsPanel = document.getElementById("panel-stats");
+  if(statsPanel) statsPanel.addEventListener("click", ev=>{
+    const tip = ev.target.closest ? ev.target.closest(".has-tip") : null;
+    const wasOpen = !!(tip && tip.classList.contains("tip-open"));
+    statsPanel.querySelectorAll(".tip-open").forEach(x=>x.classList.remove("tip-open"));
+    if(tip && !wasOpen) tip.classList.add("tip-open");
+  });
+  bindTestMenu(document.getElementById("panel-test"));
   document.querySelectorAll(".choice-btn[data-choice]").forEach(btn=>{
     btn.onclick = ()=>{
       const idx = +btn.dataset.choice;
@@ -8648,12 +8700,6 @@ function bindPlaying(){
   if(idleLink) idleLink.onclick = ()=>{
     state.idleEnabled = !state.idleEnabled;
     if(state.idleEnabled && !state.lastActiveDate) state.lastActiveDate = taipeiDateString();
-    saveGame(); render();
-  };
-  // 十六、16.3.7（2026-09-28）：親密場景偏好，存在存檔(跨裝置同步)，下一回合起生效
-  const intimacyLink = document.getElementById("link-intimacy-toggle");
-  if(intimacyLink) intimacyLink.onclick = ()=>{
-    state.intimacyMode = state.intimacyMode==="fade" ? "full" : "fade";
     saveGame(); render();
   };
   const switchLifeLink = document.getElementById("link-switch-life");
@@ -9945,6 +9991,7 @@ async function callLifeReviewAI(s, m){
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）"); }
   if(data && data.lifegame && data.lifegame.ap) syncServerAP(s, data.lifegame.ap);
+  if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, data.lifegame.usage);
   if(!res.ok){ const err = new Error(data?.error?.message || ("回顧生成失敗 "+res.status)); if(res.status===402) err.apInsufficient = true; throw err; }
   const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_life_review");
   if(!block || !block.input) throw new Error("回應裡沒有submit_life_review");
@@ -10055,38 +10102,128 @@ async function shareThisLife(){
 // 一般玩家看不到：網址加?dev=1打開過一次，這台瀏覽器才會記住並顯示按鈕；?dev=0關閉。
 // 保護程度跟原本「在Console手動設定localStorage」相同，只是操作方便；切換後重新整理頁面，USE_MOCK才會重算
 // DEV_TOOLS_KEY與?dev=參數處理放在USE_MOCK計算之前（見FORCE_REAL_API_KEY旁），?dev=0才能當次就切回模擬
+// ===== 測試選單(正式上線刪除) =====（2026-09-28，取代原本左側浮動的切換鈕與用量小框）
+// 只有開過?dev=1的瀏覽器看得到(DEV_TOOLS_KEY)。遊戲畫面放在頂部列三個圓鈕左邊(紫色🧪，滑出面板)；
+// 首頁、結局等沒有頂部列的畫面，同一顆鈕固定在右上角(開彈窗)。內容：模擬/真實API切換、用量、下載故事、Debug面板入口
+function devToolsOn(){
+  try{ return localStorage.getItem(DEV_TOOLS_KEY)==="yes"; }catch(e){ return false; }
+}
 function ensureApiToggleUI(){
-  let on = false;
-  try{ on = localStorage.getItem(DEV_TOOLS_KEY)==="yes"; }catch(e){}
-  if(!on || document.getElementById("api-toggle-btn")) return;
+  const fab = document.getElementById("dev-fab");
+  const need = devToolsOn() && !(state && state.phase==="playing");
+  if(!need){ if(fab) fab.remove(); return; }
+  if(fab) return;
   const btn = document.createElement("button");
-  btn.id = "api-toggle-btn";
-  btn.textContent = USE_MOCK ? "🔌 模擬模式（點我切換真實API）" : "💸 真實API中（點我切回模擬）";
-  btn.style.cssText = `position:fixed;top:42%;left:6px;z-index:300;padding:8px 12px;border-radius:18px;border:none;font-size:12px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);color:#fff;background:${USE_MOCK?"#555":"#b8860b"};`;
-  btn.onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ try{ localStorage.removeItem(FORCE_REAL_API_KEY); }catch(e){} location.reload(); };
+  btn.id = "dev-fab";
+  btn.className = "round-btn test-btn dev-fab";
+  btn.textContent = "🧪";
+  btn.title = "測試選單（開發用）";
+  btn.setAttribute("aria-label", "測試選單");
+  btn.onclick = renderTestMenuModal;
   document.body.appendChild(btn);
+}
+// 每一世各自累計(存在state.devUsage、隨存檔)：一般回合、章節成書、放置摘要、回顧這一生都算；反悔不退(花掉的錢已經花了)
+function addDevUsage(s, u){
+  if(!s || !u) return;
+  const d = s.devUsage || (s.devUsage = { calls:0, input:0, cache_write:0, cache_read:0, output:0, cost_usd:0 });
+  d.calls += 1;
+  ["input","cache_write","cache_read","output"].forEach(k=>{ d[k] += Number(u[k])||0; });
+  d.cost_usd = Math.round((d.cost_usd + (Number(u.cost_usd)||0))*1e6)/1e6;
   updateDevUsageBox();
 }
-// 十、10.5（2026-09-25新增）：開發者面板(?dev=1才看得到)顯示上一回合的token用量與估計花費，數字來自Worker回傳的lifegame.usage
+// 十、10.5（2026-09-25新增）：上一回合的token用量與估計花費，數字來自Worker回傳的lifegame.usage
 function devUsageText(){
-  if(USE_MOCK) return "上一回合用量：模擬模式不呼叫AI，不產生費用";
+  if(USE_MOCK) return "上一回合：模擬模式不呼叫AI，不產生費用";
   const u = lastTurnServerInfo && lastTurnServerInfo.usage;
-  if(!u) return "上一回合用量：還沒有資料";
-  return `上一回合用量｜輸入 ${u.input}｜快取寫入 ${u.cache_write}｜快取讀取 ${u.cache_read}｜輸出 ${u.output} token｜約 US$${Number(u.cost_usd).toFixed(4)}`;
+  if(!u) return "上一回合：還沒有資料";
+  return `上一回合｜輸入 ${u.input}｜快取寫入 ${u.cache_write}｜快取讀取 ${u.cache_read}｜輸出 ${u.output} token｜約 US$${Number(u.cost_usd).toFixed(4)}`;
+}
+function devUsageTotalText(s){
+  const d = s && s.devUsage;
+  if(!d || !d.calls) return "這一世累計：還沒有真實API用量";
+  return `這一世累計｜呼叫 ${d.calls} 次｜輸入 ${d.input}｜快取寫入 ${d.cache_write}｜快取讀取 ${d.cache_read}｜輸出 ${d.output} token｜約 US$${Number(d.cost_usd).toFixed(4)}`;
 }
 function updateDevUsageBox(){
-  let on = false;
-  try{ on = localStorage.getItem(DEV_TOOLS_KEY)==="yes"; }catch(e){}
-  if(!on) return;
-  let box = document.getElementById("dev-usage-box");
-  if(!box){
-    box = document.createElement("div");
-    box.id = "dev-usage-box";
-    box.style.cssText = "position:fixed;top:calc(42% + 44px);left:6px;z-index:300;max-width:300px;padding:6px 10px;border-radius:8px;background:rgba(40,40,40,.88);color:#eee;font-size:11px;line-height:1.5;font-family:'Courier New',monospace;";
-    document.body.appendChild(box);
-  }
-  box.textContent = devUsageText();
+  const a = document.getElementById("dev-usage-last"); if(a) a.textContent = devUsageText();
+  const b = document.getElementById("dev-usage-total"); if(b) b.textContent = devUsageTotalText(state);
 }
+function renderTestMenuBody(s){
+  const hasStory = !!(s && Array.isArray(s.log) && s.log.length);
+  return `
+    <div class="menu-sec">模式</div>
+    <div class="menu-note">目前：${USE_MOCK ? "模擬模式（不呼叫AI、不花錢）" : "真實API（每回合都會花費）"}</div>
+    <a class="menu-item" id="dev-toggle-api">${USE_MOCK ? "💸 切換成真實API" : "🔌 切回模擬模式"}</a>
+    <div class="menu-sec">用量</div>
+    <div class="menu-note" id="dev-usage-last">${escapeHtml(devUsageText())}</div>
+    <div class="menu-note" id="dev-usage-total">${escapeHtml(devUsageTotalText(s))}</div>
+    <div class="menu-sec">故事</div>
+    ${hasStory ? `<a class="menu-item" id="dev-download-story">⬇ 下載這一世的故事（Markdown）</a>` : `<div class="menu-note">進入一段人生後才能下載故事</div>`}
+    ${USE_MOCK ? `<a class="menu-item" id="dev-open-debug">🛠 Debug 面板</a>` : ``}`;
+}
+function renderTestPanel(s){
+  return `<section class="sheet${openPanel==="test"?" open":""}" id="panel-test" aria-label="測試選單">
+    ${sheetHead("🧪 測試選單")}
+    ${renderTestMenuBody(s)}
+  </section>`;
+}
+function renderTestMenuModal(){
+  if(document.getElementById("test-menu-modal")) return;
+  const div = document.createElement("div");
+  div.id = "test-menu-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `<div class="modal" style="text-align:left;"><h3>🧪 測試選單</h3>${renderTestMenuBody(state)}<button class="ghost-btn" id="btn-test-menu-close" style="margin-top:14px;">關閉</button></div>`;
+  document.body.appendChild(div);
+  bindTestMenu(div);
+  div.querySelector("#btn-test-menu-close").onclick = ()=>div.remove();
+}
+function bindTestMenu(root){
+  if(!root) return;
+  const q = id=>root.querySelector("#"+id);
+  if(q("dev-toggle-api")) q("dev-toggle-api").onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ try{ localStorage.removeItem(FORCE_REAL_API_KEY); }catch(e){} location.reload(); };
+  if(q("dev-download-story")) q("dev-download-story").onclick = ()=>downloadStoryExport(state);
+  if(q("dev-open-debug")) q("dev-open-debug").onclick = ()=>{ if(typeof setPanel==="function") setPanel(null); document.getElementById("test-menu-modal")?.remove(); toggleDebugPanel(); };
+}
+// 下載故事：這一世全部日記組成Markdown(時期標籤｜副標、→選擇、行動結果、---、新場景、數值變化、關係變化、結算)
+function storyExportParagraphs(text){
+  return narrativeParagraphs(String(text||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」"));
+}
+function buildStoryExport(s){
+  const out = [`# ${s.name||""}・第${(s.reincarnations||0)+1}世`, "",
+    `- 目前年齡：${s.age}歲`, `- 回合數：${s.turnCount||0}`, `- 模式：${USE_MOCK ? "模擬" : "真實API"}`, `- 下載時間：${new Date().toLocaleString("zh-TW")}`, ""];
+  (s.log||[]).forEach((e,i)=>{
+    if(e.error) return;
+    out.push(`## ${i+1}. ${e.timeLabel || (e.age+"歲・"+stageLabel(e.age))}${e.subtitle ? "｜"+e.subtitle : ""}`, "");
+    if(e.action) out.push(`→ ${e.action}`, "");
+    const { resultText, sceneText } = splitEntryText(e);
+    const res = storyExportParagraphs(resultText), scene = storyExportParagraphs(sceneText);
+    if(res.length){ out.push(res.join("\n\n"), "", "---", ""); }
+    if(scene.length) out.push(scene.join("\n\n"), "");
+    const caps = Object.keys(VISIBLE_STAT_LABELS).filter(k=>e.statChanges && e.statChanges[k]).map(k=>`${VISIBLE_STAT_LABELS[k]} ${e.statChanges[k]>0?"+":""}${e.statChanges[k]}`);
+    if(caps.length) out.push(`數值變化：${caps.join("、")}`, "");
+    (e.relationshipHints||[]).forEach(h=>out.push(`關係：${h}`, ""));
+    if(e.purchaseNote) out.push(`購物：${e.purchaseNote}`, "");
+    if(e.settlement) out.push(`結算：${settlementText(e.settlement, s.cash)}`, "");
+  });
+  if(s.ending){
+    out.push("## 結局", "");
+    if(s.ending.overview) out.push(s.ending.overview, "");
+    if(s.ending.epitaph) out.push(`墓誌銘：${s.ending.epitaph}`, "");
+  }
+  return out.join("\n");
+}
+function downloadStoryExport(s){
+  if(!s || !Array.isArray(s.log)) return;
+  const d = new Date(), pad = n=>String(n).padStart(2,"0");
+  const name = `${s.name||"人生"}第${(s.reincarnations||0)+1}世_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.md`;
+  try{
+    const blob = new Blob([buildStoryExport(s)], { type:"text/markdown;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 1000);
+  }catch(e){ console.warn("下載故事失敗", e); }
+}
+// ===== 測試選單 end =====
 // 切到真實API前一定要再確認一次：每回合都會真的花錢（切回模擬不用確認）
 function renderConfirmRealApi(){
   if(document.getElementById("confirm-real-api-modal")) return;
