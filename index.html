@@ -124,6 +124,8 @@
     letter-spacing:0;white-space:nowrap;
   }
   .stamp b{font-size:18px;display:block;font-family:var(--serif);font-weight:700;}
+  .stamp .stamp-lbl{display:block;}
+  .stamp.long .stamp-lbl{font-size:8px;white-space:normal;max-width:46px;line-height:1.2;}
   .stamp.big{width:92px;height:92px;font-size:12px;border-width:2.5px;}
   .stamp.big b{font-size:28px;}
   @keyframes restamp{0%{transform:rotate(-8deg) scale(1.6);opacity:0;}70%{transform:rotate(-8deg) scale(.95);opacity:1;}100%{transform:rotate(-8deg) scale(1);opacity:1;}}
@@ -387,12 +389,47 @@
   .tl-card:not(.open) .tl-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .tl-card:not(.open) .tl-text p{display:inline;margin:0;}
   .tl-card .caps{margin-top:8px;}
+
+  /* 十六、16.8 大學科系學生證 */
+  .modal.major-pick{max-width:380px;padding:20px 18px;text-align:center;}
+  .mp-title{font-size:12px;color:var(--stamp);letter-spacing:1px;}
+  .major-pick h3{margin:2px 0 12px;}
+  .mp-groups{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;}
+  .mp-group{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;border:1px solid rgba(74,46,31,.14);background:rgba(255,255,255,.5);color:var(--ink);font-size:11px;line-height:1.25;cursor:pointer;font-family:var(--sans);}
+  .mp-group.on{border-color:var(--stamp);color:var(--stamp);background:rgba(200,85,61,.08);}
+  .major-ic{width:22px;height:22px;}
+  .sid-card{perspective:900px;height:196px;cursor:pointer;margin:0 auto;max-width:330px;}
+  .sid-inner{position:relative;width:100%;height:100%;transition:transform 500ms var(--ease);transform-style:preserve-3d;}
+  .sid-card.flipped .sid-inner{transform:rotateY(180deg);}
+  .sid-face{position:absolute;inset:0;border-radius:14px;overflow:hidden;background:#FFFBF4;border:1px solid rgba(74,46,31,.14);box-shadow:0 6px 18px rgba(74,46,31,.12);backface-visibility:hidden;-webkit-backface-visibility:hidden;text-align:left;}
+  .sid-back{transform:rotateY(180deg);}
+  .sid-band{background:var(--stamp);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:8px 14px;font-size:13px;font-weight:700;letter-spacing:.5px;}
+  .sid-no{font-variant-numeric:tabular-nums;font-weight:400;font-size:12px;opacity:.9;}
+  .sid-body{display:flex;gap:14px;padding:14px;}
+  .sid-photo{width:64px;height:80px;border-radius:8px;background:rgba(200,85,61,.12);color:var(--stamp);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:30px;font-weight:700;flex-shrink:0;}
+  .sid-fields{margin:0;display:flex;flex-direction:column;gap:3px;font-size:12.5px;}
+  .sid-fields div{display:flex;gap:8px;}
+  .sid-fields dt{color:var(--ink-soft);width:52px;flex-shrink:0;}
+  .sid-fields dd{margin:0;font-weight:700;}
+  .sid-emblem{position:absolute;right:10px;bottom:8px;width:70px;height:70px;color:var(--stamp);opacity:.12;}
+  .sid-back-body{padding:14px;font-size:12.5px;}
+  .sid-back-body .k{color:var(--ink-soft);margin-top:4px;}
+  .sid-back-body .v{font-weight:700;line-height:1.55;}
+  .enroll-stamp{position:absolute;right:22px;top:52px;width:64px;height:64px;border:2.5px solid var(--stamp);border-radius:50%;color:var(--stamp);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:18px;font-weight:700;letter-spacing:2px;transform:rotate(-8deg) scale(1.6);opacity:0;pointer-events:none;}
+  .enroll-stamp.shown{animation:enroll-stamp 400ms var(--ease) both;}
+  @keyframes enroll-stamp{0%{transform:rotate(-8deg) scale(1.6);opacity:0;}100%{transform:rotate(-8deg) scale(1);opacity:.9;}}
+  .mp-nav{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:10px;font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums;}
+  .mp-hint{font-size:12px;color:var(--ink-soft);margin:8px 0 0;}
   /* 16.4.4 減少動態模式：取消位移、縮放、彈跳，只保留150ms淡入；背景色塊停止飄動 */
   @media (prefers-reduced-motion: reduce){
     .blob{animation:none;}
     .anim-card,.anim-card p,.anim-card .cap,.anim-card .late,.stamp.restamp,.narrator-error,.modal-backdrop{animation:fade-in 150ms linear both !important;}
     .stamp.restamp{transform:rotate(-8deg);}
     .anim-collapse{animation:none;opacity:.55;}
+    .sid-inner{transition:none;transform:none !important;}
+    .sid-back{transform:none;}
+    .sid-card:not(.flipped) .sid-back,.sid-card.flipped .sid-front{visibility:hidden;}
+    .enroll-stamp.shown{animation:fade-in 150ms linear both;opacity:.9;transform:rotate(-8deg);}
     .sheet,.sheet.open{transition:opacity 150ms linear,visibility 0s;transform:translate(-50%,0);opacity:0;}
     .sheet.open{opacity:1;}
     .breath i{animation:none;opacity:.6;}
@@ -3453,6 +3490,63 @@ const MAJOR_CATEGORIES = [
   { key:"服務社工餐旅", label:"服務/社工/餐旅類", examples:"社會工作學系、餐旅管理、觀光、運動休閒", isFiveYearEligible:false }
 ];
 function findMajorCategory(key){ return MAJOR_CATEGORIES.find(m=>m.key===key) || null; }
+// 九、9.2【定案,2026-09-28】正式系別清單(＝9.2「具體科系範例」，醫藥類5年制補牙醫、獸醫)；修業年限維持遊戲簡化版
+// 十六、16.8.3學生證背面：對應職業類型、可能的職業照9.2同一列；服務/社工/餐旅類9.2依科系細分職業類型，這裡照表拆開
+const MAJOR_DEPARTMENTS = {
+  "理工資訊":     ["資訊工程","資訊管理","電機工程","機械工程","土木工程"],
+  "商管財經":     ["企業管理","財務金融","會計","行銷","國際貿易"],
+  "人文語言傳播": ["中文","外文","歷史","大眾傳播"],
+  "醫藥護理":     ["醫學","牙醫","獸醫","藥學","護理","物理治療"],
+  "教育":         ["教育學系","師範體系各科","幼教","特教"],
+  "藝術設計表演": ["美術","音樂","舞蹈","戲劇影視","視覺傳達設計"],
+  "法律政治":     ["法律學系","政治學系","公共行政"],
+  "服務社工餐旅": ["社會工作學系","餐旅管理","觀光","運動休閒"]
+};
+const FIVE_YEAR_DEPARTMENTS = ["醫學","牙醫","獸醫"];
+const MAJOR_CAREER_INFO = {
+  "理工資訊":     { types:"受雇專業/白領類為主", jobs:"軟體工程師、韌體工程師、土木技師、資料分析師" },
+  "商管財經":     { types:"受雇專業/白領類，創業走向自營/家庭事業類", jobs:"業務、行銷企劃、會計師、金融分析師" },
+  "人文語言傳播": { types:"受雇專業/白領類", jobs:"編輯、翻譯、公關、記者" },
+  "醫藥護理":     { types:"受雇專業/白領類", jobs:"醫師、藥師、護理師、物理治療師" },
+  "教育":         { types:"軍公教/警消類或受雇專業/白領類", jobs:"國小/國高中教師、幼教老師、補教老師" },
+  "藝術設計表演": { types:"自由/創作類", jobs:"平面設計師、插畫家、演員、音樂人" },
+  "法律政治":     { types:"受雇專業/白領類或軍公教/警消類", jobs:"律師、公務人員、政治幕僚" },
+  "服務社工餐旅": { types:"社工：受雇專業/白領類；餐旅、觀光：勞力/服務類；運動休閒：勞力/服務類", jobs:"社工師、餐飲業主管、飯店從業人員、健身教練" }
+};
+const SERVICE_DEPT_CAREER = {
+  "社會工作學系": { types:"受雇專業/白領類", jobs:"社工師" },
+  "餐旅管理":     { types:"勞力/服務類，創業開店走向自營/家庭事業類", jobs:"餐飲業主管、飯店從業人員" },
+  "觀光":         { types:"勞力/服務類，創業開店走向自營/家庭事業類", jobs:"飯店從業人員、餐飲業主管" },
+  "運動休閒":     { types:"勞力/服務類，教練接案走向自由/創作類", jobs:"健身教練" }
+};
+function departmentCareerInfo(groupKey, dept){ return SERVICE_DEPT_CAREER[dept] || MAJOR_CAREER_INFO[groupKey] || { types:"", jobs:"" }; }
+// 16.8.5 虛構校名(意象型命名，已逐一確認無同名真實學校)，入學時抽一所存進狀態後不變
+const SCHOOL_NAMES = ["青嵐大學","遠帆大學","曉原大學","行雲大學","澄湖大學","霧川大學","朝汐大學","松籟大學","雁回大學","晚晴大學","白露大學","穀雨大學"];
+// 16.8.5 學號＝遊戲內入學年份＋隨機數字。遊戲沒有西元年，年份用「這一世的第幾年」(15歲高一＝第1年)兩位數【Claude補的實作細節，待確認】
+function makeStudentId(s){ return String(Math.max(1, (s.age||18)-14)).padStart(2,"0") + String(rnd(0,99999)).padStart(5,"0"); }
+// 16.8.7 學群圖示(Tabler Icons風格的線條圖，內嵌SVG，不載入外部圖示庫)
+const MAJOR_ICON_PATHS = {
+  "理工資訊":     '<rect x="5" y="5" width="14" height="14" rx="1"/><rect x="9" y="9" width="6" height="6"/><path d="M3 10h2M3 14h2M10 3v2M14 3v2M21 10h-2M21 14h-2M14 21v-2M10 21v-2"/>',
+  "商管財經":     '<path d="M4 19l16 0"/><path d="M4 15l4 -6l4 2l4 -5l4 4"/>',
+  "人文語言傳播": '<path d="M19 4v16h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12z"/><path d="M19 16h-12a2 2 0 0 0 -2 2"/><path d="M9 8h6"/>',
+  "醫藥護理":     '<path d="M6 4h-1a2 2 0 0 0 -2 2v3.5a5.5 5.5 0 0 0 11 0v-3.5a2 2 0 0 0 -2 -2h-1"/><path d="M8 15a6 6 0 1 0 12 0v-3"/><path d="M11 3v2M6 3v2"/><circle cx="20" cy="10" r="2"/>',
+  "教育":         '<path d="M22 9l-10 -4l-10 4l10 4l10 -4v6"/><path d="M6 10.6v5.4a6 3 0 0 0 12 0v-5.4"/>',
+  "藝術設計表演": '<path d="M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25"/><circle cx="8.5" cy="10.5" r="1"/><circle cx="12.5" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/>',
+  "法律政治":     '<path d="M7 20h10"/><path d="M6 6l6 -1l6 1"/><path d="M12 3v17"/><path d="M9 12l-3 -6l-3 6a3 3 0 0 0 6 0"/><path d="M21 12l-3 -6l-3 6a3 3 0 0 0 6 0"/>',
+  "服務社工餐旅": '<path d="M19.5 12.572l-7.5 7.428l-7.5 -7.428a5 5 0 1 1 7.5 -6.566a5 5 0 1 1 7.5 6.572"/><path d="M12 6l-3.293 3.293a1 1 0 0 0 0 1.414l.543 .543c.69 .69 1.81 .69 2.5 0l1 -1a3.182 3.182 0 0 1 4.5 0l2.25 2.25"/><path d="M12.5 15.5l2 2M15 13l2 2"/>'
+};
+function majorIconSvg(key, cls){
+  return `<svg class="${cls||"major-ic"}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MAJOR_ICON_PATHS[key]||""}</svg>`;
+}
+// 16.8：入學——寫入學群/修業年限(9.1)，並建立學生證(校名、學號入學時決定後不變)
+function enrollInDepartment(s, groupKey, dept){
+  const cat = findMajorCategory(groupKey);
+  if(!cat) return;
+  const five = FIVE_YEAR_DEPARTMENTS.includes(dept);
+  assignStudentMajor(s, groupKey, five);
+  s.studentDepartment = dept;
+  s.studentCard = { school: pick(SCHOOL_NAMES), studentId: makeStudentId(s), groupKey, groupLabel: cat.label, dept, entryAge: s.age, years: five?5:4 };
+}
 
 // 9.3 下游伏筆權重表（高/中/低相對排序，9/16 ChatGPT開發審閱建議改用「共同基準機率×類別倍率」，
 // 具體絕對機率仍是【待補充,測試組】，這裡的BASE/MULTIPLIER都是實作階段自訂的【測試參數】，非正式定案數字）
@@ -5600,8 +5694,8 @@ function idleResolvePendingPopups(s, record){
     }
     if(s.pendingMajorSelection){
       s.pendingMajorSelection = false; snap("major", { pendingMajorSelection: true });
-      const m = pick(MAJOR_CATEGORIES); const five = m.isFiveYearEligible && Math.random()<0.5;
-      assignStudentMajor(s, m.key, five); decide("major", m.key, m.label); continue;
+      const m = pick(MAJOR_CATEGORIES); const dept = pick(MAJOR_DEPARTMENTS[m.key]); // 16.8：放置期間代選到系別
+      enrollInDepartment(s, m.key, dept); decide("major", m.key, `${m.label}・${dept}`); continue;
     }
     if(s.pendingTransferOffer){
       s.pendingTransferOffer = false; snap("transfer", { pendingTransferOffer: true });
@@ -7780,7 +7874,9 @@ let pendingChoiceIdx = null;   // 16.4.2第1步：等待旁白時，被按下的
 let lastKnownWallet = 0;       // 十、10.3.3金鑰錢包：選人生畫面讀到的數字(封測期間都是0)
 function stageLabelForStamp(s){ return stageLabel(s.age); }
 function renderAgeStamp(age, label, extraClass){
-  return `<div class="stamp ${extraClass||""}" id="${extraClass&&extraClass.includes("tb-stamp")?"age-stamp":""}"><b>${escapeHtml(String(age))}</b>歲・${escapeHtml(label)}</div>`;
+  // 階段名稱較長(例如「大學／技職」)時縮小字級、允許換行，避免擠出圓框
+  const long = String(label).length>=4;
+  return `<div class="stamp ${extraClass||""}${long?" long":""}" id="${extraClass&&extraClass.includes("tb-stamp")?"age-stamp":""}"><b>${escapeHtml(String(age))}</b><span class="stamp-lbl">歲・${escapeHtml(label)}</span></div>`;
 }
 function plainEntryText(text){
   return String(text||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」").replace(/\s+/g, " ").trim();
@@ -7906,6 +8002,7 @@ function renderMenuPanel(s){
     <div class="menu-sec">這段人生</div>
     <a class="menu-item" id="link-about-me">🪞 關於我</a>
     <a class="menu-item" id="link-belongings">🧺 我的東西（${(s.belongings||[]).length}件）</a>
+    ${s.studentCard ? `<a class="menu-item" id="link-student-card">🎓 學生證（${escapeHtml(s.studentCard.school)}）</a>` : ``}
     ${(s.familyChronicle && s.familyChronicle.length) ? `<a class="menu-item" id="link-family">🌳 家族年表（前${s.familyChronicle.length}代）</a>` : ``}
     <a class="menu-item" id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
     <div class="menu-sec">設定</div>
@@ -8156,6 +8253,8 @@ function bindPlaying(){
   if(memoirLink) memoirLink.onclick = renderMemoirModal;
   const aboutLink = document.getElementById("link-about-me");
   if(aboutLink) aboutLink.onclick = renderAboutMeModal;
+  const studentCardLink = document.getElementById("link-student-card"); // 16.8.4
+  if(studentCardLink) studentCardLink.onclick = renderStudentCardModal;
   const belongingsLink = document.getElementById("link-belongings");
   if(belongingsLink) belongingsLink.onclick = renderBelongingsModal;
   const bookLink = document.getElementById("link-book");
@@ -8527,57 +8626,95 @@ function renderSideBusinessModal(cardId){
 }
 
 // ========== 九、大學科系系統：四個彈窗 ==========
+// ========== 十六、16.8 大學科系學生證（2026-09-28，取代原本只選學群的彈窗）==========
+function renderStudentCardFaces(card, name){
+  const info = departmentCareerInfo(card.groupKey, card.dept);
+  return `
+  <div class="sid-inner">
+    <div class="sid-face sid-front">
+      <div class="sid-band"><span>${escapeHtml(card.school||"")}　學生證</span><span class="sid-no">${escapeHtml(card.studentId||"")}</span></div>
+      <div class="sid-body">
+        <div class="sid-photo">${escapeHtml(String(name||"？").slice(0,1))}</div>
+        <dl class="sid-fields">
+          <div><dt>姓名</dt><dd>${escapeHtml(name||"")}</dd></div>
+          <div><dt>學群</dt><dd>${escapeHtml(card.groupLabel||"")}</dd></div>
+          <div><dt>系別</dt><dd>${escapeHtml(card.dept||"")}</dd></div>
+          <div><dt>入學年齡</dt><dd>${escapeHtml(String(card.entryAge))}歲</dd></div>
+        </dl>
+      </div>
+      ${majorIconSvg(card.groupKey, "sid-emblem")}
+      <div class="enroll-stamp${card.enrolled?" shown":""}" aria-hidden="${card.enrolled?"false":"true"}">入學</div>
+    </div>
+    <div class="sid-face sid-back">
+      <div class="sid-band"><span>未來方向</span><span>${escapeHtml(card.dept||"")}</span></div>
+      <div class="sid-back-body">
+        <div class="k">對應職業類型</div><div class="v">${escapeHtml(info.types)}</div>
+        <div class="k">可能的職業</div><div class="v">${escapeHtml(info.jobs)}</div>
+      </div>
+    </div>
+  </div>`;
+}
 function renderMajorSelectionModal(){
   const s = state;
   const div = document.createElement("div");
   div.id = "major-selection-modal";
   div.className = "modal-backdrop";
+  // 校名、學號入學時才決定；選的過程先抽好一組，確認入學時照這組寫進狀態
+  const preview = { school: pick(SCHOOL_NAMES), studentId: makeStudentId(s), entryAge: s.age };
+  let groupKey = MAJOR_CATEGORIES[0].key, deptIdx = 0, flipped = false, busy = false;
   div.innerHTML = `
-    <div class="modal">
-      <h3>選擇科系</h3>
-      <p>大學生活要開始了，想好要念哪個方向了嗎？</p>
-      ${MAJOR_CATEGORIES.map(m=>`<button class="ghost-btn major-btn" data-key="${m.key}" style="display:block;width:100%;text-align:left;margin:4px 0;">${escapeHtml(m.label)}<br><span style="font-size:12px;opacity:0.7;">${escapeHtml(m.examples)}</span></button>`).join("")}
-      <div id="major-five-year-subchoice" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--ink);">
-        <p style="font-size:13px;">「醫藥/護理類」裡，醫學/牙醫/獸醫系是5年制，其餘科系(藥學/護理/物理治療等)是4年制：</p>
-        <button class="ghost-btn five-year-btn" data-five="true" style="margin:4px 6px 0 0;">醫學／牙醫／獸醫系(5年)</button>
-        <button class="ghost-btn five-year-btn" data-five="false" style="margin:4px 6px 0 0;">其他醫藥/護理科系(4年)</button>
-      </div>
-      <button class="primary-btn" id="btn-major-confirm" style="margin-top:14px;" disabled>確定</button>
+    <div class="modal major-pick">
+      <div class="mp-title">${escapeHtml(String(s.age))}歲・大學入學</div>
+      <h3>選擇你的科系</h3>
+      <div class="mp-groups">${MAJOR_CATEGORIES.map(m=>`<button class="mp-group major-btn" data-key="${m.key}" aria-pressed="false">${majorIconSvg(m.key)}<span>${escapeHtml(m.label.replace(/類$/,""))}</span></button>`).join("")}</div>
+      <div class="sid-card" id="sid-card" role="button" tabindex="0" aria-label="學生證，點一下翻面"></div>
+      <div class="mp-nav"><button class="round-btn" id="btn-dept-prev" aria-label="上一個科系">‹</button><span id="dept-counter"></span><button class="round-btn" id="btn-dept-next" aria-label="下一個科系">›</button></div>
+      <p class="mp-hint">點學生證可以翻面，看看畢業後的方向</p>
+      <button class="primary-btn" id="btn-major-confirm">就讀這個科系</button>
     </div>`;
   document.body.appendChild(div);
-  let chosenKey = null, chosenFiveYear = false;
-  const confirmBtn = document.getElementById("btn-major-confirm");
-  function refreshConfirmEnabled(){
-    const cat = findMajorCategory(chosenKey);
-    const needsSubchoice = cat && cat.isFiveYearEligible;
-    confirmBtn.disabled = !chosenKey || (needsSubchoice && chosenFiveYear===null);
+  const cardEl = div.querySelector("#sid-card");
+  const current = ()=>{ const cat = findMajorCategory(groupKey); const list = MAJOR_DEPARTMENTS[groupKey]; return { ...preview, groupKey, groupLabel:cat.label, dept:list[deptIdx] }; };
+  function draw(){
+    const list = MAJOR_DEPARTMENTS[groupKey];
+    cardEl.innerHTML = renderStudentCardFaces(current(), s.name);
+    cardEl.classList.toggle("flipped", flipped);
+    div.querySelector("#dept-counter").textContent = `${deptIdx+1}/${list.length}`;
+    div.querySelectorAll(".mp-group").forEach(b=>{ const on = b.dataset.key===groupKey; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on?"true":"false"); });
   }
-  div.querySelectorAll(".major-btn").forEach(btn=>{
-    btn.onclick = ()=>{
-      chosenKey = btn.dataset.key;
-      const cat = findMajorCategory(chosenKey);
-      div.querySelectorAll(".major-btn").forEach(b=>{ b.style.background=""; b.style.color=""; });
-      btn.style.background="var(--ink)"; btn.style.color="var(--paper)";
-      const sub = document.getElementById("major-five-year-subchoice");
-      if(cat && cat.isFiveYearEligible){ sub.style.display="block"; chosenFiveYear=null; }
-      else { sub.style.display="none"; chosenFiveYear=false; }
-      refreshConfirmEnabled();
-    };
-  });
-  div.querySelectorAll(".five-year-btn").forEach(btn=>{
-    btn.onclick = ()=>{
-      chosenFiveYear = btn.dataset.five==="true";
-      div.querySelectorAll(".five-year-btn").forEach(b=>{ b.style.background=""; b.style.color=""; });
-      btn.style.background="var(--ink)"; btn.style.color="var(--paper)";
-      refreshConfirmEnabled();
-    };
-  });
-  confirmBtn.onclick = ()=>{
-    if(!chosenKey) return;
-    assignStudentMajor(s, chosenKey, chosenFiveYear);
-    div.remove();
-    saveGame(); render();
+  div.querySelectorAll(".mp-group").forEach(btn=>{ btn.onclick = ()=>{ if(busy) return; groupKey = btn.dataset.key; deptIdx = 0; draw(); }; });
+  div.querySelector("#btn-dept-prev").onclick = ()=>{ if(busy) return; const n = MAJOR_DEPARTMENTS[groupKey].length; deptIdx = (deptIdx-1+n)%n; draw(); };
+  div.querySelector("#btn-dept-next").onclick = ()=>{ if(busy) return; const n = MAJOR_DEPARTMENTS[groupKey].length; deptIdx = (deptIdx+1)%n; draw(); };
+  cardEl.onclick = ()=>{ if(busy) return; flipped = !flipped; cardEl.classList.toggle("flipped", flipped); };
+  div.querySelector("#btn-major-confirm").onclick = ()=>{
+    if(busy) return;
+    busy = true;
+    const c = current();
+    enrollInDepartment(s, c.groupKey, c.dept);
+    s.studentCard.school = preview.school; s.studentCard.studentId = preview.studentId; // 畫面上看到的那組就是正式的
+    // 16.8.4：學生證翻回正面，蓋上「入學」印章(放大淡入蓋下，約400ms)
+    const rm = reducedMotion();
+    flipped = false; cardEl.classList.remove("flipped");
+    setTimeout(()=>{
+      const st = cardEl.querySelector(".enroll-stamp");
+      if(st) st.classList.add("shown");
+      setTimeout(()=>{ div.remove(); saveGame(); render(); }, rm ? 500 : 1100);
+    }, rm ? 0 : 450);
   };
+  draw();
+}
+// 16.8.4：學生證收在選單裡，當作大學時期的紀念
+function renderStudentCardModal(){
+  const s = state;
+  if(!s.studentCard) return;
+  const div = document.createElement("div");
+  div.id = "student-card-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `<div class="modal major-pick"><h3>學生證</h3><div class="sid-card" id="sid-card-view" role="button" tabindex="0" aria-label="學生證，點一下翻面">${renderStudentCardFaces({ ...s.studentCard, enrolled:true }, s.name)}</div><p class="mp-hint">點學生證可以翻面</p><button class="ghost-btn" id="btn-student-card-close">關閉</button></div>`;
+  document.body.appendChild(div);
+  const c = div.querySelector("#sid-card-view");
+  c.onclick = ()=>c.classList.toggle("flipped");
+  div.querySelector("#btn-student-card-close").onclick = ()=>div.remove();
 }
 // 十一、11.2/11.4（9/19新增）：期末考明牌檢定呈現——先明示「要判定了」但不秀機率數字，
 // 玩家點擊揭曉後才公開完整判定過程（骰值＋屬性加成換算依據＋門檻對比＋成敗結果），呼應對照遊戲「硃砂痣」的呈現節奏
