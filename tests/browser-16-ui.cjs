@@ -83,7 +83,8 @@ const shot = (page, name) => page.screenshot({ path: path.join(process.env.SHOT_
   check("16.2.3 故事內文明體、介面元素黑體", /Serif/.test(base.storyFont) && !/Serif/.test(base.uiFont) && /sans-serif/.test(base.uiFont), base);
   const rot = (() => { const m = /matrix\(([^)]+)\)/.exec(base.stampTf); if (!m) return null; const [a, b] = m[1].split(",").map(Number); return Math.round(Math.atan2(b, a) * 180 / Math.PI); })();
   check("16.2.4 年齡印章：珊瑚紅圓框、傾斜約-8度、內含「歲・階段」", base.stampColor === "rgb(200, 85, 61)" && base.stampRadius === "50%" && rot === -8 && /^\d+歲・/.test(base.stampText), { ...base, rot });
-  // 16.3 主畫面
+  // 16.3 主畫面(最新一則mock剛好沒有數值變化時，補一組已知變化，檢查的是膠囊樣式本身)
+  await page.evaluate(() => { const e = state.log[state.log.length - 1]; if (!e.statChanges || !Object.keys(e.statChanges).length) { e.statChanges = { health: 2, network: -1 }; render(); } });
   const main = await page.evaluate(() => {
     const top = document.querySelector(".topbar"), act = document.querySelector(".actions");
     return { topPos: getComputedStyle(top).position, actPos: getComputedStyle(act).position, btns: [...document.querySelectorAll(".round-btn")].map(b => b.getAttribute("aria-label")),
@@ -150,8 +151,10 @@ const shot = (page, name) => page.screenshot({ path: path.join(process.env.SHOT_
   await page.waitForTimeout(6000);
   const t10 = await page.evaluate(() => document.querySelector("#turn-loading .loading-text").textContent);
   check("16.5 超過10秒固定顯示「這一頁寫得比較久，再等一下下」", t10 === "這一頁寫得比較久，再等一下下", t10);
+  await page.evaluate(() => { MOCK_AI_DELAY_MS = 50; }); // 場景日期違規時會自動重生一次(1.2.9.11)，第二次呼叫不要再等20秒
   const cashBefore = await page.evaluate(() => state.cash);
-  await page.waitForTimeout(10800); // 20秒回合完成
+  await page.waitForTimeout(9500);
+  for (let i = 0; i < 40 && await page.evaluate(() => !!document.getElementById("turn-loading")); i++) await page.waitForTimeout(200); // 等20秒回合完成
   const after = await page.evaluate(() => {
     const card = document.getElementById("latest-entry");
     return { card: !!card, anim: card && getComputedStyle(card).animationName, dur: card && getComputedStyle(card).animationDuration, pDelays: card ? [...card.querySelectorAll(":scope > p")].map(p => p.style.animationDelay) : [],
@@ -183,7 +186,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(process.env.SHOT_
   await page.evaluate(() => { document.querySelectorAll(".modal-backdrop").forEach(m => m.remove()); MOCK_AI_DELAY_MS = 50; window.__m = mockCallAI; mockCallAI = async () => { throw new Error("測試用失敗"); }; takeTurn(state.choices[0], AP_COST_PER_TURN); });
   await page.waitForTimeout(2500);
   const err = await page.evaluate(() => ({ text: document.querySelector(".narrator-error")?.textContent || "", btn: !!document.getElementById("btn-retry-turn"), turn: state.turnCount }));
-  await page.evaluate(() => { mockCallAI = window.__m; });
+  await page.evaluate(() => { mockCallAI = window.__m; document.querySelectorAll(".modal-backdrop").forEach(m => m.remove()); }); // mock偶爾會跳十七章的購物確認彈窗，先收掉
   await page.click("#btn-retry-turn"); await page.waitForTimeout(1500);
   const afterRetry = await page.evaluate(() => ({ err: !!(state.log[state.log.length - 1] || {}).error, turn: state.turnCount, errs: state.log.filter(e => e.error).length }));
   check("16.3.6 旁白錯誤保留原文案，旁邊有「再試一次」；按下後用同一個行動重送、錯誤那則移除", /旁白剛剛恍神了一下/.test(err.text) && err.btn && !afterRetry.err && afterRetry.turn === err.turn + 1 && afterRetry.errs === 0, { err, afterRetry });

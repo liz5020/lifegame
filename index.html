@@ -420,6 +420,32 @@
   @keyframes enroll-stamp{0%{transform:rotate(-8deg) scale(1.6);opacity:0;}100%{transform:rotate(-8deg) scale(1);opacity:.9;}}
   .mp-nav{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:10px;font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums;}
   .mp-hint{font-size:12px;color:var(--ink-soft);margin:8px 0 0;}
+  /* 十六、16.7 結局人生回顧頁 */
+  .ending{padding:28px 18px 34px;text-align:center;}
+  .end-card{position:relative;padding:30px 20px 24px;margin-bottom:22px;}
+  .end-card .stamp{margin:0 auto 14px;}
+  .end-share{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;border:1px solid rgba(74,46,31,.15);background:rgba(255,255,255,.55);color:var(--stamp);font-size:16px;cursor:pointer;}
+  .end-kicker{font-size:12px;color:var(--ink-soft);letter-spacing:2px;}
+  .end-name{font-family:var(--serif);font-size:26px;letter-spacing:4px;margin:4px 0 12px;}
+  .end-epitaph{font-family:var(--serif);font-size:17px;line-height:1.9;color:var(--stamp);margin:0;}
+  .end-caption{font-size:11.5px;color:var(--ink-soft);margin-top:6px;}
+  .end-recap{text-align:left;}
+  .end-recap h3{font-family:var(--serif);font-size:18px;margin:0 0 12px;text-align:center;letter-spacing:2px;}
+  .end-seg{margin-bottom:14px;}
+  .end-seg-label{font-size:12px;color:var(--stamp);margin-bottom:4px;letter-spacing:1px;}
+  .end-seg p{font-family:var(--serif);font-size:15px;line-height:1.9;margin:0;}
+  .end-trans{font-family:var(--serif);font-size:14px;color:var(--ink-soft);font-style:italic;margin:0 0 14px;padding-left:12px;border-left:2px solid rgba(200,85,61,.3);}
+  .end-book-link{font-size:14px;margin:6px 0 22px;}
+  .end-next{display:grid;grid-template-columns:1fr;gap:10px;}
+  .end-next.two{grid-template-columns:1fr 1fr;}
+  .end-next .primary-btn{margin:0;padding:12px 10px;font-size:14.5px;}
+  .end-kids{margin-top:12px;padding:12px;text-align:left;}
+  .end-kids-title{font-size:13px;color:var(--ink-soft);margin-bottom:8px;}
+  .end-kids .choice-btn{display:block;width:100%;margin-bottom:6px;}
+  .end-share-msg{font-size:12px;color:var(--ink-soft);min-height:18px;margin:10px 0 0;}
+  .end-close{display:block;margin:18px auto 0;color:var(--ink-soft);font-size:13px;}
+  .ending .foot-mark{margin-top:30px;}
+
   /* 16.4.4 減少動態模式：取消位移、縮放、彈跳，只保留150ms淡入；背景色塊停止飄動 */
   @media (prefers-reduced-motion: reduce){
     .blob{animation:none;}
@@ -6600,13 +6626,13 @@ async function startLife(){
   takeTurn("（人生正式開始：15歲的你，在高中開學前的暑假最後一天。）", 0);
 }
 
+// 16.7「再寫一次人生」＝轉世。七、7.4.3.2（2026-09-28定案）：免費轉世不保留任何數值(取代原本隨機一項數值小幅加成)，
+// 只留前世記憶式的敘事痕跡，寫給旁白的素材也不直接說「前世」。點數照十、10.3.6全部保留
 function reincarnate(){
-  const bonusStat = pick(["health","knowledge","network","expression","savings"]);
   const carry = { reincarnations:(state.reincarnations||0)+1,
-    chronicleCarry: `前世走完了一生${state.ending?.epitaph ? "，最後留下一句：「"+state.ending.epitaph+"」" : ""}，帶著一絲餘蔭轉生。`,
+    chronicleCarry: `（說不上來的熟悉感）偶爾會有似曾相識的片刻或夢境，只能隱約帶過，不說破來由。`,
     name: state.name, gender: state.gender,
     ap: ensureAP(state) }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
-  if(bonusStat==="savings") carry.savingsCarry = 5; else carry[bonusStat] = 8; // 9/19：5000是9/14學生零用錢改遊戲幣單位制時漏改的殘留NT$量級數字，一併換算(÷1000)避免轉生後現金爆量失真
   state = newRoll(carry, null);
   saveGame();
   render();
@@ -9439,43 +9465,63 @@ function renderEnding(){
   const summaryHtml = segs.map(seg=>{
     const trans = transByStage[seg.stage];
     return `
-    <div style="text-align:left;margin-bottom:14px;">
-      ${seg.label ? `<div class="k" style="margin-bottom:4px;">${escapeHtml(seg.label)}${seg.age_from!=null?`（${seg.age_from}－${seg.age_to}歲）`:""}</div>` : ``}
-      <p style="font-size:14.5px;margin:0;">${escapeHtml(seg.text||"")}</p>
+    <div class="end-seg">
+      ${seg.label ? `<div class="end-seg-label">${escapeHtml(seg.label)}${seg.age_from!=null?`（${seg.age_from}－${seg.age_to}歲）`:""}</div>` : ``}
+      <p>${escapeHtml(seg.text||"")}</p>
     </div>
-    ${trans ? `<p style="font-size:14px;opacity:.75;text-align:left;margin:0 0 14px;">${escapeHtml(trans)}</p>` : ``}`;
+    ${trans ? `<p class="end-trans">${escapeHtml(trans)}</p>` : ``}`;
   }).join("");
+  // 十六、16.7（2026-09-28 claude.ai定案結構）：結局卡 → 人生回顧(L1/L2展開不收合) → 翻開人生之書 → 下一步按鈕 → 闔上這份草稿。
+  // 原本的六格數值(含不該給玩家看的福緣)拿掉；雷達圖、重要的人、付費人生軌跡入口新結構沒有列，待使用者確認後再決定
+  // 結局卡標題：七、7.1.4.1不輸出標籤，先用「人生草稿・第N世」＋名字【待確認】；印章用16.2.4的特殊印章字「定稿」
   return `
-  <div class="center-screen">
-    <div class="stamp" style="margin:0 auto 14px;"><b>${s.age}</b>歲</div>
-    ${summaryHtml}
-    ${s.ending.epitaph ? `<div class="end-title" style="font-size:18px;line-height:1.7;margin:18px 0 10px;">${escapeHtml(s.ending.epitaph)}</div>` : ``}
-    <div class="roll-grid">
-      <div class="roll-item"><div class="k">存款</div><div class="v" style="font-size:15px;">${s.cash.toLocaleString()}</div></div>
-      <div class="roll-item"><div class="k">健康</div><div class="v">${Math.round(s.stats.health)}</div></div>
-      <div class="roll-item"><div class="k">才識</div><div class="v">${Math.round(s.stats.knowledge)}</div></div>
-      <div class="roll-item"><div class="k">人脈</div><div class="v">${Math.round(s.stats.network)}</div></div>
-      <div class="roll-item"><div class="k">福緣</div><div class="v">${s.luckHidden}</div></div>
-      <div class="roll-item"><div class="k">羈絆</div><div class="v">${s.characters.length}</div></div>
+  <div class="ending">
+    <section class="end-card glass" id="end-card">
+      <button class="end-share" id="btn-ending-share" aria-label="分享這一生" title="分享這一生">↗</button>
+      <div class="stamp big restamp"><b>${s.age}</b>歲・定稿</div>
+      <div class="end-kicker">人生草稿・第${(s.reincarnations||0)+1}世</div>
+      <h2 class="end-name">${escapeHtml(s.name)}</h2>
+      ${s.ending.epitaph ? `<p class="end-epitaph">${escapeHtml(s.ending.epitaph)}</p><div class="end-caption">旁白為這一生留下的話</div>` : ``}
+    </section>
+    ${summaryHtml ? `<section class="end-recap"><h3>人生回顧</h3>${summaryHtml}</section>` : ``}
+    <button class="text-btn end-book-link" id="btn-ending-book">翻開人生之書 →</button>
+    <div class="end-next${canSucceed?" two":""}">
+      ${canSucceed ? `<button class="primary-btn" id="btn-succeed-open">選一個孩子接著寫</button>` : ``}
+      <button class="primary-btn" id="btn-reincarnate">再寫一次人生</button>
     </div>
     ${canSucceed ? `
-    <div class="roll-item" style="text-align:left;margin-bottom:14px;">
-      <div class="k">延續下一世——選一位孩子接續</div>
-      ${kids.map(k=>`<button class="choice-btn" data-child="${escapeHtml(k.name)}" style="padding-left:8px;">${escapeHtml(k.name)}（${escapeHtml(k.relation)}）</button>`).join("")}
+    <div class="end-kids glass" id="end-kids" hidden>
+      <div class="end-kids-title">要接著寫誰的故事？</div>
+      ${kids.map(k=>`<button class="choice-btn" data-child="${escapeHtml(k.name)}">${escapeHtml(k.name)}（${escapeHtml(k.relation)}）</button>`).join("")}
     </div>` : ``}
-    <button class="ghost-btn" id="btn-ending-book">${bookLinkText(s)}</button>
-    <button class="primary-btn" id="btn-reincarnate">服下轉世丹，重新投胎</button>
-    <button class="ghost-btn" id="btn-reset-end">就此闔卷</button>
+    <p class="end-share-msg" id="end-share-msg" aria-live="polite"></p>
+    <button class="text-btn end-close" id="btn-reset-end">闔上這份草稿</button>
+    <div class="foot-mark">人生草稿</div>
   </div>`;
 }
 function bindEnding(){
   const endingBook = document.getElementById("btn-ending-book");
   if(endingBook) endingBook.onclick = ()=>openBookPage(ensureBook(state), { owner: state.name });
   document.getElementById("btn-reincarnate").onclick = reincarnate;
-  document.getElementById("btn-reset-end").onclick = ()=>endLife("ended");
+  document.getElementById("btn-reset-end").onclick = ()=>endLife("ended"); // 16.7：「闔上這份草稿」取代「就此闔卷」，進唯讀封存區(10.3.7)
+  const kidsOpen = document.getElementById("btn-succeed-open");
+  if(kidsOpen) kidsOpen.onclick = ()=>{ const k = document.getElementById("end-kids"); if(k){ k.hidden = !k.hidden; if(!k.hidden && k.scrollIntoView) k.scrollIntoView({block:"nearest", behavior: reducedMotion() ? "auto" : "smooth"}); } };
   document.querySelectorAll(".choice-btn[data-child]").forEach(btn=>{
     btn.onclick = ()=> succeedAsChild(btn.dataset.child);
   });
+  const share = document.getElementById("btn-ending-share");
+  if(share) share.onclick = shareThisLife;
+}
+// 16.7「分享這一生」：手機支援系統分享就叫出分享面板，不支援就把文字複製起來。只放名字、享年、墓誌銘，不放玩家自由輸入的內容【實作方式待確認】
+async function shareThisLife(){
+  const s = state;
+  const text = `${s.name}，享年${s.age}歲。${s.ending && s.ending.epitaph ? "「"+s.ending.epitaph+"」" : ""}——人生草稿`;
+  const msg = document.getElementById("end-share-msg");
+  try{
+    if(navigator.share){ await navigator.share({ title:"人生草稿", text, url:"https://lifegamepage.smile80275.workers.dev/" }); return; }
+    await navigator.clipboard.writeText(text + " https://lifegamepage.smile80275.workers.dev/");
+    if(msg) msg.textContent = "已複製，可以貼給想分享的人。";
+  }catch(e){ if(msg && !(e && e.name==="AbortError")) msg.textContent = "這個瀏覽器不能直接分享，可以截圖這一頁。"; }
 }
 
 // ---------- DEBUG 測試面板（僅 USE_MOCK=true 時出現，正式模式完全不會被建立）----------
