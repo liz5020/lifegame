@@ -289,16 +289,23 @@
   .stat-bar .fill{height:100%;border-radius:4px;background:var(--bar);transition:width var(--t-slow) var(--ease);}
   .stat-bar .num{text-align:right;font-variant-numeric:tabular-nums;}
   /* 16.3.4數值說明（2026-09-28）：滑鼠移過去／鍵盤聚焦／手機點一下(.tip-open)時，在該列下方顯示半透明小框 */
-  .has-tip{position:relative;cursor:help;}
+  /* 16.3.4數值說明（2026-09-28改版）：小框浮在該列下方、不推擠版面，也不擋滑鼠(pointer-events:none)，
+     看完第一項可以直接往下移到第二項；滑鼠移過去／鍵盤聚焦／手機點一下(.tip-open)時淡入 */
+  .has-tip{position:relative;cursor:help;border-radius:8px;transition:background var(--t-fast) var(--ease);}
   .has-tip:focus{outline:none;}
-  .stat-tip{display:none;grid-column:1 / -1;margin-top:6px;padding:8px 10px;border-radius:10px;background:rgba(74,46,31,.82);color:#fff;
-    font-size:12px;line-height:1.6;animation:fade-in 150ms var(--ease) both;}
-  .stat-tip b{display:block;font-size:11px;opacity:.75;font-weight:400;margin-top:2px;}
+  .stat-bar.has-tip > span:first-child,.ledger-row.has-tip .lbl,.cash-block.has-tip .cash-lbl{border-bottom:1px dotted rgba(74,46,31,.35);justify-self:start;}
+  .stat-tip{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:6;pointer-events:none;
+    padding:10px 12px;border-radius:12px;background:rgba(58,36,24,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    color:#FFF8EE;font-size:12.5px;line-height:1.65;box-shadow:0 8px 22px rgba(74,46,31,.22);
+    opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity var(--t-fast) var(--ease),transform var(--t-fast) var(--ease),visibility 0s linear var(--t-fast);}
+  .stat-tip::before{content:"";position:absolute;top:-6px;left:22px;border:6px solid transparent;border-top:none;border-bottom-color:rgba(58,36,24,.86);}
+  .stat-tip b{display:block;font-size:11px;color:#F0B9A6;font-weight:400;letter-spacing:.5px;margin-top:6px;}
   .stat-tip b:first-child{margin-top:0;}
-  @media (hover:hover){ .has-tip:hover > .stat-tip{display:block;} }
-  .has-tip:focus-visible > .stat-tip,.has-tip.tip-open > .stat-tip{display:block;}
-  .ledger-row.has-tip{flex-wrap:wrap;}
-  .ledger-row.has-tip .stat-tip{flex-basis:100%;}
+  @media (hover:hover){ .has-tip:hover{background:rgba(255,255,255,.35);} .has-tip:hover > .stat-tip{opacity:1;visibility:visible;transform:none;transition-delay:0s;} }
+  .has-tip:focus-visible > .stat-tip,.has-tip.tip-open > .stat-tip{opacity:1;visibility:visible;transform:none;transition-delay:0s;}
+  .has-tip.tip-open{background:rgba(255,255,255,.35);}
+  #panel-stats{padding-bottom:calc(120px + env(safe-area-inset-bottom));} /* 最後一項的說明框有地方顯示 */
+  @media (prefers-reduced-motion: reduce){ .stat-tip{transition:opacity 150ms linear,visibility 0s linear 150ms;transform:none;} }
   .sheet .ledger{padding:6px 0 0;border:none;background:transparent;margin-top:10px;}
   .ledger-row{display:flex;align-items:baseline;gap:8px;font-size:13.5px;padding:3px 0;}
   .ledger-row .lbl{white-space:nowrap;color:var(--ink-soft);font-size:12.5px;}
@@ -6891,6 +6898,13 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   if(s.log.length>2000) s.log.shift();
 
   s.choices = r.choices || [];
+  // 下載故事(測試選單)用：這回合給玩家的選項跟著日記存；旁白回傳的完整資料只在測試瀏覽器留最近10回合(不含正文，正文已在日記)
+  const lastLogEntry = s.log[s.log.length-1];
+  if(lastLogEntry && s.choices.length) lastLogEntry.options = s.choices.slice(0,6);
+  if(devToolsOn()){
+    const raw = Object.assign({}, r); delete raw.action_result; delete raw.narrative;
+    s.devAiLog = (s.devAiLog||[]).concat([{ turn: s.turnCount, label: tagLabel || (tagAge+"歲"), data: raw }]).slice(-DEV_AI_LOG_MAX);
+  }
 
   // 七、7.1.5（9/16改版）：死亡結局現在完全由client端的forceEnding決定，AI不能自行發起結局——
   // 取代原本「意外死亡需滿足19歲以上+已有前兆」的防呆邏輯，因為AI已經不再有判斷「要不要死」的空間，只剩forceEnding這一道閘門
@@ -10105,6 +10119,7 @@ async function shareThisLife(){
 // ===== 測試選單(正式上線刪除) =====（2026-09-28，取代原本左側浮動的切換鈕與用量小框）
 // 只有開過?dev=1的瀏覽器看得到(DEV_TOOLS_KEY)。遊戲畫面放在頂部列三個圓鈕左邊(紫色🧪，滑出面板)；
 // 首頁、結局等沒有頂部列的畫面，同一顆鈕固定在右上角(開彈窗)。內容：模擬/真實API切換、用量、下載故事、Debug面板入口
+const DEV_AI_LOG_MAX = 10; // 使用者指定：旁白完整回傳資料只留最新10回合
 function devToolsOn(){
   try{ return localStorage.getItem(DEV_TOOLS_KEY)==="yes"; }catch(e){ return false; }
 }
@@ -10203,7 +10218,20 @@ function buildStoryExport(s){
     (e.relationshipHints||[]).forEach(h=>out.push(`關係：${h}`, ""));
     if(e.purchaseNote) out.push(`購物：${e.purchaseNote}`, "");
     if(e.settlement) out.push(`結算：${settlementText(e.settlement, s.cash)}`, "");
+    // 這回合給的選項，標出下一回合選了哪個(下一則日記的action)；自己打字的另外列出
+    if(e.options && e.options.length){
+      const next = (s.log||[]).slice(i+1).find(x=>!x.error);
+      const picked = next && next.action;
+      out.push("這回合的選項：");
+      e.options.forEach((o,k)=>out.push(`${k+1}. ${o}${picked===o ? "　✔ 選了這個" : ""}`));
+      if(picked && !e.options.includes(picked)) out.push(`（沒選現成的，自己寫：${picked}）`);
+      out.push("");
+    }
   });
+  if((s.devAiLog||[]).length){
+    out.push("## 附錄：旁白回傳的完整資料（最近10回合，不含正文）", "");
+    s.devAiLog.forEach(x=>out.push(`### 第${x.turn}回合｜${x.label}`, "", "```json", JSON.stringify(x.data, null, 2), "```", ""));
+  }
   if(s.ending){
     out.push("## 結局", "");
     if(s.ending.overview) out.push(s.ending.overview, "");
@@ -10246,7 +10274,9 @@ function ensureDebugUI(){
   ensureApiToggleUI();
   if(!USE_MOCK) return;
   let btn = document.getElementById("debug-toggle-btn");
-  if(!btn){
+  // 測試選單裡已有Debug面板入口：開過?dev=1的瀏覽器不再放右側浮動🛠(會壓到正文)
+  if(devToolsOn()){ if(btn) btn.remove(); btn = null; }
+  else if(!btn){
     btn = document.createElement("button");
     btn.id = "debug-toggle-btn";
     btn.textContent = "🛠";

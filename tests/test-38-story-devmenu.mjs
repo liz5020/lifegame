@@ -69,6 +69,11 @@ const md = ev("buildStoryExport(state)");
 A.check("下載故事：Markdown含標題、選擇行、行動結果、分隔、新場景", /^# 林以晴・第1世/.test(md) && md.includes("→ 把考卷拿給雅涵看") && md.includes("雅涵湊過來看了一眼") && md.includes("\n---\n") && md.includes("隔天早上"), md.slice(0, 400));
 A.check("下載故事：台詞標記換成「」、有結算", !/\{\{/.test(md) && /結算：/.test(md));
 A.check("反悔不退用量", ev("state.devUsage.calls") >= 5);
+for (let i = 0; i < 9; i++) await H.playTurn(g);
+const md2 = ev("buildStoryExport(state)");
+A.check("下載故事：每回合列出選項，標出選了哪個", /這回合的選項：\n1\. /.test(md2) && /✔ 選了這個/.test(md2), md2.slice(0, 600));
+A.check("自己打字的行動另外註明", md2.includes("（沒選現成的，自己寫：自己打的行動）"));
+A.check("旁白完整資料只留最新10回合、不含正文", ev("state.devAiLog.length") === 10 && ev("state.devAiLog.every(x=>!('narrative' in x.data) && !('action_result' in x.data))") && md2.includes("## 附錄：旁白回傳的完整資料"));
 
 // 數值說明
 const tips = [...doc.querySelectorAll("#panel-stats .has-tip")].map(x => x.dataset.tip);
@@ -86,6 +91,8 @@ await H.startNewLife(m);
 await H.waitIdle(m, 900);
 A.check("沒有?dev=1：頂部列沒有🧪、沒有測試面板", !m.win.document.querySelector(".test-btn") && !m.win.document.getElementById("panel-test") && !m.win.document.getElementById("dev-fab"));
 A.check("mock：開場回合交段落清單也正常顯示", !!m.win.document.getElementById("latest-entry"));
+await H.playTurn(m); await H.waitIdle(m, 900);
+A.check("沒有?dev=1：不留旁白完整資料", !m.ev("state.devAiLog"));
 // 首頁(有dev旗標)：右上角浮動鈕
 const h2 = await H.loadGame({ useMock: true, env: H.makeEnv(), key: "storykey03", dev: true });
 h2.ev("state = {phase:'home'}; render()");
