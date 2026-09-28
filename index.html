@@ -4,24 +4,47 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>人生草稿</title>
+<!-- 十六、16.10.8 社群分享預覽(目前以Threads為主)。og:image要是完整網址，og.png(1200×630)跟index.html一起上傳到Pages(16.10.9例外) -->
+<meta name="description" content="AI 文字人生模擬。生在哪裡你選不了，但每一頁都由你落筆。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="人生草稿">
+<meta property="og:title" content="人生草稿｜這一次，換你決定要活成什麼樣子">
+<meta property="og:description" content="AI 文字人生模擬。生在哪裡你選不了，但每一頁都由你落筆。">
+<meta property="og:url" content="https://lifegamepage.smile80275.workers.dev/">
+<meta property="og:image" content="https://lifegamepage.smile80275.workers.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="人生草稿：15歲・起稿">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#F7F0E3">
 <style>
+  /* 十六、16.1～16.2（2026-09-28）：色彩改版。--stamp改為定案的珊瑚紅強調色，--ink改為深棕主要文字；
+     --paper-card改為彈窗/面板用的暖白底(16.2.2滑出面板背景)，一般卡片改用.glass毛玻璃 */
   :root{
-    --paper:#EDE7D9;
-    --paper-card:#F6F1E4;
-    --paper-dark:#E1D8C3;
-    --ink:#262220;
-    --ink-soft:#6b6156;
-    --line:#c3b79c;
-    --stamp:#9c3b2e;
-    --teal:#3e6b5c;
-    --gold:#93752f;
+    --paper:#F7F0E3;
+    --paper-card:rgba(250,244,234,.92);
+    --paper-dark:rgba(74,46,31,.08);
+    --ink:#4A2E1F;
+    --ink-soft:#8A6F5E;
+    --line:rgba(74,46,31,.16);
+    --stamp:#C8553D;
+    --teal:#3B6D11;
+    --gold:#C8553D;
+    --bar:#E0836A;
+    --up-bg:rgba(99,153,34,.16); --up-fg:#3B6D11;
+    --down-bg:rgba(216,90,48,.16); --down-fg:#993C1D;
+    --danger:#A32D2D;
+    --serif:"Noto Serif TC","Songti TC","PMingLiU",serif;
+    --sans:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif;
+    --t-fast:150ms; --t-std:300ms; --t-slow:600ms;
+    --ease:cubic-bezier(.2,.8,.2,1);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
     background:var(--paper);
     color:var(--ink);
-    font-family:"Noto Serif TC","Songti TC","PMingLiU",serif;
+    font-family:var(--sans);
     line-height:1.7;
     -webkit-font-smoothing:antialiased;
   }
@@ -29,199 +52,28 @@
     max-width:520px;
     margin:0 auto;
     min-height:100vh;
-    background:var(--paper);
+    background:transparent;
     display:flex;
     flex-direction:column;
   }
-  .cover{
-    padding:22px 20px 14px;
-    border-bottom:3px double var(--ink);
-    display:flex;
-    align-items:baseline;
-    justify-content:space-between;
-  }
-  .cover h1{
-    font-size:22px;
-    margin:0;
-    letter-spacing:2px;
-    font-weight:700;
-  }
-  .cover .sub{
-    font-size:11px;
-    color:var(--ink-soft);
-    letter-spacing:3px;
-    margin-top:2px;
-  }
-  .stamp{
-    border:2px solid var(--stamp);
-    color:var(--stamp);
-    border-radius:50%;
-    width:56px;height:56px;
-    display:flex;flex-direction:column;
-    align-items:center;justify-content:center;
-    transform:rotate(-8deg);
-    font-size:10px;
-    line-height:1.1;
-    text-align:center;
-    flex-shrink:0;
-    opacity:.85;
-  }
-  .stamp b{font-size:16px;display:block;font-family:serif;}
 
-  .progress-strip{
-    padding:8px 20px;
-    border-bottom:1px solid var(--line);
-    background:var(--paper-card);
-  }
-  .progress-strip .prow{
-    display:flex;justify-content:space-between;align-items:baseline;
-    font-size:11.5px;color:var(--ink-soft);margin-bottom:4px;
-  }
-  .progress-strip .prow b{color:var(--ink);font-weight:700;}
-  .progress-track{height:4px;background:var(--paper-dark);}
-  .progress-fill{height:100%;background:var(--teal);}
-
-  .ledger{
-    padding:14px 20px;
-    border-bottom:1px solid var(--line);
-    background:var(--paper-card);
-  }
-  .ledger-row{
-    display:flex;align-items:baseline;gap:8px;
-    font-size:14px;
-    padding:3px 0;
-  }
-  .ledger-row .lbl{white-space:nowrap;color:var(--ink-soft);font-size:12.5px;letter-spacing:1px;}
-  .ledger-row .dots{
-    flex:1;border-bottom:1px dotted var(--line);
-    height:10px;
-  }
-  .ledger-row .val{
-    font-variant-numeric:tabular-nums;
-    font-family:"Courier New",monospace;
-    font-size:13.5px;
-    min-width:28px;text-align:right;
-  }
   .pips{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;}
   .pip{width:9px;height:9px;border-radius:50%;border:1px solid var(--gold);}
   .pip.on{background:var(--gold);}
 
-  .journal{
-    flex:1;
-    padding:16px 20px 8px;
-  }
-  .entry{margin-bottom:18px;}
-  .entry .age-tag{
-    font-size:11px;color:var(--stamp);letter-spacing:2px;
-    border-bottom:1px solid var(--stamp);
-    display:inline-block;padding-bottom:2px;margin-bottom:6px;
-  }
-  .entry p{margin:0 0 10px;font-size:15.5px;line-height:1.7;}
-  .entry p:last-child{margin-bottom:0;}
   /* 一、1.2.9.4（2026-09-24實作）文件框：成績單/薪資單/訊息等正式資訊，左側色條、斜體、與正文區隔 */
-  .entry .doc-box{border-left:3px solid var(--stamp);padding:6px 12px;margin:0 0 10px;font-style:italic;background:rgba(156,59,46,0.05);}
+  .entry .doc-box{border-left:3px solid var(--stamp);padding:6px 12px;margin:0 0 10px;font-style:italic;background:rgba(200,85,61,0.06);}
   .entry .doc-box .doc-title{font-size:12px;color:var(--stamp);letter-spacing:1px;margin-bottom:4px;font-style:normal;}
   .entry .doc-box p{font-size:14.5px;margin:0 0 4px;}
   .npc-link{border-bottom:1px dotted var(--ink-soft);cursor:pointer;} /* 四、4.1.1：劇情中的角色名可點開詳細頁 */
-  .entry.chronicle{
-    font-family:"Noto Sans TC",sans-serif;
-    font-size:12px;color:var(--ink-soft);
-    border-left:2px solid var(--line);
-    padding-left:10px;margin:10px 0;
-  }
 
-  .choices{padding:6px 20px 4px;}
-  .choice-btn{
-    display:block;width:100%;text-align:left;
-    background:none;border:none;border-bottom:1px solid var(--line);
-    padding:10px 4px 10px 22px;position:relative;
-    font-family:"Noto Serif TC",serif;font-size:15px;color:var(--ink);
-    cursor:pointer;
-  }
-  .choice-btn:before{
-    content:"○";position:absolute;left:0;top:10px;color:var(--teal);
-  }
-  .choice-btn:active{background:var(--paper-dark);}
-  .choice-btn:disabled{opacity:.4;}
-
-  .custom-row{
-    display:flex;gap:8px;padding:14px 20px 18px;
-    border-bottom:1px solid var(--line);
-  }
-  .custom-row input{
-    flex:1;border:none;border-bottom:1px solid var(--ink-soft);
-    background:transparent;font-family:"Noto Serif TC",serif;
-    font-size:14.5px;padding:6px 2px;color:var(--ink);
-  }
-  .custom-row input:focus{outline:none;border-bottom:1px solid var(--stamp);}
-  .custom-row button{
-    border:1px solid var(--ink);background:var(--ink);color:var(--paper);
-    font-family:"Noto Serif TC",serif;font-size:13px;
-    padding:6px 14px;cursor:pointer;
-  }
-  .custom-row button:disabled{opacity:.4;}
-  .hint{font-size:11px;color:var(--ink-soft);padding:0 20px 14px;}
-  .input-error{font-size:11px;color:var(--stamp);padding:0 20px 8px;display:none;}
-
-  .roster{
-    padding:14px 20px 20px;
-    border-top:1px solid var(--line);
-  }
-  .roster-title{font-size:12px;letter-spacing:2px;color:var(--ink-soft);margin-bottom:8px;}
-  .roster-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;}
-  .rcard{
-    flex:0 0 auto;width:118px;cursor:pointer;
-    background:var(--paper-card);border:1px solid var(--line);
-    padding:8px 10px;font-size:11.5px;
-  }
-  .rcard.bg{opacity:.45;}
-  .rcard .name{font-size:13px;font-weight:700;margin-bottom:2px;}
-  .rcard .rel{color:var(--ink-soft);margin-bottom:2px;}
-  .rcard .status-text{color:var(--stamp);font-size:11px;}
-
-  .footer-actions{
-    display:flex;justify-content:space-between;align-items:center;
-    padding:10px 20px 18px;font-size:11px;color:var(--ink-soft);
-  }
-  .footer-actions a{color:var(--ink-soft);text-decoration:underline;cursor:pointer;}
-
-  .center-screen{
-    flex:1;display:flex;flex-direction:column;justify-content:center;
-    padding:30px 24px;text-align:center;
-  }
-  .center-screen h2{font-size:20px;margin-bottom:14px;letter-spacing:1px;}
   .roll-grid{
     display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0;
     text-align:left;
   }
-  .roll-item{border:1px solid var(--line);padding:10px 12px;background:var(--paper-card);}
+  .roll-item{border:1px solid rgba(255,255,255,.65);border-radius:14px;padding:10px 12px;background:rgba(255,255,255,.45);}
   .roll-item .k{font-size:11px;color:var(--ink-soft);letter-spacing:1px;}
-  .roll-item .v{font-size:20px;font-family:"Courier New",monospace;}
-  .primary-btn{
-    background:var(--ink);color:var(--paper);border:none;
-    padding:12px 28px;font-size:15px;letter-spacing:2px;
-    font-family:"Noto Serif TC",serif;cursor:pointer;margin-top:10px;
-  }
-  .ghost-btn{
-    background:none;border:1px solid var(--ink-soft);color:var(--ink);
-    padding:10px 22px;font-size:13px;letter-spacing:1px;
-    font-family:"Noto Serif TC",serif;cursor:pointer;margin-top:10px;
-  }
-  .loading{
-    padding:20px;text-align:center;color:var(--ink-soft);font-size:13px;
-    letter-spacing:1px;
-  }
-  /* 一、1.1.4（2026-09-25新增）：等待AI時的動態效果——筆在紙上來回書寫＋會跑的點點點；系統設定減少動態時改成靜態 */
-  .loading .ink-pen{display:block;width:120px;height:34px;margin:0 auto 8px;overflow:visible;}
-  .loading .ink-line{fill:none;stroke:var(--ink-soft);stroke-width:1.4;stroke-linecap:round;
-    stroke-dasharray:150;stroke-dashoffset:150;animation:ink-write 2.6s ease-in-out infinite;}
-  .loading .ink-nib{animation:pen-move 2.6s ease-in-out infinite;transform-origin:0 0;}
-  .loading .dots i{font-style:normal;display:inline-block;opacity:.15;animation:dot-fade 1.4s ease-in-out infinite;}
-  .loading .dots i:nth-child(2){animation-delay:.2s;}
-  .loading .dots i:nth-child(3){animation-delay:.4s;}
-  @keyframes ink-write{0%{stroke-dashoffset:150;opacity:1;}70%{stroke-dashoffset:0;opacity:1;}90%{stroke-dashoffset:0;opacity:0;}100%{stroke-dashoffset:150;opacity:0;}}
-  @keyframes pen-move{0%{transform:translate(6px,0);}70%{transform:translate(108px,0);}85%{transform:translate(108px,-6px);}100%{transform:translate(6px,0);}}
-  @keyframes dot-fade{0%,100%{opacity:.15;}40%{opacity:1;}}
+  .roll-item .v{font-size:20px;font-variant-numeric:tabular-nums;}
   /* 十五、人生之書（2026-09-25新增） */
   .book-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--paper);
     padding:10px 18px;font-size:13px;letter-spacing:1px;box-shadow:0 3px 10px rgba(0,0,0,.25);cursor:pointer;max-width:calc(100vw - 32px);}
@@ -240,28 +92,317 @@
   .book-text p{font-size:15px;line-height:1.95;margin:0 0 1em;}
   .book-empty{font-size:13px;color:var(--ink-soft);}
   .book-retry{margin-top:6px;padding:4px 12px;font-size:12px;}
-  @media (prefers-reduced-motion: reduce){
-    .loading .ink-line,.loading .ink-nib,.loading .dots i{animation:none;}
-    .loading .ink-line{stroke-dashoffset:0;}
-    .loading .ink-nib{transform:translate(108px,0);}
-    .loading .dots i{opacity:1;}
+
+  /* ========== 十六、介面與視覺設計（2026-09-28實作）========== */
+  /* 16.1 暖陽顆粒背景：單一固定背景，純CSS＋SVG */
+  @keyframes drift1 { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(40px,30px) scale(1.12); } }
+  @keyframes drift2 { 0% { transform: translate(0,0) scale(1.05); } 100% { transform: translate(-35px,-25px) scale(.95); } }
+  .bg { position: fixed; inset: 0; background: #F7F0E3; overflow: hidden; z-index: -1; pointer-events:none; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(38px); }
+  .blob-1 { width: 270px; height: 270px; left: -50px; top: 15%;  background: #E8604C; animation: drift1 16s ease-in-out infinite alternate; }
+  .blob-2 { width: 290px; height: 290px; left: 33%;   top: 45%;  background: #F0A04B; animation: drift2 19s ease-in-out infinite alternate; }
+  .blob-3 { width: 240px; height: 240px; right: -60px; top: -70px; background: #B9D3EA; animation: drift2 22s ease-in-out infinite alternate; }
+  .blob-4 { width: 260px; height: 260px; left: -70px; bottom: -40px; background: #E3EFC5; animation: drift1 20s ease-in-out infinite alternate; }
+  .grain {
+    position: absolute; inset: 0; opacity: .55; mix-blend-mode: overlay; pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   }
+  /* 16.2.2 毛玻璃卡片 */
+  .glass {
+    background: rgba(255,255,255,.45);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.65);
+    border-radius: 18px;
+  }
+  /* 16.2.4 年齡印章：珊瑚紅圓框、年齡數字＋「歲・階段」、傾斜約-8度 */
+  .stamp{
+    border:2px solid var(--stamp);color:var(--stamp);border-radius:50%;
+    width:60px;height:60px;flex-shrink:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    transform:rotate(-8deg);font-family:var(--sans);font-size:9.5px;line-height:1.15;text-align:center;
+    letter-spacing:0;white-space:nowrap;
+  }
+  .stamp b{font-size:18px;display:block;font-family:var(--serif);font-weight:700;}
+  .stamp.big{width:92px;height:92px;font-size:12px;border-width:2.5px;}
+  .stamp.big b{font-size:28px;}
+  @keyframes restamp{0%{transform:rotate(-8deg) scale(1.6);opacity:0;}70%{transform:rotate(-8deg) scale(.95);opacity:1;}100%{transform:rotate(-8deg) scale(1);opacity:1;}}
+  .stamp.restamp{animation:restamp 350ms var(--ease) both;}
+  /* 16.2.3 字型：故事內文明體、介面元素黑體 */
+  .entry p,.story-serif,.book-text,.book-cover h2,.book-chapter-head h2,.end-title{font-family:var(--serif);}
+  h1,h2,h3{letter-spacing:.5px;}
+  /* 共用按鈕 */
+  .primary-btn{
+    background:var(--stamp);color:#fff;border:none;border-radius:999px;
+    padding:12px 28px;font-size:15px;letter-spacing:1px;font-family:var(--sans);cursor:pointer;margin-top:10px;
+    transition:transform var(--t-fast) var(--ease),opacity var(--t-fast);
+  }
+  .ghost-btn{
+    background:rgba(255,255,255,.4);border:1px solid rgba(74,46,31,.22);color:var(--ink);border-radius:999px;
+    padding:10px 22px;font-size:13.5px;letter-spacing:.5px;font-family:var(--sans);cursor:pointer;margin-top:10px;
+    transition:transform var(--t-fast) var(--ease),opacity var(--t-fast);
+  }
+  .primary-btn:active,.ghost-btn:active{transform:scale(.97);}
+  .primary-btn:disabled,.ghost-btn:disabled{opacity:.45;cursor:default;}
+  /* 彈窗：比照16.2.2滑出面板的底色 */
   .modal-backdrop{
-    position:fixed;inset:0;background:rgba(38,34,32,.55);
-    display:flex;align-items:center;justify-content:center;z-index:50;
-    padding:20px;
+    position:fixed;inset:0;background:rgba(74,46,31,.28);
+    display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;
+    animation:fade-in var(--t-std) var(--ease) both;
   }
   .modal{
-    background:var(--paper-card);max-width:340px;width:100%;
-    padding:24px 22px;border:2px double var(--ink);
+    background:rgba(250,244,234,.95);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    max-width:340px;width:100%;padding:24px 22px;border:1px solid rgba(255,255,255,.7);border-radius:22px;
+    box-shadow:0 10px 30px rgba(74,46,31,.18);max-height:88vh;overflow-y:auto;
   }
   .modal h3{margin-top:0;font-size:17px;}
   .modal p{font-size:13.5px;color:var(--ink-soft);}
   .modal .demo-note{font-size:11px;color:var(--stamp);margin-top:10px;}
   .end-title{font-size:24px;margin:6px 0 4px;color:var(--stamp);}
+  .center-screen{
+    flex:1;display:flex;flex-direction:column;justify-content:center;
+    padding:30px 24px;text-align:center;
+  }
+  .center-screen h2{font-size:20px;margin-bottom:14px;}
+
+  /* 16.3.1 頂部狀態列(固定) */
+  .topbar{position:sticky;top:0;z-index:20;margin:0;border-radius:0 0 18px 18px;border-top:none;padding:10px 14px 8px;}
+  .tb-main{display:flex;align-items:center;gap:10px;}
+  .tb-mid{flex:1;min-width:0;}
+  .tb-stage{font-size:14px;font-weight:700;letter-spacing:.2px;line-height:1.35;}
+  .tb-meta{font-size:11px;color:var(--ink-soft);line-height:1.5;margin-top:2px;}
+  .tb-meta span{white-space:nowrap;}
+  .tb-btns{display:flex;gap:6px;}
+  .round-btn{width:36px;height:36px;border-radius:50%;border:1px solid rgba(74,46,31,.15);background:rgba(255,255,255,.55);
+    color:var(--ink);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+    transition:transform var(--t-fast) var(--ease);}
+  .round-btn:active{transform:scale(.94);}
+  .tb-sub{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px;color:var(--ink-soft);gap:8px;}
+  .tb-sub .right{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .demo-tag{font-size:10.5px;color:var(--stamp);border:1px solid rgba(200,85,61,.45);border-radius:999px;padding:0 8px;white-space:nowrap;}
+
+  /* 16.3.2 故事區 */
+  .journal{flex:1;padding:14px 14px 10px;}
+  .entry{margin-bottom:12px;}
+  .entry.card{padding:16px 16px 14px;}
+  .entry .age-tag{
+    font-size:11.5px;color:var(--stamp);letter-spacing:1px;border-bottom:1px solid var(--stamp);
+    display:inline-block;padding-bottom:2px;margin-bottom:8px;
+  }
+  .entry p{margin:0 0 10px;font-size:15.5px;line-height:1.8;}
+  .entry p:last-child{margin-bottom:0;}
+  .entry-summary{display:flex;align-items:center;gap:8px;padding:9px 14px;opacity:.55;cursor:pointer;font-size:12.5px;
+    border-radius:14px;background:rgba(255,255,255,.3);transition:opacity var(--t-std) var(--ease);}
+  .entry-summary .s-tag{color:var(--stamp);white-space:nowrap;}
+  .entry-summary .s-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--serif);}
+  .entry-summary .s-arrow{flex-shrink:0;transition:transform var(--t-std) var(--ease);}
+  .entry-summary.open{opacity:.8;}
+  .entry-summary.open .s-arrow{transform:rotate(180deg);}
+  .entry-expanded{margin:-4px 0 12px;padding:12px 14px;opacity:.8;}
+  .entry-meta{margin-top:12px;}
+  .caps{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+  .cap{font-size:12px;padding:2px 10px;border-radius:999px;font-variant-numeric:tabular-nums;}
+  .cap.up{background:var(--up-bg);color:var(--up-fg);}
+  .cap.down{background:var(--down-bg);color:var(--down-fg);}
+  .rel-hints{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+  .rel-hint{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);}
+  .avatar{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(200,85,61,.14);color:var(--stamp);font-size:12.5px;font-weight:700;font-family:var(--serif);}
+  .avatar.lg{width:36px;height:36px;font-size:15px;}
+  .avatar.gray{background:rgba(74,46,31,.08);color:var(--ink-soft);}
+  .small-line{font-size:11.5px;color:var(--ink-soft);margin:8px 0 0 !important;font-family:var(--sans) !important;line-height:1.6 !important;}
+  .entry.chronicle{font-size:12px;color:var(--ink-soft);border-left:2px solid var(--line);padding-left:10px;margin:10px 0;}
+  /* 16.3.6 旁白錯誤 */
+  .narrator-error{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;margin-bottom:12px;
+    animation:fade-in var(--t-std) var(--ease) both;}
+  .narrator-error span{font-size:14px;font-family:var(--serif);}
+  .narrator-error button{margin:0;padding:6px 14px;font-size:12.5px;white-space:nowrap;}
+  /* 16.5 載入：空白卡片＋輪播文字＋三個呼吸閃爍小點(1.2秒一循環) */
+  .loading{padding:20px;text-align:center;color:var(--ink-soft);font-size:13px;letter-spacing:1px;}
+  .loading-card{padding:26px 16px;text-align:center;color:var(--ink-soft);font-size:13.5px;margin-bottom:12px;}
+  .loading-card .loading-text{display:inline-block;transition:opacity var(--t-std) var(--ease);font-family:var(--serif);}
+  .loading-card .loading-text.fading{opacity:0;}
+  .breath{display:flex;gap:7px;justify-content:center;margin-top:12px;}
+  .breath i{width:6px;height:6px;border-radius:50%;background:var(--stamp);opacity:.2;animation:breath 1.2s ease-in-out infinite;}
+  .breath i:nth-child(2){animation-delay:.2s;}
+  .breath i:nth-child(3){animation-delay:.4s;}
+  @keyframes breath{0%,100%{opacity:.2;transform:scale(.85);}40%{opacity:1;transform:scale(1);}}
+
+  /* 16.3.3 底部行動區(固定) */
+  .actions{position:sticky;bottom:0;z-index:20;border-radius:18px 18px 0 0;border-bottom:none;padding:12px 14px calc(10px + env(safe-area-inset-bottom));}
+  .choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .choice-btn{
+    text-align:left;background:rgba(255,255,255,.55);border:1px solid rgba(74,46,31,.14);border-radius:14px;
+    padding:10px 12px;font-family:var(--sans);font-size:13.5px;line-height:1.45;color:var(--ink);cursor:pointer;
+    transition:transform var(--t-fast) var(--ease),opacity var(--t-std) var(--ease);
+  }
+  .choice-btn:active{transform:scale(.97);}
+  .choice-btn:disabled{opacity:.45;cursor:default;}
+  .choice-btn.chosen{opacity:1;border-color:var(--stamp);}
+  .choices.one-col{grid-template-columns:1fr;}
+  .custom-row{display:flex;gap:8px;align-items:center;margin-top:10px;padding:0;border:none;}
+  .custom-row input{
+    flex:1;min-width:0;border:1px solid rgba(74,46,31,.16);border-radius:999px;background:rgba(255,255,255,.6);
+    font-family:var(--sans);font-size:14px;padding:9px 14px;color:var(--ink);
+  }
+  .custom-row input:focus{outline:none;border-color:var(--stamp);}
+  .send-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--stamp);color:#fff;font-size:17px;cursor:pointer;
+    flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;transition:transform var(--t-fast) var(--ease);}
+  .send-btn:active{transform:scale(.94);}
+  .send-btn:disabled{opacity:.4;cursor:default;}
+  .act-foot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px;color:var(--ink-soft);min-height:18px;}
+  .text-btn{background:none;border:none;padding:0;color:var(--stamp);font-size:12px;cursor:pointer;font-family:var(--sans);}
+  .text-btn:disabled{opacity:.4;}
+  .input-error{font-size:11.5px;color:var(--stamp);padding:4px 2px 0;display:none;}
+  .ap-out{font-size:12px;color:var(--stamp);margin-bottom:8px;}
+
+  /* 16.3.4 滑出面板(由下往上) */
+  .sheet-backdrop{position:fixed;inset:0;background:rgba(74,46,31,.22);z-index:40;opacity:0;pointer-events:none;transition:opacity 350ms var(--ease);}
+  .sheet-backdrop.open{opacity:1;pointer-events:auto;}
+  .sheet{position:fixed;left:50%;bottom:0;width:100%;max-width:520px;max-height:82vh;overflow-y:auto;z-index:45;
+    background:rgba(250,244,234,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    border-radius:22px 22px 0 0;padding:10px 18px calc(22px + env(safe-area-inset-bottom));
+    transform:translate(-50%,105%);visibility:hidden;transition:transform 350ms var(--ease),visibility 0s linear 350ms;
+    box-shadow:0 -6px 24px rgba(74,46,31,.12);}
+  .sheet.open{transform:translate(-50%,0);visibility:visible;transition:transform 350ms var(--ease),visibility 0s;}
+  .sheet-grip{width:38px;height:4px;border-radius:2px;background:rgba(74,46,31,.18);margin:0 auto 10px;}
+  .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .sheet-head h3{margin:0;font-size:16px;}
+  .sheet-close{background:none;border:none;font-size:20px;color:var(--ink-soft);cursor:pointer;padding:0 4px;}
+  .cash-big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.5px;}
+  .cash-lbl{font-size:12px;color:var(--ink-soft);}
+  .stat-bars{margin-top:12px;display:flex;flex-direction:column;gap:9px;}
+  .stat-bar{display:grid;grid-template-columns:52px 1fr 32px;align-items:center;gap:10px;font-size:13px;}
+  .stat-bar .track{height:7px;border-radius:4px;background:rgba(74,46,31,.08);overflow:hidden;}
+  .stat-bar .fill{height:100%;border-radius:4px;background:var(--bar);transition:width var(--t-slow) var(--ease);}
+  .stat-bar .num{text-align:right;font-variant-numeric:tabular-nums;}
+  .sheet .ledger{padding:6px 0 0;border:none;background:transparent;margin-top:10px;}
+  .ledger-row{display:flex;align-items:baseline;gap:8px;font-size:13.5px;padding:3px 0;}
+  .ledger-row .lbl{white-space:nowrap;color:var(--ink-soft);font-size:12.5px;}
+  .ledger-row .dots{flex:1;border-bottom:1px dotted var(--line);height:10px;}
+  .ledger-row .val{font-variant-numeric:tabular-nums;font-size:13px;min-width:28px;text-align:right;}
+  .roster-list{display:flex;flex-direction:column;}
+  .rrow{display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px solid var(--line);cursor:pointer;}
+  .rrow:last-child{border-bottom:none;}
+  .rrow .who{flex:1;min-width:0;}
+  .rrow .nm{font-size:14.5px;font-weight:700;}
+  .rrow .sub{font-size:12px;color:var(--ink-soft);}
+  .rrow.bg .nm{color:var(--ink-soft);}
+  .dots5{display:flex;gap:4px;}
+  .dots5 i{width:8px;height:8px;border-radius:50%;background:rgba(74,46,31,.12);}
+  .dots5 i.on{background:var(--stamp);}
+  .dots5.gray i.on{background:rgba(74,46,31,.35);}
+  .roster-note{font-size:12px;color:var(--ink-soft);margin:2px 0 8px;}
+  .menu-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .menu-card{padding:16px 14px;cursor:pointer;text-align:left;font-family:var(--sans);color:var(--ink);transition:transform var(--t-fast) var(--ease);}
+  .menu-card:active{transform:scale(.97);}
+  .menu-card .ic{font-size:20px;}
+  .menu-card .t{font-size:14.5px;font-weight:700;margin-top:4px;}
+  .menu-card .n{font-size:12px;color:var(--ink-soft);}
+  .menu-sec{font-size:11.5px;color:var(--ink-soft);letter-spacing:1px;margin:18px 2px 4px;}
+  .menu-item{display:block;padding:11px 2px;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer;color:var(--ink);text-decoration:none;}
+  .menu-item.danger{color:var(--danger);border-bottom:none;margin-top:14px;}
+  .menu-note{font-size:11.5px;color:var(--ink-soft);padding:6px 2px 8px;border-bottom:1px solid var(--line);}
+  .menu-note a{color:var(--stamp);cursor:pointer;text-decoration:underline;}
+
+  /* 16.4 轉場與回饋 */
+  @keyframes fade-in{from{opacity:0;}to{opacity:1;}}
+  @keyframes rise-in{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
+  @keyframes cap-pop{0%{opacity:0;transform:scale(.6);}70%{opacity:1;transform:scale(1.08);}100%{opacity:1;transform:scale(1);}}
+  @keyframes dim-in{from{opacity:1;}to{opacity:.55;}}
+  .anim-card{animation:rise-in 400ms var(--ease) both;}
+  .anim-card p{animation:fade-in 400ms var(--ease) both;}
+  .anim-card .cap{animation:cap-pop var(--t-std) var(--ease) both;}
+  .anim-card .late{animation:fade-in var(--t-std) var(--ease) both;}
+  .anim-collapse{animation:dim-in var(--t-std) var(--ease) both;}
+
+
+  /* 十六、16.10 首頁 */
+  .home{padding:0 20px 28px;}
+  .home.gated > *:not(.age-gate){opacity:.35;filter:blur(1.5px);pointer-events:none;user-select:none;}
+  .home-hero{min-height:92vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 0 24px;}
+  .home-hero.has-lives{min-height:0;padding-top:28px;} /* 有進行中的人生時，讓存檔卡片在第一個畫面就露出來 */
+  .home-hero .stamp{margin-bottom:18px;}
+  .home-hero h1{font-family:var(--serif);font-size:36px;letter-spacing:6px;margin:6px 0 4px;}
+  .home-sub{font-size:15px;color:var(--stamp);margin:0 0 20px;letter-spacing:1px;}
+  .home-lead{font-size:14.5px;line-height:2;margin:0 0 22px;}
+  .home-hero .primary-btn,.home-hero .ghost-btn{width:100%;max-width:300px;}
+  .home-note{font-size:12px;color:var(--ink-soft);margin-top:16px;line-height:1.7;max-width:320px;}
+  .home-sec{margin:34px 0;}
+  .home-sec h2{font-family:var(--serif);font-size:19px;margin:0 0 14px;letter-spacing:1px;}
+  .home-sec p{font-size:15px;line-height:1.95;margin:0 0 12px;}
+  .serif{font-family:var(--serif);}
+  .life-card{display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;margin-bottom:10px;cursor:pointer;text-align:left;color:var(--ink);font-family:var(--sans);transition:transform var(--t-fast) var(--ease);}
+  .life-card:active{transform:scale(.98);}
+  .stamp.mini{width:46px;height:46px;font-size:9px;border-width:1.5px;}
+  .stamp.mini b{font-size:15px;}
+  .lc-body{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .lc-name{font-size:15px;font-weight:700;}
+  .lc-stage{font-size:13px;color:var(--ink-soft);}
+  .lc-time{font-size:11.5px;color:var(--ink-soft);}
+  .lc-arrow{color:var(--stamp);font-size:18px;}
+  .home-steps{display:flex;flex-direction:column;gap:10px;margin-bottom:6px;}
+  .home-steps .step{padding:14px 16px;}
+  .home-steps .step b{color:var(--stamp);font-family:var(--serif);font-size:16px;letter-spacing:2px;}
+  .home-steps .step p{margin:4px 0 0;}
+  .home-rule{text-align:center;color:var(--ink-soft);margin:18px 0;letter-spacing:4px;}
+  .faq{padding:0 16px;margin-bottom:10px;}
+  .faq summary{padding:14px 0;cursor:pointer;font-weight:700;font-size:15px;list-style:none;display:flex;justify-content:space-between;gap:10px;}
+  .faq summary::-webkit-details-marker{display:none;}
+  .faq summary::after{content:"＋";color:var(--stamp);font-weight:400;}
+  .faq[open] summary::after{content:"－";}
+  .faq p{font-size:14.5px;margin:0 0 12px;}
+  .home-foot{text-align:center;margin:48px 0 10px;}
+  .home-foot p{font-size:15px;}
+  .foot-mark{font-family:var(--serif);font-size:22px;letter-spacing:8px;color:rgba(74,46,31,.22);margin-top:34px;}
+  .foot-copy{font-size:11px;color:var(--ink-soft);margin-top:6px;}
+  /* 16.10.0 進站年齡確認：毛玻璃卡片浮在暖陽背景上，首頁內容在後方淡淡透出 */
+  .age-gate{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:24px;animation:fade-in var(--t-std) var(--ease) both;}
+  .age-card{max-width:340px;width:100%;padding:28px 24px;text-align:center;background:rgba(255,255,255,.6);}
+  .age-card h3{font-family:var(--serif);font-size:20px;margin:0 0 12px;letter-spacing:2px;}
+  .age-card p{font-size:15px;line-height:1.9;margin:0 0 16px;}
+  .age-card .primary-btn,.age-card .ghost-btn{width:100%;}
+
+  /* 十六、16.6 回憶錄時間軸 */
+  .modal.memoir{padding:20px 16px;}
+  .timeline{overflow-y:auto;flex:1;margin-top:4px;padding:4px 4px 4px 0;position:relative;}
+  .timeline::before{content:"";position:absolute;left:21px;top:0;bottom:0;width:2px;background:rgba(200,85,61,.22);}
+  .tl-node{display:flex;align-items:center;gap:12px;margin:18px 0 10px;position:relative;}
+  .tl-node:first-child{margin-top:4px;}
+  .tl-stamp{width:44px;height:44px;font-size:9px;border-width:1.5px;background:var(--paper);}
+  .tl-stamp b{font-size:15px;}
+  .tl-node-name{font-size:14.5px;font-weight:700;}
+  .tl-node-sub{font-size:11.5px;color:var(--stamp);}
+  .tl-item{display:flex;gap:10px;margin:0 0 10px;position:relative;}
+  .tl-dot{flex:0 0 44px;display:flex;justify-content:center;padding-top:14px;}
+  .tl-dot::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--stamp);opacity:.55;}
+  .tl-item.major .tl-dot::before{display:none;}
+  .tl-mini-stamp{width:20px;height:20px;border:1.5px solid var(--stamp);border-radius:50%;color:var(--stamp);font-size:10px;line-height:17px;text-align:center;transform:rotate(-8deg);background:var(--paper);font-family:var(--serif);}
+  .tl-card{flex:1;min-width:0;padding:10px 12px;cursor:pointer;}
+  .tl-item.major .tl-card{background:rgba(232,96,76,.1);}
+  .tl-item.latest .tl-card{border-color:var(--stamp);}
+  .tl-meta{font-size:11.5px;color:var(--ink-soft);margin-bottom:4px;}
+  .tl-text{font-family:var(--serif);font-size:14.5px;line-height:1.75;}
+  .tl-text p{margin:0 0 6px;}
+  .tl-card:not(.open) .tl-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .tl-card:not(.open) .tl-text p{display:inline;margin:0;}
+  .tl-card .caps{margin-top:8px;}
+  /* 16.4.4 減少動態模式：取消位移、縮放、彈跳，只保留150ms淡入；背景色塊停止飄動 */
+  @media (prefers-reduced-motion: reduce){
+    .blob{animation:none;}
+    .anim-card,.anim-card p,.anim-card .cap,.anim-card .late,.stamp.restamp,.narrator-error,.modal-backdrop{animation:fade-in 150ms linear both !important;}
+    .stamp.restamp{transform:rotate(-8deg);}
+    .anim-collapse{animation:none;opacity:.55;}
+    .sheet,.sheet.open{transition:opacity 150ms linear,visibility 0s;transform:translate(-50%,0);opacity:0;}
+    .sheet.open{opacity:1;}
+    .breath i{animation:none;opacity:.6;}
+    .choice-btn,.primary-btn,.ghost-btn,.round-btn,.send-btn,.menu-card{transition:opacity 150ms linear;}
+    .choice-btn:active,.primary-btn:active,.ghost-btn:active,.round-btn:active,.send-btn:active,.menu-card:active{transform:none;}
+  }
 </style>
 </head>
 <body>
+<div class="bg" aria-hidden="true"><div class="blob blob-1"></div><div class="blob blob-2"></div><div class="blob blob-3"></div><div class="blob blob-4"></div><div class="grain"></div></div>
 <div id="app"><div class="loading">開卷中…</div></div>
 
 <!-- 人生草稿 測試第一版（Test v1）基準點，2026-09-14。範圍：A2核心數值邊際遞減/人脈閒置衰退、3.4.8基本生活開銷擴大、3.4.9資產模型(現金/房產/房貸)、7.1.4結局計分制。B7結局重新設計仍為測試草案，未併入此版。 -->
@@ -271,6 +412,8 @@ const STORAGE_KEY = "life_sim_save_v1";
 // 十、10.1（9/19新增）：封測階段純金鑰模式——復原金鑰對應「一個玩家」，終身不變，底下最多累積3段人生
 const RECOVERY_KEY_STORAGE_NAME = "life_sim_recovery_key"; // 復原金鑰快取在本機，方便同一台裝置不用每次重輸入
 const ACTIVE_SLOT_STORAGE_NAME = "life_sim_active_slot"; // 記住這台裝置上次玩的是第幾段人生(0~2)
+const AGE_CONFIRMED_STORAGE_NAME = "life_sim_age_confirmed"; // 十六、16.10.0：進站年齡確認過一次，這台裝置記住
+const HOME_META_PREFIX = "life_sim_home:"; // 十六、16.10.2：首頁「還沒寫完的人生」卡片用的摘要(每個slot一份，存檔時順手更新)
 const MAX_LIFE_SLOTS = 3; // 【定案,十、10.1】
 // 十、10.1補充（2026-09-22新增）：雲端同步狀態，純本次session的UI顯示用，不存進state/localStorage——
 // {success:true,time:timestamp}表示上次saveGame()雲端同步成功、{success:false}表示失敗、null表示這個session還沒嘗試過
@@ -2450,23 +2593,12 @@ setInterval(()=>{
   }
 }, 60*1000);
 
-// 十、10.1（9/19新增）：封測階段純金鑰模式的啟動流程，取代原本單純讀localStorage的loadGame()
-// 流程：本機沒有金鑰→顯示「開始新旅程／我有復原金鑰」選擇；本機有金鑰→嘗試自動接續上次玩的slot，
-// 失敗（沒記住slot、或該slot讀取失敗）才顯示選擇要繼續哪一段人生的畫面
+// 十、10.1（9/19新增）：封測階段純金鑰模式的啟動流程。
+// 十六、16.10.9（2026-09-28使用者同意Claude建議）：取消「有金鑰就自動接續上次那段人生」，進站一律先顯示首頁，
+// 從「還沒寫完的人生」卡片接回；開始新人生/切換其他人生都從首頁的按鈕進去
 async function initApp(){
-  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
-  if(!key){
-    state = { phase:"keyChoice" };
-    render();
-    return;
-  }
-  const activeSlotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
-  const activeSlot = activeSlotRaw!==null ? Number(activeSlotRaw) : null;
-  if(activeSlot!==null){
-    const loaded = await tryLoadSlot(key, activeSlot, true);
-    if(loaded) return;
-  }
-  await showSlotPicker(key);
+  state = { phase:"home" };
+  render();
 }
 // 讀取指定slot：先試Worker(跨裝置的最新資料)，失敗且allowLocalFallback時退回本機快取（離線容錯，不會直接卡死玩家）
 async function tryLoadSlot(key, slot, allowLocalFallback){
@@ -2492,7 +2624,7 @@ async function tryLoadSlot(key, slot, allowLocalFallback){
   }
   return false;
 }
-async function showSlotPicker(key, currentSlot){
+async function showSlotPicker(key, currentSlot, notice){
   let slots = [null,null,null];
   let wallet = 0; // 十、10.3.3金鑰錢包：封測未開放購買，實際上會一直是0，轉點介面等開放付費再做
   try{
@@ -2503,7 +2635,8 @@ async function showSlotPicker(key, currentSlot){
   }catch(e){ console.warn("讀取存檔清單失敗", e); }
   // 十、10.1補充（2026-09-22新增）：currentSlot有值時(從switchLife()同一瀏覽器內切換人生進來)，
   // renderSlotPicker()要在對應那段人生標示「進行中」；換裝置輸入金鑰進來的路徑不會帶這個參數，維持原樣不顯示
-  state = { phase:"slotPicker", slots, wallet, currentSlot: currentSlot!==undefined ? currentSlot : null };
+  lastKnownWallet = wallet;
+  state = { phase:"slotPicker", slots, wallet, currentSlot: currentSlot!==undefined ? currentSlot : null, notice: notice||null };
   render();
 }
 // 十、10.1補充（2026-09-22新增）：同一瀏覽器內切換人生——只清除本機「目前使用中slot」記錄，不刪除任何存檔，
@@ -2514,7 +2647,7 @@ async function switchLife(){
   const prevSlot = prevSlotRaw!==null ? Number(prevSlotRaw) : null;
   try{ localStorage.removeItem(ACTIVE_SLOT_STORAGE_NAME); }catch(e){}
   cloudSyncStatus = null;
-  if(!key){ state = { phase:"keyChoice" }; render(); return; } // 防呆：理論上進得了playing畫面一定已經有金鑰
+  if(!key){ state = { phase:"home" }; render(); return; } // 防呆：理論上進得了playing畫面一定已經有金鑰
   await showSlotPicker(key, prevSlot);
 }
 async function saveGame(){
@@ -2522,6 +2655,7 @@ async function saveGame(){
   const slot = slotRaw!==null ? Number(slotRaw) : null;
   try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); }
   catch(e){ console.warn("save failed", e); }
+  writeHomeMeta(slot);
   // 十、10.1（9/19新增）：本機存完之後，同步存一份到Worker的KV，達成跨裝置存檔。
   // 只在真正進入遊戲(playing/ending)且有金鑰+slot時才同步，避免setup過程中還沒真的開始的角色也去打API；
   // 失敗只console.warn，不影響當下遊玩（本機那份已經存好了）
@@ -5314,7 +5448,7 @@ async function takeTurn(actionText, cost){
       saveGame(); render(); renderAPExhaustedModal();
       return;
     }
-    state.log.push({age:state.age, timeLabel:null, text:"（旁白剛剛恍神了一下，這回合沒講清楚，稍後再試一次看看。）"});
+    state.log.push({age:state.age, timeLabel:null, text:"（旁白剛剛恍神了一下，這回合沒講清楚，稍後再試一次看看。）", error:true, retryAction:actionText, retryCost:cost});
   }
   saveGame();
   render();
@@ -5787,7 +5921,7 @@ async function writeIdleSummary(s){
   });
   s.idleRun.summary = { retrospect: String(out.retrospect||""), fragments: (out.fragments||[]).map(f=>({ i:f.i, text:String(f.text||"") })), newCharacters: created };
   // 摘要也寫進日記，讓之後的回合AI讀得到這段時間(一般回合的recent_turns)
-  s.log.push({ age:s.age, timeLabel:"放置期間", subtitle:"不在的時候", text: [s.idleRun.summary.retrospect].concat(s.idleRun.summary.fragments.map(f=>f.text)).join("\n\n"),
+  s.log.push({ age:s.age, timeLabel:"放置期間", subtitle:"不在的時候", cash:s.cash, text: [s.idleRun.summary.retrospect].concat(s.idleRun.summary.fragments.map(f=>f.text)).join("\n\n"),
     turnSummary: s.idleRun.summary.retrospect.slice(0,80), statChanges: s.idleRun.totals });
 }
 const IDLE_STAT_LABELS = { health:"健康", knowledge:"才識", network:"人脈", expression:"表達力", cash:"存款" };
@@ -6334,7 +6468,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   dialogue.notes.forEach(n=>{ console.warn("[台詞上限]", n); addReviewFlag(s, "dialogue_limit", n); });
   // 一、1.2.9.6：回合標題副標(AI產生)，畫面顯示「時期標籤｜副標」
   const subtitle = r.chapter_subtitle ? String(r.chapter_subtitle).trim().slice(0,30) : "";
-  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:dialogue.text, turnSummary:r.turn_summary||"", settlement:s.lastSettlement, statChanges, relationshipHints, purchaseNote: purchaseNotes.join("；")||undefined});
+  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:dialogue.text, turnSummary:r.turn_summary||"", settlement:s.lastSettlement, statChanges, relationshipHints, purchaseNote: purchaseNotes.join("；")||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
   // 足夠涵蓋單一人生全程(~1200-1400回合)不流失；每世reincarnate/succeedAsChild時log都會重置為[]，不會跨世累積
   if(s.log.length>2000) s.log.shift();
@@ -6592,8 +6726,9 @@ async function endLife(reason){
   try{ localStorage.removeItem(STORAGE_KEY+(slot!==null?":"+slot:"")); }catch(e){}
   try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} // 相容改版前沒有slot後綴的殘留資料
   try{ localStorage.removeItem(ACTIVE_SLOT_STORAGE_NAME); }catch(e){}
+  if(slot!==null){ try{ localStorage.removeItem(HOME_META_PREFIX+slot); }catch(e){} } // 16.10.2：已結束的人生不列在首頁
   cloudSyncStatus = null;
-  if(!key || slot===null){ state = { phase:"keyChoice" }; render(); return; } // 防呆：理論上進得了遊戲畫面一定有金鑰+slot
+  if(!key || slot===null){ state = { phase:"home" }; render(); return; } // 防呆：理論上進得了遊戲畫面一定有金鑰+slot
   let archivedOnCloud = false;
   try{
     const res = await fetch(WORKER_URL+"archive", {
@@ -6849,9 +6984,18 @@ function bookLinkText(s){
   const done = b ? b.chapters.filter(c=>c.status==="done").length : 0;
   return `📚 人生之書（${done}章${b && b.unseen ? `・${b.unseen}章新` : ""}）`;
 }
+// 十六、16.3.4：選單大卡顯示「人生之書（N章）」；結局頁等其他入口仍用bookLinkText()整行文字
+function bookMenuCountText(s){
+  const b = s.book;
+  const done = b ? b.chapters.filter(c=>c.status==="done").length : 0;
+  return `（${done}章${b && b.unseen ? `・${b.unseen}章新` : ""}）`;
+}
 function updateBookLink(){
   const a = document.getElementById("link-book");
-  if(a && state) a.textContent = bookLinkText(state);
+  if(!a || !state) return;
+  const n = a.querySelector(".n");
+  if(n) n.textContent = bookMenuCountText(state);
+  else a.textContent = bookLinkText(state);
 }
 let bookPageCtx = null; // { book, readOnly, owner, openId }
 function openBookPage(book, opts){
@@ -6910,42 +7054,73 @@ function refreshBookPage(create){
 }
 
 // ---------- RENDER ----------
-// 一、1.1.4（2026-09-25新增）：等待AI的畫面。筆＋墨線(SVG)與三個依序淡入淡出的點都是純CSS動畫，不放遊戲知識或提示文字；
-// 等超過LOADING_SLOW_NOTICE_MS還沒寫完，文字換成安撫的話，讓玩家知道沒有當掉
-let LOADING_SLOW_NOTICE_MS = 15000;
-const LOADING_TEXT = "旁白正在幫你寫下這一頁";
-const LOADING_SLOW_TEXT = "這一頁比較長，旁白還在寫";
+// 十六、16.5（2026-09-28，取代一、1.1.4）：等待AI時的載入文字輪播。每回合從清單隨機挑一句(不與上一回合重複)，
+// 等超過4秒淡出換下一句，超過10秒固定顯示安撫的話；三個呼吸閃爍小點是純CSS動畫(16.4.2第2步)
+const LOADING_LINES = [ // 【定案】清單寫成陣列，方便日後增刪
+  "人生翻下一頁中",
+  "正在翻開下一頁",
+  "下一段人生落筆中",
+  "草稿塗塗改改中",
+  "筆尖沙沙作響中",
+  "時間悄悄往前走",
+  "墨水還沒乾，稍等一下"
+];
+const LOADING_ROTATE_MS = 4000;
+let LOADING_SLOW_NOTICE_MS = 10000;
+const LOADING_SLOW_TEXT = "這一頁寫得比較久，再等一下下";
 let loadingStartedAt = null;
-let loadingSlowTimer = null;
+let loadingTimers = [];
+let loadingLastRoundLine = -1; // 上一回合開頭那一句，這回合不重複
+let loadingLineIdx = -1;
+let loadingCurrentText = "";
+function pickLoadingLine(avoidIdx){
+  let i = Math.floor(Math.random()*LOADING_LINES.length);
+  if(LOADING_LINES.length>1 && i===avoidIdx) i = (i + 1 + Math.floor(Math.random()*(LOADING_LINES.length-1))) % LOADING_LINES.length;
+  loadingLineIdx = i;
+  return LOADING_LINES[i];
+}
+function setLoadingText(text){
+  loadingCurrentText = text;
+  const t = document.querySelector("#turn-loading .loading-text");
+  if(!t) return;
+  t.classList.add("fading");
+  setTimeout(()=>{ t.textContent = loadingCurrentText; t.classList.remove("fading"); }, reducedMotion() ? 150 : 300);
+}
 function renderTurnLoading(){
-  const slow = loadingStartedAt && (Date.now()-loadingStartedAt >= LOADING_SLOW_NOTICE_MS);
-  return `<div class="loading" id="turn-loading" role="status" aria-live="polite">
-    <svg class="ink-pen" viewBox="0 0 120 34" aria-hidden="true">
-      <path class="ink-line" d="M6 26 q8 -8 16 0 t16 0 t16 0 t16 0 t16 0 t16 0 t16 0"/>
-      <g class="ink-nib"><path d="M0 26 L-4 20 L10 4 L14 8 Z" fill="var(--paper-card)" stroke="var(--ink)" stroke-width="1.2" stroke-linejoin="round"/><path d="M0 26 L-2 22 L1 21 Z" fill="var(--ink)"/></g>
-    </svg>
-    <span class="loading-text">${slow ? LOADING_SLOW_TEXT : LOADING_TEXT}</span><span class="dots" aria-hidden="true"><i>．</i><i>．</i><i>．</i></span>
+  return `<div class="loading-card glass" id="turn-loading" role="status" aria-live="polite">
+    <span class="loading-text">${escapeHtml(loadingCurrentText || LOADING_LINES[0])}</span>
+    <div class="breath" aria-hidden="true"><i></i><i></i><i></i></div>
   </div>`;
 }
 function updateLoadingTimer(loadingTurn){
   if(!loadingTurn){
     loadingStartedAt = null;
-    if(loadingSlowTimer){ clearTimeout(loadingSlowTimer); loadingSlowTimer = null; }
+    loadingTimers.forEach(t=>clearTimeout(t)); loadingTimers = [];
     return;
   }
   if(loadingStartedAt) return; // 同一次等待中再次render(true)，不重新計時
   loadingStartedAt = Date.now();
-  loadingSlowTimer = setTimeout(()=>{
-    loadingSlowTimer = null;
-    const t = document.querySelector("#turn-loading .loading-text");
-    if(t) t.textContent = LOADING_SLOW_TEXT;
-  }, LOADING_SLOW_NOTICE_MS);
+  loadingCurrentText = pickLoadingLine(loadingLastRoundLine);
+  loadingLastRoundLine = loadingLineIdx;
+  const rotate = ()=>{
+    if(!loadingStartedAt) return;
+    if(Date.now()-loadingStartedAt >= LOADING_SLOW_NOTICE_MS) return;
+    setLoadingText(pickLoadingLine(loadingLineIdx));
+    loadingTimers.push(setTimeout(rotate, LOADING_ROTATE_MS));
+  };
+  loadingTimers.push(setTimeout(rotate, LOADING_ROTATE_MS));
+  loadingTimers.push(setTimeout(()=>{ if(loadingStartedAt) setLoadingText(LOADING_SLOW_TEXT); }, LOADING_SLOW_NOTICE_MS));
 }
+function reducedMotion(){
+  try{ return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }catch(e){ return false; }
+}
+let lastRenderedPhase = null;
 function render(loadingTurn){
   const app = document.getElementById("app");
   updateLoadingTimer(!!loadingTurn && !!state && state.phase==="playing");
   if(!state){ app.innerHTML = `<div class="center-screen"><p style="color:var(--ink-soft);">載入中…</p></div>`; return; }
-  if(state.phase==="keyChoice"){ app.innerHTML = renderKeyChoice(); bindKeyChoice(); ensureDebugUI(); return; }
+  if(state.phase!==lastRenderedPhase){ lastRenderedPhase = state.phase; try{ window.scrollTo(0,0); }catch(e){} } // 換畫面從頂端開始
+  if(state.phase==="home"){ app.innerHTML = renderHome(); bindHome(); ensureDebugUI(); return; }
   if(state.phase==="keyInput"){ app.innerHTML = renderKeyInput(); bindKeyInput(); ensureDebugUI(); return; }
   if(state.phase==="keyReveal"){ app.innerHTML = renderKeyReveal(); bindKeyReveal(); ensureDebugUI(); return; }
   if(state.phase==="slotPicker"){ app.innerHTML = renderSlotPicker(); bindSlotPicker(); ensureDebugUI(); return; }
@@ -6962,36 +7137,213 @@ function render(loadingTurn){
     apRefreshAskedFor = taipeiDateString();
     refreshServerAP();
   }
+  if(!loadingTurn) syncMajorEventMarks(state); // 十六、16.6：這回合(含之後的彈窗決定)寫進人生履歷的，標在這則日記上
   app.innerHTML = renderPlaying(loadingTurn);
   bindPlaying();
+  playTurnEffects(loadingTurn); // 十六、16.4：新回合的轉場、數字滾動、印章重蓋、自動捲動
   if(!loadingTurn) maybeRunIdle(); // 10.6（2026-09-27）：放置代活開著時，回到遊戲畫面檢查一次離線天數
-  const j = document.querySelector(".journal");
-  if(j) j.scrollTop = j.scrollHeight;
   ensureDebugUI();
 }
 
 // ========== 十、10.1 封測階段純金鑰模式（9/19新增，四個新畫面）==========
-function renderKeyChoice(){
-  return `
-  <div class="center-screen">
-    <div class="stamp" style="margin:0 auto 18px;"><b>人生</b>草稿</div>
-    <h2>人生草稿</h2>
-    <p style="color:var(--ink-soft);font-size:13.5px;">這一次，換你決定要活成什麼樣子。<br>每一次選擇，都會被寫進去，取不回也改不掉。</p>
-    <button class="primary-btn" id="btn-key-new">開始新旅程</button>
-    <button class="ghost-btn" id="btn-key-existing">我有復原金鑰</button>
+// ========== 十六、16.10 首頁（2026-09-28）==========
+// 文案為使用者定稿原文(含同日開局年齡修正)，改字請先改設計文件16.10再同步這裡。
+// 寫死在文案裡的數字：新人生禮包AP_NEW_LIFE_GIFT、每日補到AP_DAILY_REFILL、每回合1點、同時三段人生(16.10.9)
+let ageGateDeclined = false;
+function ageConfirmed(){ try{ return localStorage.getItem(AGE_CONFIRMED_STORAGE_NAME)==="yes"; }catch(e){ return false; } }
+function writeHomeMeta(slot){
+  if(slot===null || slot===undefined || !state) return;
+  try{
+    if(state.phase==="playing"){
+      localStorage.setItem(HOME_META_PREFIX+slot, JSON.stringify({
+        key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME) || "",
+        name: state.name, age: state.age, reincarnations: state.reincarnations||0,
+        timeLabel: state.timeState ? computeTimeLabel(state) : stageLabel(state.age),
+        lastPlayedAt: Date.now()
+      }));
+    } else if(state.phase==="ending"){
+      localStorage.removeItem(HOME_META_PREFIX+slot);
+    }
+  }catch(e){}
+}
+// 16.10.2：這台裝置上、目前這把金鑰底下還在進行中的人生(最多3段)，依最近遊玩排序
+function homeUnfinishedLives(){
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(!key) return [];
+  const list = [];
+  for(let slot=0; slot<3; slot++){
+    let m = null;
+    try{ m = JSON.parse(localStorage.getItem(HOME_META_PREFIX+slot) || "null"); }catch(e){}
+    if(m && m.key && m.key!==key) m = null; // 換過金鑰：別把上一把金鑰的人生列出來
+    if(!m){
+      // 首頁上線前的存檔沒有摘要：讀本機存檔補一份(沒有上次遊玩時間)
+      try{
+        const st = JSON.parse(localStorage.getItem(STORAGE_KEY+":"+slot) || "null");
+        if(st && st.phase==="playing" && st.name) m = { name:st.name, age:st.age, reincarnations:st.reincarnations||0, timeLabel: st.timeState ? computeTimeLabel(st) : stageLabel(st.age), lastPlayedAt:null };
+      }catch(e){}
+    }
+    if(m) list.push({ slot, ...m });
+  }
+  return list.sort((a,b)=>(b.lastPlayedAt||0)-(a.lastPlayedAt||0)).slice(0,3);
+}
+function relativeTimeText(ts){
+  if(!ts) return "";
+  const min = Math.floor((Date.now()-ts)/60000);
+  if(min < 1) return "剛剛";
+  if(min < 60) return `${min} 分鐘前`;
+  const hr = Math.floor(min/60);
+  if(hr < 24) return `${hr} 小時前`;
+  const day = Math.floor(hr/24);
+  if(day < 30) return `${day} 天前`;
+  const mon = Math.floor(day/30);
+  return mon < 12 ? `${mon} 個月前` : `${Math.floor(mon/12)} 年前`;
+}
+const HOME_FAQ = [
+  ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_NEW_LIFE_GIFT} 點當見面禮，大約夠你走到高一結束；之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
+  ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。"]],
+  ["一段人生要玩多久？", ["看你想過多快。可以一個晚上走完整個高中，也可以一個月只過一個寒假。", "隨時關掉都沒關係，它會停在你離開的那一頁。"]],
+  ["可以同時過好幾段人生嗎？", ["可以。一把金鑰，最多能同時握著三段人生。"]],
+  ["什麼路都能走嗎？", ["幾乎都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "唯一走不通的是超能力。這裡的世界，跟外面那個一樣講道理。"]],
+  ["一生走完之後呢？", ["這一生會留下一頁回顧：走過的路、陪過你的人，最後蓋上一枚印章。", "然後，你可以轉世重來，或者把故事交給下一代。"]],
+  ["可以反悔嗎？", ["可以，但次數有限。畢竟是草稿，也不是每一筆都擦得掉。"]],
+  ["適合幾歲的人？", ["年滿十八歲。這裡的人生跟外面一樣，不會替你把難受的事藏起來：感情、失去、走偏的路，都會照實寫。所以第一次進站時，會先請你確認一次年齡。"]]
+];
+function renderAgeGate(){
+  if(ageConfirmed()) return ``;
+  return `<div class="age-gate" id="age-gate" role="dialog" aria-modal="true" aria-labelledby="age-gate-title">
+    <div class="age-card glass">
+      ${ageGateDeclined ? `
+      <p class="serif">那就再等等吧。<br>這本草稿，會在這裡等你長大。</p>` : `
+      <h3 id="age-gate-title">翻開之前</h3>
+      <p class="serif">《人生草稿》寫的是一段完整的人生，有些事並不輕鬆。<br>本站僅供年滿十八歲的人瀏覽。</p>
+      <button class="primary-btn" id="btn-age-yes">我已滿十八歲</button>
+      <button class="ghost-btn" id="btn-age-no">還沒有</button>`}
+    </div>
   </div>`;
 }
-function bindKeyChoice(){
-  document.getElementById("btn-key-new").onclick = ()=>{
-    const key = generateRecoveryKey();
-    localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, key);
-    localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, "0");
-    state = { phase:"keyReveal", newKey:key };
-    render();
-  };
-  document.getElementById("btn-key-existing").onclick = ()=>{ state = { phase:"keyInput" }; render(); };
+function renderHome(){
+  const lives = homeUnfinishedLives();
+  return `
+  <div class="home${ageConfirmed()?"":" gated"}" id="home">
+    <section class="home-hero${lives.length?" has-lives":""}" id="home-top">
+      <div class="stamp big restamp" id="home-stamp"><b>15</b>歲・起稿</div>
+      <h1>人生草稿</h1>
+      <p class="home-sub">這一次，換你決定要活成什麼樣子</p>
+      <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，說書人陪你一路寫到老。</p>
+      <button class="primary-btn" id="btn-home-new">開始一段人生</button>
+      <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
+      <p class="home-note">免註冊，進度自動存在這台裝置。換了手機，用「復原金鑰」接回你的人生。</p>
+    </section>
+    ${lives.length ? `
+    <section class="home-sec">
+      <h2>還沒寫完的人生</h2>
+      ${lives.map(l=>`<button class="life-card glass" data-slot="${l.slot}">
+        <span class="stamp mini"><b>${escapeHtml(String(l.age))}</b>歲</span>
+        <span class="lc-body">
+          <span class="lc-name">${escapeHtml(l.name)}・第${(l.reincarnations||0)+1}世</span>
+          <span class="lc-stage">${escapeHtml(l.timeLabel||"")}</span>
+          ${l.lastPlayedAt ? `<span class="lc-time">${relativeTimeText(l.lastPlayedAt)}</span>` : ``}
+        </span>
+        <span class="lc-arrow" aria-hidden="true">→</span>
+      </button>`).join("")}
+    </section>` : ``}
+    <section class="home-sec">
+      <h2>這是什麼：一段沒有劇本的人生</h2>
+      <p class="serif">《人生草稿》是一款 AI 文字人生模擬，打開網頁就能玩，手機、電腦都行。故事從高一開學前、暑假的最後一天開始。之後一路升學、畢業、出社會，直到老去。</p>
+      <p class="serif">故事沒有寫好的劇本。說書人讀完你這一步，才寫下一步；同一個開局，兩個人會活成完全不一樣的人。</p>
+      <p class="serif">一段人生可以慢慢過。今天停在高二的期中考前，下次回來，它還在那裡等你。</p>
+    </section>
+    <section class="home-sec">
+      <h2>一段新的人生</h2>
+      <p class="serif">你不會知道自己生在什麼樣的家、會遇見誰、哪一年會碰上什麼事。就像我們每個人一樣，起點從來不是自己挑的。</p>
+      <p class="serif">不同的是，走到岔路口的時候，這一回，你可以停下來想一想。</p>
+    </section>
+    <section class="home-sec">
+      <h2>翻開之後</h2>
+      <div class="home-steps">
+        <div class="glass step"><b>落筆</b><p class="serif">在第一頁的角落寫上你的名字。寫歪了也沒關係，這本草稿從這裡開始，都由你自己選。</p></div>
+        <div class="glass step"><b>路口</b><p class="serif">每一個路口，都會有幾條現成的路。你也可以都不走，說說看你想去哪裡。</p></div>
+        <div class="glass step"><b>收好</b><p class="serif">你會拿到一把鑰匙。這段人生，只認得它。</p></div>
+      </div>
+      <div class="home-rule" aria-hidden="true">———</div>
+      <p class="serif">說得出口的，都可以試試看。成不成，是另一回事。</p>
+      <p class="serif">你對誰好過、對誰失約過，他們都會記得。有些事，要很多年以後才回來找你。</p>
+      <p class="serif">一生走完，也不一定是結束。</p>
+    </section>
+    <section class="home-sec">
+      <h2>你可能想問</h2>
+      ${HOME_FAQ.map(([q,a])=>`<details class="faq glass"><summary>${q}</summary>${a.map(x=>`<p class="serif">${typeof x==="function"?x():x}</p>`).join("")}</details>`).join("")}
+    </section>
+    <footer class="home-foot">
+      <p class="serif">這一頁讀完了，下一頁還空著。</p>
+      <button class="ghost-btn" id="btn-home-top">↑ 翻回第一頁</button>
+      <div class="foot-mark">人生草稿</div>
+      <div class="foot-copy">© 2026 人生草稿</div>
+    </footer>
+    ${renderAgeGate()}
+  </div>`;
 }
-
+function bindHome(){
+  const yes = document.getElementById("btn-age-yes");
+  if(yes) yes.onclick = ()=>{ try{ localStorage.setItem(AGE_CONFIRMED_STORAGE_NAME, "yes"); }catch(e){} ageGateDeclined = false; render(); };
+  const no = document.getElementById("btn-age-no");
+  if(no) no.onclick = ()=>{ ageGateDeclined = true; render(); };
+  if(!ageConfirmed()) return; // 確認前首頁只在後方淡淡透出，按鈕都不能按
+  document.getElementById("btn-home-new").onclick = startNewLifeFromHome;
+  document.getElementById("btn-home-switch").onclick = ()=>{
+    const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+    if(key) showSlotPicker(key); else { state = { phase:"keyInput" }; render(); }
+  };
+  document.querySelectorAll(".life-card[data-slot]").forEach(btn=>{
+    btn.onclick = async ()=>{
+      const slot = Number(btn.dataset.slot);
+      const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+      localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, String(slot));
+      const ok = await tryLoadSlot(key, slot, true);
+      if(!ok) await showSlotPicker(key); // 讀不到就退到人生選擇畫面，不卡死
+    };
+  });
+  document.getElementById("btn-home-top").onclick = ()=>smoothScrollTop(600);
+}
+// 16.10.7：翻回第一頁，時長用16.4.1的「慢」(600ms)；減少動態模式直接跳回頂端
+function smoothScrollTop(duration){
+  if(reducedMotion() || !window.requestAnimationFrame){ window.scrollTo(0,0); return; }
+  const from = window.scrollY, start = performance.now();
+  const step = now=>{
+    const p = Math.min(1, (now-start)/duration);
+    const eased = 1 - Math.pow(1-p, 3); // 接近16.4.1的進場曲線
+    window.scrollTo(0, Math.round(from*(1-eased)));
+    if(p<1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+// 16.10.9「開始一段人生」：先取名、選生活方式，進入遊戲前才給金鑰；已有金鑰時找空的格子，三格都滿就導到切換畫面
+async function startNewLifeFromHome(){
+  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(!key){
+    localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, "0");
+    state = { phase:"identity", name:"", gender:"男" };
+    render();
+    return;
+  }
+  let slots = null;
+  try{
+    const res = await fetch(WORKER_URL+"slots?key="+encodeURIComponent(key));
+    const data = await res.json();
+    if(data && data.success && Array.isArray(data.slots)) slots = data.slots;
+  }catch(e){ console.warn("讀取存檔清單失敗，改用本機紀錄", e); }
+  let free = -1;
+  for(let i=0;i<3;i++){
+    const usedOnCloud = slots ? !!(slots[i] && slots[i].meta) : false;
+    let usedLocally = false;
+    try{ usedLocally = !!localStorage.getItem(HOME_META_PREFIX+i) || !!localStorage.getItem(STORAGE_KEY+":"+i); }catch(e){}
+    if(!usedOnCloud && !usedLocally){ free = i; break; }
+  }
+  if(free<0){ await showSlotPicker(key, undefined, "一把金鑰最多同時進行三段人生，三個格子都在使用中。想開始新的人生，可以先把其中一段收進「人生回顧」。"); return; }
+  localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, String(free));
+  state = { phase:"identity", name:"", gender:"男" };
+  render();
+}
 function renderKeyReveal(){
   const s = state;
   return `
@@ -7002,11 +7354,13 @@ function renderKeyReveal(){
       <div class="v" style="font-size:18px;letter-spacing:2px;">${escapeHtml(s.newKey)}</div>
     </div>
     <p style="color:var(--ink-soft);font-size:12.5px;">換裝置時輸入這組金鑰就能接回你的存檔。這組金鑰底下最多可以累積3段人生。</p>
-    <button class="primary-btn" id="btn-key-reveal-confirm">我已經記下了</button>
+    <button class="primary-btn" id="btn-key-reveal-confirm">我已經記下了，開始吧</button>
   </div>`;
 }
+let pendingLifeState = null; // 16.10.9：金鑰顯示完才正式開始的那段人生
 function bindKeyReveal(){
   document.getElementById("btn-key-reveal-confirm").onclick = ()=>{
+    if(pendingLifeState){ state = pendingLifeState; pendingLifeState = null; startLife(); return; }
     state = { phase:"identity", name:"", gender:"男" };
     render();
   };
@@ -7034,7 +7388,7 @@ function bindKeyInput(){
     localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, val);
     await showSlotPicker(val);
   };
-  document.getElementById("btn-key-input-back").onclick = ()=>{ state = { phase:"keyChoice" }; render(); };
+  document.getElementById("btn-key-input-back").onclick = ()=>{ state = { phase:"home" }; render(); };
 }
 
 function renderSlotPicker(){
@@ -7056,14 +7410,17 @@ function renderSlotPicker(){
   return `
   <div class="center-screen">
     <h2>選擇要繼續的人生</h2>
+    ${s.notice ? `<p class="glass" style="padding:10px 14px;font-size:13px;text-align:left;">${escapeHtml(s.notice)}</p>` : ``}
     <p style="color:var(--ink-soft);font-size:12.5px;">這組金鑰最多可以同時進行3段人生；已結束的人生收在「人生回顧」，不佔格子</p>
     <div style="text-align:left;">${cards}</div>
     ${s.wallet>0 ? `<p style="font-size:12.5px;">👛 金鑰錢包：${s.wallet} 點</p>` : ``}
     <button class="ghost-btn" id="btn-archive-list" style="margin-top:10px;">📚 人生回顧</button>
+    <button class="ghost-btn" id="btn-slot-home" style="margin-top:10px;">← 回首頁</button>
   </div>`;
 }
 function bindSlotPicker(){
   document.getElementById("btn-archive-list").onclick = ()=>showArchiveList(localStorage.getItem(RECOVERY_KEY_STORAGE_NAME));
+  document.getElementById("btn-slot-home").onclick = ()=>{ state = { phase:"home" }; render(); };
   document.querySelectorAll(".slot-btn").forEach(btn=>{
     btn.onclick = async ()=>{
       const slot = Number(btn.dataset.slot);
@@ -7395,6 +7752,16 @@ function bindLifestyleChoice(){
   const confirmBtn = document.getElementById("btn-lifestyle-confirm");
   if(confirmBtn) confirmBtn.onclick = ()=>{
     if(!state.spendingHabit || !state.mealArrangement) return;
+    // 十六、16.10.9（收好）：這台裝置還沒有金鑰時，先給金鑰再正式開始
+    if(!localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)){
+      const key = generateRecoveryKey();
+      localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, key);
+      localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, "0");
+      pendingLifeState = state;
+      state = { phase:"keyReveal", newKey:key };
+      render();
+      return;
+    }
     startLife();
   };
 }
@@ -7404,80 +7771,219 @@ function apTooltipText(s){
   const ap = ensureAP(s);
   return `每日池 ${ap.daily}／${AP_DAILY_REFILL}、永久池 ${ap.gift+ap.purchased}｜每日台灣時間 00:00 補到 ${AP_DAILY_REFILL} 點`;
 }
+// ========== 十六、16.3 手機版主畫面（2026-09-28改版）==========
+// 主畫面只留「讀故事」和「做選擇」：頂部狀態列＋故事區(最新一回合完整卡片、上一回合一行摘要)＋底部行動區；
+// 數值、通訊錄、選單收進三個由下往上的滑出面板。面板內容一直在DOM裡(用class開關)，既有的id/綁定都不變
+let openPanel = null;          // "stats" | "roster" | "menu" | null，重新render時保留開著的面板
+let prevEntryExpanded = false; // 上一回合摘要是否展開
+let pendingChoiceIdx = null;   // 16.4.2第1步：等待旁白時，被按下的選項保持原樣、其他淡成半透明
+let lastKnownWallet = 0;       // 十、10.3.3金鑰錢包：選人生畫面讀到的數字(封測期間都是0)
+function stageLabelForStamp(s){ return stageLabel(s.age); }
+function renderAgeStamp(age, label, extraClass){
+  return `<div class="stamp ${extraClass||""}" id="${extraClass&&extraClass.includes("tb-stamp")?"age-stamp":""}"><b>${escapeHtml(String(age))}</b>歲・${escapeHtml(label)}</div>`;
+}
+function plainEntryText(text){
+  return String(text||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」").replace(/\s+/g, " ").trim();
+}
+function renderEntryBody(e){
+  return `${renderParagraphs(e.text, true)}
+    <div class="entry-meta">${renderStatChanges(e.statChanges)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.settlement ? `<p class="small-line late">${settlementText(e.settlement, state.cash)}</p>` : ``}</div>`;
+}
+function renderEntrySummary(e, extraClass){
+  return `<div class="entry-summary ${extraClass||""} ${prevEntryExpanded?"open":""}" id="prev-entry-summary" role="button" tabindex="0">
+    <span class="s-tag">${renderEntryTag(e)}</span><span class="s-text">${escapeHtml(plainEntryText(e.text).slice(0,60))}</span><span class="s-arrow" aria-hidden="true">⌄</span>
+  </div>
+  ${prevEntryExpanded && !extraClass ? `<div class="entry entry-expanded glass">${renderEntryBody(e)}</div>` : ``}`;
+}
+function renderStory(s, loadingTurn){
+  const log = s.log||[];
+  const last = log[log.length-1], prev = log[log.length-2];
+  if(loadingTurn){
+    // 16.4.2第2、3步：舊回合收合成一行摘要(透明度55%)，下方出現等待旁白的空卡片
+    return `${last ? renderEntrySummary(last, "anim-collapse") : ``}${renderTurnLoading()}`;
+  }
+  if(!last) return ``;
+  // 16.3.6 旁白錯誤：保留原文案，旁邊加「再試一次」按鈕(只有最新一則、且記得當時的行動才能重試)
+  if(last.error){
+    return `${prev ? renderEntrySummary(prev) : ``}
+    <div class="narrator-error glass"><span>旁白剛剛恍神了一下</span>${last.retryAction!=null ? `<button class="ghost-btn" id="btn-retry-turn">再試一次</button>` : ``}</div>`;
+  }
+  return `${prev ? renderEntrySummary(prev) : ``}
+  <div class="entry card glass" id="latest-entry" data-log-len="${log.length}"><div class="age-tag">${renderEntryTag(last)}</div>${renderEntryBody(last)}</div>`;
+}
 function renderPlaying(loadingTurn){
   const s = state;
   const apOut = totalAP(s)===0; // 十、10.3.8：點數歸零時選項/自由輸入都停用，直到補回來
-  const active = activeCharacters();
-  const bg = s.characters.filter(c=>!c.active);
+  const timeLabel = s.timeState ? computeTimeLabel(s) : stageLabel(s.age);
+  const progress = s.timeState ? computeStageProgress(s) : null;
+  const choices = s.choices||[];
+  const busy = !!loadingTurn;
+  const canUndo = !!(s.snapshot && s.undosLeft>0);
   return `
-  <div class="cover">
-    <div><h1>人生草稿</h1><div class="sub">${escapeHtml(s.name)} · 第 ${s.reincarnations+1} 世</div>
-    <div class="sub ap-bar"><span id="ap-total" title="${apTooltipText(s)}">⚡ 行動點 ${totalAP(s)}</span>　第 ${s.turnCount} 回合</div>
-    ${USE_MOCK?`<div class="sub" style="color:var(--stamp);margin-top:2px;">⚠ 示範模式：目前用規則模擬旁白，非真AI生成</div>`:``}</div>
-    <div class="stamp"><b>${s.age}</b>歲・${stageLabel(s.age)}</div>
-  </div>
-  ${renderProgressStrip(s)}
-  <div class="ledger">
-    <div class="ledger-row"><span class="lbl">存款</span><span class="dots"></span><span class="val">${s.cash.toLocaleString()}</span></div>
+  <header class="topbar glass">
+    <div class="tb-main">
+      ${renderAgeStamp(s.age, stageLabelForStamp(s), "tb-stamp")}
+      <div class="tb-mid">
+        <div class="tb-stage">${escapeHtml(timeLabel)}</div>
+        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" title="${apTooltipText(s)}">⚡ 行動點 ${totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
+      </div>
+      <div class="tb-btns">
+        <button class="round-btn" data-panel="stats" aria-label="數值" title="數值">📊</button>
+        <button class="round-btn" data-panel="roster" aria-label="通訊錄" title="通訊錄">👥</button>
+        <button class="round-btn" data-panel="menu" aria-label="選單" title="選單">☰</button>
+      </div>
+    </div>
+    <div class="tb-sub">
+      ${USE_MOCK ? `<span class="demo-tag" title="目前用規則模擬旁白，不是真的AI生成">示範模式</span>` : ``}
+      <span class="right">${progress ? `${escapeHtml(progress.label)} ${progress.current}/${progress.total}　` : ``}存款 <b id="tb-cash">${s.cash.toLocaleString()}</b></span>
+    </div>
+  </header>
+  <main class="journal">${renderStory(s, loadingTurn)}</main>
+  <footer class="actions glass">
+    ${apOut && !busy ? `<div class="ap-out">行動點已用完，下次補點：台灣時間 00:00（每日池補到 ${AP_DAILY_REFILL} 點）</div>` : ``}
+    <div class="choices${choices.length<=1?" one-col":""}">
+      ${choices.map((c,i)=>`<button class="choice-btn${busy && pendingChoiceIdx===i?" chosen":""}" data-choice="${i}" ${(apOut||busy)?"disabled":""}>${escapeHtml(c)}</button>`).join("")}
+    </div>
+    <div class="custom-row">
+      <input id="custom-input" placeholder="或者，自己寫下你想做的事…" ${(apOut||busy)?"disabled":""}>
+      <button id="btn-custom" class="send-btn" aria-label="送出" title="每回合消耗 1 點行動點" ${(apOut||busy)?"disabled":""}>➤</button>
+    </div>
+    <div id="custom-input-error" class="input-error"></div>
+    <div class="act-foot">
+      ${canUndo ? `<button class="text-btn" id="btn-undo" ${busy?"disabled":""}>↺ 反悔上一步（剩${s.undosLeft}次）</button>` : `<span></span>`}
+      <span id="custom-input-count">0／${CUSTOM_INPUT_MAX_CHARS}</span>
+    </div>
+  </footer>
+  <div class="sheet-backdrop${openPanel?" open":""}" id="sheet-backdrop"></div>
+  ${renderStatsPanel(s, loadingTurn)}
+  ${renderRosterPanel(s)}
+  ${renderMenuPanel(s)}`;
+}
+function sheetHead(title){
+  return `<div class="sheet-grip"></div><div class="sheet-head"><h3>${title}</h3><button class="sheet-close" aria-label="關閉">×</button></div>`;
+}
+// 16.3.4 數值面板：存款大字 → 生活方式小卡(5.5.5) → 房產淨值 → 五項能力進度條 → 課業、興趣(3.2.4)
+function renderStatsPanel(s, loadingTurn){
+  const stats = [["健康", s.stats.health], ["才識", s.stats.knowledge], ["表達力", s.stats.expression], ["外表", s.appearance], ["人脈", s.stats.network]];
+  return `<section class="sheet${openPanel==="stats"?" open":""}" id="panel-stats" aria-label="數值">
+    ${sheetHead("數值")}
+    <div class="cash-block"><div class="cash-lbl">存款</div><div class="cash-big">${s.cash.toLocaleString()}</div></div>
     ${renderLifestyleCard(s, loadingTurn)}
     ${s.propertyValue>0 ? `<div class="ledger-row"><span class="lbl">房產淨值</span><span class="dots"></span><span class="val">${(s.propertyValue-s.mortgageBalance).toLocaleString()}</span></div>` : ``}
-    ${ledgerRow("健康", s.stats.health)}
-    ${ledgerRow("才識", s.stats.knowledge)}
-    ${ledgerRow("表達力", s.stats.expression)}
-    ${ledgerRow("外表", s.appearance)}
-    ${ledgerRow("人脈", s.stats.network)}
-  </div>
-  ${renderTracks(s)}
-  <div class="journal">
-    ${s.log.slice(-6).map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text, true)}${renderStatChanges(e.statChanges)}${renderPurchaseNote(e.purchaseNote)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">${settlementText(e.settlement, s.cash)}</p>` : ``}</div>`).join("")}
-    ${loadingTurn ? renderTurnLoading() : ""}
-  </div>
-  ${!loadingTurn ? `
-  ${apOut ? `<div class="input-error" style="display:block;margin:0 20px;">行動點已用完，下次補點：台灣時間 00:00（每日池補到 ${AP_DAILY_REFILL} 點）</div>` : ``}
-  <div class="choices">
-    ${(s.choices||[]).map((c,i)=>`<button class="choice-btn" data-choice="${i}" ${apOut?"disabled":""}>${escapeHtml(c)}</button>`).join("")}
-    ${(s.snapshot && s.undosLeft>0) ? `<button class="choice-btn" id="btn-undo" style="color:var(--stamp);">↺ 反悔上一步（剩 ${s.undosLeft} 次）</button>` : ""}
-  </div>
-  <div class="custom-row">
-    <input id="custom-input" placeholder="或者，自己寫下你想做的事…" ${apOut?"disabled":""}>
-    <span id="custom-input-count" style="font-size:11px;color:var(--ink-soft);white-space:nowrap;align-self:center;">0／${CUSTOM_INPUT_MAX_CHARS}</span>
-    <button id="btn-custom" ${apOut?"disabled":""}>行動</button>
-  </div>
-  <div id="custom-input-error" class="input-error"></div>
-  <div class="hint">每回合消耗 1 點行動點，選項或自己寫都一樣（自由輸入最多${CUSTOM_INPUT_MAX_CHARS}字，標點也算）</div>
-  ` : ""}
-  <div class="roster">
-    <div class="roster-title">通訊錄・羈絆（${active.length} 位在場${bg.length? ` · ${bg.length} 位漸行漸遠`:""}）</div>
-    <div class="roster-scroll">
+    <div class="stat-bars">${stats.map(([k,v])=>{ const n = Math.round(v); return `<div class="stat-bar"><span>${k}</span><span class="track"><span class="fill" style="display:block;width:${clamp(n,0,100)}%"></span></span><span class="num">${n}</span></div>`; }).join("")}</div>
+    ${renderTracks(s)}
+  </section>`;
+}
+// 16.3.5 關係程度圓點：直接對應4.1.1「目前關係狀態」五段級距(門檻與relationshipStatusLabel()同一組數字)
+function relationDotCount(c){
+  const v = c.affinity||0;
+  return v>=80 ? 5 : v>=60 ? 4 : v>=40 ? 3 : v>=20 ? 2 : 1;
+}
+function renderRelationDots(c, gray){
+  const n = relationDotCount(c);
+  return `<span class="dots5${gray?" gray":""}" aria-label="關係程度${n}/5">${[1,2,3,4,5].map(i=>`<i class="${i<=n?"on":""}"></i>`).join("")}</span>`;
+}
+function renderRosterPanel(s){
+  const active = activeCharacters();
+  const bg = s.characters.filter(c=>!c.active);
+  return `<section class="sheet${openPanel==="roster"?" open":""}" id="panel-roster" aria-label="通訊錄">
+    ${sheetHead("通訊錄・羈絆")}
+    <div class="roster-note">${active.length} 位在場${bg.length? ` · ${bg.length} 位漸行漸遠`:""}</div>
+    <div class="roster-list">
       ${active.map(c=>rosterCard(c,false)).join("")}
       ${bg.map(c=>rosterCard(c,true)).join("")}
-      ${active.length+bg.length===0 ? `<div style="font-size:12px;color:var(--ink-soft);">目前故事裡還沒有其他重要的人。</div>` : ""}
+      ${active.length+bg.length===0 ? `<div style="font-size:12.5px;color:var(--ink-soft);">目前故事裡還沒有其他重要的人。</div>` : ""}
     </div>
-  </div>
-  <div id="cloud-sync-status-wrap" style="padding:0 20px;font-size:11px;color:var(--ink-soft);text-align:right;">${cloudSyncStatusHTML()}</div>
-  <div class="footer-actions">
-    <a id="link-memoir">📖 回憶錄（${s.log.length}則）</a>
-    <a id="link-about-me">🪞 關於我</a>
-    <a id="link-belongings">🧺 我的東西（${(s.belongings||[]).length}件）</a>
-    <a id="link-book">${bookLinkText(s)}</a>
-    ${(s.familyChronicle && s.familyChronicle.length) ? `<a id="link-family">🌳 家族年表（前${s.familyChronicle.length}代）</a>` : ``}
-    <a id="link-view-key">🔑 我的復原金鑰</a>
-    <a id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
-    <a id="link-switch-life">🔄 切換其他人生</a>
-    <a id="link-reset">刪除這段人生</a>
-  </div>`;
+  </section>`;
 }
-// 介面：現階段進度條（9/16新增）——顯示目前細顆粒時間標籤(如「大二・期中準備期」)+這個小段落跑了幾回合
-function renderProgressStrip(s){
-  if(!s.timeState) return ``;
-  const timeLabel = computeTimeLabel(s);
-  const progress = computeStageProgress(s);
-  const pct = progress && progress.total>0 ? clamp(Math.round(progress.current/progress.total*100),0,100) : 0;
-  return `
-  <div class="progress-strip">
-    <div class="prow"><b>${escapeHtml(timeLabel)}</b>${progress ? `<span>${progress.label}　${progress.current}/${progress.total}</span>` : ``}</div>
-    ${progress ? `<div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>` : ``}
-  </div>`;
+function renderMenuPanel(s){
+  return `<section class="sheet${openPanel==="menu"?" open":""}" id="panel-menu" aria-label="選單">
+    ${sheetHead("選單")}
+    <div class="menu-cards">
+      <button class="menu-card glass" id="link-memoir"><div class="ic">📖</div><div class="t">回憶錄</div><div class="n">（${s.log.length}則）</div></button>
+      <button class="menu-card glass" id="link-book"><div class="ic">📚</div><div class="t">人生之書</div><div class="n">${bookMenuCountText(s)}</div></button>
+    </div>
+    <div class="menu-sec">這段人生</div>
+    <a class="menu-item" id="link-about-me">🪞 關於我</a>
+    <a class="menu-item" id="link-belongings">🧺 我的東西（${(s.belongings||[]).length}件）</a>
+    ${(s.familyChronicle && s.familyChronicle.length) ? `<a class="menu-item" id="link-family">🌳 家族年表（前${s.familyChronicle.length}代）</a>` : ``}
+    <a class="menu-item" id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
+    <div class="menu-sec">設定</div>
+    <a class="menu-item" id="link-view-key">🔑 我的復原金鑰</a>
+    <div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>
+    ${lastKnownWallet>0 ? `<div class="menu-note">👛 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
+    <a class="menu-item" id="link-switch-life">🔄 切換其他人生</a>
+    <a class="menu-item danger" id="link-reset">刪除這段人生</a>
+  </section>`;
+}
+function setPanel(name){
+  openPanel = name;
+  ["stats","roster","menu"].forEach(k=>{ const el = document.getElementById("panel-"+k); if(el) el.classList.toggle("open", k===name); });
+  const bd = document.getElementById("sheet-backdrop");
+  if(bd) bd.classList.toggle("open", !!name);
+}
+// 16.4 轉場：只在「新的一則日記第一次出現」時播放；重新render(開面板、改設定)不重播
+let lastAnimatedLogLen = null;
+let lastShownCash = null;
+let lastStampKey = null;
+function playTurnEffects(loadingTurn){
+  const s = state;
+  const rm = reducedMotion();
+  // 16.4.3 年齡印章重蓋：過生日或換階段
+  const stampKey = s.age+"|"+stageLabelForStamp(s);
+  const stampEl = document.getElementById("age-stamp");
+  if(stampEl && lastStampKey!==null && lastStampKey!==stampKey && !loadingTurn){
+    stampEl.classList.add("restamp");
+    try{ if(!rm && /Android/i.test(navigator.userAgent) && navigator.vibrate) navigator.vibrate(12); }catch(e){}
+  }
+  if(!loadingTurn) lastStampKey = stampKey;
+  if(loadingTurn){
+    const lc = document.getElementById("turn-loading");
+    if(lc) scrollToCard(lc, rm);
+    return;
+  }
+  const card = document.getElementById("latest-entry");
+  const logLen = (s.log||[]).length;
+  const isNew = lastAnimatedLogLen!==null && logLen!==lastAnimatedLogLen && card;
+  const cashFrom = lastShownCash;
+  lastAnimatedLogLen = logLen;
+  lastShownCash = s.cash;
+  if(!isNew) return;
+  // 16.4.2第4～6步：卡片淡入(400ms)、段落每段間隔80ms、膠囊延遲200ms依序彈出(間隔60ms)、關係變化與存款結算接著淡入
+  card.classList.add("anim-card");
+  let t = 0;
+  card.querySelectorAll(":scope > p, :scope > .doc-box p").forEach((p,i)=>{ p.style.animationDelay = (i*80)+"ms"; t = i*80; });
+  let capAt = Math.max(400, t) + 200;
+  card.querySelectorAll(".cap").forEach((c,i)=>{ c.style.animationDelay = (capAt + i*60)+"ms"; capAt += 0; });
+  const nCaps = card.querySelectorAll(".cap").length;
+  let lateAt = capAt + nCaps*60 + (nCaps?150:0);
+  card.querySelectorAll(".rel-hint, .small-line").forEach((el,i)=>{ el.classList.add("late"); el.style.animationDelay = (lateAt + i*60)+"ms"; });
+  // 16.4.2第7步：頂部存款由舊數字滾到新數字(慢)
+  const cashEl = document.getElementById("tb-cash");
+  if(cashEl && cashFrom!==null && cashFrom!==s.cash) rollNumber(cashEl, cashFrom, s.cash, rm ? 0 : 600, rm ? 0 : lateAt);
+  // 16.4.2第8步：自動捲到新卡片頂端
+  scrollToCard(card, rm);
+}
+function rollNumber(el, from, to, duration, delay){
+  if(!duration){ el.textContent = to.toLocaleString(); return; }
+  el.textContent = from.toLocaleString();
+  setTimeout(()=>{
+    const start = performance.now();
+    const step = now=>{
+      const p = Math.min(1, (now-start)/duration);
+      const eased = 1 - Math.pow(1-p, 3);
+      el.textContent = Math.round(from + (to-from)*eased).toLocaleString();
+      if(p<1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, delay||0);
+}
+function scrollToCard(el, rm){
+  try{
+    const bar = document.querySelector(".topbar");
+    const top = el.getBoundingClientRect().top + window.scrollY - (bar ? bar.offsetHeight : 0) - 10;
+    window.scrollTo({ top: Math.max(0, top), behavior: rm ? "auto" : "smooth" });
+  }catch(e){}
 }
 // 三、3.2.4【定案】課業成績與興趣成長兩條軌跡都要顯示給玩家（2026-09-27補上）：帳本下方一行課業、一行興趣。
 // 興趣投入度不裸露數字，改文字級距（比照4.1.1關係值「文字化呈現」的精神）；課業成績是考試分數，本來就會在考試彈窗/敘事出現，直接顯示
@@ -7508,33 +8014,43 @@ function ledgerRow(label,val){
   return `<div class="ledger-row"><span class="lbl">${label}</span><span class="dots"></span><span class="val">${Math.round(val)}</span></div>`;
 }
 function renderStatChanges(statChanges){
-  // 可見數值變化顯示（9/15新增）：跟財富結算小字同一種呈現邏輯，只在真的有變化時才顯示
+  // 可見數值變化顯示（9/15新增）：只在真的有變化時才顯示。十六、16.3.2（2026-09-28）：改為膠囊標籤，增加淡綠、減少淡珊瑚
   if(!statChanges) return ``;
   const parts = Object.keys(VISIBLE_STAT_LABELS)
     .filter(k=>statChanges[k])
     .map(k=>{
       const v = statChanges[k];
-      const color = v>0 ? "var(--teal)" : "var(--stamp)";
-      return `<span style="color:${color};">${VISIBLE_STAT_LABELS[k]}${v>0?'+':''}${v}</span>`;
+      return `<span class="cap ${v>0?"up":"down"}">${VISIBLE_STAT_LABELS[k]} ${v>0?'+':''}${v}</span>`;
     });
   if(parts.length===0) return ``;
-  return `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">本回合數值變化：${parts.join("　")}</p>`;
+  return `<div class="caps" aria-label="本回合數值變化">${parts.join("")}</div>`;
 }
 function renderPurchaseNote(note){ // 十七、17.3.2：購物扣款獨立一行小字
-  return note ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:4px;">${escapeHtml(note)}</p>` : ``;
+  return note ? `<p class="small-line">${escapeHtml(note)}</p>` : ``;
+}
+// 提示文字裡出現的角色(取最長的名字比對)，給關係變化配頭像用；找不到就不放頭像
+function characterInHint(text){
+  if(!state || !state.characters) return null;
+  let best = null;
+  state.characters.forEach(c=>{ if(c.name && String(text).includes(c.name) && (!best || c.name.length>best.name.length)) best = c; });
+  return best;
 }
 function renderRelationshipHints(hints){
-  // 4.1.1顯示規則（9/16新增）：關係變化用方向性提示呈現，不精確報數字，跟renderStatChanges並列在日記下方
+  // 4.1.1顯示規則（9/16新增）：關係變化用方向性提示呈現，不精確報數字。十六、16.3.2（2026-09-28）：前面加人物頭像圓圈(名字首字)
   if(!hints || hints.length===0) return ``;
-  return `<p style="font-size:11px;color:var(--ink-soft);margin-top:4px;">${hints.map(h=>escapeHtml(h)).join("；")}</p>`;
+  return `<div class="rel-hints">${hints.map(h=>{
+    const c = characterInHint(h);
+    return `<div class="rel-hint">${c ? `<span class="avatar">${escapeHtml(c.name.slice(0,1))}</span>` : ``}<span>${escapeHtml(h)}</span></div>`;
+  }).join("")}</div>`;
 }
 function rosterCard(c,isBg){
-  // 4.1.1顯示規則（9/16改版）：列表卡片以文字化狀態為主，不裸露0-100數字；點擊可叫出詳細頁
+  // 4.1.1顯示規則（9/16改版）：列表以文字化狀態為主，不裸露0-100數字；點擊可叫出詳細頁
+  // 十六、16.3.4／16.3.5（2026-09-28）：每人一列＝名字首字頭像、名字、稱謂與關係等級、關係程度圓點；漸行漸遠的圓點改灰色
   const category = relationCategoryLabel(c);
-  return `<div class="rcard ${isBg?'bg':''}" data-npc="${escapeHtml(c.name)}">
-    <div class="name">${escapeHtml(c.name)}</div>
-    <div class="rel">${escapeHtml(category)}</div>
-    <div class="status-text">${escapeHtml(relationshipStatusLabel(c))}</div>
+  return `<div class="rrow ${isBg?'bg':''}" data-npc="${escapeHtml(c.name)}" role="button" tabindex="0">
+    <span class="avatar lg${isBg?" gray":""}">${escapeHtml(String(c.name||"？").slice(0,1))}</span>
+    <div class="who"><div class="nm">${escapeHtml(c.name)}</div><div class="sub">${escapeHtml(category)}・${escapeHtml(relationshipStatusLabel(c))}</div></div>
+    ${renderRelationDots(c, isBg)}
   </div>`;
 }
 function escapeHtml(str){
@@ -7576,9 +8092,32 @@ function bindPlaying(){
     btn.onclick = ()=>{
       const idx = +btn.dataset.choice;
       const text = state.choices[idx];
+      pendingChoiceIdx = idx; // 16.4.2第1步
       takeTurn(text, AP_COST_PER_TURN);
     };
   });
+  // 十六、16.3.4：三個圓形按鈕開關面板；點暗色背景或×關閉
+  document.querySelectorAll(".round-btn[data-panel]").forEach(btn=>{
+    btn.onclick = ()=> setPanel(openPanel===btn.dataset.panel ? null : btn.dataset.panel);
+  });
+  const backdrop = document.getElementById("sheet-backdrop");
+  if(backdrop) backdrop.onclick = ()=>setPanel(null);
+  document.querySelectorAll(".sheet-close").forEach(b=>{ b.onclick = ()=>setPanel(null); });
+  // 選單裡的項目：先收起面板再開啟對應畫面(彈窗疊在面板上方會很擠)
+  document.querySelectorAll("#panel-menu .menu-card, #panel-menu .menu-item").forEach(el=>{
+    el.addEventListener("click", ()=>{ if(el.id!=="link-idle-toggle") setPanel(null); }, true);
+  });
+  // 16.3.2：上一回合摘要點一下展開，再點收回
+  const prevSummary = document.getElementById("prev-entry-summary");
+  if(prevSummary && !prevSummary.classList.contains("anim-collapse")) prevSummary.onclick = ()=>{ prevEntryExpanded = !prevEntryExpanded; render(); };
+  // 16.3.6：旁白錯誤「再試一次」——拿掉錯誤那則，用同一個行動重新送一次(失敗的那次沒有扣點，見10.3.1)
+  const retryBtn = document.getElementById("btn-retry-turn");
+  if(retryBtn) retryBtn.onclick = ()=>{
+    const last = state.log[state.log.length-1];
+    if(!last || !last.error) return;
+    state.log.pop();
+    takeTurn(last.retryAction, last.retryCost!=null ? last.retryCost : AP_COST_PER_TURN);
+  };
   const undoBtn = document.getElementById("btn-undo");
   if(undoBtn) undoBtn.onclick = restoreUndo;
   const customBtn = document.getElementById("btn-custom");
@@ -7607,6 +8146,7 @@ function bindPlaying(){
       }
       if(inputError) inputError.style.display="none";
       input.value="";
+      pendingChoiceIdx = null;
       takeTurn(val, AP_COST_PER_TURN);
     };
   }
@@ -7637,8 +8177,8 @@ function bindPlaying(){
   if(switchLifeLink) switchLifeLink.onclick = switchLife;
   updateCloudSyncStatusUI(); // 十、10.1補充：確保「重試同步」連結每次完整render()後也有被重新綁定
   // 四、4.1.1顯示規則（9/16新增）：點擊NPC卡片（含已降級為背景的）叫出詳細頁
-  document.querySelectorAll(".rcard[data-npc]").forEach(card=>{
-    card.onclick = ()=> renderNpcDetailModal(card.dataset.npc);
+  document.querySelectorAll(".rrow[data-npc]").forEach(card=>{
+    card.onclick = ()=>{ setPanel(null); renderNpcDetailModal(card.dataset.npc); };
   });
 }
 
@@ -7730,20 +8270,78 @@ function renderMajorPurchaseModal(){
   document.getElementById("btn-major-buy").onclick = ()=>done(true);
   document.getElementById("btn-major-skip").onclick = ()=>done(false);
 }
+// ========== 十六、16.6 回憶錄時間軸（2026-09-28）==========
+// 重大事件：有對應四、4.2人生履歷(chronicle)條目的回合。直接讀chronicle是否變長，不另訂事件清單、不由AI判斷。
+// 等待旁白時不比對(回合開頭的年度判定寫進履歷後，要算在這回合的新日記上)；回合結束後的彈窗決定寫進履歷，算在觸發彈窗的那則日記。
+// 舊存檔第一次比對時只記下目前長度，不回頭補標
+function syncMajorEventMarks(s){
+  if(!s || !Array.isArray(s.chronicle) || !Array.isArray(s.log)) return;
+  const len = s.chronicle.length;
+  if(typeof s.chronicleSeen!=="number"){ s.chronicleSeen = len; return; }
+  if(len > s.chronicleSeen){
+    const last = [...s.log].reverse().find(e=>!e.error);
+    if(last) last.major = true;
+  }
+  s.chronicleSeen = len;
+}
+const MEMOIR_HALF_KEYS = ["上學期","下學期","寒假","暑假","休學中"];
+// 分組：學生時期每個學期或假期一個大節點；出社會後每一歲一個大節點(階段名稱沿用一、1.1.2)
+function memoirGroupOf(e){
+  const label = String(e.timeLabel||"");
+  const parts = label.split("・").map(x=>x.replace(/（[^）]*）/g,""));
+  const hi = parts.findIndex(p=>MEMOIR_HALF_KEYS.includes(p));
+  if(hi>=0) return { key:"s:"+parts.slice(0,hi+1).join("・"), name:parts.slice(0,hi+1).join("・"), sub:parts.slice(hi+1).join("・"), age:e.age };
+  if(/^(高[一二三]|大[一二三四五])/.test(parts[0]||"")) return { key:"s:"+parts[0], name:parts[0], sub:parts.slice(1).join("・"), age:e.age };
+  return { key:"a:"+e.age, name:stageLabel(e.age), sub: label && !/^\d+歲$/.test(label) ? label : "", age:e.age };
+}
+function memoirCashOf(e){
+  if(typeof e.cash==="number") return e.cash;
+  if(e.settlement && typeof e.settlement.balanceAfter==="number") return e.settlement.balanceAfter;
+  return null;
+}
+function renderMemoirTimeline(s){
+  const entries = s.log.filter(e=>!e.error);
+  if(!entries.length) return `<p style="color:var(--ink-soft);">還沒有任何紀錄。</p>`;
+  const lastIdx = entries.length-1;
+  let html = "", curKey = null;
+  entries.forEach((e,i)=>{
+    const g = memoirGroupOf(e);
+    if(g.key!==curKey){
+      curKey = g.key;
+      html += `<div class="tl-node"><span class="stamp tl-stamp"><b>${escapeHtml(String(g.age))}</b>歲</span><div><div class="tl-node-name">${escapeHtml(g.name)}</div><div class="tl-node-sub">${escapeHtml(g.age+"歲・"+stageLabel(g.age))}</div></div></div>`;
+    }
+    const cash = memoirCashOf(e);
+    const meta = [g.sub, e.subtitle, cash!==null ? `存款 ${cash.toLocaleString()}` : ""].filter(Boolean).join("　");
+    html += `<div class="tl-item${e.major?" major":""}${i===lastIdx?" latest":""}">
+      <span class="tl-dot" aria-hidden="true">${e.major ? `<span class="tl-mini-stamp">印</span>` : ``}</span>
+      <div class="tl-card glass" role="button" tabindex="0" aria-expanded="false">
+        ${meta ? `<div class="tl-meta">${escapeHtml(meta)}</div>` : ``}
+        <div class="tl-text">${renderPlainParagraphs(e.text, false)}</div>
+        ${renderStatChanges(e.statChanges)}
+      </div>
+    </div>`;
+  });
+  return html;
+}
 function renderMemoirModal(){
   const s = state;
   const div = document.createElement("div");
   div.id = "memoir-modal";
   div.className = "modal-backdrop";
-  const entriesHtml = s.log.map(e=>`<div class="entry"><div class="age-tag">${renderEntryTag(e)}</div>${renderParagraphs(e.text, true)}${renderStatChanges(e.statChanges)}${renderPurchaseNote(e.purchaseNote)}${renderRelationshipHints(e.relationshipHints)}${e.settlement ? `<p style="font-size:11px;color:var(--ink-soft);margin-top:6px;">${settlementText(e.settlement, s.cash)}</p>` : ``}</div>`).join("");
   div.innerHTML = `
-    <div class="modal" style="max-width:560px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+    <div class="modal memoir" style="max-width:560px;width:94vw;max-height:88vh;display:flex;flex-direction:column;">
       <h3>回憶錄</h3>
-      <p style="margin-top:-8px;">${escapeHtml(s.name)}的完整故事，共${s.log.length}則</p>
-      <div style="overflow-y:auto;flex:1;margin-top:4px;padding-right:6px;">${entriesHtml || `<p style="color:var(--ink-soft);">還沒有任何紀錄。</p>`}</div>
+      <p style="margin-top:-8px;">${escapeHtml(s.name)}的完整故事，共${s.log.filter(e=>!e.error).length}則</p>
+      <div class="timeline" id="memoir-timeline">${renderMemoirTimeline(s)}</div>
       <button class="ghost-btn" id="btn-memoir-close" style="margin-top:14px;">關閉</button>
     </div>`;
   document.body.appendChild(div);
+  // 故事前兩行，點擊展開完整內容，再點收回
+  div.querySelectorAll(".tl-card").forEach(card=>{
+    card.onclick = ()=>{ const open = card.classList.toggle("open"); card.setAttribute("aria-expanded", open?"true":"false"); };
+  });
+  const tl = document.getElementById("memoir-timeline");
+  if(tl) tl.scrollTop = tl.scrollHeight; // 打開時自動捲到最底
   document.getElementById("btn-memoir-close").onclick = ()=>div.remove();
 }
 function renderConfirmReset(){
@@ -8755,7 +9353,7 @@ function ensureApiToggleUI(){
   const btn = document.createElement("button");
   btn.id = "api-toggle-btn";
   btn.textContent = USE_MOCK ? "🔌 模擬模式（點我切換真實API）" : "💸 真實API中（點我切回模擬）";
-  btn.style.cssText = `position:fixed;bottom:16px;left:16px;z-index:300;padding:8px 12px;border-radius:18px;border:none;font-size:12px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);color:#fff;background:${USE_MOCK?"#555":"#b8860b"};`;
+  btn.style.cssText = `position:fixed;top:42%;left:6px;z-index:300;padding:8px 12px;border-radius:18px;border:none;font-size:12px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);color:#fff;background:${USE_MOCK?"#555":"#b8860b"};`;
   btn.onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ try{ localStorage.removeItem(FORCE_REAL_API_KEY); }catch(e){} location.reload(); };
   document.body.appendChild(btn);
   updateDevUsageBox();
@@ -8775,7 +9373,7 @@ function updateDevUsageBox(){
   if(!box){
     box = document.createElement("div");
     box.id = "dev-usage-box";
-    box.style.cssText = "position:fixed;bottom:56px;left:16px;z-index:300;max-width:300px;padding:6px 10px;border-radius:8px;background:rgba(40,40,40,.88);color:#eee;font-size:11px;line-height:1.5;font-family:'Courier New',monospace;";
+    box.style.cssText = "position:fixed;top:calc(42% + 44px);left:6px;z-index:300;max-width:300px;padding:6px 10px;border-radius:8px;background:rgba(40,40,40,.88);color:#eee;font-size:11px;line-height:1.5;font-family:'Courier New',monospace;";
     document.body.appendChild(box);
   }
   box.textContent = devUsageText();
@@ -8807,7 +9405,7 @@ function ensureDebugUI(){
     btn.id = "debug-toggle-btn";
     btn.textContent = "🛠";
     btn.title = "Debug 測試面板";
-    btn.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:300;width:44px;height:44px;border-radius:50%;background:var(--stamp,#9c3b2e);color:#fff;border:none;font-size:18px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);";
+    btn.style.cssText = "position:fixed;top:42%;right:6px;z-index:300;width:36px;height:36px;border-radius:50%;opacity:.8;background:#4A2E1F;color:#fff;border:none;font-size:18px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35);";
     btn.onclick = toggleDebugPanel;
     document.body.appendChild(btn);
   }
