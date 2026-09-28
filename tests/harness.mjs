@@ -59,7 +59,7 @@ export function makeFakeAnthropic(opts = {}) {
       input = Object.assign({
         action_result: "你照著剛剛的決定做了。", narrative: "隔天早上，你醒得比鬧鐘早。\n\n桌上的課本還攤著。",
         scene_day_offset: Math.min(1, days - 1), scene_summary: "早上，在房間", chapter_subtitle: "普通的一天",
-        tone_switch: null, foreshadow_new: [], foreshadow_updates: [], turn_summary: "過了平凡的一天。",
+        tone_switch: null, turn_summary: "過了平凡的一天。",
         age_advance: 0, stat_deltas: { health: 0, network: 1, expression: 0 }, event_type: null, event_id: null,
         emotional_tone: "warm", expense_change: [], one_time_transaction: [], housing_choice: null,
         attachment_shift: { anxiety: 0, avoidance: 0 }, peer_position_shift: 0,

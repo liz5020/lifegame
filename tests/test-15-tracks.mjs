@@ -12,12 +12,16 @@ const segIdx = (key) => ev(`YEAR_SEGMENTS.findIndex(x=>x.key===${JSON.stringify(
 
 // 開學初：讀書/興趣不計
 ev(`state.timeState.stageMode='highschool'; state.timeState.prologue=false; state.timeState.segmentIndex=${segIdx("開學初")}; state.timeState.turnsInSegment=0; state.studyCountThisTerm=0; state.interestCountThisTerm=0`);
+// 2026-09-28起讀書/興趣次數改看重心(二、2.6.4)，不看文字
 override = () => ({ interest_event: { category: "藝術創作", reaction: "positive" } });
-await H.playTurn(g, "回家讀書");
+ev("state.focus='study'"); await H.playTurn(g, "嗯");
+ev("state.focus='interest'; state.focusInterestId='new'"); await H.playTurn(g, "嗯");
 A.check("開學初讀書、興趣都不計", ev("state.studyCountThisTerm") === 0 && ev("state.interestCountThisTerm") === 0, { s: ev("state.studyCountThisTerm"), i: ev("state.interestCountThisTerm") });
 // 期中準備期：計
 ev(`state.timeState.segmentIndex=${segIdx("期中準備期")}; state.timeState.turnsInSegment=0`);
-await H.playTurn(g, "回家讀書");
+ev("state.focus='study'"); await H.playTurn(g, "嗯");
+ev("state.focus='interest'"); await H.playTurn(g, "嗯");
+ev("state.focus='rest'");
 A.check("期中準備期讀書、興趣都計", ev("state.studyCountThisTerm") === 1 && ev("state.interestCountThisTerm") === 1, { s: ev("state.studyCountThisTerm"), i: ev("state.interestCountThisTerm") });
 override = () => ({});
 

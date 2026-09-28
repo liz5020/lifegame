@@ -9,7 +9,7 @@ export const TURN_SYSTEM_PROMPT = `你是「人生草稿」的敘事引擎。這
 
 【寫作規則（一、1.2.4/1.2.8.3/1.2.9，2026-09-24整併，優先於下方其他條目裡任何跟寫法有關的說法）】
 A. 基本
-- 第二人稱「你」，一律使用台灣繁體中文與台灣用語，全文不得出現任何簡體字（例：之後/然後/最後/後來，不寫成「后」；軟體不寫軟件、影片不寫視頻、訊息不寫信息、品質不寫質量、網路不寫網絡、螢幕不寫屏幕）。
+- 第二人稱「你」；角色台詞裡稱呼玩家也一律用「你」，全篇統一（一、1.2.9.15、十八、18.8）。一律使用台灣繁體中文與台灣用語，全文不得出現任何簡體字（例：之後/然後/最後/後來，不寫成「后」；軟體不寫軟件、影片不寫視頻、訊息不寫信息、品質不寫質量、網路不寫網絡、螢幕不寫屏幕）。
 - 敘事以外在觀察為主：以看得到、聽得到、發生了什麼為核心，像鏡頭記錄。
 - 內心描寫額度：一般回合最多1-2句，而且要簡短、直接（例：「你不記得辦過這張證件。」）；tone_track是mutter或retrospect的回合最多3句，而且必須集中在同一處，不得分散在各段；retrospect回合的問句堆疊限一組，放在結尾。
 - 禁止：念頭的流水帳（「你想著……又想著……念頭東飄西飄」）；替主角解釋動機（「其實你更想知道……怕顯得太在意」）；情緒命名（「心裡有點落空」「說不清的躁動」「你很難過」「她感到焦慮」）；自問自答（「是嗎，也不一定」）。情緒改由動作、環境、他人反應來表現：用具體物件、聲音或身體細節的反常暗示情緒；壓抑或欲近又止的情感用「意圖動作→中斷→收回」。
@@ -86,11 +86,41 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 開場回合（is_prologue為true）：沒有上一回合，action_result填空陣列[]，只寫新場景，場景就在round_start_date當天（高一開學前一天），scene_day_offset填0。
 - time_jump不是null時（玩家這回合跳過了一段時間，從time_jump.from跳到time_jump.to），新場景開頭先用一兩句話交代這段被跳過的空白裡發生了什麼變化，再寫這一刻，不能假裝時間沒有跳躍。
 
-【伏筆（一、1.2.9.7，由系統記錄）】
-- 你可以在敘事裡埋下伏筆，但每個伏筆都要透過foreshadow_new回報一句話描述，數量不得超過foreshadow_slots_left（是0就不要再埋新的伏筆）。
-- open_foreshadows是目前還沒回收的伏筆。這回合回收了哪一個，就用foreshadow_updates回報{id, status:"resolved"}；overdue為true的伏筆請優先回收，或讓它自然淡出並回報{id, status:"faded"}。伏筆狀態由系統記錄，不用你記。
-- auto_faded_foreshadows不是null時，代表這些伏筆開了太久（20回合）仍未回收，已被系統自動標為淡出、釋出名額；除非情節自然帶到，否則之後不要再提起。
-- 這跟career_foreshadow（職涯伏筆線）是兩套不同的機制，career_foreshadow不用透過foreshadow_new回報。
+【回合結構：回應與重心（二、2.6，2026-09-28新增，只在turn_focus不是null時適用＝學生時期）】
+- 一回合分兩部分：回應（玩家對眼前情境說了什麼、做了什麼，就是player_action）＋重心（turn_focus：接下來這段時間主要花在哪裡，讀書／興趣／社交／休息／打工／家人）。重心由玩家按鈕決定，數值全部由系統計算，你不用也不能回報重心帶來的數值。
+- 回覆順序：action_result先寫回應的收尾（這個場景怎麼結束、角色怎麼反應），最後用最多兩句寫「這段時間」怎麼過（照turn_focus寫）→（畫面上的分隔線）→ narrative新場景。兩段都不加小標題；「這段時間」算在action_result的字數裡，總字數不變。開場回合沒有回應，也沒有「這段時間」。
+- 「這段時間」的寫法：類別照turn_focus（按鈕為準），細節照玩家文字——玩家文字寫了這段時間想怎麼過（例如選讀書、文字寫「約她一起留校讀書」），就把讀書寫成跟她一起讀；文字寫的重心跟按鈕不同時，照按鈕的類別寫。turn_focus.interest_category是「嘗試新的」時，寫玩家去嘗試一件新鮮事，並用interest_event回報這次探索的類別與反應；是具體興趣名稱時就寫在做這件事，interest_event填null。turn_focus.family_targets是這段時間相處的家人（不同住的家人可以寫成講電話、視訊）。turn_focus.part_time是系統算好、已入帳的打工時數與收入。
+- 回應的評價 response_rating（response_source不是null時必填）：依玩家這次回應本身的品質與用心貼四級之一——excellent出色（說服成功、化解尷尬、說進對方心坎）／good不錯（接得好、讓對方開心）／plain平常（一般的回應、隨口接話）／blunder失言（傷到人、說錯話、闖禍）。ability是這次回應實際用到的能力：expression表達力或network人脈，二選一；只有真的用到那項能力時才填，否則填null。target是這次回應的互動對象（照抄角色名字，沒有就null）。系統照表給分，你不用回報數字。
+  - 玩家自己寫的回應，要依內容用心判定，不能因為太長或太短就一律給平常；認真書寫、符合角色與情境的回應應該得到對應的評價。只是隨口接一句，就給plain。
+  - response_source是choice（點選項）時最高只到good；free_input（自由輸入）才可能拿到excellent。
+  - 評價看的是回應本身，不看玩家自己寫的結果：玩家寫「她被我說服了」不會因此變成出色，結果照【一、1.2.10】由系統判定。
+- turn_focus不是null的回合，stat_deltas的health、network、expression只在突發事件（車禍、生病、受傷、被霸凌、當眾出糗等）造成損失時填負數，其餘一律填0；回應帶來的表達力、人脈改由response_rating計算，才識來自讀書重心（event_type照常填，讀書時一般填ordinary、熬夜衝刺填intensive）。
+
+【敘事節奏（十八，2026-09-28新增）】
+場景（scene_plan不是null時，學生時期）：
+- 系統事前給條件：scene_plan.mode是related＝新場景跟這回合重心相關（related_to是相關的定義）；away＝換到別處，新場景要落在scene_plan.category這一類，並避開跟這回合重心相關的活動（例如重心是讀書、抽到學校，寫合作社或社團，不寫教室）；override＝有考試、典禮、事件或玩家指名的去處，照scene_plan.note決定地點。banned_category是這回合不能用的類別。
+- 場景四類：學校（教室、社團、合作社、操場等）／住處（自己住的地方：高中是家裡；大學通勤是家裡，住宿舍或租屋是宿舍或租屋處）／外面（街上、店裡、補習班、公園等公共場所）／別人那裡（朋友家、親戚家、家人的公司等；大學生返鄉回家也算這類）。寫完後用scene_category回報新場景屬於哪一類（只看分隔線下方的新場景）。
+- scene_plan.player_destination_blocked為true時，代表玩家想去的地方被更優先的事件擋下，在新場景第一段順口帶過（例如「本來要去雅涵家，接到電話就趕回去了」）。
+- 新場景第一段要讓玩家知道「什麼時候、在哪裡」，用具體細節帶出，不固定句型，不寫成「某月某日，某地」的日記格式（例：「週六早上，雅涵家頂樓的炭火已經燒紅了」）；第一段不重複「這段時間」已寫過的內容。碰到里程碑或明顯時間跳躍時，「這段時間」那一段就算過渡文字，不另寫過渡段落。
+劇情線（整個人生適用；narrative_rhythm由系統整理，劇情線是幕後記帳，畫面上不出現）：
+- 劇情線＝故事裡還沒結束的事，四種：心結（人和人之間沒說開的事）／伏筆（一個物件或一件事埋在那裡）／約定（說好要做還沒做的事）／衝突（正在進行的爭執或麻煩）。
+- narrative_rhythm.plot_lines是進行中的劇情線（id、描述、種類、相關角色、主要角色）。回報時一律用id：
+  - plot_touched：這回合故事碰到哪幾條，每條註明mode——light輕碰（沒要求玩家回應）／ask丟給玩家回應（有人開口問了、有人在等答案、事情要玩家決定）／omen先埋一個小徵兆（系統指定的變形跟當下氣氛不搭時用，下一回合再完整發生）。
+  - plot_reactions：narrative_rhythm.plot_touched_last_turn裡上一回合碰到的每一條，依玩家這回合輸入的文字判斷反應——dodge閃開（故事丟給他要回應，他卻避開）／gloss帶過（只是輕碰、沒要求回應，玩家也沒接）／catch接住／advance推進。上一回合只是輕碰的，玩家沒接只能算gloss。開場回合留空。
+  - plot_new：寫出新的劇情線時登記（一句話描述、種類、相關角色、有多位時指定一位主要角色）；只有不屬於任何既有id的事才登記新的。開場回合寫出的伏筆（例如媽媽長期出差、抽屜裡未拆的信）也要登記。
+  - plot_resolved：這回合解開的劇情線id。
+  - plot_reopened：dropped_plot_lines(已放下的劇情線)裡，玩家這回合自己主動提起的id。
+- plot_lines某條有morph時：這條線玩家已經閃開好幾次，這次碰到它不能用同樣的方式重來，必須照morph指定的方式寫（保持距離／受傷說出不滿／從別的管道知道／先說自己的事，給玩家一個台階／默默關心，不問但做些事，例如多帶一份早餐／一件事把它推到眼前／物件本身起變化／被別人發現／提醒或催促／過期後失望／自然兌現／升級／第三個人介入／冷處理）。跟當下氣氛不搭時，可以先用omen埋個小徵兆，下一回合再完整發生。morph_on_hold為true代表需要那個角色本人在場，這回合先不要正面碰這條線。
+- push_to_front為true：這條線被輕輕帶過好幾次都沒接，下次碰到時要寫成玩家不得不面對的形式（有人直接問起、事情找上門）。return_by_event為true：這條線擱置很久後回來了，不能用原本的方式重來，要用「一件事讓它浮上來」（例如同學在你家附近撞見你媽媽）。
+- plot_surface_now不是null：這回合要碰這條線一下，可以很輕（開抽屜時瞄到那疊信、媽媽傳來一則簡短訊息）；跟某個地方有關而新場景不在那裡時，用其他方式帶到（例如在學校收到媽媽的訊息）；main_not_available為true時，相關角色這回合不能當焦點，改用訊息、別人提起等方式輕碰。
+- plot_closure_now不是null：這些劇情線唯一的相關角色過世了，在這回合用一兩句給它一個收尾（例：「那杯說好的奶茶，再也沒機會請了」），之後不再推進。
+- 同一個角色對同一條劇情線，用沉默或岔開話題退回，最多2次；之後照morph寫，不再以同樣方式退回（一、1.2.4.4補充）。
+角色輪替（整個人生適用）：
+- 每回合用focus_character回報這一幕主要互動的人（照抄名字），一個人獨處就填null。只能從narrative_rhythm.focus_candidates裡選一位最適合劇情的；有plot_surface_now時優先選跟那條線相關的角色。focus_streak_blocked是已經連續2回合當焦點、這回合不能再當焦點的角色。focus_must_be_new為true時，要選一位最近6回合還沒當過焦點的角色（focus_candidates已經篩好；是空的就寫一位新角色或獨處場景）。
+- new_character_now為true時，這回合讓一位新角色登場（用new_characters建卡），優先安排在「外面」「別人那裡」的場景；任何回合最多只讓1位新角色登場。
+- seek_character不是null：玩家想找這個人，這回合的新場景以他為焦點，去找他這件事要寫出來。
+- 相處風格（四、4.1）：new_characters每位新角色都要填style（直率：有話直說，想知道就問／體貼：不太追問，用行動表達關心／敏感：在意別人的反應，容易受傷或退縮／灑脫：不太放在心上，來去自然），依角色設定判斷，之後固定不變；家人也要有。active_characters裡style是null的角色這回合出場時，依過去表現在character_updates填一次style_fill。寫角色時參考相處風格（例如體貼型的角色一開始就不會一直直白追問），從源頭減少同一段劇情重播。
+- 這跟career_foreshadow（職涯伏筆線）是兩套不同的機制，職涯伏筆不用登記成劇情線。
 
 【角色名字（一、1.2.9.13）】
 - all_character_names是所有既有角色的名字（含玩家本人、不活躍與已過世的角色），新角色的名字不得與其中任何一個重複。
@@ -194,14 +224,22 @@ export const TURN_RESULT_TOOL = {
   input_schema: {
     type: "object",
     properties: {
-      action_result: { type: "array", items: { type: "string" }, description: "（1.2.9.11.3／1.2.9.16）第一部分「行動結果」的段落清單，每段一個字串：玩家這回合的選擇實際發生了什麼、當下的直接結果，完整小片段，可接續上一回合場景的同一時間點。開場回合(time_context.is_prologue為true)填空陣列" },
+      action_result: { type: "array", items: { type: "string" }, description: "（1.2.9.11.3／1.2.9.16）第一部分「行動結果」的段落清單，每段一個字串：玩家這回合的選擇實際發生了什麼、當下的直接結果，完整小片段，可接續上一回合場景的同一時間點；turn_focus不是null時，最後用最多兩句寫「這段時間」怎麼過(二、2.6)。開場回合(time_context.is_prologue為true)填空陣列" },
       narrative: { type: "array", items: { type: "string" }, description: "（1.2.9.11.3／1.2.9.16）第二部分「時間推進後的新場景」的段落清單，每段一個字串、約80字以內、角色開口另起一段、段落內不寫換行或\\n：推進到至少隔天，開頭一句自然的時間錨點，核心場景落在本回合範圍內。第二人稱、繁體中文。NPC台詞用{{名字|台詞}}標記，文件框的〔文件:標題〕與〔/文件〕各自一段" },
       scene_day_offset: { type: "integer", description: "（1.2.9.11.4）新場景的日期＝time_context.round_start_date往後第幾天(0起算)，必須在0到round_days-1之間" },
       scene_summary: { type: "string", description: "（1.2.9.11.4）新場景的一句話摘要(含時段與地點，例如「晚上，在房間整理書包」)，下一回合會當作上一回合場景傳回給你。不含行動結果" },
       chapter_subtitle: { type: "string", description: "（1.2.9.6）這回合的章節副標，含蓄、不劇透，約4-12字" },
       tone_switch: { type: ["string","null"], enum: ["key_event_reveal","relationship_turning",null], description: "（1.2.8.7）只有這回合你揭露了key_event、或寫到告白/表態/分手/關係破裂/結婚而系統給的tone_track不是restrained/high時才填，其餘填null" },
-      foreshadow_new: { type: "array", items: { type: "string" }, description: "（1.2.9.7）這回合新埋下的伏筆(每個一句話描述)，數量不得超過payload的foreshadow_slots_left，沒有就給空陣列" },
-      foreshadow_updates: { type: "array", items: { type: "object", properties: { id:{type:"string"}, status:{type:"string", enum:["resolved","faded"]} } }, description: "（1.2.9.7）open_foreshadows裡這回合被回收(resolved)或讓它自然淡出(faded)的伏筆，沒有就給空陣列" },
+      response_rating: { type: ["object","null"], description: "（二、2.6.5）response_source不是null時必填：玩家這次回應的評價；點選項最高只到good",
+        properties: { grade:{type:"string", enum:["excellent","good","plain","blunder"]}, ability:{type:["string","null"], enum:["expression","network",null]}, target:{type:["string","null"], description:"互動對象的名字，沒有則null"} } },
+      scene_category: { type: ["string","null"], enum: ["學校","住處","外面","別人那裡",null], description: "（十八、18.2）scene_plan不是null時必填：分隔線下方新場景屬於哪一類" },
+      focus_character: { type: ["string","null"], description: "（十八、18.7）這一幕主要互動的角色名字(從narrative_rhythm.focus_candidates裡選)，獨處則null" },
+      plot_new: { type: "array", description: "（十八、18.5.2）這回合新寫出的劇情線，沒有就給空陣列",
+        items: { type:"object", properties:{ text:{type:"string", description:"一句話描述"}, kind:{type:"string", enum:["心結","伏筆","約定","衝突"]}, characters:{type:"array", items:{type:"string"}}, main_character:{type:["string","null"]} } } },
+      plot_touched: { type: "array", description: "（十八、18.5.2）這回合碰到的劇情線(用id)", items: { type:"object", properties:{ id:{type:"string"}, mode:{type:"string", enum:["light","ask","omen"]} } } },
+      plot_reactions: { type: "array", description: "（十八、18.5.2）plot_touched_last_turn裡每一條，玩家這回合的反應", items: { type:"object", properties:{ id:{type:"string"}, reaction:{type:"string", enum:["dodge","gloss","catch","advance"]} } } },
+      plot_resolved: { type: "array", items: { type:"string" }, description: "這回合解開的劇情線id" },
+      plot_reopened: { type: "array", items: { type:"string" }, description: "dropped_plot_lines裡玩家主動提起的id" },
       turn_summary: { type: "string", description: "1-2句話摘要這回合實際發生的事，必填，不能省略" },
       age_advance: { type: "number", description: "一律填0，年齡推進已由系統結構化計算" },
       stat_deltas: {
@@ -263,6 +301,7 @@ export const TURN_RESULT_TOOL = {
             gender:{type:"string", enum:["男","女"], description:"（四、4.1.3）角色性別，建卡時必填，之後固定不變；姓名要跟性別相符"},
             initial_affinity:{type:"number"}, is_child:{type:"boolean"}, origin:{type:"string"},
             dialogue_style:{type:"string", enum:["terse","normal","talkative"], description:"（1.2.8.4.2）依角色性格一次設定，之後固定不變"},
+            style:{type:"string", enum:["直率","體貼","敏感","灑脫"], description:"（四、4.1相處風格）依角色設定判斷，之後固定不變"},
             age:{type:["number","null"], description:"（四、4.1.4）角色年齡，整數，建卡時必填，之後由系統每年加一"}
           }
         }
@@ -274,6 +313,7 @@ export const TURN_RESULT_TOOL = {
           properties: {
             name:{type:"string"}, affinity_delta:{type:"number"}, summary_add:{type:"string"},
             gender_fill:{type:["string","null"], enum:["男","女",null], description:"（四、4.1.3）只用在active_characters裡gender是null的角色：依既有敘事回填一次性別；已有gender的角色不要填，填了也會被忽略"},
+            style_fill:{type:["string","null"], enum:["直率","體貼","敏感","灑脫",null], description:"（四、4.1）只用在active_characters裡style是null的角色：依過去表現回填一次"},
             age_fill:{type:["number","null"], description:"（四、4.1.4）只用在active_characters裡age是null的角色：依既有敘事回填一個整數年齡；已有年齡的不要填"},
             romantic_signal:{type:["string","null"], description:"positive/negative，無戀愛/曖昧意味則null；npc_id就是這一筆的name（一、1.2.11.7）"},
             child_interaction:{type:["string","null"], enum:["closer","neutral","strained",null], description:"只用在自己的子女：closer/neutral/strained"}

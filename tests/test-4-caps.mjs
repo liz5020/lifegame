@@ -28,8 +28,9 @@ const before = g.ev("({h:state.stats.health, e:state.stats.expression})");
 g.ev("state.stats.health=50; state.stats.expression=50; state.chronicConditions=[]");
 override = () => ({ stat_deltas: { health: 50, network: 50, expression: 50 } });
 await H.playTurn(g);
-A.check("stat_deltas +50：健康只加5", g.ev("state.stats.health") <= 55, g.ev("state.stats.health"));
-A.check("stat_deltas +50：表達力只加5", g.ev("state.stats.expression") === 55, g.ev("state.stats.expression"));
+// 2026-09-28：學生時期AI的正向stat_deltas不採用(回應改走評價表、健康加分來自休息重心，二、2.6)，上限直接測截斷函式
+A.check("stat_deltas +50：健康只加5", g.ev("clampStatDeltas({health:50}).health") === 5 && g.ev("state.stats.health") <= 55, g.ev("state.stats.health"));
+A.check("stat_deltas +50：表達力只加5", g.ev("clampStatDeltas({expression:50}).expression") === 5 && g.ev("state.stats.expression") === 50, g.ev("state.stats.expression"));
 g.ev("state.stats.health=50; state.stats.expression=50; state.stats.network=50");
 override = () => ({ stat_deltas: { health: -50, network: -50, expression: -50 } });
 await H.playTurn(g);

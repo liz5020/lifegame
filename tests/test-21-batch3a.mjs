@@ -12,14 +12,16 @@ await H.playTurn(g);
 const ev = g.ev;
 const flat = () => lastBody.replace(/\\"/g, '"');
 
-// 3.4.2 打工
-ev("state.careerStatus=null; state.milestones.first_part_time_job='available'");
+// 3.4.2 打工(2026-09-28起學生時期由「打工」重心觸發，見二、2.6.4；文字偵測只留給待業、半退休等非學生時期)
+ev("state.careerStatus=null; state.milestones.first_part_time_job='available'; state.focus='work'");
 const c0 = ev("state.cash");
 await H.playTurn(g, "放學後去超商打工");
+ev("state.focus='rest'");
 const pt = JSON.parse(ev("JSON.stringify(state.partTimeEventLog)"));
 A.check("打工：時薪0.2、至少4小時、收入入帳", pt && pt.hourly === 0.2 && pt.hours >= 4 && pt.earning === Math.round(0.2 * pt.hours), pt);
 A.check("第一次打工里程碑由程式完成", ev("state.milestones.first_part_time_job") === "completed");
 A.check("payload告訴AI打工收入", /part_time_event_now[^}]*earning/.test(flat()));
+A.check("非學生時期(沒傳重心)：文字偵測照舊", ev("applyPartTimeWork(state,'去打工',{daysAdvanced:7}), !!state.partTimeEventLog"));
 ev("applyPartTimeWork(state,'去當家教',{daysAdvanced:14})");
 const tutor = JSON.parse(ev("JSON.stringify(state.partTimeEventLog)"));
 A.check("家教：時薪0.3~0.5、小數一位、兩週24小時", tutor.hourly >= 0.3 && tutor.hourly <= 0.5 && Math.round(tutor.hourly * 10) === tutor.hourly * 10 && tutor.hours === 24, tutor);
