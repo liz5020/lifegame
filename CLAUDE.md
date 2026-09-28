@@ -75,7 +75,7 @@
 - 審慎、成就傾向兩條做事態度光譜，是「算好倍率/修正值丟給AI參考」的架構，不是本地擲骰；責任感、團隊vs單打獨鬥、核心數值邊際遞減、人脈閒置衰退則是寫死在`applyResult()`的本地公式
 - `USE_MOCK`開關控制要不要真的呼叫AI（`false`時呼叫`WORKER_URL`，一個Cloudflare Worker中繼站，金鑰不在前端）
 - **（2026-09-25新增，十、10.4）system prompt的唯一來源是`worker/prompt.js`**（含`submit_turn_result`工具定義）。前端只送payload，Worker自己組system/tools並驗證messages結構與字數。**改prompt後必須重新部署Worker**（`cd worker && npx wrangler deploy`），只重新上傳index.html沒有用；舊文件裡提到「改`buildSystemPrompt()`」的地方，一律改成改`worker/prompt.js`
-- **（2026-09-25新增）測試**：`tests/`資料夾有共用的jsdom測試工具（`harness.mjs`，fetch導向真的worker.js＋記憶體KV＋假Anthropic上游，全程不打真實API），各批次測試檔`test-*.mjs`，`node run-all.mjs`全部跑一次
+- **（2026-09-25新增）測試**：`tests/`資料夾有共用的jsdom測試工具（`harness.mjs`，fetch導向真的worker.js＋記憶體KV＋假Anthropic上游，全程不打真實API），各批次測試檔`test-*.mjs`，`node run-all.mjs`全部跑一次（2026-09-28起平行跑，約4.5分鐘）。**改到一半只跑相關測試**：`node run-all.mjs 38 16b`（檔名含這些字串）或`node run-all.mjs --quick`（略過兩個長程模擬，約45秒）；**commit前一定跑全套**
 - Debug面板（🛠）只在`USE_MOCK=true`時出現，可調整`ENABLE_MARGINAL_DIMINISH`／`ENABLE_NETWORK_IDLE_DECAY`／`SALARY_SCALE`／`LIVING_COST_MULTIPLIER`等測試參數
 - **（2026-09-20取代）**死亡結局不再有「結局標籤」這個東西：七、7.1.4整節改版為「人生總結」（三層結構：L1段落回顧／L2光譜變化句／L3墓誌銘），不輸出標籤、分數或排名，素材由客戶端從`life_trajectory`挑好、AI只負責寫成回顧語氣。舊版計分制（`ENDING_DEFINITIONS`+`computeEndingTitle()`）與QA手冊34.7的B7「必要資格制」草案**雙雙作廢**，都不再是待實作方向。同批新增三、3.8幸福感系統（五條來源管道取前三高加權、`emotional_tone`四選一enum、朝基準線回歸、自主感`skip_reason`）與四、4.5`life_trajectory`分階段軌跡紀錄，已於同日稍晚實作完成（見CHANGELOG 2026-09-20）
 - **（2026-09-20新增）**十二、職涯系統：`job_change`欄位（AI自由回報職業類別+薪資）已完全移除，出社會後的求職/升遷/轉職/裁員/創業/退休全部改由結構化彈窗處理（`checkCareerTriggers()`每回合檢查、`rollAnnualCareerChecks()`每滿一年檢查一次），薪資由`computeCareerSalary()`依才識/職級/年資查表計算，AI只透過`career_event_now` payload欄位取得敘事素材，不再能自己編造薪資或職業類別。`first_startup`里程碑同步從AI回報改為`business_status`轉為「經營中」時客戶端自動判定
