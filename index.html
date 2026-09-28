@@ -543,7 +543,7 @@ function refreshAppearance(s){
 // 購物：旁白回傳purchase標記(類別＋價位)，程式查表決定扣款與數值；重大開銷先跳確認彈窗，下一回合才寫結果。
 const APPEARANCE_INNATE_MAX = 100, APPEARANCE_STYLING_MAX = 60; // 17.1.1【定案】
 const GROOMING_BONUS_MAX = 10;        // 17.2 打理加成上限
-const OCCASION_PREP_GROOMING = 1;     // 17.2 場合準備＋1，每回合最多一次(Claude實作時補的數字，待使用者確認)
+const OCCASION_PREP_GROOMING = 1;     // 17.2 場合準備＋1，每回合最多一次(2026-09-28使用者確認)
 const PURCHASE_BASE_EFFECT = 2;       // 17.3.5 效果基準＝一般價位＋2
 const PURCHASE_TIERS = { 小確幸:{ ratio:0.03, mult:0.5 }, 一般:{ ratio:0.12, mult:1 }, 稍微奢侈:{ ratio:0.35, mult:1.5 }, 重大開銷:{ ratio:null, mult:2 } };
 const MAJOR_PURCHASE_MONTHS = { 家電:1, 旅行:1, 機車:2, 汽車:12, 其他:1 }; // 17.3.4 重大開銷物品對照表(月收入的幾個月)
