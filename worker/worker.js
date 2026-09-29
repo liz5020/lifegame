@@ -61,6 +61,13 @@
 //   不是平台限制(Cloudflare KV單值上限25MiB、Worker請求本體上限100MB)
 //   POST /stage-pack        body: {key, id, enc, z}  已結束人生階段的封存包(日記＋人生之書)，只在封存當下上傳一次
 //   GET  /stage-pack?key=...&id=...  新裝置第一次打開已封存內容時才下載
+// 2026-09-29新增（十、10.8封測期間暫停雲端存檔）：
+//   wrangler.toml的[vars] CLOUD_SAVE_ENABLED 不是"true"(版本庫預設"false"，沒設定也算關閉)時，Worker完全不碰KV：
+//   存檔類路徑(/claim-gift、/ap、/idle-*、/archive(s)、/stage-pack、/family-book)一律回503 cloud_disabled；
+//   10.8.1手動存到雲端：/save(玩家按按鈕才呼叫，寫1次)、/slots與/load(換裝置輸入金鑰時才讀)照常開放；
+//   AI代理只驗證payload、呼叫Anthropic、簡轉繁後回傳——不檢查/不扣行動點(點數改存玩家瀏覽器)、不記成本遙測；
+//   /usage-summary回503。頻率限制改用Cloudflare內建的Rate Limiting綁定(env.RATE_LIMITER，不經KV)，沒綁定就不限制。
+//   雲端程式碼全部保留，重新打開＝CLOUD_SAVE_ENABLED改"true"並重新部署(前端index.html的CLOUD_SAVE_DEFAULT也要一起改)
 // 2026-09-28新增（十、10.5平均每條人生花費分兩種）：/archive與「同一個slot換了新life_id」時，把舊的一世標成已結束(usage.js的markLifeEnded)
 
 import { convertAnthropicResponse } from "./s2t.js";
@@ -96,6 +103,21 @@ const REQUIRED_TURN_PAYLOAD_FIELDS = { player_name: "string", gender: "string", 
 const RATE_LIMIT_PER_HOUR = 200;
 const GIFT_CLAIMS_PER_KEY = 3;
 const MAX_ARCHIVE_ID_LENGTH = 40;
+
+// 十、10.8（2026-09-29）：雲端存檔(KV)開關，只有明確設成"true"才打開
+export function cloudEnabled(env) {
+  return !!env && String(env.CLOUD_SAVE_ENABLED) === "true";
+}
+const CLOUD_ONLY_PATHS = ["/save", "/slots", "/load", "/claim-gift", "/ap", "/idle-claim", "/idle-rollback", "/archive", "/archives", "/stage-pack", "/family-book"];
+// 十、10.8.1（2026-09-29）：暫停期間仍開放「手動存到雲端」用的三個網址——玩家按一次按鈕才呼叫一次(/save寫1次)，換裝置拿回時才讀(/slots、/load)
+const MANUAL_SAVE_PATHS = { "/save": "POST", "/slots": "GET", "/load": "GET" };
+// 關閉期間的頻率限制：Cloudflare Rate Limiting綁定(wrangler.toml)，不經KV；沒綁定(測試環境)就放行
+async function checkRateLimitNoKV(request, env) {
+  if (!env || !env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") return true;
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  try { const r = await env.RATE_LIMITER.limit({ key: ip }); return !!(r && r.success); }
+  catch (e) { return true; } // 限流服務本身出錯時不擋玩家
+}
 
 function isAllowedOrigin(origin) {
   return typeof origin === "string" && ALLOWED_ORIGINS.includes(origin);
@@ -613,11 +635,66 @@ async function callAnthropic(env, upstreamBody) {
   });
 }
 
+// 十、10.8（2026-09-29）：雲端存檔關閉時的AI代理——不碰KV：不檢查行動點(改存玩家瀏覽器)、不記成本遙測；
+// 仍然只接受遊戲的payload結構、system/工具/模型由Worker決定(10.4)，成功回應照樣簡轉繁。lifegame.usage照樣回傳給測試選單顯示
+async function handleAIProxyNoKV(body, env, origin) {
+  let check, upstreamBody, isUsable;
+  if (body.kind === "chapter") {
+    check = validateChapterMessages(body.messages);
+    if (check.ok) upstreamBody = buildChapterRequest(body.messages);
+    isUsable = isUsableChapterResponse;
+  } else if (body.kind === "idle_summary") {
+    check = validateIdleSummaryMessages(body.messages);
+    if (check.ok) upstreamBody = {
+      model: ALLOWED_MODEL, max_tokens: MAX_IDLE_SUMMARY_TOKENS, output_config: { effort: "low" },
+      tools: [IDLE_SUMMARY_TOOL], tool_choice: { type: "tool", name: IDLE_SUMMARY_TOOL.name },
+      system: [{ type: "text", text: IDLE_SUMMARY_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: body.messages[0].content }]
+    };
+    isUsable = isUsableIdleSummaryResponse;
+  } else if (body.kind === "life_review") {
+    check = validateLifeReviewMessages(body.messages);
+    if (check.ok) upstreamBody = {
+      model: ALLOWED_MODEL, max_tokens: MAX_LIFE_REVIEW_TOKENS, output_config: { effort: "low" },
+      tools: [LIFE_REVIEW_TOOL], tool_choice: { type: "tool", name: LIFE_REVIEW_TOOL.name },
+      system: [{ type: "text", text: LIFE_REVIEW_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: body.messages[0].content }]
+    };
+    isUsable = isUsableLifeReviewResponse;
+  } else {
+    check = validateTurnMessages(body.messages);
+    if (check.ok) upstreamBody = buildTurnRequest(body.messages);
+    isUsable = isUsableTurnResponse;
+  }
+  if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
+  let upstream, text, data = null;
+  try {
+    upstream = await callAnthropic(env, upstreamBody);
+    text = await upstream.text();
+    if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
+  } catch (err) {
+    return jsonResponse(origin, { error: { message: String(err) }, lifegame: { cloud_disabled: true } }, 502);
+  }
+  const lifegame = { usable: !!(upstream.ok && data && isUsable(data)), cloud_disabled: true };
+  if (upstream.ok && data && data.usage) {
+    const tokens = extractUsage(data.usage);
+    lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
+  }
+  if (upstream.ok && data) {
+    let out = data;
+    try { out = convertAnthropicResponse(data); } catch (e) { /* 轉換失敗就用原文 */ }
+    out.lifegame = lifegame;
+    return new Response(JSON.stringify(out), { status: upstream.status, headers: corsHeaders(origin) });
+  }
+  return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
+}
+
 async function handleAIProxy(request, env, origin, ctx) {
   let body;
   try { body = await request.json(); }
   catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
   if (!body || typeof body !== "object") return jsonResponse(origin, { error: { message: "請求格式錯誤" } }, 400);
+  if (!cloudEnabled(env)) return handleAIProxyNoKV(body, env, origin); // 十、10.8
   if (body.kind === "chapter") return handleChapter(body, env, origin, ctx); // 十五、章節成書
   if (body.kind === "idle_summary") return handleIdleSummary(body, env, origin, ctx); // 十、10.6.4放置摘要（2026-09-27）
   if (body.kind === "life_review") return handleLifeReview(body, env, origin, ctx); // 十六、16.7.2回顧這一生（2026-09-28）
@@ -704,7 +781,10 @@ export default {
     const origin = request.headers.get("Origin");
     const reqUrl = new URL(request.url);
     // 10.5：管理用的用量摘要，靠管理密碼保護，不走來源白名單
-    if (reqUrl.pathname === "/usage-summary" && request.method === "GET") return handleUsageSummary(request, env);
+    if (reqUrl.pathname === "/usage-summary" && request.method === "GET") {
+      if (!cloudEnabled(env)) return new Response(JSON.stringify({ success: false, error: "封測期間暫停雲端存檔，成本遙測也暫停(十、10.8)", cloud_disabled: true }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+      return handleUsageSummary(request, env);
+    }
 
     if (request.method === "OPTIONS") {
       if (!isAllowedOrigin(origin)) return new Response(null, { status: 403 });
@@ -722,10 +802,23 @@ export default {
       });
     }
 
+    const url = new URL(request.url);
+    // 十、10.8（2026-09-29）：雲端存檔關閉時完全不碰KV——存檔類路徑直接回503，頻率限制改用不經KV的綁定
+    if (!cloudEnabled(env)) {
+      if (!(await checkRateLimitNoKV(request, env))) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);
+      if (MANUAL_SAVE_PATHS[url.pathname] === request.method) { // 10.8.1手動存到雲端
+        if (url.pathname === "/save") return handleSave(request, env, origin);
+        if (url.pathname === "/slots") return handleSlots(request, env, origin);
+        return handleLoad(request, env, origin);
+      }
+      if (CLOUD_ONLY_PATHS.includes(url.pathname)) return jsonResponse(origin, { success: false, error: "封測期間暫停雲端存檔", cloud_disabled: true }, 503);
+      if (request.method !== "POST") return new Response("Only POST is allowed", { status: 405 });
+      return handleAIProxy(request, env, origin, ctx);
+    }
+
     const allowed = await checkRateLimit(request, env);
     if (!allowed) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);
 
-    const url = new URL(request.url);
     if (url.pathname === "/save" && request.method === "POST") return handleSave(request, env, origin);
     if (url.pathname === "/slots" && request.method === "GET") return handleSlots(request, env, origin);
     if (url.pathname === "/load" && request.method === "GET") return handleLoad(request, env, origin);

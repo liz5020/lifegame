@@ -544,6 +544,16 @@
 <script src="lunar.min.js"></script>
 <script>
 const STORAGE_KEY = "life_sim_save_v1";
+// 十、10.8（2026-09-29）：封測期間暫停雲端存檔(KV)——存檔、點數、人生回顧都只存在這台裝置的瀏覽器，不呼叫Worker的存檔類網址，
+// 恢復金鑰畫面隱藏(金鑰仍在背景產生，當作本機存檔的編號)。版本庫預設關閉；比照USE_MOCK，測試時可用localStorage旗標
+// lifegame_cloud_save="on"打開(Worker端也要打開才有作用)。正式重新打開＝這裡改true＋worker/wrangler.toml的CLOUD_SAVE_ENABLED改"true"並重新部署；
+// 打開前要先完成QA手冊34.12的KV用量修正並回報每回合寫入次數(10.8第7條)。雲端相關程式碼全部保留
+const CLOUD_SAVE_DEFAULT = false;
+const CLOUD_SAVE_FLAG_KEY = "lifegame_cloud_save";
+const CLOUD_SAVE_ENABLED = (function(){
+  try{ const v = localStorage.getItem(CLOUD_SAVE_FLAG_KEY); if(v==="on") return true; if(v==="off") return false; }catch(e){}
+  return CLOUD_SAVE_DEFAULT;
+})();
 // 十、10.1（9/19新增）：封測階段純金鑰模式——復原金鑰對應「一個玩家」，終身不變，底下最多累積3段人生
 const RECOVERY_KEY_STORAGE_NAME = "life_sim_recovery_key"; // 復原金鑰快取在本機，方便同一台裝置不用每次重輸入
 const ACTIVE_SLOT_STORAGE_NAME = "life_sim_active_slot"; // 記住這台裝置上次玩的是第幾段人生(0~2)
@@ -652,7 +662,7 @@ async function claimNewLifeGift(key, slot){
   const localName = GIFT_CLAIMS_LOCAL_PREFIX + key;
   let localCount = 0;
   try{ localCount = Number(localStorage.getItem(localName)) || 0; }catch(e){}
-  try{
+  if(CLOUD_SAVE_ENABLED) try{
     const res = await fetch(WORKER_URL+"claim-gift", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ key, slot }) });
     const data = await res.json();
     if(res.ok && data && data.success){
@@ -673,7 +683,7 @@ function syncServerAP(s, ap){
 }
 let apRefreshAskedFor = null;
 async function refreshServerAP(){
-  if(USE_MOCK || !state || state.phase!=="playing") return;
+  if(!SERVER_AP || !state || state.phase!=="playing") return;
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   if(!key || slotRaw===null) return;
@@ -2983,7 +2993,8 @@ function migrateLoadedState(st){
 // 讀取指定slot：先試Worker(跨裝置的最新資料)，失敗且allowLocalFallback時退回本機快取（離線容錯，不會直接卡死玩家）
 async function tryLoadSlot(key, slot, allowLocalFallback){
   cloudSyncStatus = null; // 十、10.1補充：換一段人生要玩，上一段的同步狀態顯示沒有意義了
-  try{
+  if(!CLOUD_SAVE_ENABLED) allowLocalFallback = true; // 十、10.8：只有本機這一份
+  if(CLOUD_SAVE_ENABLED) try{
     const res = await fetch(WORKER_URL+"load?key="+encodeURIComponent(key)+"&slot="+slot);
     const data = await res.json();
     if(data && data.success){
@@ -3013,7 +3024,8 @@ async function tryLoadSlot(key, slot, allowLocalFallback){
 async function showSlotPicker(key, currentSlot, notice){
   let slots = [null,null,null];
   let wallet = 0; // 十、10.3.3金鑰錢包：封測未開放購買，實際上會一直是0，轉點介面等開放付費再做
-  try{
+  if(!CLOUD_SAVE_ENABLED) slots = localSlotsMeta(); // 十、10.8：雲端暫停期間三格都從本機存檔讀
+  else try{
     const res = await fetch(WORKER_URL+"slots?key="+encodeURIComponent(key));
     const data = await res.json();
     if(data && data.success && Array.isArray(data.slots)) slots = data.slots;
@@ -3024,6 +3036,116 @@ async function showSlotPicker(key, currentSlot, notice){
   lastKnownWallet = wallet;
   state = { phase:"slotPicker", slots, wallet, currentSlot: currentSlot!==undefined ? currentSlot : null, notice: notice||null };
   render();
+}
+// ===== 十、10.8.1手動存到雲端（2026-09-29使用者定案）=====
+// 暫停期間平常不同步；玩家按「☁️ 存到雲端」才把這段人生(不含反悔快照、壓縮)上傳一次。雲端位置記在state.cloudHome={key,slot}：
+// 第一次存用這台裝置的金鑰＋目前格子；從別台裝置拿回來的人生沿用原本的位置，之後再存也存回同一個地方(同一把金鑰)
+let manualCloudSaveBusy = false;
+async function manualCloudSave(){
+  if(manualCloudSaveBusy || !state || state.phase!=="playing") return;
+  const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  let deviceKey = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(!deviceKey){ deviceKey = generateRecoveryKey(); localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, deviceKey); }
+  if(!state.cloudHome || !state.cloudHome.key) state.cloudHome = { key: deviceKey, slot: slotRaw!==null ? Number(slotRaw) : 0 };
+  const home = state.cloudHome;
+  manualCloudSaveBusy = true;
+  let ok = false, errText = "";
+  try{
+    saveGame(); // 先存本機
+    const packed = await packForCloud(buildCloudState(state));
+    const res = await fetch(WORKER_URL+"save", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(Object.assign({ key: home.key, slot: home.slot,
+        meta: { name:state.name, age:state.age, stage:stageLabel(state.age), updatedAt:Date.now() } }, packed)) });
+    let data = null; try{ data = await res.json(); }catch(e){}
+    ok = res.ok && data && data.success===true;
+    if(!ok) errText = res.status===429 ? "按得太快了，稍等一下再試。" : "沒有存成功，請稍後再試。";
+  }catch(e){ console.warn("手動存到雲端失敗", e); errText = "沒有存成功，請稍後再試。"; }
+  finally{ manualCloudSaveBusy = false; }
+  if(ok){ state.lastManualCloudSaveAt = Date.now(); saveGame(); }
+  renderManualCloudSaveModal(ok, home.key, errText);
+}
+function renderManualCloudSaveModal(ok, key, errText){
+  document.getElementById("manual-save-modal")?.remove();
+  const div = document.createElement("div");
+  div.id = "manual-save-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = ok ? `
+    <div class="modal">
+      <h3>已存到雲端</h3>
+      <p style="font-size:13px;">請記下你的復原金鑰：</p>
+      <div class="roll-item" style="text-align:center;margin:10px 0;"><div class="v" style="font-size:16px;letter-spacing:2px;">${escapeHtml(key)}</div></div>
+      <p style="font-size:12px;">換裝置時，在首頁「切換其他人生」輸入這組金鑰，就能拿回這次存的進度。之後再玩的回合，要再按一次才會存上去。</p>
+      <button class="ghost-btn" id="btn-manual-save-close" style="margin-top:14px;">關閉</button>
+    </div>` : `
+    <div class="modal">
+      <h3>沒有存成功</h3>
+      <p style="font-size:13px;">${escapeHtml(errText)}這台裝置上的進度都還在。</p>
+      <button class="ghost-btn" id="btn-manual-save-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-manual-save-close").onclick = ()=>div.remove();
+}
+// 換裝置：輸入金鑰→列出這把金鑰存在雲端的人生(只讀)
+async function showCloudPicker(cloudKey){
+  let slots = null;
+  try{
+    const res = await fetch(WORKER_URL+"slots?key="+encodeURIComponent(cloudKey));
+    const data = await res.json();
+    if(data && data.success && Array.isArray(data.slots)) slots = data.slots;
+  }catch(e){ console.warn("讀取雲端存檔清單失敗", e); }
+  if(!slots){ state = { phase:"keyInput", error:"讀不到這組金鑰的雲端存檔，請確認網路後再試。" }; render(); return; }
+  state = { phase:"slotPicker", slots, wallet:0, currentSlot:null, fromCloud:true, cloudKey,
+    notice: slots.some(x=>x && x.meta) ? null : "這組金鑰在雲端沒有存檔。請確認金鑰有沒有打錯，或先在原本的裝置按「☁️ 存到雲端」。" };
+  render();
+}
+function bindCloudPicker(){
+  const cloudKey = state.cloudKey;
+  document.querySelectorAll(".slot-btn").forEach(btn=>{
+    if(btn.dataset.action!=="load"){ btn.disabled = true; return; }
+    btn.onclick = async ()=>{
+      const r = await restoreFromCloud(cloudKey, Number(btn.dataset.slot));
+      if(!r.ok){ state.notice = r.message; render(); }
+    };
+  });
+}
+// 拿回進度：同一段人生(lifeId相同)已經在這台裝置就覆蓋那一格，否則放進空的格子；三格都滿就不動
+async function restoreFromCloud(cloudKey, cloudSlot){
+  let cloud = null;
+  try{
+    const res = await fetch(WORKER_URL+"load?key="+encodeURIComponent(cloudKey)+"&slot="+cloudSlot);
+    const data = await res.json();
+    if(data && data.success) cloud = data.z ? await unpackFromCloud(data.enc, data.z) : data.state;
+  }catch(e){ console.warn("從雲端拿回進度失敗", e); }
+  if(!cloud) return { ok:false, message:"沒有拿到雲端的進度，請稍後再試。" };
+  let target = -1;
+  for(let i=0;i<MAX_LIFE_SLOTS;i++){
+    try{ const st = JSON.parse(localStorage.getItem(STORAGE_KEY+":"+i) || "null"); if(st && st.lifeId && st.lifeId===cloud.lifeId){ target = i; break; } }catch(e){}
+  }
+  if(target<0){
+    const used = localSlotsMeta();
+    for(let i=0;i<MAX_LIFE_SLOTS;i++){ let hasMeta = false; try{ hasMeta = !!localStorage.getItem(HOME_META_PREFIX+i); }catch(e){} if(!used[i] && !hasMeta){ target = i; break; } }
+  }
+  if(target<0) return { ok:false, message:"這台裝置的三個格子都在使用中。想拿回這段人生，可以先把其中一段收進「人生回顧」。" };
+  if(!localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)) localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, cloudKey); // 全新裝置：直接用這把金鑰
+  cloud.cloudHome = { key: cloudKey, slot: cloudSlot };
+  if(!cloud.snapshot) cloud.undoUnavailableHere = true; // 反悔快照不上傳(10.7.1)
+  localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, String(target));
+  state = cloud;
+  migrateLoadedState(state);
+  saveGame();
+  render();
+  return { ok:true, slot:target };
+}
+// 十、10.8（2026-09-29）：本機三格的摘要(格式同Worker /slots的{meta:{name,age,stage}})
+function localSlotsMeta(){
+  const out = [null,null,null];
+  for(let i=0;i<MAX_LIFE_SLOTS;i++){
+    try{
+      const st = JSON.parse(localStorage.getItem(STORAGE_KEY+":"+i) || "null");
+      if(st && (st.phase==="playing" || st.phase==="ending") && st.name) out[i] = { meta:{ name:st.name, age:st.age, stage:stageLabel(st.age) } };
+    }catch(e){}
+  }
+  return out;
 }
 // 十、10.1補充（2026-09-22新增）：同一瀏覽器內切換人生——只清除本機「目前使用中slot」記錄，不刪除任何存檔，
 // 回到三段人生選擇畫面(跟換裝置輸入金鑰後看到的畫面一樣)，並標示玩家剛剛離開的那一段是「進行中」
@@ -3162,7 +3284,7 @@ function hasArchivedContentMissing(s){ return !!s && ((s.logOffset||0)>0 || !!(s
 async function ensureArchivedContent(s){
   if(!hasArchivedContentMissing(s)) return true;
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
-  if(!key) return false;
+  if(!key || !CLOUD_SAVE_ENABLED) return false;
   const need = (s.stagePacks||[]).filter(p=>p.uploaded && (p.from < (s.logOffset||0) || (p.chapterIds||[]).some(id=>s.book && s.book.chapters.some(c=>c.id===id && c.packed))))
     .sort((a,b)=>a.from-b.from);
   const packs = [];
@@ -3221,9 +3343,10 @@ function syncTagHTML(){
 async function saveGame(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
-  try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); }
-  catch(e){ console.warn("save failed", e); }
+  try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); localSaveFailNotified = false; }
+  catch(e){ console.warn("save failed", e); notifyLocalSaveFailed(); }
   writeHomeMeta(slot);
+  if(!CLOUD_SAVE_ENABLED) return; // 十、10.8：封測期間暫停雲端存檔，只存本機
   // 十、10.1（9/19新增）：本機存完之後，同步存一份到Worker的KV，達成跨裝置存檔。
   // 只在真正進入遊戲(playing/ending)且有金鑰+slot時才同步，避免setup過程中還沒真的開始的角色也去打API；
   // 失敗只console.warn，不影響當下遊玩（本機那份已經存好了）
@@ -3240,6 +3363,22 @@ async function saveGame(){
   }
 }
 let cloudSyncRunning = null, cloudSyncQueued = false;
+// 十、10.8（2026-09-29）：雲端暫停期間本機是唯一的一份，瀏覽器空間不夠存不進去時提示一次(同一段失敗期間不重複)
+let localSaveFailNotified = false;
+function notifyLocalSaveFailed(){
+  if(localSaveFailNotified || CLOUD_SAVE_ENABLED) return;
+  localSaveFailNotified = true;
+  if(!state || (state.phase!=="playing" && state.phase!=="ending")) return;
+  document.getElementById("sync-toast")?.remove();
+  const div = document.createElement("div");
+  div.id = "sync-toast";
+  div.className = "book-toast";
+  div.setAttribute("role","status");
+  div.textContent = "這台裝置的儲存空間不夠，剛剛的進度沒有存到";
+  div.onclick = ()=>div.remove();
+  document.body.appendChild(div);
+  setTimeout(()=>div.remove(), 6000);
+}
 async function cloudSyncOnce(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
@@ -6711,6 +6850,8 @@ const USE_MOCK = (function(){
   try { return localStorage.getItem(FORCE_REAL_API_KEY) !== "yes"; }
   catch(e){ return true; } // localStorage不可用時安全預設mock
 })();
+// 十、10.3.11／10.8（2026-09-29）：行動點以伺服器端為準的條件＝真實API＋雲端存檔打開；其他情況(mock、雲端暫停)行動點全在本機計算
+const SERVER_AP = !USE_MOCK && CLOUD_SAVE_ENABLED;
 // 2026-09-22變更：USE_MOCK不再是寫死的常數，改成讀瀏覽器localStorage。
 // 版本庫裡永遠是安全預設（mock），不會再有「忘記改回true」被commit出去的風險。
 // 你自己要手動測試真實API時，在瀏覽器主控台（F12→Console）打一行：
@@ -7191,7 +7332,7 @@ async function takeTurn(actionText, cost){
     applySnapshot();
     refundAP(state, apUsed); // 十、10.3.1：API呼叫失敗/斷線不扣點
     // 10.3.11：真實模式下callAI已經把Worker回傳的伺服器端餘額寫回state.ap，本機退點後再以伺服器端為準
-    if(!USE_MOCK && lastCallServerAP) syncServerAP(state, lastCallServerAP);
+    if(SERVER_AP && lastCallServerAP) syncServerAP(state, lastCallServerAP);
     if(e && e.apInsufficient){
       saveGame(); render(); renderAPExhaustedModal();
       return;
@@ -7644,7 +7785,7 @@ function mockIdleOfflineDays(s){ // mock模式：本機依最後一次玩的日�
 }
 const IDLE_MAX_DAYS_CLIENT = 7;
 async function claimIdleRounds(s){
-  if(USE_MOCK){
+  if(!SERVER_AP){ // 10.8：雲端暫停期間跟mock一樣由本機算離線天數
     const days = mockIdleOfflineDays(s);
     s.lastActiveDate = taipeiDateString();
     return { rounds: days*5, offlineDays: days };
@@ -7766,7 +7907,7 @@ async function rollbackIdleDecision(roundIndex, pointIndex){
   if(!point) return false;
   if(totalAP(s) < IDLE_ROLLBACK_COST){ alert("行動點不足，不能回溯"); return false; }
   let apAfter = null;
-  if(USE_MOCK) spendAP(s, IDLE_ROLLBACK_COST);
+  if(!SERVER_AP) spendAP(s, IDLE_ROLLBACK_COST);
   else{
     try{
       const res = await fetch(WORKER_URL+"idle-rollback", { method:"POST", headers:{"Content-Type":"application/json"},
@@ -8402,7 +8543,7 @@ async function startLife(){
     if(key){
       const claim = await claimNewLifeGift(key, slotRaw!==null ? Number(slotRaw) : 0);
       // 10.3.11（2026-09-25）：真實模式以Worker回傳的伺服器端餘額為準；mock模式或Worker連不上時維持本機計算
-      if(!USE_MOCK && claim.ap) syncServerAP(state, claim.ap);
+      if(SERVER_AP && claim.ap) syncServerAP(state, claim.ap);
       else if(claim.granted) ap.gift = AP_NEW_LIFE_GIFT;
     }
   }
@@ -8668,7 +8809,7 @@ async function endLife(reason){
   cloudSyncStatus = null;
   if(!key || slot===null){ state = { phase:"home" }; render(); return; } // 防呆：理論上進得了遊戲畫面一定有金鑰+slot
   let archivedOnCloud = false;
-  try{
+  if(CLOUD_SAVE_ENABLED) try{ // 十、10.8：雲端暫停期間直接存本機
     const res = await fetch(WORKER_URL+"archive", {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify(Object.assign({ key, slot, id, meta, purchased, life_id: archivedState.lifeId||null }, await packForCloud(archivedState))) // 10.7.2：封存同樣壓縮
@@ -8679,7 +8820,8 @@ async function endLife(reason){
   if(!archivedOnCloud){
     try{
       const list = JSON.parse(localStorage.getItem(ARCHIVE_LOCAL_PREFIX+key) || "[]");
-      list.push({ id, meta, state: archivedState });
+      // 十、10.8（2026-09-29）：雲端暫停期間本機是唯一的一份，已結束的人生壓縮後再存(讀取見bindArchiveList)，減少佔用瀏覽器空間
+      list.push(Object.assign({ id, meta }, await packForCloud(archivedState)));
       localStorage.setItem(ARCHIVE_LOCAL_PREFIX+key, JSON.stringify(list));
     }catch(e){ console.warn("本機封存也失敗（可能超過瀏覽器容量）", e); }
   }
@@ -8883,7 +9025,7 @@ async function preserveFamilyBook(prev){
   if(!chapters.length) return null;
   const id = "fb" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
-  if(key){
+  if(key && CLOUD_SAVE_ENABLED){ // 十、10.8：雲端暫停期間整本留在存檔裡
     try{
       const res = await fetch(WORKER_URL+"family-book", { method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ key, id, book:{ owner: prev.name, chapters } }) });
@@ -8899,7 +9041,7 @@ async function loadFamilyBook(ref){
   if(ref.inline) return ref.inline;
   if(familyBookCache[ref.id]) return familyBookCache[ref.id];
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
-  if(!key) return null;
+  if(!key || !CLOUD_SAVE_ENABLED) return null;
   try{
     const res = await fetch(WORKER_URL+"family-book?key="+encodeURIComponent(key)+"&id="+encodeURIComponent(ref.id));
     const data = await res.json();
@@ -9068,6 +9210,7 @@ function render(loadingTurn){
   updateLoadingTimer(!!loadingTurn && !!state && state.phase==="playing");
   if(!state){ app.innerHTML = `<div class="center-screen"><p style="color:var(--ink-soft);">載入中…</p></div>`; return; }
   if(state.phase!==lastRenderedPhase){ lastRenderedPhase = state.phase; try{ window.scrollTo(0,0); }catch(e){} } // 換畫面從頂端開始
+  if(!CLOUD_SAVE_ENABLED && state.phase==="keyReveal") state = { phase:"home" }; // 十、10.8／10.8.1：開新人生時不顯示金鑰畫面
   if(state.phase==="home"){ app.innerHTML = renderHome(); bindHome(); ensureDebugUI(); return; }
   if(state.phase==="keyInput"){ app.innerHTML = renderKeyInput(); bindKeyInput(); ensureDebugUI(); return; }
   if(state.phase==="keyReveal"){ app.innerHTML = renderKeyReveal(); bindKeyReveal(); ensureDebugUI(); return; }
@@ -9080,7 +9223,7 @@ function render(loadingTurn){
   if(state.phase==="archiveView"){ app.innerHTML = renderArchiveView(); bindArchiveView(); ensureDebugUI(); return; }
   // 十、10.3.5：進入遊戲畫面時檢查台灣日期，跨日才補每日池（不用排程）
   // 10.3.11（2026-09-25）：真實模式由伺服器判斷日期與補點，本機跨日時向Worker重新讀一次餘額(每個日期只問一次，避免時鐘不一致時一直重問)
-  if(USE_MOCK){ if(refillDailyIfNeeded(state)) saveGame(); }
+  if(!SERVER_AP){ if(refillDailyIfNeeded(state)) saveGame(); }
   else if(ensureAP(state).lastRefillDate !== taipeiDateString() && apRefreshAskedFor !== taipeiDateString()){
     apRefreshAskedFor = taipeiDateString();
     refreshServerAP();
@@ -9148,9 +9291,9 @@ function relativeTimeText(ts){
 }
 const HOME_FAQ = [
   ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_NEW_LIFE_GIFT} 點當見面禮，大約夠你走到高一結束；之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
-  ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。"]],
+  ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", ()=>CLOUD_SAVE_ENABLED ? "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。" : "封測期間，進度只存在這台裝置的瀏覽器裡。換了手機、換了瀏覽器，或清除瀏覽器資料，就接不回來了。"]],
   ["一段人生要玩多久？", ["看你想過多快。可以一個晚上走完整個高中，也可以一個月只過一個寒假。", "隨時關掉都沒關係，它會停在你離開的那一頁。"]],
-  ["可以同時過好幾段人生嗎？", ["可以。一把金鑰，最多能同時握著三段人生。"]],
+  ["可以同時過好幾段人生嗎？", [()=>CLOUD_SAVE_ENABLED ? "可以。一把金鑰，最多能同時握著三段人生。" : "可以。一台裝置，最多能同時握著三段人生。"]],
   ["什麼路都能走嗎？", ["幾乎都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "唯一走不通的是超能力。這裡的世界，跟外面那個一樣講道理。"]],
   ["一生走完之後呢？", ["這一生會留下一頁回顧：走過的路、陪過你的人，最後蓋上一枚印章。", "然後，你可以轉世重來，或者把故事交給下一代。"]],
   ["可以反悔嗎？", ["可以，但次數有限。畢竟是草稿，也不是每一筆都擦得掉。"]],
@@ -9180,7 +9323,7 @@ function renderHome(){
       <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，說書人陪你一路寫到老。</p>
       <button class="primary-btn" id="btn-home-new">開始一段人生</button>
       <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
-      <p class="home-note">免註冊，進度自動存在這台裝置。換了手機，用「復原金鑰」接回你的人生。</p>
+      <p class="home-note">免註冊，進度自動存在這台裝置。${CLOUD_SAVE_ENABLED ? "換了手機，用「復原金鑰」接回你的人生。" : ""}</p>
     </section>
     ${lives.length ? `
     <section class="home-sec">
@@ -9275,7 +9418,7 @@ async function startNewLifeFromHome(){
     return;
   }
   let slots = null;
-  try{
+  if(CLOUD_SAVE_ENABLED) try{ // 十、10.8：雲端暫停期間只看本機
     const res = await fetch(WORKER_URL+"slots?key="+encodeURIComponent(key));
     const data = await res.json();
     if(data && data.success && Array.isArray(data.slots)) slots = data.slots;
@@ -9287,7 +9430,7 @@ async function startNewLifeFromHome(){
     try{ usedLocally = !!localStorage.getItem(HOME_META_PREFIX+i) || !!localStorage.getItem(STORAGE_KEY+":"+i); }catch(e){}
     if(!usedOnCloud && !usedLocally){ free = i; break; }
   }
-  if(free<0){ await showSlotPicker(key, undefined, "一把金鑰最多同時進行三段人生，三個格子都在使用中。想開始新的人生，可以先把其中一段收進「人生回顧」。"); return; }
+  if(free<0){ await showSlotPicker(key, undefined, (CLOUD_SAVE_ENABLED ? "一把金鑰" : "這台裝置")+"最多同時進行三段人生，三個格子都在使用中。想開始新的人生，可以先把其中一段收進「人生回顧」。"); return; }
   localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, String(free));
   state = { phase:"identity", name:"", gender:"男" };
   render();
@@ -9325,7 +9468,8 @@ function renderKeyInput(){
           style="width:100%;border:none;background:transparent;font-family:'Courier New',monospace;font-size:15px;padding:4px 0;border-bottom:1px solid var(--ink-soft);letter-spacing:1px;">
       </div>
     </div>
-    <button class="primary-btn" id="btn-key-input-submit">載入存檔</button>
+    ${state.error ? `<p style="color:var(--stamp);font-size:12.5px;">${escapeHtml(state.error)}</p>` : ``}
+    <button class="primary-btn" id="btn-key-input-submit">${CLOUD_SAVE_ENABLED ? "載入存檔" : "拿回存到雲端的進度"}</button>
     <button class="ghost-btn" id="btn-key-input-back">返回</button>
   </div>`;
 }
@@ -9333,6 +9477,7 @@ function bindKeyInput(){
   document.getElementById("btn-key-input-submit").onclick = async ()=>{
     const val = document.getElementById("key-input-field").value.trim();
     if(!val) return;
+    if(!CLOUD_SAVE_ENABLED){ await showCloudPicker(val); return; } // 十、10.8.1：暫停期間輸入金鑰＝拿回存到雲端的進度，這台裝置的金鑰不變
     localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, val);
     await showSlotPicker(val);
   };
@@ -9352,22 +9497,27 @@ function renderSlotPicker(){
       </button>`;
     }
     return `<button class="ghost-btn slot-btn" data-slot="${i}" data-action="new" style="display:block;width:100%;text-align:left;margin:6px 0;opacity:.6;">
-      第${i+1}段人生：（空白，點擊開始新的一段人生）${activeTag}
+      第${i+1}段人生：${s.fromCloud ? "（雲端沒有存檔）" : "（空白，點擊開始新的一段人生）"}${activeTag}
     </button>`;
   }).join("");
   return `
   <div class="center-screen">
-    <h2>選擇要繼續的人生</h2>
+    <h2>${s.fromCloud ? "存在雲端的人生" : "選擇要繼續的人生"}</h2>
     ${s.notice ? `<p class="glass" style="padding:10px 14px;font-size:13px;text-align:left;">${escapeHtml(s.notice)}</p>` : ``}
-    <p style="color:var(--ink-soft);font-size:12.5px;">這組金鑰最多可以同時進行3段人生；已結束的人生收在「人生回顧」，不佔格子</p>
+    <p style="color:var(--ink-soft);font-size:12.5px;">${s.fromCloud ? "拿回的是最後一次「存到雲端」的進度，會放進這台裝置空著的格子" : (CLOUD_SAVE_ENABLED ? "這組金鑰" : "這台裝置")+"最多可以同時進行3段人生；已結束的人生收在「人生回顧」，不佔格子"}</p>
     <div style="text-align:left;">${cards}</div>
     ${s.wallet>0 ? `<p style="font-size:12.5px;">👛 金鑰錢包：${s.wallet} 點</p>` : ``}
-    <button class="ghost-btn" id="btn-archive-list" style="margin-top:10px;">📚 人生回顧</button>
+    ${s.fromCloud ? `` : `<button class="ghost-btn" id="btn-archive-list" style="margin-top:10px;">📚 人生回顧</button>`}
+    ${!CLOUD_SAVE_ENABLED && !s.fromCloud ? `<button class="ghost-btn" id="btn-cloud-restore" style="margin-top:10px;">🔑 輸入金鑰，拿回存到雲端的進度</button>` : ``}
     <button class="ghost-btn" id="btn-slot-home" style="margin-top:10px;">← 回首頁</button>
   </div>`;
 }
 function bindSlotPicker(){
-  document.getElementById("btn-archive-list").onclick = ()=>showArchiveList(localStorage.getItem(RECOVERY_KEY_STORAGE_NAME));
+  const archiveBtn = document.getElementById("btn-archive-list");
+  if(archiveBtn) archiveBtn.onclick = ()=>showArchiveList(localStorage.getItem(RECOVERY_KEY_STORAGE_NAME));
+  const restoreBtn = document.getElementById("btn-cloud-restore"); // 十、10.8.1
+  if(restoreBtn) restoreBtn.onclick = ()=>{ state = { phase:"keyInput" }; render(); };
+  if(state.fromCloud){ bindCloudPicker(); return; }
   document.getElementById("btn-slot-home").onclick = ()=>{ state = { phase:"home" }; render(); };
   document.querySelectorAll(".slot-btn").forEach(btn=>{
     btn.onclick = async ()=>{
@@ -9390,7 +9540,7 @@ function bindSlotPicker(){
 // 雲端(Worker /archives)＋本機後備副本(雲端封存失敗時才會有)合併顯示，依結束時間新到舊
 async function showArchiveList(key){
   let items = [];
-  try{
+  if(CLOUD_SAVE_ENABLED) try{ // 十、10.8
     const res = await fetch(WORKER_URL+"archives?key="+encodeURIComponent(key));
     const data = await res.json();
     if(data && data.success && Array.isArray(data.archives)) items = data.archives.map(a=>({ id:a.id, meta:a.meta||{}, source:"cloud" }));
@@ -9435,7 +9585,10 @@ function bindArchiveList(){
           if(data && data.success) archived = data.z ? await unpackFromCloud(data.enc, data.z) : data.state; // 10.7.2：壓縮過的封存
         }catch(e){ console.warn("讀取人生回顧失敗", e); }
       } else {
-        try{ archived = (JSON.parse(localStorage.getItem(ARCHIVE_LOCAL_PREFIX+key) || "[]").find(a=>a.id===id) || {}).state || null; }catch(e){}
+        try{
+          const a = JSON.parse(localStorage.getItem(ARCHIVE_LOCAL_PREFIX+key) || "[]").find(a=>a.id===id) || {};
+          archived = a.z ? await unpackFromCloud(a.enc, a.z) : (a.state || null); // 10.8：壓縮過的本機封存
+        }catch(e){}
       }
       if(!archived) return;
       state = { phase:"archiveView", archived, backItems: state.items };
@@ -9705,6 +9858,7 @@ function bindLifestyleChoice(){
       const key = generateRecoveryKey();
       localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, key);
       localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, "0");
+      if(!CLOUD_SAVE_ENABLED){ startLife(); return; } // 十、10.8：雲端暫停期間不顯示金鑰畫面，金鑰只當本機存檔的編號
       pendingLifeState = state;
       state = { phase:"keyReveal", newKey:key };
       render();
@@ -9946,7 +10100,7 @@ function renderMenuPanel(s){
     <a class="menu-item" id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
     <div class="menu-sec">設定</div>
     <a class="menu-item" id="link-view-key">🔑 我的復原金鑰</a>
-    <div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>
+    ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">☁️ 存到雲端</a>`}
     ${lastKnownWallet>0 ? `<div class="menu-note">👛 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
     <a class="menu-item" id="link-switch-life">🔄 切換其他人生</a>
     <a class="menu-item danger" id="link-reset">刪除這段人生</a>
@@ -10296,6 +10450,8 @@ function bindPlaying(){
     if(state.idleEnabled && !state.lastActiveDate) state.lastActiveDate = taipeiDateString();
     saveGame(); render();
   };
+  const manualSaveLink = document.getElementById("link-manual-cloud-save"); // 十、10.8.1
+  if(manualSaveLink) manualSaveLink.onclick = manualCloudSave;
   const switchLifeLink = document.getElementById("link-switch-life");
   if(switchLifeLink) switchLifeLink.onclick = switchLife;
   updateCloudSyncStatusUI(); // 十、10.1補充：確保「重試同步」連結每次完整render()後也有被重新綁定
@@ -10311,7 +10467,8 @@ function bindPlaying(){
 // 十、10.1（9/19新增）：讓玩家在同一台裝置上，忘記自己金鑰時能查回來（不是救回遺失金鑰的救援機制，
 // 純粹是「這台裝置本來就有存」的便利性——本機localStorage沒有金鑰快取的話這個連結本來就不會被點到，因為根本沒進到playing畫面）
 function renderKeyViewModal(){
-  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME) || "（找不到，可能是這台裝置的快取被清掉了）";
+  // 十、10.8.1：選單的金鑰保留；暫停期間顯示這段人生在雲端用的金鑰(從別台裝置拿回來的人生沿用原本的金鑰)
+  const key = (!CLOUD_SAVE_ENABLED && state && state.cloudHome && state.cloudHome.key) || localStorage.getItem(RECOVERY_KEY_STORAGE_NAME) || "（找不到，可能是這台裝置的快取被清掉了）";
   const div = document.createElement("div");
   div.id = "key-view-modal";
   div.className = "modal-backdrop";
@@ -10321,7 +10478,7 @@ function renderKeyViewModal(){
       <div class="roll-item" style="text-align:center;margin:10px 0;">
         <div class="v" style="font-size:16px;letter-spacing:2px;">${escapeHtml(key)}</div>
       </div>
-      <p style="font-size:12px;">換裝置時輸入這組金鑰就能接回存檔，請自行妥善保管。</p>
+      <p style="font-size:12px;">${CLOUD_SAVE_ENABLED ? "換裝置時輸入這組金鑰就能接回存檔，請自行妥善保管。" : "換裝置時，在首頁「切換其他人生」輸入這組金鑰，可以拿回最後一次「存到雲端」的進度。請自行妥善保管。"}</p>
       <button class="ghost-btn" id="btn-key-view-close" style="margin-top:14px;">關閉</button>
     </div>`;
   document.body.appendChild(div);
@@ -11626,7 +11783,7 @@ async function unlockLifeReview(){
     const out = USE_MOCK ? await mockLifeReview(s, m) : await callLifeReviewAI(s, m);
     if(state!==s) return;
     // 16.7.2.1：扣這條人生剩下的點數(扣點順序比照10.3.3)。真實模式由Worker成功後才扣、回傳餘額(API失敗不扣點)
-    if(USE_MOCK) spendAP(s, LIFE_REVIEW_COST);
+    if(!SERVER_AP) spendAP(s, LIFE_REVIEW_COST); // 10.8：雲端暫停期間也在本機扣
     const labelOf = (stage)=>{ const g = m.stages.find(x=>x.stage===stage); return g ? g.stage_label : lifeStageLabel(stage); };
     const byStage = {}; (out.trajectory||[]).forEach(t=>{ if(t && t.stage) byStage[t.stage] = String(t.text||"").trim(); });
     s.ending.review = {
@@ -11727,7 +11884,7 @@ let apTestFreeRefused = false;
 function apTestFreeOn(){
   try{ return devToolsOn() && localStorage.getItem(AP_TEST_FREE_KEY)==="yes"; }catch(e){ return false; }
 }
-function apTestFreeActive(){ return apTestFreeOn() && (USE_MOCK || !apTestFreeRefused); }
+function apTestFreeActive(){ return apTestFreeOn() && (!SERVER_AP || !apTestFreeRefused); } // 10.8：點數在本機時，開關直接在本機生效
 function setApTestFree(on){
   try{ if(on) localStorage.setItem(AP_TEST_FREE_KEY, "yes"); else localStorage.removeItem(AP_TEST_FREE_KEY); }catch(e){}
   apTestFreeRefused = false;
@@ -11779,7 +11936,7 @@ function renderTestMenuBody(s){
     <a class="menu-item" id="dev-toggle-api">${USE_MOCK ? "💸 切換成真實API" : "🔌 切回模擬模式"}</a>
     <div class="menu-sec">行動點</div>
     <a class="menu-item" id="dev-toggle-ap-free">${apTestFreeOn() ? "☑" : "☐"} 測試：不扣行動點</a>
-    ${apTestFreeOn() && !USE_MOCK && apTestFreeRefused ? `<div class="menu-note">伺服器不認這把金鑰是測試鑰匙，開關無效（照常扣點）</div>` : ``}
+    ${apTestFreeOn() && SERVER_AP && apTestFreeRefused ? `<div class="menu-note">伺服器不認這把金鑰是測試鑰匙，開關無效（照常扣點）</div>` : ``}
     <div class="menu-sec">用量</div>
     <div class="menu-note" id="dev-usage-last">${escapeHtml(devUsageText())}</div>
     <div class="menu-note" id="dev-usage-total">${escapeHtml(devUsageTotalText(s))}</div>

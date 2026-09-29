@@ -93,7 +93,8 @@ export function installUpstream(fake) {
 }
 
 export function makeEnv(extra) {
-  return Object.assign({ SAVES: memoryKV(), ANTHROPIC_API_KEY: "test-key", USAGE_ADMIN_TOKEN: "admin-secret" }, extra || {});
+  // 十、10.8（2026-09-29）：既有測試驗證的是雲端打開時的行為，預設打開；測雲端暫停的測試傳{CLOUD_SAVE_ENABLED:"false"}
+  return Object.assign({ SAVES: memoryKV(), ANTHROPIC_API_KEY: "test-key", USAGE_ADMIN_TOKEN: "admin-secret", CLOUD_SAVE_ENABLED: "true" }, extra || {});
 }
 
 // 直接打Worker（模擬繞過前端的請求）
@@ -111,7 +112,7 @@ export async function callWorker(env, { method = "POST", path: p = "/", body, or
 }
 
 // 載入遊戲頁面。useMock=false時前端走真實路徑(callAI→Worker→假上游)
-export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "" } = {}) {
+export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, storage = null } = {}) {
   // 二、2.7（2026-09-29）：index.html用<script src="lunar.min.js">載入農曆套件，jsdom不抓外部檔，這裡直接內嵌
   const lunarSrc = fs.readFileSync(path.join(ROOT, "lunar.min.js"), "utf8");
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8")
@@ -125,9 +126,14 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
     url: "https://lifegamepage.smile80275.workers.dev/" + (query || (dev ? "?dev=1" : "")),
     runScripts: "dangerously", pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
-      win.localStorage.setItem("life_sim_recovery_key", key);
-      win.localStorage.setItem("life_sim_active_slot", String(slot));
+      // storage：模擬「重新整理頁面」時帶入上一個頁面的localStorage；key為null＝全新瀏覽器(還沒有金鑰)
+      if (storage) for (const [k, v] of Object.entries(storage)) win.localStorage.setItem(k, v);
+      else if (key !== null) {
+        win.localStorage.setItem("life_sim_recovery_key", key);
+        win.localStorage.setItem("life_sim_active_slot", String(slot));
+      }
       if (!useMock) win.localStorage.setItem("lifegame_force_real_api", "yes");
+      win.localStorage.setItem("lifegame_cloud_save", cloud ? "on" : "off"); // 十、10.8：版本庫預設關閉，既有測試打開雲端
       win.alert = () => {}; win.confirm = () => true;
       // 十、10.7（2026-09-29）：雲端存檔用瀏覽器原生gzip，jsdom沒有，借Node內建的
       win.CompressionStream = globalThis.CompressionStream; win.DecompressionStream = globalThis.DecompressionStream;

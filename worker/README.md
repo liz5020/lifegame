@@ -26,6 +26,12 @@ npx wrangler deploy
 cd worker && npx wrangler deploy
 ```
 
+## 封測期間暫停雲端存檔（十、10.8，2026-09-29起）
+
+`wrangler.toml`的`CLOUD_SAVE_ENABLED = "false"`時Worker平常不碰KV(不檢查行動點、不記用量，`/usage-summary`也暫停)；只開放10.8.1手動存到雲端用的`POST /save`、`GET /slots`、`GET /load`，其他存檔類網址回503，
+頻率限制改用Cloudflare內建Rate Limiting(`RATE_LIMITER`綁定，同一IP每60秒30次)。改這個開關要**同時**改`index.html`的`CLOUD_SAVE_DEFAULT`，
+並且Worker重新部署、index.html重新上傳。重新打開前先完成QA手冊34.12的KV用量修正。
+
 ## 本機測試簡轉繁
 
 ```bash

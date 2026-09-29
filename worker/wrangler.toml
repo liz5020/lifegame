@@ -12,3 +12,16 @@ binding = "SAVES"
 id = "37cd1995c1d14cc983237952adb5b667"
 
 # ANTHROPIC_API_KEY不寫在這裡，用 npx wrangler secret put ANTHROPIC_API_KEY 設定
+
+# 十、10.8（2026-09-29）：封測期間暫停雲端存檔。"false"時Worker完全不碰KV(存檔類路徑回503、AI代理不檢查行動點、不記成本遙測)。
+# 重新打開＝改成"true"並重新部署，同時把index.html的CLOUD_SAVE_DEFAULT改成true；打開前要先完成QA手冊34.12的KV用量修正並回報每回合寫入次數
+[vars]
+CLOUD_SAVE_ENABLED = "false"
+
+# 十、10.8（2026-09-29）：雲端存檔關閉期間的頻率限制，用Cloudflare內建Rate Limiting(不經KV)：同一IP每60秒最多30次請求。
+# 一回合最多呼叫AI 5次(含重新生成)，30次足夠正常遊玩。namespace_id是自訂的整數，同帳號內不要跟別的Worker重複
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }

@@ -10,6 +10,47 @@
 
 ---
 
+## 2026-09-29（續6：手動存到雲端，十、10.8.1）
+
+**〔整理〕設計文件**：十、新增10.8.1(使用者在Claude Code直接定案並確認)；00-總覽日誌與目錄。快照`snapshots/life-sim-design_2026-09-29e_手動存到雲端`(09-29b移到`archive/snapshots/`)
+
+**〔開發部〕**
+- `index.html`：
+  - 選單「🔑 我的復原金鑰」恢復顯示；雲端暫停期間旁邊多「☁️ 存到雲端」(`manualCloudSave()`)：先存本機，再把不含反悔快照、壓縮過的存檔`/save`一次；成功跳出「已存到雲端」＋金鑰＋說明，失敗(含429連按太快)提示本機進度都還在
+  - 雲端位置記在`state.cloudHome={key,slot}`：第一次存用這台裝置的金鑰＋目前格子；從別台拿回的人生沿用原位置，之後再存存回同一把金鑰
+  - 換裝置：首頁「切換其他人生」沒有金鑰→輸入金鑰畫面(暫停期間不再隱藏，只隱藏開新人生時的金鑰畫面)；已有金鑰→人生選擇畫面多「🔑 輸入金鑰，拿回存到雲端的進度」。輸入金鑰→`showCloudPicker()`列出雲端的人生→`restoreFromCloud()`：同一段人生已在這台裝置就覆蓋那格，否則放進空格；三格都滿就提示；全新裝置直接用這把金鑰，已有金鑰的裝置金鑰不變；行動點跟著存檔走
+  - 選單金鑰視窗暫停期間顯示這段人生的雲端金鑰(`cloudHome.key`)與換裝置說明
+- `worker/worker.js`：暫停期間仍開放`POST /save`、`GET /slots`、`GET /load`(`MANUAL_SAVE_PATHS`)，其他雲端網址維持503；頻率限制照樣走不經KV的`RATE_LIMITER`
+- `tests/test-43-cloud-paused.mjs`：新增M1～M16(手動存檔寫入1次、存完再玩不同步、429提示、新裝置輸入金鑰拿回、行動點跟著走、已有人生的裝置放空格且再存回原金鑰、打錯金鑰提示、其他網址仍關閉)
+
+**驗證**：test-43 44/44通過；全套44檔通過(test-31平行時失敗、單獨重跑通過)
+**KV用量**：平常遊玩0次；玩家每按一次「存到雲端」寫1次；換裝置拿回時讀4～5次(/slots讀3格＋錢包、/load讀1次)
+
+---
+
+## 2026-09-29（續5：封測期間暫停雲端存檔，十、10.8）
+
+**〔整理〕設計文件**（claude.ai網頁版定案交接，使用者2026-09-29確認）：十、新增10.8、10.1開頭加註暫停；00-總覽日誌與目錄；QA手冊新增34.12 KV用量調查(只查不改，修正方案A～F待使用者確認)。SECURITY.md依交接指示不動
+**〔查核〕**實測(測試工具、假上游、記憶體KV)真實API模式每回合KV寫入7.1次、讀取5.0次；mock玩線上網站每回合寫入2.2次。Claude Code自己的測試不連線上KV
+
+**〔開發部〕**
+- `index.html`：
+  - 開關`CLOUD_SAVE_ENABLED`(預設`CLOUD_SAVE_DEFAULT=false`；比照USE_MOCK，localStorage旗標`lifegame_cloud_save`="on"/"off"可覆寫，測試用)；`SERVER_AP`＝真實API且雲端打開，其餘情況行動點全在本機算(扣點、失敗退點、跨日補點、放置天數、放置回溯與回顧這一生的5點、「不扣行動點」測試開關直接生效)
+  - 關閉時：`saveGame()`只存本機、不同步；讀檔、人生選擇三格(`localSlotsMeta()`)、新人生找空格都只看本機；新人生禮包只用本機計數(每台裝置3次)；人生結束直接存本機人生回顧，**壓縮後**存(`{id,meta,enc,z}`，讀取時解壓，舊的未壓縮格式照讀)；傳承的上一代人生之書整本留在存檔；不下載封存包
+  - 恢復金鑰畫面隱藏：開始人生時金鑰在背景產生(當作本機存檔的編號)、不顯示金鑰畫面；首頁「切換其他人生」沒有金鑰時不進輸入金鑰畫面；選單拿掉「我的復原金鑰」與雲端同步狀態；首頁說明與FAQ裡金鑰的句子改成本機說法(見回報待確認)
+  - 本機存檔寫入失敗(瀏覽器空間不足)時提示一次「這台裝置的儲存空間不夠，剛剛的進度沒有存到」(關閉期間本機是唯一的一份)
+- `worker/worker.js`：`cloudEnabled(env)`(wrangler.toml `CLOUD_SAVE_ENABLED`，只有"true"才打開)。關閉時完全不碰KV：存檔類路徑回503 `cloud_disabled`、`/usage-summary`回503、AI代理改走`handleAIProxyNoKV()`(驗證payload、Worker決定system/工具、簡轉繁照舊；不檢查行動點、不記成本遙測)；頻率限制改用Cloudflare Rate Limiting綁定`RATE_LIMITER`(同一IP每60秒30次，不經KV)
+- `worker/wrangler.toml`：`[vars] CLOUD_SAVE_ENABLED="false"`、`[[unsafe.bindings]] RATE_LIMITER`(`wrangler deploy --dry-run`通過)
+- `tests/harness.mjs`：`makeEnv()`預設雲端打開、`loadGame()`預設設旗標on(既有測試驗證的是雲端行為)；新增`cloud`、`storage`(模擬重新整理)選項，`key:null`＝全新瀏覽器
+- 新增`tests/test-43-cloud-paused.mjs`(28項)
+
+**驗證**：test-43 28/28通過；全套44檔通過(test-31、39、41平行時各有1項隨機失敗、單獨重跑通過，與本次無關)
+
+**⚠️部署**：要**同時**重新部署Worker(`cd worker && npx wrangler deploy`)並重新上傳`index.html`到Pages。只上傳index.html時，舊Worker仍會在AI請求時讀寫KV；只部署Worker時，舊index.html呼叫存檔網址會拿到503(本機仍有存檔)
+**舊存檔**：不影響，本機存檔格式沒變；目前沒有雲端存檔需要搬移
+
+---
+
 ## 2026-09-29（續4：雲端存檔瘦身，十、10.7）
 
 **〔整理〕設計文件**（claude.ai網頁版定案交接）：十、新增10.7(10.7.1～10.7.4)；00-總覽日誌與目錄；QA手冊34.10雲端存檔大小問題結案(34.11的附註同步標結案)；使用者確認續3回報的10項「需要確認」全部照建議，記在00-總覽續3那一行。快照`snapshots/life-sim-design_2026-09-29c_雲端存檔瘦身`(09-29a移到`archive/snapshots/`)
