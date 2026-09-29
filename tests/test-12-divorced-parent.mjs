@@ -10,7 +10,7 @@ const ev = g.ev;
 
 // 大量開局統計
 const stats = JSON.parse(ev(`(()=>{
-  let divorced=0, withCard=0, badCard=0, politicianFromAbsent=0, others=0, othersWithNonResident=0;
+  let divorced=0, withCard=0, lostCard=0, badCard=0, politicianFromAbsent=0, others=0, othersWithNonResident=0;
   for(let i=0;i<3000;i++){
     const st = newRoll(null,{name:'測試',gender:'女'});
     const nonRes = st.characters.filter(c=>/不同住/.test(c.relation||''));
@@ -18,7 +18,7 @@ const stats = JSON.parse(ev(`(()=>{
       divorced++;
       const resident = st.characters.filter(c=>c.origin==='父母，從出生起' && c.cohabiting);
       if(nonRes.length===1){
-        withCard++;
+        if(!nonRes[0].lost) withCard++; else lostCard++;
         const c = nonRes[0];
         const okGender = (/^父親/.test(c.relation) && c.gender==='男') || (/^母親/.test(c.relation) && c.gender==='女');
         const opposite = resident.length===1 && resident[0].relation.slice(0,2)!==c.relation.slice(0,2);
@@ -27,10 +27,11 @@ const stats = JSON.parse(ev(`(()=>{
       }
     } else { others++; if(nonRes.length) othersWithNonResident++; }
   }
-  return JSON.stringify({divorced, withCard, badCard, politicianFromAbsent, others, othersWithNonResident});
+  return JSON.stringify({divorced, withCard, lostCard, badCard, politicianFromAbsent, others, othersWithNonResident});
 })()`));
 const ratio = stats.withCard / stats.divorced;
-A.check("單親離異約60%有另一方角色卡", ratio > 0.5 && ratio < 0.7, stats);
+A.check("單親離異約60%仍有聯絡", ratio > 0.5 && ratio < 0.7, stats);
+A.check("四、4.6.2（2026-09-29）：其餘40%也建卡，狀態為失聯", stats.withCard + stats.lostCard === stats.divorced, stats);
 A.check("另一方卡：不同住、性別對、跟同住家長相反、名字不重複", stats.badCard === 0, stats);
 A.check("另一方職業不會是政治人物", stats.politicianFromAbsent === 0);
 A.check("其他家庭結構不會出現不同住家長", stats.othersWithNonResident === 0);
@@ -55,7 +56,7 @@ A.check("同住家長過世：不同住的前配偶不被提前一階", ev("stat
 
 // prompt
 const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
-A.check("prompt：說明不同住與長期失聯", prompt.includes("不同住") && prompt.includes("長期失聯"));
+A.check("prompt：說明不同住與長期失聯", prompt.includes("不同住") && prompt.includes("失聯"));
 
 // 抽到離異有卡的開局，正常玩幾回合
 let found = false;

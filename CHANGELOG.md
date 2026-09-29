@@ -10,6 +10,48 @@
 
 ---
 
+## 2026-09-29（續8：重心與興趣調整＋NPC背景事件表，一、1.2.16／十八、18.14／八、8.12／三、3.5.5／四、4.7／十六、16.12～16.13）
+
+**〔整理〕設計文件**：一、1.2.16重心必須寫進劇情(取代十八、18.10.5「重心只在新場景開頭兩三句」)、十八、18.14字數與填充描寫、八、8.12投入歸屬／副業交件類別／五級興趣等級(改寫8.10)、三、3.5.5社交回合效果與朋友帶來的機會、四、4.7 NPC背景事件表(含完整事件清單)、十六、16.12人脈說明小視窗、16.13興趣面板；00-總覽日誌與目錄；QA手冊34.14(三項修正清單，尚未處理)。快照`snapshots/life-sim-design_2026-09-29g_重心興趣與背景事件`(09-29e移到`archive/snapshots/`)
+
+**〔開發部〕**
+- `index.html`：
+  - 1.2.16：`focusSceneDirective()`把重心指令放進`turn_focus.scene_directive`(考試等程式事件回合降為有空檔才帶到)；18.14：有重心的回合`narrative_length_guide`加100字(`focus_extra_words`)，`recent_ambient_categories`＝最近5回合正文用關鍵字比對出已用過的環境描寫類別(`AMBIENT_CATEGORIES`)
+  - 8.12.1：`applyFocusSettlement(s, focus, r)`——重心指定的興趣卡直接記投入，AI的category忽略、只讀reaction(沒回報視為positive)；8.12.2：`applySideGigDeliveries`類別對不上玩家的副業就拒絕計酬並記`side_gig_category_mismatch`錯誤紀錄，重心「興趣：X」且有X類接案副業時每回合擲30%安排主角自己的案子(`prepareSideGigTurn(s, focus)`，`own_project`)；8.12.3：`INTEREST_LEVELS`五級，等級變動的回合日記加`levelNotes`並顯示在結算區
+  - 3.5.5：`applySocialTurnExtras`(scene_characters裡的非家人隨機一位好感+2；社交回合每滿3次擲機會，`friendOpportunityProb`)、`takeFriendOpportunity`(優先有已得知【機】事件的角色，否則熟悉的朋友以上)
+  - 4.7：`BG_EVENT_TABLE`完整事件表、`maybeRollBackgroundEvents`(學生時期假期第一回合、出社會後跨入新年第一回合)、`rollBackgroundEventForCharacter`(分級機率、年齡段、條件／互斥、關聯權重×1.5、過世另擲)、人物卡`events`(已得知／未得知)與`bgTags`(married／has_child／retired／widowed／partnered)、`left_circle`；`takeFriendNews`(熟悉朋友的轉折／重大事件一回合一件)、`takeInviteChoice`(【邀】選項只出現一回合)、滑到動態揭曉事件、重逢／聯繫上時一次揭曉、出場時給旁白看過的事件標為已得知；人物卡詳細頁「動態」(最近10筆，更早可展開)
+  - 16.12：人脈說明改為條列實際影響的項目(`.stat-tip`加`white-space:pre-line`)；16.13：選單「我的興趣」(`renderInterestsModal`：等級名稱、距離下一級進度條、副業狀態，不顯示分數)
+- `worker/prompt.js`：重心場景指令、填充描寫規則、興趣投入歸屬、`own_project`、背景事件(`new_events`／`friend_news_now`／`left_circle`／`events_while_apart`)、朋友帶來的機會。**需要重新部署Worker**
+- `tests/test-45-focus-events.mjs`新增75項；test-39(興趣投入歸屬新規則、家人重心對象改成扣掉已故失聯)、test-31(等回合寫完再換state、模擬旁白不延遲)配合修改
+
+**〔測試部〕** 見本次回報；舊存檔可以繼續玩(新欄位都是選填)
+
+---
+
+## 2026-09-29（續7：關係面板與角色狀態，四、4.6；一、1.2.14／1.2.15；十六、16.11；QA 34.13程式面）
+
+**〔整理〕git**：10.8那批(`481ab23`)本來就在master上，補一筆`8105a8c`10.8快照整理(09-29d快照、09-29c移到archive)；分支`relationship-system-0929`改從它之後開始(`git reset master`，工作區不動，事前`git stash store`留備份)。10.8與關係系統可各自revert
+**〔整理〕設計文件**：四、4.6.3改為「疏遠期間好感不變動」(刪保底)、4.6.6失聯成功率改50/65/80、4.6.2新增家人與四種狀態(＋【技術判斷】開局失聯／已故家長建卡內容)、4.6.5／4.6.6加註、五、5.2.6加註；00-總覽日誌與目錄。快照`snapshots/life-sim-design_2026-09-29f_關係系統`(09-29d移到archive)
+
+**〔開發部〕**
+- `index.html`：
+  - 四、4.6：`characterState()`四種狀態(一般／漸行漸遠＝不活躍的非家人／已故／失聯)；通訊錄改單一清單(`sortedRosterCharacters`：好感降冪、同分最近互動在前，已故再失聯排最後)，副標題顯示狀態，漸行漸遠圓點淡色(`.dots5.faded`，取代灰色)
+  - 4.6.4重逢：去找漸行漸遠的人、或出現在`scene_characters`都算互動(`markCharacterInteracted`)；payload`relationship_event_now`帶`reunion_tone`(熟悉的朋友以上一見如故，以下生疏)與`turns_apart`；名冊上漸行漸遠者附重逢語氣
+  - 4.6.5已故：詳細頁按鈕改「回憶」、輸入框上方「回憶：X」，回想回合(`mode:"recall"`)所有好感變化忽略
+  - 4.6.6失聯：`contact_lost`(`applyContactLost`，名字要在名冊上、已故不行；戀愛中對象視為分手)；去找失聯者送出時擲骰`lostContactFindProb`(家人50%，朋友50/65/80)，成敗都照常花這回合的行動點；失聯、已故好感凍結，不走緩降與降級
+  - 4.6.7近況`recentStatus`(`character_updates[].recent_status`截30字)，詳細頁顯示、active_characters帶出；4.6.8滑到動態`social_feed_now`(每10回合最多1位)
+  - 5.2.6開局：離異沒有音訊的一方、喪親過世的一方都建卡(`addAbsentParent`)，一開始就是失聯／已故；失聯者不進13.5健康狀態機、不算照顧負荷／退休／家業／三餐等家長；已故者年齡不再增加(`ageChildren`)
+  - 1.2.14精簡名冊`character_roster`(`buildCharacterRoster`，依建卡順序、每人一行)；1.2.15程式產生的一次性收支一律記名稱(`noteCashEntry`：醫療費、治療費、創業資金、事業虧損／增資、遺產、賣房、頭期款、興趣花費)，超過存款一成的放進`program_expenses_now`
+  - 16.11結算明細：`buildSettlementItems`每項附`details`、extras第三欄是歸屬項目(打工收入／接案收入／購物／其他收支)；`settlementHtml`滑鼠移上去或點一下打開小視窗、點別處關閉；收入／開銷明細只留最近30則日記(`pruneSettlementDetails`)
+  - QA 34.13#1：同一回合才排定的接案訂單不能交件(當回合新訂單不列在`side_gig_open_orders`)，訂單加`order_id`，交過就移除；#2：購物金額改在接案入帳之後才量(原本接案收入被算成「購物 +X」再用「其他收支 −X」抵銷)；#16：通訊錄列的class「bg」撞到全域背景層`.bg{position:fixed}`，改`st-*`；#17：頂端狀態列`flex-wrap`
+- `worker/prompt.js`：新增【精簡名冊與角色狀態】段(名冊規則1～4、contact_lost、重逢氣氛、找人結果、回想、近況、滑到動態)；1.2.15大筆支出規則；家庭結構描述改依4.6.2；schema新增`contact_lost`、`character_updates[].recent_status`、`side_gig_delivery.order_id`，`one_time_transaction`的label必填
+- `worker/worker.js`：`turnUserContent()`把名冊拆成第一個content block並設`cache_control`(system＋工具＋名冊這段前綴可快取)。**需要重新部署Worker**
+- `tests/harness.mjs`：`turnPayloadFromBody()`還原拆開的payload；`test-44-relationship.mjs`新增55項；test-12(離異40%改建失聯卡)、test-39(已故按鈕改回憶)、test-41(訂單要前幾回合接下才能交件)配合修改
+
+**〔測試部〕** 見本次回報；舊存檔可以繼續玩(新欄位都是選填；舊存檔的喪親／離異失聯家長沒有卡，不補建)
+
+---
+
 ## 2026-09-29（續6：手動存到雲端，十、10.8.1）
 
 **〔整理〕設計文件**：十、新增10.8.1(使用者在Claude Code直接定案並確認)；00-總覽日誌與目錄。快照`snapshots/life-sim-design_2026-09-29e_手動存到雲端`(09-29c移到`archive/snapshots/`)

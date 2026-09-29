@@ -166,17 +166,17 @@ A.check("A3 程式保證的機會在排定回合出現", offerTurn === card.gigN
 const nextGap = ev("state.interestCandidates[0].gigNextOfferTurn") - offerTurn;
 A.check("A4 偶爾接案：下次機會間隔6～10回合", nextGap >= 6 && nextGap <= 10, nextGap);
 // 收入計算：小單2～4份×1.3(投入度65)，交件一次入帳
-ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount,size:'small'}]; state.interestCandidates[0].investment=65");
+ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount-1,size:'small'}]; state.interestCandidates[0].investment=65");
 const unit = ev("incomeShareUnit(state)");
 const inc = js(g, "applySideGigDeliveries(state, {category:'手作工藝', size:'small'})");
 A.check("A4 小單：2～4份×1.3(投入度60～79)、取整數", inc && Number.isInteger(inc.amount) && inc.amount >= Math.round(2 * unit * 1.3) - 1 && inc.amount <= Math.round(4 * unit * 1.3) + 1, { inc, unit });
 A.check("A4 沒有等待交件的訂單：AI回報交件也不入帳", js(g, "applySideGigDeliveries(state, {category:'手作工藝', size:'large'})") === null);
-ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount,size:'medium'}]");
+ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount-1,size:'medium'}]");
 const inc2 = js(g, "applySideGigDeliveries(state, {category:'手作工藝', size:'large'})");
 A.check("A4 偶爾接案最多到中單(大單降為中單)", inc2.deliveries[0].size === "medium", inc2);
 A.check("A4 興趣投入度加乘：40～59×1、60～79×1.3、80～100×1.6", ev("sideGigInterestMult(50)") === 1 && ev("sideGigInterestMult(70)") === 1.3 && ev("sideGigInterestMult(85)") === 1.6);
 // 交件那回合：結算欄單獨列「接案收入 +X」
-ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount,size:'small'}]");
+ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount-1,size:'small'}]");
 H.installUpstream(H.makeFakeAnthropic({})); // (mock模式不走上游，這裡只是保險)
 ev("window.__origMock = mockGenerateTurn; mockGenerateTurn = function(a,f,t){ const r = window.__origMock(a,f,t); r.side_gig_delivery = { category:'手作工藝', size:'small', description:'交了三副耳環' }; return r; }");
 await H.playTurn(g);

@@ -97,7 +97,7 @@ if (mom && fam.length > 1) {
 }
 ev("state.characters.forEach(c=>{ if(familyRoleOf(c.relation)) c.cohabiting=false; })");
 const pool2 = js("focusFamilyPool(state).map(c=>familyRoleOf(c.relation))");
-A.check("沒有同住家人：改成原生家庭父母和手足", pool2.every(r => ORIGIN_ROLES.includes(r)) && pool2.length === fam.filter(f => ORIGIN_ROLES.includes(js(`familyRoleOf(${JSON.stringify(f.relation)})`))).length, { pool2, fam });
+A.check("沒有同住家人：改成原生家庭父母和手足", pool2.every(r => ORIGIN_ROLES.includes(r)) && pool2.length === ev("state.characters.filter(c=>['父親','母親','繼父','繼母','哥哥','姊姊','弟弟','妹妹'].includes(familyRoleOf(c.relation)) && !c.deceased && !c.lost).length"), { pool2, fam });
 const savedChars = ev("JSON.stringify(state.characters)");
 ev("state.characters.forEach(c=>{ if(familyRoleOf(c.relation)) c.deceased=true; })");
 ev("render()");
@@ -110,9 +110,20 @@ ev("state.interestCountThisTerm=0; state.interestCandidates=[{id:'g1',category:'
 ev("state.focus='interest'; state.focusInterestId=null");
 override = () => ({ interest_event: { category: "體能競技", reaction: "negative" } });
 await H.playTurn(g, "嗯");
-A.check("指定正式興趣卡：程式直接算一次喜歡投入", ev("state.interestCandidates.find(c=>c.id==='g1').investment") > 30);
-A.check("指定正式興趣卡：AI的interest_event不讀", !ev("state.interestCandidates.some(c=>c.category==='體能競技')"));
+A.check("八、8.12.1 指定正式興趣卡：AI回報的category一律忽略(不會另開體能競技)", !ev("state.interestCandidates.some(c=>c.category==='體能競技')"));
+A.check("八、8.12.1 指定正式興趣卡：反應由AI回報，negative不增加投入(照8.2扣進度)", ev("state.interestCandidates.find(c=>c.id==='g1').investment") < 30);
 A.check("準備期選興趣：興趣次數+1", ev("state.interestCountThisTerm") === 1);
+ev("state.focus='interest'; state.focusInterestId=null");
+override = () => ({ interest_event: { category: "體能競技", reaction: "positive" } });
+const invPos0 = ev("state.interestCandidates.find(c=>c.id==='g1').investment");
+await H.playTurn(g, "嗯");
+A.check("八、8.12.1 指定正式興趣卡：positive記到該卡(category忽略)", ev("state.interestCandidates.find(c=>c.id==='g1').investment") > invPos0 && !ev("state.interestCandidates.some(c=>c.category==='體能競技')"));
+ev("state.focus='interest'; state.focusInterestId=null");
+override = () => ({});
+const inv1 = ev("state.interestCandidates.find(c=>c.id==='g1').investment");
+await H.playTurn(g, "嗯");
+A.check("八、8.12.1 AI沒回報reaction：視為positive", ev("state.interestCandidates.find(c=>c.id==='g1').investment") > inv1);
+A.check("指定正式興趣卡：AI的interest_event的category不讀", !ev("state.interestCandidates.some(c=>c.category==='體能競技')"));
 A.check("payload寫興趣名稱", lastPayload.turn_focus.interest_category === "藝術創作");
 ev("render()");
 A.check("興趣按鈕寫興趣名稱", [...doc.querySelectorAll(".focus-btn[data-focus]")].some(b => b.textContent.startsWith("興趣：藝術創作")));
@@ -281,7 +292,7 @@ await H.playTurn(g, "嗯");
 A.check("想找：payload告訴AI、場景覆寫、淡出的角色重新活躍", lastPayload.narrative_rhythm.seek_character === "雅涵" && lastPayload.scene_plan.reason === "player_named" && ev("state.characters.find(c=>c.name==='雅涵').active") === true);
 A.check("想找只作用於下一次送出、不另外扣行動點", ev("state.seekTarget") === null && ap0 - ev("totalAP(state)") === 1);
 ev("state.characters.find(c=>c.name==='阿哲').deceased=true; renderNpcDetailModal('阿哲')");
-A.check("過世的角色不出現去找他", !doc.getElementById("btn-npc-seek"));
+A.check("過世的角色：按鈕改為「回憶」(四、4.6.5)", doc.getElementById("btn-npc-seek") && doc.getElementById("btn-npc-seek").textContent === "回憶");
 doc.querySelectorAll(".modal-backdrop").forEach(x => x.remove());
 
 // ---------- 相處風格 ----------

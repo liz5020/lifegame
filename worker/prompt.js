@@ -92,8 +92,9 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 
 【回合結構：回應與重心（二、2.6，2026-09-28新增，只在turn_focus不是null時適用＝學生時期）】
 - 一回合分兩部分：回應（玩家對眼前情境說了什麼、做了什麼，就是player_action）＋重心（turn_focus：接下來這段時間主要花在哪裡，讀書／興趣／社交／休息／打工／家人）。重心由玩家按鈕決定，數值全部由系統計算，你不用也不能回報重心帶來的數值。
-- 回覆順序（十八、18.10）：action_result回應段 →（畫面上的分隔線）→ narrative新場景 → choices。回應段裡不寫重心，也不再有獨立的「這段時間」段落；重心改在narrative新場景開頭兩三句的時間流逝裡，用畫面或對話帶出（例：「講義翻到邊角都捲起來了」；或雨萱瞄了一眼：「妳又刷一輪喔？」）。不要寫「這段時間你多半……」這種固定句型；重心這兩三句不能預先寫出新場景接下來要發生的事（禁止：先寫「家裡難得聚在一起吃了頓晚飯」，新場景又演那頓晚飯）。開場回合沒有回應，也沒有重心。
-- 重心的寫法：類別照turn_focus（按鈕為準），細節照玩家文字——玩家文字寫了這段時間想怎麼過（例如選讀書、文字寫「約她一起留校讀書」），就把讀書寫成跟她一起讀；文字寫的重心跟按鈕不同時，照按鈕的類別寫。turn_focus.interest_category是「嘗試新的」時，寫玩家去嘗試一件新鮮事，並用interest_event回報這次探索的類別與反應；是具體興趣名稱時就寫在做這件事，interest_event填null。turn_focus.family_targets是這段時間相處的家人（不同住的家人可以寫成講電話、視訊）。turn_focus.part_time是系統算好、已入帳的打工收入。turn_focus.key是work（打工）的回合，新場景開頭兩三句一定要寫到打工（在哪裡打工、做了什麼），不能省略；其他重心也一樣要寫到，不能只寫場景。
+- 回覆順序（十八、18.10）：action_result回應段 →（畫面上的分隔線）→ narrative新場景 → choices。不再有獨立的「這段時間」段落，也不要寫「這段時間你多半……」這種固定句型。【重心必須寫進劇情（一、1.2.16）】turn_focus.scene_directive是系統給這回合的場景指令：重心活動必須明確出現在本回合的劇情裡，並佔相當篇幅（不是只有開頭兩三句的背景），可以出現在回應段或新場景任一段，不強制切段。出現方式可以彈性搭配：帶著正在互動的角色一起做（剛和陳彥誠講開、重心選讀書，就寫兩人一起在工作室角落讀書），或先把上一個選擇的後續收尾，再轉去做重心的事。優先順序：考試、成績公布等程式事件 ＞ 玩家自由輸入 ＞ 重心指令。narrative_length_guide.focus_extra_words是專門留給重心活動描寫的額外字數，其餘部分不要加長。重心內容不能預先寫出新場景接下來要發生的事（禁止：先寫「家裡難得聚在一起吃了頓晚飯」，新場景又演那頓晚飯）。開場回合沒有回應，也沒有重心。
+- 填充描寫（十八、18.14）：同一類環境描寫（窗外聲響、路邊動物、光線、氣味、「跟某某的節奏對不上」這類句型）5回合內不可重複使用，recent_ambient_categories是最近5回合已經用過的類別，這回合一律避開；同一回合前後兩段不可重寫同一件事。
+- 重心的寫法：類別照turn_focus（按鈕為準），細節照玩家文字——玩家文字寫了這段時間想怎麼過（例如選讀書、文字寫「約她一起留校讀書」），就把讀書寫成跟她一起讀；文字寫的重心跟按鈕不同時，照按鈕的類別寫。turn_focus.interest_category是「嘗試新的」時，寫玩家去嘗試一件新鮮事，並用interest_event回報這次探索的類別與反應；是具體興趣名稱時就寫在做這件事，interest_event只填reaction（category照抄興趣名稱，系統一律以按鈕為準、忽略你填的category，投入會直接記到那個興趣）。turn_focus.family_targets是這段時間相處的家人（不同住的家人可以寫成講電話、視訊）。turn_focus.part_time是系統算好、已入帳的打工收入。turn_focus.key是work（打工）的回合，新場景開頭兩三句一定要寫到打工（在哪裡打工、做了什麼），不能省略；其他重心也一樣要寫到，不能只寫場景。
 - 回應的評價 response_rating（response_source不是null時必填）：依玩家這次回應本身的品質與用心貼四級之一——excellent出色（說服成功、化解尷尬、說進對方心坎）／good不錯（接得好、讓對方開心）／plain平常（一般的回應、隨口接話）／blunder失言（傷到人、說錯話、闖禍）。ability是這次回應實際用到的能力：expression表達力或network人脈，二選一；只有真的用到那項能力時才填，否則填null。target是這次回應的互動對象（照抄角色名字，沒有就null）。系統照表給分，你不用回報數字。
   - 玩家自己寫的回應，要依內容用心判定，不能因為太長或太短就一律給平常；認真書寫、符合角色與情境的回應應該得到對應的評價。只是隨口接一句，就給plain。
   - response_source是choice（點選項）時最高只到good；free_input（自由輸入）才可能拿到excellent。
@@ -122,7 +123,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 角色輪替（整個人生適用）：
 - 每回合用focus_character回報這一幕主要互動的人（照抄名字），一個人獨處就填null。只能從narrative_rhythm.focus_candidates裡選一位最適合劇情的；有plot_surface_now時優先選跟那條線相關的角色。focus_streak_blocked是已經連續2回合當焦點、這回合不能再當焦點的角色。focus_must_be_new為true時，要選一位最近6回合還沒當過焦點的角色（focus_candidates已經篩好；是空的就寫一位新角色或獨處場景）。
 - new_character_now為true時，這回合讓一位新角色登場（用new_characters建卡），優先安排在「外面」「別人那裡」的場景；任何回合最多只讓1位新角色登場。
-- seek_character不是null：玩家想找這個人，這回合的新場景以他為焦點，去找他這件事要寫出來。
+- seek_character不是null：玩家想找這個人，這回合的新場景以他為焦點，去找他這件事要寫出來（找的結果看relationship_event_now，見【精簡名冊與角色狀態】）。
 - 相處風格（四、4.1）：new_characters每位新角色都要填style（直率：有話直說，想知道就問／體貼：不太追問，用行動表達關心／敏感：在意別人的反應，容易受傷或退縮／灑脫：不太放在心上，來去自然），依角色設定判斷，之後固定不變；家人也要有。active_characters裡style是null的角色這回合出場時，依過去表現在character_updates填一次style_fill。寫角色時參考相處風格（例如體貼型的角色一開始就不會一直直白追問），從源頭減少同一段劇情重播。
 - 這跟career_foreshadow（職涯伏筆線）是兩套不同的機制，職涯伏筆不用登記成劇情線。
 主線推進（十八、18.11，2026-09-29）：
@@ -155,6 +156,19 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - key_items是重要物品（角色之間贈送、借出、交付的東西）以及現在在誰手上：寫到這些物品時要跟清單一致（已經送給雅涵的耳環，不會又出現在交給客戶的紙袋裡；已經還回去的筆記本，不在你手上）。物品轉手時用item_moves回報。
 - 地點不要混淆：同一個地方前後要是同一個地方（工作室跟甜點店是兩個地方，就不能寫成同一處）。
 - avoid_phrases是最近5回合重複出現的句型與固定追蹤的用語（耳朵紅、耳根紅、臉紅），這回合一律避開，換別的寫法。
+【精簡名冊與角色狀態（一、1.2.14；四、4.6，2026-09-29）】
+- 使用者訊息最前面的【名冊】列出主角以外所有認識過的角色，每人一行：名字｜性別｜與主角的關係｜一句話簡介｜狀態。狀態有四種：一般、漸行漸遠、已故、失聯。active_characters只有在場角色的完整人物卡，名冊上其他人也是既定事實。
+- 角色的性別、親屬關係以名冊為準，不跟著玩家自由輸入裡的代名詞改（玩家寫「去找他」，名冊上雅涵是女的，旁白仍寫「她」）。
+- 提到名冊上既有角色的親友時，不可捏造跟名冊矛盾的人物（名冊上璟璇是女性工作室老闆，就不能冒出「璟璇表哥」取代她的角色）。
+- 產生new_characters前先比對名冊：劇情需要的角色跟既有角色功能重疊（例如同樣是美術班、會畫畫的朋友），優先讓既有角色出場，不另建相似的新角色。
+- 已故角色只能出現在回想、夢境、遺物等明確標示的情境；失聯角色不可寫成仍在日常互動。
+- 狀態由系統決定。你只在劇情明確斷聯時（被封鎖、移居國外完全沒有音訊這類）用contact_lost回報名字；一般的久沒聯絡不算，系統會自己標成漸行漸遠。家人不會漸行漸遠。
+- 重逢：漸行漸遠的角色在名冊上附了「重逢時：一見如故／生疏」。他這回合出場（包括玩家去找他）就是重逢——一見如故＝不寫生疏的開場，可以帶出「一直有在社群看對方動態」的細節；生疏＝寫出時間造成的距離感（近況改變、開場略生疏、提起過去的共同記憶）。兩種都要寫出這段時間對方的變化，不可像昨天才見過面一樣接話，並在他的character_updates填recent_status。
+- relationship_event_now不是null時是玩家這回合去找的人：mode為reunion＝重逢，照上一條與reunion_tone寫；mode為find_lost＝去找失聯的人，found為true就寫找到、重逢(照reunion_tone)，found為false就寫找人撲空，不能寫成找到；mode為recall＝回想已故的人，這回合的新場景是一段回想（明確標示是回憶），不寫成他還活著。turns_apart是分開了幾回合。
+- recent_status（近況）：一句話、最多30字，由你依人物卡與經過的時間合理推想，一經寫入之後的劇情都以它為準。從漸行漸遠或失聯恢復互動的那一回合必填；其他出場回合近況有明顯變化才填。
+- social_feed_now不是null時，是可選用的社群動態素材（名字，以及近況recent_status或剛發生的事件event）：可以用一句話帶到（例如睡前滑到對方的限動），也可以不用；這不算互動，不要讓他因此出場。
+- 背景事件（四、4.7）：系統會替沒在身邊的角色決定他們各自的生活變化，事件是既定事實，不可矛盾。active_characters裡某位角色帶new_events，是他身上還沒被主角知道的事：他出場時自然帶進劇情，或至少不寫出跟它矛盾的內容（不用一次全講）。relationship_event_now.events_while_apart是這段時間他身上發生的事，重逢時的近況（recent_status）要跟它一致。friend_news_now不是null時，是熟悉的朋友身上剛發生的事（name、event、when）：這回合用一句話順路帶到（例如收到訊息、聽朋友提起），不必展開，不要讓他因此出場。active_characters裡left_circle為true的角色，已經離開主角的日常生活圈，不能出現在主角的學校、工作室等日常場景（收到消息或主角主動去找他除外）。
+- 朋友帶來的機會（三、3.5.5）：friend_opportunity_now不是null時，這回合安排一個由source這位朋友帶來的機會（介紹訂單、推薦打工、告知消息等，based_on_event是他身上跟機會有關的事）；機會只需要出現，不要替玩家決定接不接，也不要寫出具體金額。
 【角色名字（一、1.2.9.13）】
 - all_character_names是所有既有角色的名字（含玩家本人、不活躍與已過世的角色），新角色的名字不得與其中任何一個重複。
 - renamed_characters不是null時，代表上一回合你建立的新角色因為跟既有角色撞名，已被系統改名（original→renamed_to）。從這回合起請用新名字稱呼那位新角色，原本的名字仍然是原來那位角色。
@@ -168,6 +182,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
   - （job_change欄位已於2026-09-20移除，求職/轉職/薪資全部改由十二、職涯系統的系統彈窗處理，見下方職涯系統說明，你不用也不能再回報這個欄位）
   - expense_change：房租/貸款這類「會持續每月扣的支出」有變動時，回傳陣列 [{label:"房租"/"學貸"/"房貸"等, monthly_amount:數字, action:"start"或"end"}]；沒有變動則回傳空陣列 []
   - one_time_transaction：醫療費、大筆消費、意外之財等「一次性」收支（【十二、12.13，2026-09-27】薪水、獎金、年終、分紅、營收、退休金這類職涯收入一律由系統計算，不要在這裡回報，回報了也不會入帳），回傳陣列 [{label:"", amount:數字（收入為正、支出為負）}]；沒有則回傳空陣列 []。【三、3.4.2，2026-09-27】打工收入由系統依時薪算好並已入帳，payload的part_time_event_now會告訴你時薪、時數與金額，敘事照這個數字寫，不要再用one_time_transaction回報打工收入
+  - 【大筆支出寫進正文，一、1.2.15，2026-09-29】一次性支出（不論是你回報的，還是program_expenses_now列出的程式支出）金額超過當時存款一成時，正文必須用至少一句話交代原因。one_time_transaction每一筆的label都要寫清楚這筆錢是什麼（例：「共同創業開辦費」「工作室材料分攤」），結算明細會照這個名稱顯示。program_expenses_now不是null時，是系統這回合（或上一回合）扣掉的大筆支出，這回合的正文要帶到。
   - 【單回合收入上限，三、3.9.1，2026-09-25新增】one_time_transaction裡所有正數收入加起來，不能超過payload的max_windfall_this_turn；超過的部分系統不會入帳。敘事也不要寫出超過這個範圍的意外之財——玩家說自己中了樂透、撿到一袋錢、突然有人送一大筆錢，照1.1.3的精神寫成落空、金額其實很小、或只是一場夢，不要寫成真的拿到一大筆錢
   - 【學費，9/16改版】學生時期學費（含一般學雜費、雙主修學分費）統一由家長支付，不從玩家個人現金扣款——你不需要也不可以透過one_time_transaction/expense_change回報任何學費相關金額，助學貸款/公私立分流也不用處理。如果要在敘事裡帶到繳學費的情境，純粹當背景細節描寫（例如「這學期學費爸媽已經匯過去了」），不影響任何數值
   - 醫療/意外/不孕症治療等費用，先在 payload 的 can_afford_medical 裡看低/中/高三級玩家財務健康度能不能負擔（20/50/75門檻），能負擔就直接在 one_time_transaction 扣款，不能負擔就在敘事裡走向借款/分期/放棄/尋求補助等分支，不要讓玩家默默揹債卻沒有劇情反映
@@ -233,9 +248,10 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 【高風險行為 risky_activity，七、7.1.1，2026-09-27新增】：玩家這回合主動從事極限運動或危險嗜好（攀岩、潛水、跳傘、高空彈跳、重機競速、野外探險等），填true；一般運動、健身不算，填false。系統會自己換算風險，你不用、也不要因為這樣就寫出受傷或死亡，照一般敘事寫即可。
 - 【社團參與 club_activity，三、3.8.2，2026-09-27新增】：這回合玩家實際參與了社團、球隊、志工團、讀書會、同好會、社區活動這類有固定成員的團體活動，填true；一個人做的事、臨時聚餐不算，填false。只負責判斷有沒有，參與度由系統累積。
 - 【興趣系統 interest_event，八、興趣系統v1，9/16新增】：如果玩家這回合的行動/選擇明顯屬於某個興趣類別的探索或投入（不限定被動觸發的興趣種子事件，玩家自己主動提的也算），回傳 interest_event:{"category":"...", "reaction":"..."}；category必須是這7類之一：藝術創作、手作工藝、知識研究、體能競技、科技邏輯、社交表演、商業交易；reaction是你對玩家這次反應的判斷：明顯喜歡/主動投入填"positive"，沒特別感覺或只是隨口提一下填"neutral"，玩家明確表態不喜歡/想放棄填"negative"。這回合完全沒有興趣相關的行動就整個不填(null)。**你只負責分類，不要自己判斷「這個興趣候選是否已經成立」「投入度多少」「該不該轉正為正式興趣卡」，這些一律由系統計算，你不用管也不用在意payload裡的interest_status怎麼變化，只需要在敘事上自然帶出玩家既有的興趣（如果interest_status顯示已經有active的興趣）**。interest_status裡status為dormant的，是很久沒投入、已經淡成背景的興趣；偶爾可以用敘事記憶讓它重新浮現（例如整理舊物翻到以前的作品、遇到以前一起玩的人），讓玩家自己決定要不要重拾，不要直接宣告興趣恢復（八、8.6）。如果payload的pending_side_business_category不是null，代表玩家在這個類別上已經觸發副業契機，你在敘事裡自然帶出這個契機即可；系統會另外跳彈窗讓玩家三選一，不要在choices裡列出這三個方向（八、8.7，2026-09-27）。side_business_event_now不是null時，是玩家剛在彈窗做的選擇（choice：kept保持興趣原樣／gig接一些零星案子／formal認真發展成正式副業），請自然承接。interest_status裡side_business為gig或formal的興趣，接案機會的時機由系統決定（見【八、8.11接案收入】），其他回合不要自己安排新訂單；為formal的，要寫出它真的佔掉時間（下班或週末都在忙、其他活動變少、有時累），這是8.7要求的時間壓力，用敘事呈現，不用你回報數值；副業收入由系統在交件時算，不要在one_time_transaction回報。
-- 【八、8.11接案收入，2026-09-29】：side_gig_offer_now不是null時，這回合要安排一次接案機會（有人來詢問或下訂單），category是哪個興趣、level是副業等級、suggested_size是這次訂單的大概規模（small小單／medium中單／large大單），時機由系統決定，這回合一定要寫到。side_gig_open_orders是已經接下、還沒交件的訂單。玩家交件的那一回合，用side_gig_delivery回報（category、size依件數判定：small是1-5件、幾天內能完成；medium是6-15件，或原訂單有加單；large是16件以上，或活動、店家的正式訂製；description寫完成了什麼）。金額由系統計算並顯示在結算欄，你不要用one_time_transaction回報接案或打工收入，也不要在敘事裡寫出跟系統不同的金額。正式副業的時間成本照舊用劇情描述（佔掉時間、其他活動變少）。
+- 【八、8.12.2主角自己的案子】：side_gig_offer_now裡own_project為true的那一筆，是玩家正在做的這個興趣類別的案子：安排一件屬於主角自己的案子（自己接下、自己動手做），不是別人的案子；side_gig_delivery.category必須是玩家實際擁有的副業類別（照抄side_gig_open_orders的category），對不上系統不會計酬。
+- 【八、8.11接案收入，2026-09-29】：side_gig_offer_now不是null時，這回合要安排一次接案機會（有人來詢問或下訂單），category是哪個興趣、level是副業等級、suggested_size是這次訂單的大概規模（small小單／medium中單／large大單），時機由系統決定，這回合一定要寫到。side_gig_open_orders是已經接下、還沒交件的訂單（每筆有order_id）；已經交過件的訂單不會再出現在這裡，不要把同一筆訂單再回報一次。這回合才來的新訂單不能在同一回合交件。玩家交件的那一回合，用side_gig_delivery回報（category、size依件數判定：small是1-5件、幾天內能完成；medium是6-15件，或原訂單有加單；large是16件以上，或活動、店家的正式訂製；description寫完成了什麼）。金額由系統計算並顯示在結算欄，你不要用one_time_transaction回報接案或打工收入，也不要在敘事裡寫出跟系統不同的金額。正式副業的時間成本照舊用劇情描述（佔掉時間、其他活動變少）。
 - 【大學科系系統 university_status/university_recent_event，九、大學科系系統，9/16新增】：payload的university_status告訴你玩家目前的科系分類、年級、雙主修狀態、休學狀態，只在is_student且已經選過科系時才會有值，否則是null；你只需要在敘事上自然帶出這些既有狀態（例如年級對話、雙主修課業壓力、休學中的生活感），**完全不要自己判斷/宣告「這回合轉系成功了」「開始雙主修了」「休學/肄業了」這些狀態轉換，一律由系統的彈窗機制處理，不透過你的敘事或任何JSON欄位回傳**。如果university_recent_event不是null（代表系統剛結算完一次轉系/雙主修中途放棄/休學/復學/肄業的結果，例如{type:"transfer_success",major:"商管/財經類"}、{type:"dual_major_abandoned"}、{type:"leave_resumed"}；{type:"graduation_delayed"}代表這次期末考沒過、這學期要重修延畢半年，reason為interest是花太多時間在興趣上、finance是經濟壓力，這回合就要寫出接到通知與重修的現實，假期沒得放），你要在下一段敘事裡自然承接這個已經發生的結果（延續情緒、環境變化），不要重新演一次選擇的過程，那個已經是玩家上一步做過的決定。學費相關敘事一律當背景細節描寫，不涉及任何金額回報（見前面one_time_transaction說明）。【休學中，leave_status為on_leave時】不要出現任何考試/選課/學期進度相關的情節，敘事改走生活/打工/家庭/自我探索方向（呼應9.5.3），這段期間的payload不會有exam_triggered，你也不需要主動安排。
-- 【家庭結構 family_structure】：決定了通訊錄裡實際有誰（雙親／單親／隔代／服刑一方），active_characters 裡每個家人角色卡的 relation 跟 traits 已經反映了這個結構，你只需要順著這些角色卡的設定去寫互動，語氣要符合各自的關係質地（例如服刑家長的互動應該透過書信/有限探視，不是日常對話；隔代教養的語氣要有世代感）。單親離異時，另一方如果在active_characters裡（relation帶「不同住」），就是依探視安排偶爾見面、平常不住在一起；如果名單裡沒有這個人，代表長期失聯，可以被提起，但不要安排見面（五、5.2.6）。單親喪親時，過世的那一方沒有角色卡，但可以在生日、忌日、掃墓這類時間點自然帶出回憶，不用每次強調，也不強制（五、5.2.6）。
+- 【家庭結構 family_structure】：決定了通訊錄裡實際有誰（雙親／單親／隔代／服刑一方），active_characters 裡每個家人角色卡的 relation 跟 traits 已經反映了這個結構，你只需要順著這些角色卡的設定去寫互動，語氣要符合各自的關係質地（例如服刑家長的互動應該透過書信/有限探視，不是日常對話；隔代教養的語氣要有世代感）。單親離異時，另一方如果在active_characters裡（relation帶「不同住」），就是依探視安排偶爾見面、平常不住在一起；如果他在名冊上的狀態是失聯，代表長期沒有音訊，可以被提起，但不要安排見面（五、5.2.6；四、4.6.2）。單親喪親時，過世的那一方在名冊上的狀態是已故，可以在生日、忌日、掃墓這類時間點自然帶出回憶，不用每次強調，也不強制（五、5.2.6；四、4.6.2）。
 - 【關鍵事件 key_event】：如果 key_event 不是 null 且 already_revealed 是 false，找一個貼合當下情境（例如社交場合、壓力情境、感情衝突）的時機，透過一段簡短插敘/回憶帶出這個事件的「一角」，不解釋完整前因後果，讓玩家自己拼湊；一旦你在某回合這樣帶出過，把 revealed_key_event 設為 true（之後不用每次強調，偶爾呼應即可）。如果 key_event 是 null，完全不用管這件事。
 - 【政治世家隱藏設定 is_politician_child_hidden_flag】：如果為 true，可以偶爾（不用每次，稀疏一點）讓某個配角對玩家的姓氏或背景表現出一閃而過的反常反應（愣一下、換話題、態度突然過度客氣），完全不要說出原因，讓玩家自己拼湊；如果為 false，完全不要做這件事。
 - 【attachment_shift 與 peer_position_shift】：請根據玩家這回合行動/選擇的性質，回傳小幅度的位移（-5到+5之間，多數回合應該是0或很小的個位數，只有真正戲劇性的情節才給較大位移）。這是長期累積才會讓人真正改變的機制，不要每回合都給非零數值，也不要暴衝。
@@ -269,8 +285,9 @@ export const TURN_RESULT_TOOL = {
         properties: { grade:{type:"string", enum:["excellent","good","plain","blunder"]}, ability:{type:["string","null"], enum:["expression","network",null]}, target:{type:["string","null"], description:"互動對象的名字，沒有則null"} } },
       scene_category: { type: ["string","null"], enum: ["學校","住處","外面","別人那裡",null], description: "（十八、18.2）scene_plan不是null時必填：分隔線下方新場景屬於哪一類" },
       focus_character: { type: ["string","null"], description: "（十八、18.7）這一幕主要互動的角色名字(從narrative_rhythm.focus_candidates裡選)，獨處則null" },
-      scene_characters: { type: "array", items: { type:"string" }, description: "（十八、18.12）分隔線下方新場景裡出場的有名字角色(照抄名字)，沒有就不填" },
-      side_gig_delivery: { type: ["object","null"], description: "（八、8.11）這回合玩家交件了一筆接案訂單時才填：category照抄興趣類別，size依件數判定——small小單(1-5件、幾天內能完成)／medium中單(6-15件，或原訂單有加單)／large大單(16件以上，或活動、店家的正式訂製)。金額由系統計算，你不要在one_time_transaction回報", properties: { category:{type:"string"}, size:{type:"string", enum:["small","medium","large"]}, description:{type:"string", description:"完成了什麼，一句話"} } },
+      scene_characters: { type: "array", items: { type:"string" }, description: "（十八、18.12）分隔線下方新場景裡出場的有名字角色(照抄名字)，沒有就不填。出場就算一次互動(四、4.6.4)" },
+      contact_lost: { type: "array", items: { type:"string" }, description: "（四、4.6.6）只在劇情明確斷聯時才填(被封鎖、移居國外完全沒有音訊)：照抄名冊上的名字。一般的久沒聯絡不要填" },
+      side_gig_delivery: { type: ["object","null"], description: "（八、8.11）這回合玩家交件了一筆接案訂單時才填：category照抄興趣類別，size依件數判定——small小單(1-5件、幾天內能完成)／medium中單(6-15件，或原訂單有加單)／large大單(16件以上，或活動、店家的正式訂製)。金額由系統計算，你不要在one_time_transaction回報。只能交side_gig_open_orders裡的訂單(照抄order_id)；這回合才來的新訂單(side_gig_offer_now)不能在同一回合交件", properties: { order_id:{type:["string","null"], description:"照抄side_gig_open_orders裡那一筆的order_id"}, category:{type:"string"}, size:{type:"string", enum:["small","medium","large"]}, description:{type:"string", description:"完成了什麼，一句話"} } },
       promise_new: { type: "array", description: "（十八、18.13）玩家與NPC這回合約好具體的事時登記：角色、約定內容、約定時間(照time_context的日期寫M/D；沒有具體日期就null)", items: { type:"object", properties:{ character:{type:"string"}, content:{type:"string"}, due_date:{type:["string","null"]} } } },
       promise_results: { type: "array", description: "（十八、18.13）promises_due_now與promises_fading裡這回合交代了的約定：kept有去／postponed延期(附new_due_date)／cancelled取消(要寫出原因)／faded已經自然帶過", items: { type:"object", properties:{ id:{type:"string"}, outcome:{type:"string", enum:["kept","postponed","cancelled","faded"]}, new_due_date:{type:["string","null"]} } } },
       item_moves: { type: "array", description: "（一、1.2.13）角色之間贈送、借出、交付、歸還重要物品時回報，物品轉手就要更新", items: { type:"object", properties:{ item:{type:"string"}, from:{type:"string"}, to:{type:"string", description:"現在在誰手上"}, kind:{type:"string", enum:["贈送","借出","交付","歸還"]} } } },
@@ -301,7 +318,7 @@ export const TURN_RESULT_TOOL = {
       one_time_transaction: {
         type: "array",
         description: "（三、3.9.1）正數收入合計不得超過payload的max_windfall_this_turn",
-        items: { type:"object", properties:{ label:{type:"string"}, amount:{type:"number", description:"收入為正、支出為負"} } }
+        items: { type:"object", properties:{ label:{type:"string", description:"（一、1.2.15）這筆錢是什麼，結算明細照這個名稱顯示"}, amount:{type:"number", description:"收入為正、支出為負"} }, required:["label","amount"] }
       },
       housing_choice: {
         type: ["object","null"],
@@ -355,6 +372,7 @@ export const TURN_RESULT_TOOL = {
           type: "object",
           properties: {
             name:{type:"string"}, affinity_delta:{type:"number"}, summary_add:{type:"string"},
+            recent_status:{type:["string","null"], description:"（四、4.6.7）這位角色的近況，一句話、最多30字。從漸行漸遠或失聯恢復互動的回合必填；其他回合近況有明顯變化才填"},
             gender_fill:{type:["string","null"], enum:["男","女",null], description:"（四、4.1.3）只用在active_characters裡gender是null的角色：依既有敘事回填一次性別；已有gender的角色不要填，填了也會被忽略"},
             style_fill:{type:["string","null"], enum:["直率","體貼","敏感","灑脫",null], description:"（四、4.1）只用在active_characters裡style是null的角色：依過去表現回填一次"},
             age_fill:{type:["number","null"], description:"（四、4.1.4）只用在active_characters裡age是null的角色：依既有敘事回填一個整數年齡；已有年齡的不要填"},

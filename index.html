@@ -185,7 +185,7 @@
   .round-btn.test-btn{background:#6B4FA0;border-color:#6B4FA0;color:#fff;}
   .dev-fab{position:fixed;top:10px;right:10px;z-index:310;box-shadow:0 2px 8px rgba(0,0,0,.25);}
   #panel-test .menu-note{word-break:break-all;}
-  .tb-sub{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px;color:var(--ink-soft);gap:8px;}
+  .tb-sub{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px;color:var(--ink-soft);gap:4px 8px;} /* QA 34.13#17：標籤太多時換行，存款不凸出卡片 */
   .tb-sub .right{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums;}
   .demo-tag{font-size:10.5px;color:var(--stamp);border:1px solid rgba(200,85,61,.45);border-radius:999px;padding:0 8px;white-space:nowrap;}
   .demo-tag.side-tag{color:var(--ink-soft);border-color:rgba(74,46,31,.3);margin-left:4px;}
@@ -241,6 +241,12 @@
     background:rgba(200,85,61,.14);color:var(--stamp);font-size:12.5px;font-weight:700;font-family:var(--serif);}
   .avatar.lg{width:36px;height:36px;font-size:15px;}
   .avatar.gray{background:rgba(74,46,31,.08);color:var(--ink-soft);}
+  .stl-item{position:relative;}
+  .stl-item:not(.plain){cursor:pointer;border-bottom:1px dotted currentColor;}
+  .stl-pop{display:none;position:absolute;left:0;bottom:calc(100% + 4px);z-index:40;min-width:150px;max-width:min(260px,80vw);padding:6px 10px;border-radius:8px;background:var(--paper,#FFFBF3);color:var(--ink);box-shadow:0 4px 14px rgba(74,46,31,.18);border:1px solid var(--line);font-size:11.5px;line-height:1.6;white-space:normal;}
+  .stl-row{display:flex;justify-content:space-between;gap:10px;}
+  .stl-item.open .stl-pop{display:block;}
+  @media (hover:hover){ .stl-item:hover .stl-pop{display:block;} }
   .small-line{font-size:11.5px;color:var(--ink-soft);margin:8px 0 0 !important;font-family:var(--sans) !important;line-height:1.6 !important;}
   .entry.chronicle{font-size:12px;color:var(--ink-soft);border-left:2px solid var(--line);padding-left:10px;margin:10px 0;}
   /* 16.3.6 旁白錯誤 */
@@ -317,7 +323,7 @@
   .stat-bar.has-tip > span:first-child,.ledger-row.has-tip .lbl,.cash-block.has-tip .cash-lbl{border-bottom:1px dotted rgba(74,46,31,.35);justify-self:start;}
   .stat-tip{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:6;pointer-events:none;
     padding:10px 12px;border-radius:12px;background:rgba(58,36,24,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-    color:#FFF8EE;font-size:12.5px;line-height:1.65;box-shadow:0 8px 22px rgba(74,46,31,.22);
+    white-space:pre-line;color:#FFF8EE;font-size:12.5px;line-height:1.65;box-shadow:0 8px 22px rgba(74,46,31,.22);
     opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity var(--t-fast) var(--ease),transform var(--t-fast) var(--ease),visibility 0s linear var(--t-fast);}
   .stat-tip::before{content:"";position:absolute;top:-6px;left:22px;border:6px solid transparent;border-top:none;border-bottom-color:rgba(58,36,24,.86);}
   .stat-tip b{display:block;font-size:11px;color:#F0B9A6;font-weight:400;letter-spacing:.5px;margin-top:6px;}
@@ -338,11 +344,22 @@
   .rrow .who{flex:1;min-width:0;}
   .rrow .nm{font-size:14.5px;font-weight:700;}
   .rrow .sub{font-size:12px;color:var(--ink-soft);}
-  .rrow.bg .nm{color:var(--ink-soft);}
+  .rrow.st-fading .nm,.rrow.st-deceased .nm,.rrow.st-lost .nm{color:var(--ink-soft);}
+  .rrow .dots5{flex-shrink:0;}
   .dots5{display:flex;gap:4px;}
   .dots5 i{width:8px;height:8px;border-radius:50%;background:rgba(74,46,31,.12);}
   .dots5 i.on{background:var(--stamp);}
-  .dots5.gray i.on{background:rgba(74,46,31,.35);}
+  .dots5.faded i.on{background:var(--stamp);opacity:.38;}
+  .interest-card{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;background:rgba(255,255,255,.45);}
+  .interest-card.dormant{opacity:.65;}
+  .interest-card .ic-head{display:flex;justify-content:space-between;align-items:baseline;}
+  .interest-card .ic-level{font-size:12.5px;color:var(--stamp);}
+  .interest-card .ic-track{height:6px;border-radius:3px;background:rgba(74,46,31,.12);margin:8px 0 4px;overflow:hidden;}
+  .interest-card .ic-fill{display:block;height:100%;background:var(--stamp);border-radius:3px;}
+  .interest-card .ic-sub{font-size:11.5px;color:var(--ink-soft);}
+  .npc-dyn{font-size:12.5px;margin:6px 0;line-height:1.7;}
+  .npc-dyn b{display:block;font-size:12px;color:var(--ink-soft);}
+  .npc-dyn summary{cursor:pointer;color:var(--ink-soft);font-size:12px;}
   .roster-note{font-size:12px;color:var(--ink-soft);margin:2px 0 8px;}
   .menu-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .menu-card{padding:16px 14px;cursor:pointer;text-align:left;font-family:var(--sans);color:var(--ink);transition:transform var(--t-fast) var(--ease);}
@@ -885,7 +902,7 @@ function settlePurchase(s, p){
   const effectKind = PURCHASE_CATEGORY_EFFECT[p.category];
   const statChanges = {};
   if(effectKind==="gift"){
-    const target = (s.characters||[]).find(c=>c.name===p.target && !c.deceased);
+    const target = (s.characters||[]).find(c=>c.name===p.target && !c.deceased && !c.lost);
     if(target){
       const n = s.giftCounts[target.name]||0;
       const e = n===0 ? GIFT_AFFINITY_BASE : n===1 ? Math.floor(GIFT_AFFINITY_BASE/2) : 0;
@@ -1785,7 +1802,7 @@ function applyInterestCost(s, interestEvent){
   if(interestEvent.reaction!=="positive" && interestEvent.reaction!=="neutral") return;
   const def = INTEREST_COSTS[interestEvent.category];
   const cost = { category: interestEvent.category, money:0, health:0, kind:null };
-  if(def.money && !(isStudentPhase(s) && s.cash < def.money)){ s.cash -= def.money; cost.money = def.money; }
+  if(def.money && !(isStudentPhase(s) && s.cash < def.money)){ s.cash -= def.money; cost.money = def.money; noteCashEntry(s, `${interestEvent.category}花費`, -def.money); }
   if(def.health && Math.random() < def.health.prob){
     s.stats.health = clamp(s.stats.health - def.health.amount, 0, 100);
     cost.health = def.health.amount; cost.kind = def.health.kind;
@@ -2044,7 +2061,7 @@ function resolveDivorceRecovery(s, choice){
     else s.stats.knowledge = clamp(s.stats.knowledge + 3, 0, 100);
   } else if(choice==="reconnect"){
     s.stats.network = clamp(s.stats.network + applyMarginalDiminish(3, s.stats.network), 0, 100);
-    s.characters.filter(c=>!c.deceased && !c.isChild && !INTIMATE_RELATION_RE.test(c.relation||"") && !c.romanceStatus).slice(0,3)
+    s.characters.filter(c=>!c.deceased && !c.lost && !c.isChild && !INTIMATE_RELATION_RE.test(c.relation||"") && !c.romanceStatus).slice(0,3)
       .forEach(c=>{ c.affinity = clamp(c.affinity+3, 0, 100); });
   }
   s.divorceRecoveryEventLog = { choice };
@@ -2099,7 +2116,7 @@ function finalizeDivorce(s, spouseName, propertyChoice, custodyChoice){
   if(s.propertyValue>0){
     if(propertyChoice==="keep_other" || propertyChoice==="sell"){
       // 賣出變現後分配差額：沿用7.5.3既有的賣房轉租機制；由對方保留房產並承接房貸：玩家不取得變現金額，直接歸零
-      if(propertyChoice==="sell") s.cash += (s.propertyValue - s.mortgageBalance);
+      if(propertyChoice==="sell"){ s.cash += (s.propertyValue - s.mortgageBalance); noteCashEntry(s, "賣房分配", s.propertyValue - s.mortgageBalance); }
       s.propertyValue = 0; s.mortgageBalance = 0;
       s.monthlyExpenses = s.monthlyExpenses.filter(e=>e.label!=="房貸");
       s.housing = s.housing && s.housing.type==="own" ? null : s.housing;
@@ -2523,7 +2540,7 @@ function computeStartupCapitalRequired(){
 const PARTNER_CAPITAL_SHARE = 0.5, PARTNER_INCOME_SHARE = 0.7, PARTNER_SUCCESS_BONUS_PP = 5;
 function partnerOptionProb(s){ return clamp(0.3 + (s.conscientiousness.teamSolo/100)*0.6, 0.2, 0.9); } // teamSolo越高越偏團隊
 function findBusinessPartnerCandidate(s){
-  const pool = (s.characters||[]).filter(c=>!c.deceased && !c.isChild && !c.romanceStatus && (c.affinity||0)>=50 &&
+  const pool = (s.characters||[]).filter(c=>!c.deceased && !c.lost && !c.isChild && !c.romanceStatus && (c.affinity||0)>=50 &&
     !/^(父親|母親|爸|媽|哥哥|弟弟|姊姊|姐姐|妹妹|爺爺|奶奶|阿公|阿嬤)/.test(c.relation||""));
   return pool.sort((a,b)=>(b.affinity||0)-(a.affinity||0))[0] || null;
 }
@@ -2539,6 +2556,7 @@ function launchBusiness(s, opts){
   const sb = ensurePlayStyle(s).pendingSetback;
   if(sb && sb.type==="job_loss") logPlayStyleSetbackResponse(s, sb.prevCategory==="自營/家庭事業類" ? "retry" : "pivot", ["job_loss"]);
   s.cash -= capital;
+  noteCashEntry(s, "創業啟動資金", -capital);
   s.businessCapital = capital;
   s.businessStatus = "經營中";
   s.businessOrigin = "startup"; // 12.11.1（2026-09-22新增）：區別於接手家業，供rollAnnualBusinessCheck()判斷是否套用接手家業的成功率加成
@@ -2581,7 +2599,7 @@ function rollAnnualBusinessCheck(s){
   } else {
     outcome = "loss";
     // 12.8.2【定案】虧損依規模扣除現金（2026-09-27使用者同意Claude建議，【測試參數】）：啟動資金×(10%＋經營規模×5%)
-    s.cash = Math.max(0, s.cash - Math.round((s.businessCapital||0)*(0.1 + (s.jobLevel||0)*0.05)));
+    { const before = s.cash; s.cash = Math.max(0, s.cash - Math.round((s.businessCapital||0)*(0.1 + (s.jobLevel||0)*0.05))); noteCashEntry(s, "事業虧損", s.cash-before, before); }
     s.consecutiveLossYears = (s.consecutiveLossYears||0)+1;
   }
   if(s.consecutiveLossYears>=2 && !s.pendingBusinessContinuation && (s.businessContinuationCooldown||0)<=0){
@@ -2608,7 +2626,7 @@ function resolveBusinessContinuation(s, choice){ // "close"/"persist"/"inject"
     s.businessOrigin = null;
   } else if(choice==="inject"){
     const capital = computeStartupCapitalRequired();
-    if(s.cash>=capital){ s.cash -= capital; s.businessCapital = (s.businessCapital||0)+capital; s.consecutiveLossYears = 0; }
+    if(s.cash>=capital){ s.cash -= capital; noteCashEntry(s, "事業增資", -capital); s.businessCapital = (s.businessCapital||0)+capital; s.consecutiveLossYears = 0; }
     // 現金不足：增資不成立，客戶端直接擋下，維持原狀
   }
   // persist：不做任何變動，繼續撐一年
@@ -2733,7 +2751,7 @@ const FORESHADOW_OVERSEAS_CASH_MONTHS = 6; // 【測試參數】海外線候選�
 // 五、5.2.5／十二、12.11.1：接手家業前置條件——有一位父母角色卡職業為自營業者、仍在世、且這個機會還沒被任一觸發來源用掉過
 // （2026-09-22補充：接手家業有兩個觸發來源——本函式供伏筆線與家長退休共用同一個判斷與同一個familyBusinessOfferUsed防重複旗標）
 function findFamilyBusinessParent(s){
-  return (s.characters||[]).find(c=>c.origin==="父母，從出生起" && c.occupation==="自營業者" && c.active!==false && !c.deceased && !c.familyBusinessOfferUsed) || null;
+  return (s.characters||[]).find(c=>c.origin==="父母，從出生起" && c.occupation==="自營業者" && c.active!==false && !c.deceased && !c.lost && !c.familyBusinessOfferUsed) || null;
 }
 function closeForeshadowCandidate(s, line, accepted){
   const entry = (s.careerForeshadowLines||[]).find(e=>e.line===line && e.status==="candidate");
@@ -2857,15 +2875,22 @@ function scheduleFirstSideGigOffer(s, card){
   card.gigOpenOrders = card.gigOpenOrders || [];
 }
 // 呼叫AI之前：到了排定的回合就指示AI安排一次接案機會(A3：不交給AI自行決定時機)，並排下一次
-function prepareSideGigTurn(s){
+const SIDE_GIG_OWN_PROJECT_PROB = 0.3; // 八、8.12.2【定案】重心為「興趣：X」且擁有X類接案副業時，每回合擲30%
+function prepareSideGigTurn(s, focus){
   s.sideGigIncomeNow = null;
   const offers = [];
   sideGigCards(s).forEach(c=>{
     if(c.gigNextOfferTurn==null) scheduleFirstSideGigOffer(s, c); // 舊存檔：改版前就選了副業的卡，從現在起排第一次機會
     c.gigOpenOrders = (c.gigOpenOrders||[]).filter(o=>s.turnCount - o.turn <= SIDE_GIG_ORDER_EXPIRE_TURNS);
-    if(s.turnCount < c.gigNextOfferTurn) return;
+    const ownProject = !!(focus && focus.key==="interest" && focus.interestCategory===c.category && s.turnCount < c.gigNextOfferTurn && Math.random() < SIDE_GIG_OWN_PROJECT_PROB);
+    if(s.turnCount < c.gigNextOfferTurn && !ownProject) return;
     const size = weightedPick(SIDE_GIG_SIZE_WEIGHTS[c.sideBusinessStatus]);
-    c.gigOpenOrders.push({ turn: s.turnCount, size });
+    if(ownProject){ // 主角自己的X類案子：與排定機會共用訂單清單，不動下一次排定的回合
+      c.gigOpenOrders.push({ id: `${c.id||c.category}-${s.turnCount}`, turn: s.turnCount, size });
+      offers.push({ category: c.category, level: SIDE_BUSINESS_LABELS[c.sideBusinessStatus], suggested_size: size, own_project: true });
+      return;
+    }
+    c.gigOpenOrders.push({ id: `${c.id||c.category}-${s.turnCount}`, turn: s.turnCount, size });
     const iv = SIDE_GIG_OFFER_INTERVAL[c.sideBusinessStatus];
     c.gigNextOfferTurn = s.turnCount + rnd(iv[0], iv[1]);
     offers.push({ category: c.category, level: SIDE_BUSINESS_LABELS[c.sideBusinessStatus], suggested_size: size });
@@ -2874,7 +2899,8 @@ function prepareSideGigTurn(s){
 }
 function sideGigOpenOrdersPayload(s){
   const out = [];
-  sideGigCards(s).forEach(c=>(c.gigOpenOrders||[]).forEach(o=>out.push({ category:c.category, size:o.size, turns_since_offer: s.turnCount-o.turn })));
+  // QA 34.13#1（2026-09-29）：這回合才排定的機會在side_gig_offer_now，還不能交件，不列在這裡
+  sideGigCards(s).forEach(c=>(c.gigOpenOrders||[]).filter(o=>o.turn < s.turnCount).forEach(o=>out.push({ order_id: o.id||null, category:c.category, size:o.size, turns_since_offer: s.turnCount-o.turn })));
   return out;
 }
 // AI回報交件：每張卡每回合最多一筆，必須有等待交件的訂單；偶爾接案最多到中單。金額＝份數(範圍內均勻隨機)×1份×興趣加乘，取整數，一次入帳
@@ -2884,15 +2910,22 @@ function applySideGigDeliveries(s, deliveries){
   let total = 0; const parts = [];
   list.forEach(d=>{
     if(!d) return;
-    const card = sideGigCards(s).find(c=>c.category===d.category) || (sideGigCards(s).length===1 ? sideGigCards(s)[0] : null);
-    if(!card || done.has(card.id) || !(card.gigOpenOrders||[]).length) return;
-    const order = card.gigOpenOrders.shift();
+    // 八、8.12.2（2026-09-29，取代「對不到就沿用唯一的副業卡」）：category必須是玩家目前實際擁有的副業類別，不符就拒絕計酬並寫入錯誤紀錄
+    const card = sideGigCards(s).find(c=>c.category===d.category);
+    if(!card){ addReviewFlag(s, "side_gig_category_mismatch", `AI回報交件類別「${d.category}」不是玩家目前的副業類別，未計酬`); return; }
+    if(done.has(card.id)) return;
+    // QA 34.13#1（2026-09-29）：同一筆訂單被付兩次——新訂單在呼叫AI之前就排進清單，AI在同一回合又把它回報成交件(其實是上一筆已交過的)。
+    // 只有前幾回合就接下的訂單能交件；有order_id就對到那一筆，沒有就交最舊的一筆
+    const eligible = (card.gigOpenOrders||[]).filter(o=>o.turn < s.turnCount);
+    const order = (d.order_id && eligible.find(o=>o.id===d.order_id)) || (!d.order_id ? eligible[0] : null);
+    if(!order) return;
+    card.gigOpenOrders = card.gigOpenOrders.filter(o=>o!==order);
     let size = SIDE_GIG_ORDER_SHARES[d.size] ? d.size : order.size;
     if(card.sideBusinessStatus==="gig" && size==="large") size = "medium";
     const [lo,hi] = SIDE_GIG_ORDER_SHARES[size];
     const amount = Math.max(1, Math.round((lo + Math.random()*(hi-lo)) * incomeShareUnit(s) * sideGigInterestMult(card.investment||0)));
     s.cash += amount; total += amount; done.add(card.id);
-    parts.push({ category: card.category, size, amount });
+    parts.push({ category: card.category, size, amount, description: d.description ? String(d.description).slice(0,20) : "" });
   });
   s.sideGigIncomeNow = total ? { amount: total, deliveries: parts } : null;
   return s.sideGigIncomeNow;
@@ -3757,8 +3790,28 @@ function newRoll(carry, identity){
   // relation標「（不同住）」、不同住、自己的教養風格與職業、好感度依自己的風格區間再−10（不同住、見面少）；
   // 其餘為長期失聯，不建卡（prompt說明：沒有這張卡就代表失聯，可以被提起但不安排見面）。
   // 不同住的一方不列入presentParentStyles（不影響依附/社交起點）、也不列入5.5三餐資格，職業不抽政治人物（避免改到家境判定）
+  // 四、4.6.2（2026-09-29）：開局就沒有音訊的家長(離異長期失聯)、已過世的家長，也建角色卡，一開始就是「失聯」／「已故」。
+  // 【技術判斷，使用者確認】比照離異仍有聯絡那一支骰姓名、職業、教養風格；好感：失聯者風格區間−10、已故者照風格區間，開局即凍結。
+  // 失聯期間不進13.5父母健康狀態機(找回後才開始)，已故者不進。不列入presentParentStyles(不影響依附/社交起點)、不抽政治人物
+  function addAbsentParent(relationLabel, kind){
+    const occ = pick(PARENT_OCCUPATIONS.filter(o=>o.label!=="政治人物"));
+    const style = pick(PARENTING_STYLES);
+    const lost = kind==="lost";
+    characters.push({
+      name: relationLabel==="父親" ? "爸爸" : "媽媽",
+      relation: relationLabel+(lost ? "（不同住）" : ""), gender: FAMILY_ROLE_GENDER[relationLabel], dialogueStyle: rollDialogueStyle(),
+      traits: style.parentTrait + "；" + occ.trait + (lost ? "；離婚後長期沒有音訊" : "；在你小時候過世"),
+      affinity: clamp(rnd(style.affinityRange[0],style.affinityRange[1]) - (lost ? 10 : 0), 0, 100),
+      summary:"", lastTurn:turnCount, active:false, isChild:false,
+      origin: "父母，從出生起", cohabiting: false,
+      lost: lost || undefined, lostTurn: lost ? turnCount : undefined,
+      deceased: lost ? undefined : true, estateSettled: lost ? undefined : true, healthStage: lost ? 1 : 4,
+      age: lost ? 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX) : undefined,
+      occupation: occ.label
+    });
+  }
   function addNonResidentDivorcedParent(relationLabel){
-    if(Math.random() >= DIVORCED_PARENT_CONTACT_PROB) return;
+    if(Math.random() >= DIVORCED_PARENT_CONTACT_PROB){ addAbsentParent(relationLabel, "lost"); return; }
     const occ = pick(PARENT_OCCUPATIONS.filter(o=>o.label!=="政治人物"));
     const style = pick(PARENTING_STYLES);
     characters.push({
@@ -3780,7 +3833,9 @@ function newRoll(carry, identity){
     addNormalParent(custodial);
     addNonResidentDivorcedParent(custodial==="父親" ? "母親" : "父親");
   } else if(familyStructure==="單親－喪親"){
-    addNormalParent(pick(["父親","母親"]));
+    const living = pick(["父親","母親"]);
+    addNormalParent(living);
+    addAbsentParent(living==="父親" ? "母親" : "父親", "deceased");
   } else if(familyStructure==="隔代教養"){
     const gp = pick([["阿公","爺爺"],["阿嬤","奶奶"]]);
     presentParentStyles.push("隔代教養");
@@ -4849,7 +4904,7 @@ function advanceStructuredTime(actionText, focusKey){
 // 3.4.11子女扶養費三級判斷、13.5父母狀態機共用——所有帶有數字age欄位的角色卡統一在這裡跟著玩家年齡一起推進
 function ageChildren(s, years){
   if(!years) return;
-  (s.characters||[]).forEach(c=>{ if(typeof c.age==="number") c.age += years; });
+  (s.characters||[]).forEach(c=>{ if(typeof c.age==="number" && !c.deceased) c.age += years; }); // 已故的人年齡停在過世那年(4.6.5)
 }
 // 九、9.8.1（2026-09-22新增）：帶著halfYearCarry=1進入22歲以後職涯曲線時，當年度回合預算設為一半
 // （下一個生日在半年後），halfYearCarry歸零；沒有halfYearCarry時不影響原本行為
@@ -4919,6 +4974,7 @@ function releaseCohabiting(c){
 function demoteStaleCharacters(hintCandidates){
   const THRESHOLD=12;
   state.characters.forEach(c=>{
+    if(c.deceased || c.lost) return; // 四、4.6.5／4.6.6：好感凍結，不走緩降也不走降級
     if(c.cohabiting){
       const idle = state.turnCount - c.lastTurn;
       if(idle>0 && idle % COHABITING_IDLE_THRESHOLD === 0){
@@ -4998,6 +5054,8 @@ function relationshipStatusLabel(c){
   if(c.romanceStatus==="breakup") return "貌合神離";
   // 四、4.1.5（2026-09-29 A12）：家人(父母、手足、祖父母、子女等)改用專屬五級標籤，門檻沿用朋友等級；非家人不變
   if(isFamilyCharacter(c)) return FAMILY_RELATION_LABELS[relationshipTierIndex(c)];
+  if(c.deceased) return "已故"; // 四、4.6.5（2026-09-29）
+  if(c.lost) return "失聯";     // 四、4.6.6
   if(!c.active) return "漸行漸遠";
   if(c.affinity>=80) return "多年好友";
   if(c.affinity>=60) return "熟悉的朋友";
@@ -5005,6 +5063,282 @@ function relationshipStatusLabel(c){
   if(c.affinity>=20) return "認識不深";
   return "關係生疏";
 }
+// ========== 四、4.6 關係面板與角色狀態（2026-09-29）==========
+// 四種狀態：一般／漸行漸遠(12回合沒互動，非家人)／已故／失聯。狀態一律由程式改，AI只回報事件(contact_lost)
+// 漸行漸遠、失聯期間好感不變動(4.6.3)，所以「疏遠前／失聯前的關係等級」直接用現在的好感度算
+function characterState(c){
+  if(!c) return "normal";
+  if(c.deceased) return "deceased";
+  if(c.lost) return "lost";
+  if(!c.active && !isFamilyCharacter(c)) return "fading"; // 家人不進漸行漸遠(4.1.5／4.6.2)
+  return "normal";
+}
+const CHARACTER_STATE_LABELS = { fading:"漸行漸遠", deceased:"已故", lost:"失聯" };
+// 4.6.1：一般與漸行漸遠混合依好感排序(同分最近互動在前)，已故、失聯固定排最後(已故在前)，組內依好感
+function sortedRosterCharacters(s){
+  const rank = c=>({ deceased:1, lost:2 }[characterState(c)] || 0);
+  return (s.characters||[]).slice().sort((a,b)=>rank(a)-rank(b) || (b.affinity||0)-(a.affinity||0) || (b.lastTurn||0)-(a.lastTurn||0));
+}
+// 4.6.6：找回失聯者的成功率。家人一律50%；朋友依失聯前等級：普通朋友以下50%／熟悉的朋友65%／多年好友80%
+function lostContactFindProb(c){
+  if(isFamilyCharacter(c)) return 0.5;
+  const tier = relationshipTierIndex(c);
+  return tier>=4 ? 0.8 : tier===3 ? 0.65 : 0.5;
+}
+// 4.6.4：重逢的敘事氣氛依疏遠前的關係等級(熟悉的朋友以上一見如故，以下寫出時間的距離感)
+function reunionTone(c){ return relationshipTierIndex(c)>=3 ? "一見如故" : "生疏"; }
+// 角色重新有互動(找到、出場、角色更新)：漸行漸遠→一般，記下重逢給下一次提示用；已故、失聯不經過這裡
+function markCharacterInteracted(s, c){
+  if(!c || c.deceased || c.lost) return false;
+  const wasFading = characterState(c)==="fading";
+  c.active = true; c.lastTurn = s.turnCount;
+  return wasFading;
+}
+// 4.6.6：旁白回報劇情明確斷聯。名字要在名冊上、不能是已故
+function applyContactLost(s, names){
+  const out = [];
+  (Array.isArray(names) ? names : []).forEach(n=>{
+    const c = (s.characters||[]).find(x=>x.name===String(n||"").trim());
+    if(!c || c.deceased || c.lost || c.isChild) return;
+    c.lost = true; c.active = false; c.lostTurn = s.turnCount;
+    shelvePlotLinesForFadedCharacter(s, c.name);
+    // 比照4.4：曖昧中／交往中的對象斷了聯絡，視為分手(已婚對象不在這裡處理，婚姻狀態由七、7.6離婚流程決定)
+    if(c.romanceStatus==="ambiguous" || c.romanceStatus==="dating" || c.romanceStatus==="stable") c.romanceStatus = "breakup";
+    if(s.seekTarget===c.name) s.seekTarget = null;
+    out.push(c.name);
+  });
+  return out;
+}
+// 4.6.8 滑到動態：每10回合最多1位(不在本回合場景、已有近況、一般或漸行漸遠)，優先好感最高；用了不算互動
+const SOCIAL_FEED_INTERVAL = 10;
+function pickSocialFeed(s, excludeNames){
+  if(s.lastFeedTurn!=null && s.turnCount - s.lastFeedTurn < SOCIAL_FEED_INTERVAL) return null;
+  const ex = new Set((excludeNames||[]).filter(Boolean));
+  // 四、4.7.4：有已得知或尚未得知的背景事件也算「已有近況」；被選為動態素材時，未得知的事件在此揭曉
+  const c = (s.characters||[]).filter(c=>(c.recentStatus || (c.events||[]).length) && !ex.has(c.name) && !c.isChild && ["normal","fading"].includes(characterState(c)) && !c.cohabiting)
+    .sort((a,b)=>(b.affinity||0)-(a.affinity||0))[0];
+  if(!c) return null;
+  s.lastFeedTurn = s.turnCount;
+  const fresh = unknownEventNames(c); revealCharacterEvents(c);
+  const latest = (c.events||[]).filter(e=>e.known).slice(-1)[0];
+  return { name: c.name, recent_status: c.recentStatus || undefined, event: fresh.length ? fresh[fresh.length-1] : (latest ? latest.name : undefined) };
+}
+// 一、1.2.14 精簡名冊：主角以外所有認識過的角色，每人一行「名字｜性別｜與主角的關係｜一句話簡介｜狀態」。
+// 依建卡順序排(不依好感)，內容只在建卡、狀態或近況改變時才變，讓Worker可以放在提示快取的位置
+function rosterLine(s, c){
+  const st = characterState(c);
+  const rel = relationCategoryLabel(c) || c.relation || "";
+  const intro = [npcAffiliation(s, c), (c.links||[]).map(l=>`${l.name}的${l.relation}`).join("、"), String(c.traits||"").split(/[；;，,。]/)[0]]
+    .filter(Boolean).join("、").slice(0, 30);
+  let status = st==="normal" ? "一般" : CHARACTER_STATE_LABELS[st];
+  if(st==="fading") status += `（重逢時：${reunionTone(c)}）`;
+  if(c.left_circle) status += "（已離開主角的日常生活圈）"; // 四、4.7.3【距】
+  return [c.name, c.gender||"未記錄", rel, intro || "—", status].join("｜");
+}
+function buildCharacterRoster(s){
+  return (s.characters||[]).map(c=>rosterLine(s, c)).slice(0, 80);
+}
+
+
+// ========== 四、4.7 NPC背景事件表（2026-09-29）==========
+// 完全由程式執行，不呼叫AI。學生時期每學期(寒假／暑假第一回合)擲一次，出社會後每年(跨入新年的第一回合)擲一次。
+// 事件表：[等級, 名稱, 權重, 影響標記(自距機邀感), 關聯關鍵字, 條件, 效果]
+// 條件：noPartner目前無交往對象／hasPartner目前有交往對象(含已婚)／unmarried未婚／married需married／hasChild需has_child／notRetired未retired
+// 效果：+partnered -partnered +married -married +hasChild +retired +widowed
+const BG_EVENT_TABLE = {
+  "13-18": [
+    ["日常","開始打工",2,"自","打工"],["日常","迷上偶像或新遊戲",2,"自",""],["日常","加入新社團",2,"自","社團"],["日常","換了新髮型",1,"自",""],
+    ["日常","開始補習",2,"自","學業"],["日常","開始學樂器或畫畫",1,"自","音樂,美術"],
+    ["轉折","轉學",1,"距",""],["轉折","交了男女朋友",2,"自感","","noPartner","+partnered"],["轉折","分手",1,"自感","","dating","-partnered"],
+    ["轉折","比賽或作品得獎",2,"自","美術,運動,學業,音樂"],["轉折","被選為幹部",1,"自","社團"],["轉折","開始接小案子賺零用錢",1,"機","美術,手作"],
+    ["重大","家裡出狀況搬家",2,"距",""],["重大","父母離婚",1,"自",""],["重大","休學",1,"距",""]],
+  "19-22": [
+    ["日常","換宿舍或搬出去租屋",2,"自",""],["日常","開始健身",2,"自","運動"],["日常","學新樂器或新語言",2,"自","音樂,語言"],["日常","投入系學會或社團",2,"自","社團"],["日常","開始實習",1,"機",""],
+    ["轉折","轉系或轉學",1,"距",""],["轉折","出國交換",1,"距","語言"],["轉折","開始交往",2,"自感","","noPartner","+partnered"],["轉折","分手",1,"自感","","dating","-partnered"],
+    ["轉折","作品入選展覽或競賽得獎",1,"邀","美術,音樂,手作"],["轉折","開始經營自媒體",1,"自",""],
+    ["重大","休學",1,"距",""],["重大","創業",1,"機","商業,手作"],["重大","家中經濟出狀況，開始扛家計",1,"自",""]],
+  "23-30": [
+    ["日常","換租屋處",2,"自",""],["日常","養了寵物",2,"自",""],["日常","報名課程或考證照",2,"自","學業"],["日常","開始健身或跑步",2,"自","運動"],["日常","迷上新嗜好",2,"自",""],
+    ["轉折","換工作",3,"機",""],["轉折","升職",1,"機",""],["轉折","被裁員",1,"自",""],["轉折","出國打工度假",1,"距","語言"],["轉折","搬到其他城市",1,"距",""],
+    ["轉折","開始交往",2,"自感","","noPartner","+partnered"],["轉折","分手",2,"自感","","dating","-partnered"],
+    ["重大","結婚",2,"邀感","","unmarried","+married"],["重大","生小孩",1,"自感","","","+hasChild"],["重大","創業",1,"機","商業,手作"],["重大","出國定居",1,"距",""]],
+  "31-45": [
+    ["日常","換車",1,"自",""],["日常","開始跑馬拉松或登山",2,"自","運動"],["日常","重拾年輕時的嗜好",2,"自",""],["日常","裝潢房子",1,"自",""],["日常","孩子上小學",2,"自","","hasChild"],
+    ["轉折","升主管",2,"機",""],["轉折","搬新家",2,"自",""],["轉折","轉行",2,"機",""],["轉折","開店",1,"機邀","商業,手作"],["轉折","調職到外地",1,"距",""],
+    ["轉折","開始交往",1,"自感","","noPartnerUnmarried","+partnered"],["轉折","感情生變",1,"自感","","hasPartner"],
+    ["重大","結婚",1,"邀感","","unmarried","+married"],["重大","離婚",1,"自感","","married","-married-partnered"],["重大","買房",2,"自",""],["重大","生第二胎",1,"自感","","hasChild"],["重大","創業",1,"機","商業"]],
+  "46-60": [
+    ["日常","迷上登山或園藝",2,"自","運動"],["日常","重拾舊興趣",2,"自",""],["日常","開始注重養生",2,"自",""],["日常","辦同學會",1,"邀",""],
+    ["轉折","孩子離家念書",1,"自","","hasChild"],["轉折","換跑道",2,"機",""],["轉折","升上高階主管",1,"機",""],["轉折","搬回老家",1,"距",""],["轉折","開始照顧年邁父母",2,"自",""],
+    ["重大","父母過世",2,"邀",""],["重大","提早退休",1,"自","","notRetired","+retired"],["重大","大病一場後康復",1,"自",""],["重大","離婚",1,"自感","","married","-married-partnered"]],
+  "61-999": [
+    ["日常","去上社區大學",2,"自","學業"],["日常","含飴弄孫",2,"自","","hasChild"],["日常","迷上旅行",2,"自",""],["日常","加入志工隊",2,"自",""],
+    ["轉折","退休",2,"自","","notRetired","+retired"],["轉折","搬去跟子女同住",1,"距","","hasChild"],["轉折","搬進長照機構",1,"距",""],["轉折","喪偶",1,"自","","married","-married-partnered+widowed"],
+    ["重大","重病",2,"自",""]]
+};
+const BG_EVENT_BANDS = Object.keys(BG_EVENT_TABLE).map(k=>{ const [a,b] = k.split("-").map(Number); return { min:a, max:b, key:k }; });
+const BG_EVENTS = []; const BG_EVENT_BY_NAME = {};
+BG_EVENT_BANDS.forEach(b=>BG_EVENT_TABLE[b.key].forEach(([lv,name,w,tags,rel,need,fx])=>{
+  const e = { band:b.key, lv, name, w, tags:tags.split(""), rel: rel ? rel.split(",") : [], need: need||"", fx: fx||"" };
+  BG_EVENTS.push(e); if(!BG_EVENT_BY_NAME[name] || lv==="重大") BG_EVENT_BY_NAME[name] = e; // 同名(分手、創業、離婚等)標記相同，取任一即可
+}));
+// 關聯關鍵字：字面比對人物卡relation／affiliation／traits，另加同義詞(【技術判斷】)
+const BG_REL_SYNONYMS = { 美術:["美術","畫","藝術","設計","插畫"], 運動:["運動","球","跑","健身","游泳"], 學業:["學業","讀書","學霸","成績","課"], 社團:["社團","社"], 音樂:["音樂","吉他","歌","樂團","鋼琴"],
+  語言:["語言","英文","日文","外語","韓"], 商業:["商","生意","老闆","創業","業務"], 手作:["手作","手工","工藝","工作室"], 打工:["打工","兼職","店員","工讀"] };
+const BG_LEVEL_TABLE = { // [日常, 轉折, 重大] 累積機率(其餘無事)
+  studentYoung:[0.25,0.08,0.02], studentAdult:[0.175,0.075,0.025], adult:[0.35,0.15,0.05]
+};
+function bgDeathProb(age, student){
+  const p = age>=81 ? 0.06 : age>=71 ? 0.03 : age>=61 ? 0.01 : 0;
+  return student ? p/2 : p;
+}
+function bgTags(c){ return c.bgTags = c.bgTags || {}; }
+function bgNeedOk(c, need){
+  const t = c.bgTags||{}; const partner = !!(t.partnered||t.married);
+  switch(need){
+    case "": return true;
+    case "noPartner": return !partner;
+    case "hasPartner": return partner;
+    case "dating": return !!t.partnered && !t.married; // 「分手」：未婚且有交往對象
+    case "unmarried": return !t.married;
+    case "noPartnerUnmarried": return !partner && !t.married;
+    case "married": return !!t.married;
+    case "hasChild": return !!t.hasChild;
+    case "notRetired": return !t.retired;
+  }
+  return true;
+}
+function bgApplyFx(c, fx, name){
+  const t = bgTags(c);
+  if(name==="結婚") t.partnered = true;
+  (fx.match(/[+-][a-zA-Z]+/g)||[]).forEach(f=>{ t[f.slice(1)] = f[0]==="+"; if(f[0]==="-") delete t[f.slice(1)]; });
+}
+function bgCharacterText(c){ return [c.relation, c.affiliation, c.traits].filter(Boolean).join(" "); }
+function bgRelMult(c, e){
+  if(!e.rel.length) return 1;
+  const text = bgCharacterText(c);
+  return e.rel.some(k=>(BG_REL_SYNONYMS[k]||[k]).some(w=>text.includes(w))) ? 1.5 : 1;
+}
+// 與主角有伴侶／同住關係的人(配偶、前配偶、同住者)不擲事件：事件表描述的是「一般朋友同學」的生活，配偶的狀態由婚姻系統管
+function bgRollable(c){
+  if(c.deceased || isFamilyCharacter(c) || c.isChild || c.cohabiting) return false;
+  if(["married","divorced","widowed"].includes(c.romanceStatus)) return false;
+  const age = typeof c.age==="number" ? c.age : null;
+  return (age==null ? true : age>=13);
+}
+function bgEventPool(s, c, band, lv, excludeFeel){
+  return BG_EVENTS.filter(e=>e.band===band && e.lv===lv && bgNeedOk(c, e.need) && !(excludeFeel && e.tags.includes("感")));
+}
+function rollBackgroundEventForCharacter(s, c, mode, label){
+  const age = typeof c.age==="number" ? c.age : s.age;
+  const student = mode==="student";
+  // 過世另外擲骰(不走等級表)；擲中後狀態改為已故，不再擲事件
+  if(Math.random() < bgDeathProb(age, student)){
+    c.deceased = true; c.active = false; c.bgDied = true;
+    pushBgEvent(c, { name:"過世", lv:"重大", label, turn:s.turnCount });
+    return "過世";
+  }
+  const probs = student ? (age<=22 ? BG_LEVEL_TABLE.studentYoung : BG_LEVEL_TABLE.studentAdult) : BG_LEVEL_TABLE.adult;
+  const r = Math.random();
+  const lv = r<probs[0] ? "日常" : r<probs[0]+probs[1] ? "轉折" : r<probs[0]+probs[1]+probs[2] ? "重大" : null;
+  if(!lv) return null;
+  const band = (BG_EVENT_BANDS.find(b=>age>=b.min && age<=b.max)||{}).key;
+  if(!band) return null;
+  const inRelationship = ["ambiguous","dating","stable"].includes(c.romanceStatus); // 主角正在交往的對象不抽感情類
+  const pool = bgEventPool(s, c, band, lv, inRelationship);
+  if(!pool.length) return null;
+  const weights = pool.map(e=>e.w*bgRelMult(c, e));
+  let x = Math.random()*weights.reduce((a,b)=>a+b,0), pick = pool[pool.length-1];
+  for(let i=0;i<pool.length;i++){ x -= weights[i]; if(x<=0){ pick = pool[i]; break; } }
+  bgApplyFx(c, pick.fx, pick.name);
+  if(pick.tags.includes("距")) c.left_circle = true; // 旁白不可讓他出現在主角的日常場景，主角主動去找時除外
+  pushBgEvent(c, { name:pick.name, lv:pick.lv, label, turn:s.turnCount });
+  return pick.name;
+}
+const BG_EVENTS_KEEP = 30;
+function pushBgEvent(c, ev){
+  c.events = c.events || [];
+  c.events.push({ name:ev.name, lv:ev.lv, label:ev.label, turn:ev.turn, known:false });
+  while(c.events.length>BG_EVENTS_KEEP){ const i = c.events.findIndex(e=>e.known); c.events.splice(i>=0?i:0, 1); }
+}
+const BG_INVITE_TEXT = { 結婚:n=>`去參加${n}的婚禮`, 作品入選展覽或競賽得獎:n=>`去看${n}的作品展出`, 開店:n=>`去${n}新開的店捧場`, 辦同學會:n=>`去${n}辦的同學會`, 父母過世:n=>`去${n}父母的告別式，陪陪${n}` };
+function bgLabelNow(s){
+  const mode = s.timeState.stageMode;
+  if(mode==="highschool" || mode==="college"){
+    const idx = s.timeState.segmentIndex % YEAR_SEGMENTS.length;
+    const yr = mode==="highschool" ? ["高一","高二","高三"][clamp(s.timeState.yearInStage,1,3)-1] : collegeYearLabel(s);
+    return yr + (idx<SEMESTER_PHASES.length ? "寒假" : "暑假");
+  }
+  return `${s.age}歲`;
+}
+// takeTurn呼叫：判斷這回合該不該擲。回傳是否有擲
+function maybeRollBackgroundEvents(s, adv){
+  if(s.idleMode || s.timeState.prologue) return false;
+  let mode = null;
+  if(focusModeActive(s)){
+    if(adv && adv.holiday && (s.turnCount - (s.bgLastRollTurn ?? -99)) >= 12) mode = "student"; // 一個假期最長8回合，兩個假期相隔至少19回合
+  } else if(adv && adv.window){
+    const y = calAbsToDate(adv.window.start).y;
+    if(s.bgYear==null) s.bgYear = y;
+    else if(y > s.bgYear){ s.bgYear = y; mode = "adult"; }
+  }
+  if(!mode) return false;
+  s.bgLastRollTurn = s.turnCount;
+  runBackgroundEvents(s, mode);
+  return true;
+}
+function runBackgroundEvents(s, mode){
+  const label = bgLabelNow(s);
+  s.newsQueue = s.newsQueue || []; s.pendingInvites = s.pendingInvites || [];
+  const done = [];
+  (s.characters||[]).slice().forEach(c=>{
+    if(!bgRollable(c)) return;
+    const name = rollBackgroundEventForCharacter(s, c, mode, label);
+    if(!name) return;
+    done.push({ who:c.name, name });
+    const ev = c.events[c.events.length-1];
+    const close = (c.affinity||0)>=60 && !c.lost; // 熟悉的朋友以上(4.1.1)
+    if(ev.lv!=="日常" && close) s.newsQueue.push({ who:c.name, name });
+    const def = BG_EVENT_BY_NAME[name];
+    if(def && def.tags.includes("邀") && !c.lost && !c.deceased) s.pendingInvites.push({ who:c.name, name });
+    if(name==="過世" && !close) { /* 已故者在通訊錄立刻顯示，事件等被提起時揭曉 */ }
+  });
+  s.newsQueue = s.newsQueue.slice(-12); s.pendingInvites = s.pendingInvites.slice(-6);
+  return done;
+}
+function revealCharacterEvents(c){
+  const out = [];
+  (c.events||[]).forEach(e=>{ if(!e.known){ e.known = true; out.push(e.name); } });
+  return out;
+}
+function unknownEventNames(c){ return (c.events||[]).filter(e=>!e.known).map(e=>e.name); }
+// 一回合最多帶一件熟悉朋友的消息，其餘依序排到後面的回合
+function takeFriendNews(s){
+  while((s.newsQueue||[]).length){
+    const n = s.newsQueue.shift();
+    const c = (s.characters||[]).find(x=>x.name===n.who);
+    if(!c || c.lost) continue;
+    const ev = (c.events||[]).find(e=>!e.known && e.name===n.name);
+    if(!ev) continue;
+    ev.known = true;
+    return { name:c.name, event:ev.name, when:ev.label };
+  }
+  return null;
+}
+// 【邀】類事件：下一回合的選項中加入一個相關選項(只出現這一回合)，選項出現時即標為已得知
+function takeInviteChoice(s){
+  while((s.pendingInvites||[]).length){
+    const inv = s.pendingInvites.shift();
+    const c = (s.characters||[]).find(x=>x.name===inv.who);
+    if(!c || c.lost) continue;
+    const ev = (c.events||[]).find(e=>e.name===inv.name);
+    if(ev) ev.known = true;
+    const f = BG_INVITE_TEXT[inv.name];
+    return f ? f(c.name) : `去找${c.name}聊聊近況`;
+  }
+  return null;
+}
+
 // ========== 一、1.2.11 敘事尺度(親密關係)／四、4.1.4 年齡欄位（2026-09-28定案）==========
 const ROMANCE_MIN_AGE = 12;          // 1.2.11.3.2：兩人皆須滿12歲才能進入戀愛狀態
 const MINOR_ROMANCE_MAX_AGE_GAP = 2; // 1.2.11.3.2：兩人皆未成年時年齡差不得超過2歲
@@ -5316,6 +5650,7 @@ function rollAnnualIllnessCheck(s){
   // 醫療費扣1個月基本生活開銷；接下來ACUTE_RECOVERY_TURNS回合每回合健康+ACUTE_RECOVERY_PER_TURN（不超過健康上限），見applyResult
   const medicalCost = computeBasicLivingCost(s); // 2026-09-28：改用不含可支配花費的基本生活開銷
   s.cash -= medicalCost;
+  noteCashEntry(s, "醫療費", -medicalCost);
   s.acuteRecoveryTurns = ACUTE_RECOVERY_TURNS;
   return { level:"acute", medicalCost };
 }
@@ -5379,7 +5714,7 @@ function advanceMajorIllness(s){
   }
   if(mi.stage==="treatment"){
     s.stats.health = clamp(s.stats.health - rnd(2,5), 0, 100); // 【測試參數,待驗證】治療期健康持續扣分
-    s.cash -= Math.round(computeBasicLivingCost(s)*MAJOR_TREATMENT_COST_MONTHS_PER_TURN); // 13.3.4：3.4.5高費用等級的醫療支出（2026-09-27）
+    { const cost = Math.round(computeBasicLivingCost(s)*MAJOR_TREATMENT_COST_MONTHS_PER_TURN); s.cash -= cost; noteCashEntry(s, "治療費", -cost); } // 13.3.4：3.4.5高費用等級的醫療支出（2026-09-27）
     if(mi.turnsInStage>=mi.treatmentTargetTurns){
       // 【定案】岔路點三者在幸福感計算上地位平等，不預設哪個是正確結果；技術判斷：機率式自動判定，非玩家選項(文件未列出玩家可選的具體選項文字)
       const roll = rnd(1,100);
@@ -5443,7 +5778,7 @@ function rollParentHealthStageAdvance(s){
   // 2026-09-27修正（既有bug）：原本也排除active===false，但父母搬離/不同住後12回合沒互動就會被降為背景角色(active=false)，
   // 從此不再老化、不會需要照顧或過世（服刑家長從第13回合起就是如此）。降級只代表近期沒出場，不代表不在世；
   // 已過世一律有deceased標記（含傳承時的上一代主角），所以只看deceased即可
-  s.characters.filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && (c.healthStage||1)<4 && !c.deceased).forEach(c=>{
+  s.characters.filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && (c.healthStage||1)<4 && !c.deceased && !c.lost).forEach(c=>{ // 4.6.2：失聯期間不進狀態機
     if(s.idleMode && ((c.age||0) >= PARENT_HEALTH_HARD_CAP_AGE || (c.healthStage||1)>=PARENT_HEALTH_LAST_LIVING_STAGE)) return; // 10.6.7：放置期間家人過世比照死亡排除，最後一個在世階段也不往下推
     // 13.5加註（2026-09-28）：傳承中的上一代死亡時間依七、7.4.3.3.1鎖定，狀態機的死亡結果對他停用，其餘(需要協助、失能)照常
     const locked = typeof c.lockedDeathChildAge==="number";
@@ -5581,6 +5916,7 @@ function finalizeParentDeath(s, parentName){
   // 七、7.4.3.3.2（2026-09-28）：傳承中的上一代，遺產是上一世結束時就固定的份額
   const inheritance = typeof parent.lockedEstateShare==="number" ? parent.lockedEstateShare : (s.familySavings ? Math.round(s.familySavings*0.1) : rnd(5,20));
   s.cash += inheritance;
+  noteCashEntry(s, "遺產", inheritance);
   // 13.6【定案】喪禮回合採強制過渡回合的敘事處理已交由system prompt guidance；結構化紀錄部分：直接寫入L3人生履歷
   s.chronicle.push(`（${s.age}歲）${parent.relation}過世了`);
   completeMilestone(s, "parent_death"); // 4.3.1（2026-09-27）
@@ -5592,7 +5928,7 @@ function finalizeParentDeath(s, parentName){
   // 13.6【定案】另一位家長進入單親狀態、照顧負荷提升（2026-09-27使用者同意Claude建議）：在世的另一位家長健康階段提前一階
   // （不超過失能長照），進入需要協助/失能時照常跳照顧決策彈窗
   // 離異不同住的另一方不是「單親狀態下的另一位家長」（兩人早已分開），不套用照顧負荷提前
-  const otherParent = s.characters.find(c=>c.name!==parentName && (c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && !c.deceased && !/不同住/.test(c.relation||""));
+  const otherParent = s.characters.find(c=>c.name!==parentName && (c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && !c.deceased && !c.lost && !/不同住/.test(c.relation||""));
   let otherParentStage = null;
   if(otherParent && (otherParent.healthStage||1) < PARENT_HEALTH_LAST_LIVING_STAGE){
     otherParent.healthStage = (otherParent.healthStage||1)+1;
@@ -5616,7 +5952,7 @@ const PARENT_RETIREMENT_AGE = 65;
 const PARENT_RETIREMENT_SELF_EMPLOYED_EXTRA = 5;
 function checkParentRetirements(s){
   const events = [];
-  (s.characters||[]).filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && !c.deceased && !c.retired && typeof c.age==="number").forEach(c=>{
+  (s.characters||[]).filter(c=>(c.origin==="父母，從出生起" || c.origin==="隔代教養，從出生起") && !c.deceased && !c.lost && !c.retired && typeof c.age==="number").forEach(c=>{
     const retireAge = PARENT_RETIREMENT_AGE + (c.occupation==="自營業者" ? PARENT_RETIREMENT_SELF_EMPLOYED_EXTRA : 0);
     if(c.age < retireAge) return;
     c.retired = true;
@@ -5667,7 +6003,7 @@ const RECENT_SUMMARY_TURNS = 6; // 【測試參數,Claude Code判斷,呼應L3履
 // 程式直接算好級距+建議字數告訴AI，不讓AI自己換算週期。三個級距的分界(2週=0.5個月/1個月)與各級字數皆為【測試參數,暫定,待驗證】
 // 2026-09-24：①tension為low時取該級距下限(1.2.8.4.3定案)；②字數含行動結果＋新場景兩部分，行動結果約占1/4-1/3(1.2.9.11.3)
 const RESPONSE_WORDS_MIN = 200, RESPONSE_WORDS_MAX = 350; // 十八、18.10.2【測試參數，暫定，待使用者確認】
-function narrativeLengthTier(monthsCrossed, tension){
+function narrativeLengthTier(monthsCrossed, tension, focusExtra){
   const m = monthsCrossed||0;
   let g;
   if(m<=0.5) g = { tier:"short", min:400, max:500, structure:"新場景只寫一個核心場景，不需要轉場句" };
@@ -5676,9 +6012,11 @@ function narrativeLengthTier(monthsCrossed, tension){
   // 十八、18.10.2（2026-09-29）：回應段4-6短段、篇幅另外加在總字數上；新場景維持原本扣掉行動結果後的份量(原總字數的2/3～3/4)
   const base = tension==="low" ? g.min : Math.round((g.min+g.max)/2);
   const sceneMin = Math.round(base*2/3), sceneMax = Math.round(base*3/4);
-  const total = Math.round((sceneMin+sceneMax)/2) + Math.round((RESPONSE_WORDS_MIN+RESPONSE_WORDS_MAX)/2);
+  const extra = focusExtra ? FOCUS_EXTRA_WORDS : 0; // 18.14：有重心的回合，額外額度專門用於重心活動的描寫
+  const total = Math.round((sceneMin+sceneMax)/2) + Math.round((RESPONSE_WORDS_MIN+RESPONSE_WORDS_MAX)/2) + extra;
   return {
-    tier:g.tier, word_range:`${sceneMin+RESPONSE_WORDS_MIN}-${sceneMax+RESPONSE_WORDS_MAX}字`, target_total_words: total,
+    tier:g.tier, word_range:`${sceneMin+RESPONSE_WORDS_MIN}-${sceneMax+RESPONSE_WORDS_MAX+extra}字`, target_total_words: total,
+    focus_extra_words: extra || undefined,
     action_result_words: `${RESPONSE_WORDS_MIN}-${RESPONSE_WORDS_MAX}字（4-6個短段落）`,
     scene_words: `${sceneMin}-${sceneMax}字`,
     structure: g.structure
@@ -5818,7 +6156,7 @@ const FAMILY_ROLE_ALIASES = { 父親:["爸","父"], 母親:["媽","母"], 繼父
 function isFamilyCharacter(c){ return !!(c && (familyRoleOf(c.relation) || c.isChild)); }
 // 2.6.4家人重心的對象：有同住家人→同住家人；沒有(住宿、租屋)→原生家庭的父母和手足；文字提到某一位家人→只算那一位
 function focusFamilyPool(s){
-  const living = (s.characters||[]).filter(c=>!c.deceased);
+  const living = (s.characters||[]).filter(c=>!c.deceased && !c.lost); // 4.6.6：失聯的家人不算
   const cohab = living.filter(c=>c.cohabiting && isFamilyCharacter(c));
   return cohab.length ? cohab : living.filter(c=>ORIGIN_FAMILY_ROLES.includes(familyRoleOf(c.relation)));
 }
@@ -5843,6 +6181,39 @@ function currentInterestChoice(s){ // 回傳正式興趣卡，或null＝嘗試�
   if(s.focusInterestId==="new") return null;
   return cards.find(c=>c.id===s.focusInterestId) || cards[0] || null;
 }
+// 一、1.2.16（2026-09-29）：重心必須寫進劇情——程式每回合依重心放入明確的場景指令
+const FOCUS_SCENE_DIRECTIVES = {
+  study:"本回合須有主角實際讀書、複習或寫作業的描寫",
+  social:"本回合須有主角和朋友相處的場景",
+  rest:"本回合須有主角放鬆、獨處或睡飽的描寫",
+  work:"本回合須有主角實際打工的描寫",
+  family:"本回合須有主角和家人相處的場景，地點以家中或家庭活動為主"
+};
+function focusSceneDirective(focus, programEvent){
+  if(!focus) return null;
+  let text;
+  if(focus.key==="interest"){
+    text = focus.interestCategory ? `本回合須有主角實際從事${focus.interestCategory}的描寫（題材可與其他興趣交疊，但主角在做的事必須是${focus.interestCategory}）`
+      : "本回合須有主角實際嘗試一件新事物的描寫";
+  } else text = FOCUS_SCENE_DIRECTIVES[focus.key];
+  if(!text) return null;
+  // 優先順序：高張力白名單節點(考試、成績公布、程式事件) ＞ 玩家自由輸入 ＞ 重心指令
+  return programEvent ? `${text}（這回合有${programEvent}等優先處理的事，有空檔時才帶到，不可排擠掉那件事）` : `${text}，要佔本回合相當篇幅；玩家自由輸入的內容優先，兩者可以合在一起寫`;
+}
+// 一、18.14：最近5回合已用過的環境描寫類別，供旁白避開(程式從正文用關鍵字比對，不額外呼叫AI)
+const AMBIENT_CATEGORIES = [
+  ["窗外聲響（蟬聲、雨聲、風聲、車聲）", /蟬聲|雨聲|風聲|車聲|窗外.{0,6}(聲|響)|遠處傳來/],
+  ["路邊動物（貓、狗、鳥）", /(路邊|巷口|牆頭|屋簷|窗台|窗外).{0,8}(貓|狗|鳥)|(野貓|流浪貓|流浪狗|麻雀)/],
+  ["光線影子（夕陽、斜陽、光斜斜地）", /夕陽|斜陽|光.{0,4}斜斜|落日|晚霞|影子.{0,4}拉長/],
+  ["氣味（飯菜香、咖啡香、洗衣精味）", /(飯菜|咖啡|麵包|洗衣精|泡麵|奶茶).{0,4}(香|味)|氣味/],
+  ["「節奏對不上」句型", /節奏.{0,3}(對不上|不一樣|慢半拍)|對不上.{0,3}節奏/],
+  ["飲品食物拿在手上", /(握著|捧著|抱著|拎著).{0,6}(奶茶|紅茶|咖啡|豆漿|便當|飲料)/]
+];
+function recentAmbientCategories(s){
+  const texts = (s.log||[]).filter(e=>!e.error).slice(-5).map(e=>String(e.text||""));
+  return AMBIENT_CATEGORIES.filter(([, re])=>texts.some(t=>re.test(t))).map(([name])=>name);
+}
+const FOCUS_EXTRA_WORDS = 100; // 一、18.14【定案】每回合字數上限增加80～120字，取中間值
 // 呼叫AI之前算好這回合的重心(takeTurn用)；家人按鈕不顯示時(沒有可聯絡的家人)退回休息
 function resolveTurnFocus(s, actionText){
   if(!focusModeActive(s)) return null;
@@ -5859,7 +6230,38 @@ function resolveTurnFocus(s, actionText){
 }
 // 重心數值結算(AI回來之後、applyResult內呼叫)；才識另外在applyResult的才識公式裡處理(讀書保證至少ordinary)。
 // 回傳這回合重心帶來的變化，供畫面以橘色標記(2.6.2)
-function applyFocusSettlement(s, focus){
+// 三、3.5.5（2026-09-29）：社交回合結束後，從本回合scene_characters的非家人角色隨機挑一位好感+2；
+// 累計社交回合數，每滿3次擲一次「朋友帶來的機會」(20%＋人脈每10點+5%，上限60%)，擲中後下一回合提示指示旁白安排
+const SOCIAL_TURN_AFFINITY = 2, FRIEND_OPP_EVERY = 3, FRIEND_OPP_BASE = 0.2, FRIEND_OPP_PER_10 = 0.05, FRIEND_OPP_MAX = 0.6; // 【測試參數】
+function friendOpportunityProb(s){ return Math.min(FRIEND_OPP_MAX, FRIEND_OPP_BASE + Math.floor((s.stats.network||0)/10)*FRIEND_OPP_PER_10); }
+function applySocialTurnExtras(s, r, out){
+  const names = (r && Array.isArray(r.scene_characters)) ? r.scene_characters.map(String) : [];
+  const pool = names.map(n=>s.characters.find(c=>c.name===n)).filter(c=>c && !c.deceased && !c.lost && !isFamilyCharacter(c));
+  if(pool.length){
+    const c = pool[Math.floor(Math.random()*pool.length)];
+    c.affinity = clamp(c.affinity + SOCIAL_TURN_AFFINITY, 0, 100);
+    out.socialFriend = c.name;
+  }
+  s.socialTurns = (s.socialTurns||0) + 1;
+  if(s.socialTurns >= FRIEND_OPP_EVERY){
+    s.socialTurns = 0;
+    if(Math.random() < friendOpportunityProb(s)) s.friendOpportunityPending = true;
+  }
+}
+// 下一回合開始前：挑來源角色(優先有已得知【機】類背景事件的，否則熟悉的朋友以上隨機一位)；沒有可挑的角色時不成立(留待下次滿3次再擲)
+function takeFriendOpportunity(s){
+  if(!s.friendOpportunityPending) return null;
+  s.friendOpportunityPending = false;
+  const ok = c=>!c.deceased && !c.lost && !c.isChild && !isFamilyCharacter(c) && characterState(c)==="normal";
+  const withEvent = (s.characters||[]).filter(c=>ok(c) && (c.events||[]).some(e=>e.known && (BG_EVENT_BY_NAME[e.name]||{}).tags?.includes("機")));
+  const familiar = (s.characters||[]).filter(c=>ok(c) && relationshipTierIndex(c)>=3);
+  const pool = withEvent.length ? withEvent : familiar;
+  if(!pool.length) return null;
+  const c = pool[Math.floor(Math.random()*pool.length)];
+  const ev = withEvent.length ? c.events.filter(e=>e.known && (BG_EVENT_BY_NAME[e.name]||{}).tags?.includes("機")).slice(-1)[0] : null;
+  return { source: c.name, based_on_event: ev ? ev.name : null, kind: "介紹訂單、推薦打工、告知消息等" };
+}
+function applyFocusSettlement(s, focus, r){
   const out = {};
   if(!focus) return out;
   if(focus.key==="rest"){
@@ -5871,6 +6273,7 @@ function applyFocusSettlement(s, focus){
     const before = s.stats.network;
     s.stats.network = clamp(s.stats.network + applyMarginalDiminish(FOCUS_SOCIAL_NETWORK*teamNetworkMult, s.stats.network), 0, 100);
     out.network = s.stats.network - before;
+    applySocialTurnExtras(s, r, out);
   } else if(focus.key==="family"){
     const names = [];
     (focus.familyTargets||[]).forEach(n=>{
@@ -5882,8 +6285,9 @@ function applyFocusSettlement(s, focus){
     });
     if(names.length) out.family = names;
   } else if(focus.key==="interest" && focus.interestCategory){
-    // 8.10：指定正式興趣卡→程式直接當作一次「喜歡」投入，不經AI判斷
-    const ev = { category: focus.interestCategory, reaction:"positive" };
+    // 八、8.12.1（2026-09-29，取代8.10「一律算喜歡」）：投入直接記到指定的興趣卡，AI回報的category一律忽略，只讀reaction；沒回報時視為positive
+    const rx = r && r.interest_event && ["positive","neutral","negative"].includes(r.interest_event.reaction) ? r.interest_event.reaction : "positive";
+    const ev = { category: focus.interestCategory, reaction: rx };
     applyInterestEvent(s, ev);
     applyInterestCost(s, ev);
     out.interest = focus.interestCategory;
@@ -6293,7 +6697,7 @@ function prepareNarrativeRhythm(s, ctx){
   const streakName = (last2.length===2 && last2[0] && last2[0]===last2[1]) ? last2[0] : null;
   const exemptNames = new Set([ctx.seek].filter(Boolean));
   chars.forEach(c=>{ if(ctx.actionText && ctx.actionText.includes(c.name)) exemptNames.add(c.name); });
-  const pool = chars.filter(c=>!c.deceased && (c.active || exemptNames.has(c.name)));
+  const pool = chars.filter(c=>!c.deceased && !c.lost && (!c.left_circle || exemptNames.has(c.name)) && (c.active || exemptNames.has(c.name))); // 4.6：已故、失聯的不當焦點；4.7.3【距】離開生活圈的人，主角主動去找時才出現
   // 18.12（A7）：非家人角色最近10回合出場滿6次，這回合不主動安排(玩家指名、想找的照常)
   const appear = recentAppearanceCounts(s);
   const capped = pool.filter(c=>!isFamilyCharacter(c) && (appear.get(c.name)||0) >= APPEARANCE_CAP && !exemptNames.has(c.name)).map(c=>c.name);
@@ -6558,6 +6962,7 @@ function buildTimeContextPayload(s, timeCtx){
 function buildUserMessage(actionText, forceEnding, timeCtx){
   const s = state;
   ensureCharacterGenders(s); // 4.1（2026-09-27）：舊存檔/家人卡補上性別
+  if(timeCtx) timeCtx.toldEventNames = activeCharacters().filter(c=>unknownEventNames(c).length).map(c=>c.name); // 4.7.4：給旁白看過的未得知事件，出場後標為已得知
   const roster = activeCharacters().map(c=>({
     name:c.name, relation:c.relation, traits:c.traits, gender:c.gender||null, // 4.1/1.2.5：已記錄的性別，引用時必須一致
     affinity:c.affinity, summary:c.summary, is_child:!!c.isChild,
@@ -6570,7 +6975,11 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     is_family: isFamilyCharacter(c) || undefined,
     family_role: isFamilyCharacter(c) ? (familyRoleOf(c.relation) || c.relation) : undefined,
     school_or_job: npcAffiliation(s, c) || undefined,
-    links: (c.links && c.links.length) ? c.links : undefined
+    links: (c.links && c.links.length) ? c.links : undefined,
+    recent_status: c.recentStatus || undefined, // 四、4.6.7：近況(一經寫入，之後劇情以此為準)
+    // 四、4.7.3／4.7.4：尚未被主角得知的背景事件(出場時自然帶進劇情，至少不可矛盾)；離開主角生活圈的角色不可出現在日常場景
+    new_events: unknownEventNames(c).length ? unknownEventNames(c) : undefined,
+    left_circle: c.left_circle || undefined
   }));
   ensureRomanceAgeMarks(s);
   const financialHealth = computeFinancialHealthForState(s); // 9/16修正：學生時期改用家庭真實NT$數字，見3.4.6補充定案
@@ -6647,9 +7056,22 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     // 八、8.11（2026-09-29 A3/A4）：程式排定的接案機會(這回合要安排有人來下訂單)、還沒交件的訂單；交件用side_gig_delivery回報大小，金額由系統算
     side_gig_offer_now: (timeCtx && timeCtx.sideGigOffers && timeCtx.sideGigOffers.length) ? timeCtx.sideGigOffers : null,
     side_gig_open_orders: sideGigOpenOrdersPayload(s),
+    // 一、1.2.14（2026-09-29）精簡名冊：所有認識過的角色(含漸行漸遠、已故、失聯)，Worker把它放在提示快取的位置
+    character_roster: buildCharacterRoster(s),
+    // 四、4.6.4～4.6.6：這回合去找的人(重逢／找失聯者的擲骰結果／回憶已故者)
+    relationship_event_now: (timeCtx && timeCtx.relationEvent) || null,
+    // 四、4.6.8：可選用的社群動態素材(用了不算互動)
+    social_feed_now: (timeCtx && timeCtx.socialFeed) || null,
+    // 四、4.7.4：熟悉的朋友身上剛發生的轉折／重大事件，用一句話順路帶到
+    friend_news_now: (timeCtx && timeCtx.friendNews) || null,
+    // 三、3.5.5：社交回合累積擲中的「朋友帶來的機會」
+    friend_opportunity_now: (timeCtx && timeCtx.friendOpportunity) || null,
+    // 一、1.2.15：程式產生、超過當時存款一成的一次性支出，旁白要用一句話交代
+    program_expenses_now: (timeCtx && timeCtx.expenseMentions && timeCtx.expenseMentions.length) ? timeCtx.expenseMentions : null,
     pending_side_business_category: s.pendingSideBusinessCardId ? ((s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId)||{}).category || null : null,
     // 一、1.2.9.1（2026-09-23新增）：取代原本system prompt裡寫死的「每次敘事約250-350字」，改依這回合monthsCrossed分級給字數目標
-    narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed, timeCtx && timeCtx.tone && timeCtx.tone.tension),
+    narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed, timeCtx && timeCtx.tone && timeCtx.tone.tension, !!(timeCtx && timeCtx.focus)),
+    recent_ambient_categories: (timeCtx && timeCtx.focus) || (s.log||[]).length ? recentAmbientCategories(s) : undefined, // 18.14：5回合內不重複使用
     // 一、1.2.9.11（2026-09-24新增）：日期由程式掌管，本回合範圍/上一回合場景/固定事件，見system prompt【時間與敘事結構】
     time_context: buildTimeContextPayload(s, timeCtx),
     // 一、1.2.8.2（2026-09-24實作）：語氣軌與張力由程式依事件類別對照表指定，AI不得自行判斷
@@ -6673,7 +7095,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
       key: timeCtx.focus.key, label: timeCtx.focus.label,
       interest_category: timeCtx.focus.key==="interest" ? (timeCtx.focus.interestCategory||"嘗試新的") : undefined,
       family_targets: timeCtx.focus.familyTargets || undefined,
-      part_time: timeCtx.focus.key==="work" ? (s.partTimeEventLog||null) : undefined
+      part_time: timeCtx.focus.key==="work" ? (s.partTimeEventLog||null) : undefined,
+      scene_directive: focusSceneDirective(timeCtx.focus, programEventNow(s)) // 一、1.2.16
     } : null,
     response_source: timeCtx && timeCtx.focus && !timeCtx.prologue ? (timeCtx.fromChoice ? "choice" : "free_input") : null,
     // 十八、敘事節奏(2026-09-28)：場景條件(學生時期)、劇情線、焦點角色輪替、新角色登場，見system prompt【敘事節奏】
@@ -7220,16 +7643,39 @@ async function takeTurn(actionText, cost){
   // 十六、16.3.4「想找」標籤只作用於這一次送出；淡出為背景的角色找了之後重新成為活躍角色
   const seek = state.seekTarget || null;
   state.seekTarget = null;
-  if(seek){ const sc = state.characters.find(c=>c.name===seek && !c.deceased); if(sc){ sc.active = true; sc.lastTurn = state.turnCount; } }
+  // 四、4.6.4～4.6.6（2026-09-29）：找漸行漸遠的人＝重逢；找失聯的人由程式擲骰(成敗都照常花這回合的行動點)；已故的人＝回想場景
+  let relationEvent = null;
+  if(seek){
+    const sc = state.characters.find(c=>c.name===seek);
+    const st = characterState(sc);
+    if(st==="deceased") relationEvent = { mode:"recall", name: sc.name };
+    else if(st==="lost"){
+      const found = Math.random() < lostContactFindProb(sc);
+      relationEvent = { mode:"find_lost", name: sc.name, found, turns_apart: state.turnCount - (sc.lostTurn ?? sc.lastTurn ?? state.turnCount) };
+      if(found){
+        relationEvent.reunion_tone = reunionTone(sc); sc.lost = false; delete sc.lostTurn; sc.active = true; sc.lastTurn = state.turnCount;
+        const apartEvents = unknownEventNames(sc); revealCharacterEvents(sc); // 4.7.4：失聯者身上的事件等成功聯繫上時一次揭曉
+        if(apartEvents.length) relationEvent.events_while_apart = apartEvents;
+      }
+    } else if(sc){
+      const apart = state.turnCount - (sc.lastTurn||0);
+      if(markCharacterInteracted(state, sc)){
+        relationEvent = { mode:"reunion", name: sc.name, reunion_tone: reunionTone(sc), turns_apart: apart };
+        const apartEvents = unknownEventNames(sc); revealCharacterEvents(sc); // 4.7.4：恢復互動，旁白寫近況時揭曉
+        if(apartEvents.length) relationEvent.events_while_apart = apartEvents;
+      }
+    }
+  }
   // 二、2.6（2026-09-28）：學生時期這回合的重心(開場那一回合由程式自動產生，沒有重心)
   const turnFocus = wasPrologue ? null : resolveTurnFocus(state, actionText);
   // 二、2.5（9/16新增）：22歲以後改採加速曲線回合預算，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
   // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
   const adv = advanceStructuredTime(actionText, turnFocus && turnFocus.key);
+  maybeRollBackgroundEvents(state, adv); // 四、4.7：學生時期每學期(假期第一回合)、出社會後每年(跨入新年第一回合)擲一次NPC背景事件
   const focus = (turnFocus && !adv.bigJump) ? turnFocus : null; // 2.6.1：跳過指令的回合不結算重心
   // 3.4.2（2026-09-27）：打工收入由程式依時薪×時數算好，AI只負責敘事；學生時期改由打工重心觸發(2026-09-28)
   applyPartTimeWork(state, actionText, adv.window, turnFocus ? (!!focus && focus.key==="work") : undefined);
-  const sideGigOffers = wasPrologue ? [] : prepareSideGigTurn(state); // 八、8.11（2026-09-29 A3/A4）：到了排定回合就指示AI安排接案機會
+  const sideGigOffers = wasPrologue ? [] : prepareSideGigTurn(state, turnFocus); // 八、8.11（2026-09-29 A3/A4）：到了排定回合就指示AI安排接案機會
   applyFertilityTurn(state, actionText); // 7.3.2（2026-09-27）：生育/領養的大方向由程式判定
   if(!state.timeState.prologue) checkLockedParentDeath(state); // 七、7.4.3.3.1（2026-09-28）：傳承中的上一代到鎖定年紀過世
   // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
@@ -7247,11 +7693,15 @@ async function takeTurn(actionText, cost){
   // 2026-09-23修正（時間標籤慢一拍bug）：這回合顯示/送給AI的標籤改用currentLabel(這回合實際所在的段落)，
   // 不再用toLabel(換段後、下一回合才生效的段落)；jump提示(from/to)維持給跳過動作用，語意不變
   let timeCtx = { structured:true, label: adv.currentLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, interestCountAtExam: interestCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow, window: adv.window||null, prologue: wasPrologue,
-    focus, fromChoice, seek, cashStart, sideGigOffers };
+    focus, fromChoice, seek, cashStart, sideGigOffers, relationEvent };
   // 十八、敘事節奏（2026-09-28）：呼叫AI之前由程式定好場景條件(學生時期)與劇情線/角色輪替的要求，重新生成時沿用同一組
   timeCtx.scenePlan = buildScenePlan(state, { focus, prologue: wasPrologue, skip: !!adv.bigJump, seek, actionText,
     examTriggered: !!adv.examTriggered, examType: adv.examType, segKey: adv.segKey, segTurn: adv.segTurn, half: adv.half, holiday: !!adv.holiday });
   timeCtx.rhythm = prepareNarrativeRhythm(state, { seek, actionText: wasPrologue ? "" : actionText, prologue: wasPrologue, fixedEvent: !!adv.examTriggered });
+  timeCtx.friendNews = wasPrologue ? null : takeFriendNews(state);           // 四、4.7.4：熟悉朋友的轉折／重大事件，一回合最多一件
+  timeCtx.socialFeed = wasPrologue ? null : pickSocialFeed(state, [seek, timeCtx.friendNews && timeCtx.friendNews.name]); // 四、4.6.8
+  timeCtx.friendOpportunity = wasPrologue ? null : takeFriendOpportunity(state); // 三、3.5.5：朋友帶來的機會
+  timeCtx.expenseMentions = state.pendingExpenseMentions || []; state.pendingExpenseMentions = []; // 一、1.2.15
   // 十八、18.12（2026-09-29 A7）：這回合指定為主角日常場景時，取代18.2「跟重心相關／換到別處」的擲骰(考試、事件等覆寫仍優先)
   if(timeCtx.rhythm.daily_scene_now && timeCtx.scenePlan && timeCtx.scenePlan.mode!=="override")
     timeCtx.scenePlan = { mode:"daily", theme: timeCtx.rhythm.daily_scene_now.theme, period: timeCtx.scenePlan.period, banned_category: timeCtx.scenePlan.banned_category||null };
@@ -7671,18 +8121,49 @@ function pickIdleKeyRounds(rounds){
 
 // 三、3.4.7（2026-09-28）結算小字：收入、支出分列，支出只列合計。3個月以內照這回合實際推進天數換算、寫「本回合結餘」；
 // 超過3個月改成區間總結。舊存檔的紀錄沒有分列數字，維持舊格式
+// 十六、16.11／一、1.2.15（2026-09-29）：程式自己產生的一次性收支(醫療費、創業資金、遺產……)要記名稱，
+// 結算明細才能逐筆列出(不再全部併進「其他收支」)；支出超過當時存款一成的，下一次呼叫AI時列給旁白交代
+const BIG_EXPENSE_RATIO = 0.1; // 1.2.15【定案】
+function noteCashEntry(s, label, amount, cashBefore){
+  const amt = Math.round(amount||0);
+  if(!amt) return;
+  s.cashLedger = (s.cashLedger||[]).concat([[String(label).slice(0,16), amt]]).slice(-20);
+  const base = typeof cashBefore==="number" ? cashBefore : (s.cash||0) - amt;
+  if(amt<0 && -amt > Math.max(0, base)*BIG_EXPENSE_RATIO)
+    s.pendingExpenseMentions = (s.pendingExpenseMentions||[]).concat([{ label: String(label).slice(0,16), amount: amt }]).slice(-5);
+}
 function signed(n){ return (n>=0?"+":"−") + Math.abs(n).toLocaleString(); }
 // B2（2026-09-29）：結算欄的項目。月收支兩項＋已知來源的收支；差額(列不出來源的)併成「其他收支」
+// 十六、16.11（2026-09-29）：每一項附明細(details：名稱＋金額)。extras的cat是歸屬的項目(打工收入／接案收入／購物／其他收支)，
+// 舊存檔沒有cat的，一筆自成一項(沿用舊顯示)
+const SETTLEMENT_GROUP_ORDER = ["打工收入","接案收入","購物","其他收支"];
 function buildSettlementItems(st, extras, turnNet){
   const items = [];
   if(st && st.months>0){
-    items.push({ label: st.student ? "零用錢" : "收入", amount: st.incomeTotal||0 });
+    const d = st.detail || {};
+    items.push({ label: st.student ? "零用錢" : "收入", amount: st.incomeTotal||0, details: d.inc || [] });
     const paid = st.expensePaid!=null ? st.expensePaid : (st.expenseTotal||0);
-    items.push({ label: paid < (st.expenseTotal||0) ? "生活開銷（存款見底，只付得出這些）" : "生活開銷", amount: -paid });
+    const expDetails = (d.exp||[]).map(([l,a])=>[l,-a]);
+    if(paid < (st.expenseTotal||0)) expDetails.push(["存款見底沒付出去的部分", (st.expenseTotal||0)-paid]);
+    items.push({ label: paid < (st.expenseTotal||0) ? "生活開銷（存款見底，只付得出這些）" : "生活開銷", amount: -paid, details: expDetails });
   }
-  (extras||[]).forEach(x=>{ if(x && x.amount) items.push({ label:x.label, amount:Math.round(x.amount) }); });
+  const groups = new Map();
+  (extras||[]).forEach(x=>{
+    if(!x || !x.amount) return;
+    const key = x.cat || x.label;
+    if(!groups.has(key)) groups.set(key, { label:key, amount:0, details:[] });
+    const g = groups.get(key);
+    g.amount += Math.round(x.amount); g.details.push([x.label, Math.round(x.amount)]);
+  });
+  const keys = Array.from(groups.keys()).sort((a,b)=>{ const ia = SETTLEMENT_GROUP_ORDER.indexOf(a), ib = SETTLEMENT_GROUP_ORDER.indexOf(b); return (ia<0?-1:ia)-(ib<0?-1:ib); });
+  keys.forEach(k=>{ const g = groups.get(k); if(g.amount || g.details.length>1) items.push(g); });
   const listed = items.reduce((a,x)=>a+x.amount, 0);
-  if(turnNet!==listed) items.push({ label:"其他收支", amount: turnNet-listed });
+  if(typeof turnNet==="number" && turnNet!==listed){
+    const rest = turnNet-listed;
+    const other = items.find(x=>x.label==="其他收支");
+    if(other){ other.amount += rest; other.details.push(["未分類收支", rest]); }
+    else items.push({ label:"其他收支", amount: rest, details:[["未分類收支", rest]] });
+  }
   return items;
 }
 // 存檔精簡（2026-09-29）：日記裡的結算只留顯示要用的欄位(每月收支、淨額這些給程式用的欄位只留在state.lastSettlement)；
@@ -7694,6 +8175,7 @@ function compactSettlementForLog(st){
   if(st.expensePaid!=null) o.expensePaid = st.expensePaid;
   if(typeof st.turnNet==="number") o.turnNet = st.turnNet; else if(typeof st.net==="number") o.net = st.net;
   if(st.extras) o.extras = st.extras;
+  if(st.detail) o.detail = st.detail; // 16.11明細：只留在最近的日記(見pruneSettlementDetails)
   return o;
 }
 function lastRecordedCash(s){ // B2：上一回合畫面上的「目前存款」(本回合結算的起點)
@@ -7709,7 +8191,7 @@ function lastRecordedCash(s){ // B2：上一回合畫面上的「目前存款」
 function settlementText(st, cashNow){
   const bal = (st.balanceAfter ?? cashNow).toLocaleString();
   if(typeof st.turnNet==="number"){
-    const items = buildSettlementItems(st, (st.extras||[]).map(([label, amount])=>({ label, amount })), st.turnNet);
+    const items = buildSettlementItems(st, (st.extras||[]).map(([label, amount, cat])=>({ label, amount, cat })), st.turnNet);
     const parts = items.filter(x=>x.amount!==0 || /零用錢|收入|生活開銷/.test(x.label)).map(x=>`${x.label} ${x.amount>=0?"+":"−"}${Math.abs(x.amount).toLocaleString()}`);
     return `${parts.length ? parts.join("，")+"，" : ""}本回合結餘 ${signed(st.turnNet ?? 0)}；目前存款 ${bal}`;
   }
@@ -7717,6 +8199,29 @@ function settlementText(st, cashNow){
   const net = st.rawNet ?? st.net;
   if(st.months > 3) return `這段期間收入約 ${st.incomeTotal.toLocaleString()}，支出約 ${st.expenseTotal.toLocaleString()}，結餘 ${signed(net)}；目前存款 ${bal}`;
   return `${st.student?"零用錢":"收入"} +${st.incomeTotal.toLocaleString()}，生活開銷 −${st.expenseTotal.toLocaleString()}，本回合結餘 ${signed(net)}；目前存款 ${bal}`;
+}
+// 十六、16.11（2026-09-29）：結算列的HTML版——每個項目可以打開明細小視窗(電腦滑鼠移上去、手機點一下，點別處關閉)
+function settlementHtml(st, cashNow){
+  if(typeof st.turnNet!=="number") return escapeHtml(settlementText(st, cashNow));
+  const bal = (st.balanceAfter ?? cashNow).toLocaleString();
+  const items = buildSettlementItems(st, (st.extras||[]).map(([label, amount, cat])=>({ label, amount, cat })), st.turnNet)
+    .filter(x=>x.amount!==0 || /零用錢|收入|生活開銷/.test(x.label));
+  const amt = n=>`${n>=0?"+":"−"}${Math.abs(n).toLocaleString()}`;
+  const parts = items.map(x=>{
+    const text = `${escapeHtml(x.label)} ${amt(x.amount)}`;
+    const rows = (x.details||[]).filter(d=>d && d[1]);
+    if(!rows.length) return `<span class="stl-item plain">${text}</span>`;
+    return `<span class="stl-item" tabindex="0" role="button" aria-label="${escapeHtml(x.label)}明細">${text}<span class="stl-pop" role="tooltip">${rows.map(([l,a])=>`<span class="stl-row"><span>${escapeHtml(l)}</span><span>${amt(a)}</span></span>`).join("")}</span></span>`;
+  });
+  return `${parts.length ? parts.join("，")+"，" : ""}本回合結餘 ${signed(st.turnNet ?? 0)}；目前存款 ${bal}`;
+}
+// 16.11：明細只留在最近的日記裡(Worker存檔上限1MB，整條人生約1400則)，更早的只顯示各項總額
+const SETTLEMENT_DETAIL_KEEP = 30;
+function pruneSettlementDetails(s){
+  const log = s.log||[];
+  for(let i=log.length-SETTLEMENT_DETAIL_KEEP-1; i>=Math.max(0, log.length-SETTLEMENT_DETAIL_KEEP-5); i--){
+    if(log[i] && log[i].settlement && log[i].settlement.detail) delete log[i].settlement.detail;
+  }
 }
 // 三、3.4.7（2026-09-28）：每月收入、每月生活開銷(基本開銷＋房租房貸＋扶養費＋慢性病費用)，生活方式小卡與手頭狀態共用
 function monthlyBudget(s){
@@ -7762,6 +8267,13 @@ function applyMonthlySettlement(s, monthsCrossed){
     // 取代原本「結餘照實列負數(rawNet)」——這樣上回合存款＋本回合結餘＝本回合存款
     s.lastSettlement = { months: monthsCrossed, net, rawNet, income:householdMonthlyIncome, expenses:totalExpenses+livingCost,
       incomeTotal, expenseTotal, student: isStudentPhase(s) };
+    // 十六、16.11（2026-09-29）：收入、開銷的明細(名稱＋金額)，最後一筆吸收取整數的零頭，加起來＝總額
+    const m = monthsCrossed, mo = m===1 ? "" : `（${m}個月）`;
+    const inc = [[(isStudentPhase(s) ? "零用錢" : "個人收入")+mo, (s.monthlyIncome||0)*m]];
+    if(s.spouseIncome) inc.push(["配偶收入"+mo, s.spouseIncome*m]);
+    const exp = [["基本生活開銷"+mo, livingCost*m]].concat(s.monthlyExpenses.filter(e=>e.amount).map(e=>[String(e.label).slice(0,12)+mo, e.amount*m]));
+    const fitTo = (list, total)=>{ const r = list.map(([l,a])=>[l, Math.round(a)]); const diff = total - r.reduce((x,y)=>x+y[1],0); if(r.length) r[r.length-1][1] += diff; return r.filter(x=>x[1]); };
+    s.lastSettlement.detail = { inc: fitTo(inc, incomeTotal), exp: fitTo(exp, expenseTotal) };
     if(incomeTotal - net !== expenseTotal) s.lastSettlement.expensePaid = incomeTotal - net; // 只有存款見底、開銷沒付足時才記
     // 資產模型（9/14新增）：房貸每月攤還本金（不含利息，簡化模型），還清時自動移除房貸支出項
     if(s.mortgageBalance>0){
@@ -7824,7 +8336,7 @@ function buildIdleSummaryPayload(s){
     idle_rounds: run.rounds.map(r=>({ i:r.i, t:r.label, tag:r.tag, line:r.line, changes:r.changes, popup: r.popups.map(p=>`${p.title}：${p.label}`).join("；")||null, new_friend: r.newFriend })),
     key_rounds: pickIdleKeyRounds(run.rounds),
     stage_change: stage.length ? stage.join("；") : null,
-    characters: (s.characters||[]).filter(c=>!c.deceased).slice(0,30).map(c=>({ name:c.name, relation:c.relation, gender:c.gender||null })),
+    characters: (s.characters||[]).filter(c=>!c.deceased && !c.lost).slice(0,30).map(c=>({ name:c.name, relation:c.relation, gender:c.gender||null })),
     new_character_limit: Math.min(IDLE_MAX_NEW_CHARACTERS, run.rounds.filter(r=>r.newFriend).length)
   };
 }
@@ -8077,7 +8589,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     s.stats.expression = clamp(s.stats.expression + applyMarginalDiminish(ratingAbility, s.stats.expression), 0, 100);
   }
   // 二、2.6.4重心結算(休息健康、社交人脈、家人關係、指定興趣卡的投入)
-  Object.assign(focusChanges, applyFocusSettlement(s, turnFocus));
+  const interestLevelsBefore = interestLevelSnapshot(s); // 八、8.12.3：等級變動的回合，結算區加一行
+  Object.assign(focusChanges, applyFocusSettlement(s, turnFocus, r));
 
   // 3.5.4（2026-09-29 A5，取代3.5.3「連續N回合沒有正向人脈delta就每隔幾回合扣1~3」）：衰退與成長改在下面角色更新之後統一計算(applyNetworkInteractionRules)
   s.stats.expression = clamp(s.stats.expression + (d.expression||0), 0, 100);
@@ -8142,6 +8655,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   applyPersonalityStyleSignal(s, r.style_signal); // 3.6（2026-09-27）：人格魅力風格緩慢滑動
   if(r.risky_activity===true) s.riskyHobbyScore = (s.riskyHobbyScore||0)+1; // 7.1.1（2026-09-27）：極限運動/危險嗜好
   sweepInterestDecay(s);
+  const interestLevelNote = interestLevelChangeNote(s, interestLevelsBefore);
 
   if(r.revealed_key_event && s.keyEvent && !s.keyEvent.revealed){
     s.keyEvent.revealed = true;
@@ -8205,12 +8719,13 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     const amt = Math.round(tx.amount); // B2：每一筆金額在計算當下就取整數
     if(isStudentPhase(s) && amt<0 && Math.abs(amt) > s.cash) return;
     s.cash += amt;
-    if(amt) settlementExtras.push({ label: String(tx.label||"其他收支").slice(0,16), amount: amt });
+    if(amt) settlementExtras.push({ label: String(tx.label||"其他收支").slice(0,16), amount: amt, cat:"其他收支" });
   });
-  const cashBeforePurchase = s.cash;
   applySideGigDeliveries(s, r.side_gig_delivery); // 八、8.11（2026-09-29 A4）：交件一次入帳，金額由程式決定
+  // QA 34.13#2（2026-09-29）：購物金額要在接案入帳之後才開始量，否則接案收入會被算成「購物 +X」，再用「其他收支 −X」抵銷
+  const cashBeforePurchase = s.cash;
   const purchaseNote = applyAppearanceShoppingResult(s, r); // 十七、17.1.2／17.3（2026-09-28）
-  if(Math.round(s.cash - cashBeforePurchase)) settlementExtras.push({ label:"購物", amount: Math.round(s.cash - cashBeforePurchase) });
+  if(Math.round(s.cash - cashBeforePurchase)) settlementExtras.push({ label: (s.purchaseEventNow && s.purchaseEventNow.bought!==false && s.purchaseEventNow.item) ? String(s.purchaseEventNow.item).slice(0,16) : "購物", amount: Math.round(s.cash - cashBeforePurchase), cat:"購物" });
   if(r.housing_choice && r.housing_choice.type && r.housing_choice.type!==(s.housing?.type)){
     const wasOwn = s.housing?.type==="own";
     const nowOwn = r.housing_choice.type==="own";
@@ -8234,7 +8749,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
       if(nowOwn && s.milestones.home_purchase!=="completed") s.milestones.home_purchase = "completed";
       // 資產模型（9/14新增）：賣房/轉租時，房產淨值扣掉剩餘房貸後變現為現金；買房時，估算房貸本金與房產市值，頭期款從現金扣除
       if(wasOwn && !nowOwn){
-        s.cash += (s.propertyValue - s.mortgageBalance); // 賣房變現：市值減掉剩餘房貸，差額入帳
+        s.cash += (s.propertyValue - s.mortgageBalance); noteCashEntry(s, "賣房變現", s.propertyValue - s.mortgageBalance); // 賣房變現：市值減掉剩餘房貸，差額入帳
         s.propertyValue = 0;
         s.mortgageBalance = 0;
       }
@@ -8249,7 +8764,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
         s.mortgageBalance = monthlyPayment*240;
         s.propertyValue = Math.round(s.mortgageBalance/0.8);
         const downPayment = s.propertyValue - s.mortgageBalance;
-        s.cash -= downPayment; // 頭期款從現金扣除
+        s.cash -= downPayment; noteCashEntry(s, "購屋頭期款", -downPayment); // 頭期款從現金扣除
       }
     }
   }
@@ -8261,7 +8776,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     if(exists){
       // 一、1.2.9.13（2026-09-24定案）：同名但家人稱謂不同(或一方是家人一方不是)才算衝突→自動改名另建新卡，下一回合告知AI；
       // 其餘(非家人稱謂的差異，例如「同學」對「高中同學」)視為同一人，沿用原本行為
-      if(!isCharacterNameConflict(exists.relation, nc.relation)){ exists.active=true; exists.lastTurn=s.turnCount; return; }
+      if(!isCharacterNameConflict(exists.relation, nc.relation)){ markCharacterInteracted(s, exists); return; } // 4.6：已故、失聯的不會因此恢復
       const renamed = renameForConflict(s, name, nc.relation);
       s.renameNotices = s.renameNotices || [];
       s.renameNotices.push({ original:name, renamed_to:renamed, relation:nc.relation||"", reason:`已經有一位叫「${name}」的角色（${exists.relation}）` });
@@ -8309,6 +8824,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 變化量（relationshipHintAccum），累積絕對值達RELATIONSHIP_HINT_ACCUM_THRESHOLD才提示一次並歸零。
   // 每回合最多顯示RELATIONSHIP_HINT_MAX_PER_TURN則，依tier排序取前幾則，沒被選中的（tier3的累積值）繼續保留，不丟棄
   const beforeRelationship = new Map(s.characters.map(c=>[c.name, { romanceStatus:c.romanceStatus||null, label:relationshipStatusLabel(c) }]));
+  const recallTurn = !!(timeCtx && timeCtx.relationEvent && timeCtx.relationEvent.mode==="recall"); // 4.6.5
   let ratingTargetApplied = false;
   // 4.1.1：離婚在回合之間的彈窗結算（finalizeDivorce），先暫存在pendingRelationshipHints，由敘事承接離婚的這一回合一起提示
   const relationshipHintCandidates = (s.pendingRelationshipHints||[]).slice();
@@ -8332,9 +8848,14 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     let delta = c.isChild ? (CHILD_INTERACTION_AFFINITY[cu.child_interaction] || 0) : (cu.affinity_delta||0);
     // 二、2.6.5：學生時期回應的互動對象，關係值照評價表給(取代AI給的affinity_delta)
     if(rating && rating.target===c.name){ delta = RESPONSE_GRADES[rating.grade].affinity; ratingTargetApplied = true; }
+    // 四、4.6.5／4.6.6（2026-09-29）：已故、失聯的好感凍結；回想場景(回憶)那一回合回報的好感變化一律忽略
+    const frozen = c.deceased || c.lost || recallTurn;
+    if(frozen) delta = 0;
     c.affinity = clamp(c.affinity + delta,0,100);
     appendNpcSharedMemory(c, cu.summary_add);
-    c.lastTurn = s.turnCount; c.active = true;
+    // 四、4.6.7：近況，一句話最多30字，覆蓋舊值(失聯的人沒有新近況)
+    if(cu.recent_status && !c.lost) c.recentStatus = String(cu.recent_status).trim().slice(0, 30);
+    if(!c.deceased && !c.lost && !recallTurn) markCharacterInteracted(s, c);
     // 一、1.2.12（2026-09-29 A9）：對象是家人時，忽略AI回傳的romantic_signal，不計入任何數值
     if(!isFamilyCharacter(c)) applyRomanceSignal(s, c, cu.romantic_signal); // 四、4.4：AI只給positive/negative分類，狀態機轉換由客戶端判斷
     applyCharacterConsistencyUpdate(s, c, cu); // 一、1.2.13（2026-09-29 A11）：學校或職業、與其他角色的關係
@@ -8363,8 +8884,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     }
   });
   // 二、2.6.5：互動對象不在character_updates裡時，關係值另外照表給(累積到一般關係提示)
-  if(rating && rating.target && !ratingTargetApplied){
-    const tc = s.characters.find(c=>c.name===rating.target && !c.deceased);
+  if(rating && rating.target && !ratingTargetApplied && !recallTurn){
+    const tc = s.characters.find(c=>c.name===rating.target && !c.deceased && !c.lost);
     if(tc){
       const delta = RESPONSE_GRADES[rating.grade].affinity;
       tc.affinity = clamp(tc.affinity + delta, 0, 100); tc.lastTurn = s.turnCount; tc.active = true;
@@ -8400,6 +8921,15 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     if(mu.id==="parent_retirement" && mu.status==="completed") checkFamilyBusinessOnParentRetirement(s);
   });
 
+  // 四、4.6.4（2026-09-29）：出現在scene_characters裡也算一次互動(漸行漸遠→一般)；回想場景裡出現的人不算
+  if(!recallTurn) (Array.isArray(r.scene_characters) ? r.scene_characters : []).forEach(n=>markCharacterInteracted(s, s.characters.find(c=>c.name===String(n))));
+  // 四、4.7.4：本回合出場的角色(場景、焦點、角色更新)，他身上給旁白看過的未得知事件標為已得知
+  { const appearedNames = new Set([...(Array.isArray(r.scene_characters) ? r.scene_characters : []), r.focus_character, ...(r.character_updates||[]).map(cu=>cu && cu.name)].filter(Boolean).map(String));
+    const told = new Set((timeCtx && timeCtx.toldEventNames) || []);
+    appearedNames.forEach(n=>{ if(told.has(n)){ const c = s.characters.find(x=>x.name===n); if(c && !c.lost) revealCharacterEvents(c); } }); }
+  // 四、4.6.6：旁白回報劇情明確斷聯，名字核對存在才改成失聯
+  const lostNow = applyContactLost(s, r.contact_lost);
+  lostNow.forEach(n=>relationshipHintCandidates.push({ tier:2, text:`和${n}斷了聯絡` }));
   applyNetworkInteractionRules(s, r, relBefore, charCountBefore, turnFocus); // 三、3.5.4（2026-09-29 A5）：放在同住緩降之前，自動緩降不算「關係有變化」
   demoteStaleCharacters(relationshipHintCandidates); // 四、4.1.1：同住緩降造成的級距改變併入同一批候選一起排序/限額
 
@@ -8433,10 +8963,13 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   s.cash = Math.round(s.cash);
   if(timeCtx && typeof timeCtx.cashStart==="number"){
     const pre = [];
-    if(s.partTimeEventLog && s.partTimeEventLog.earning) pre.push({ label:"打工收入", amount: s.partTimeEventLog.earning });
-    if(s.sideGigIncomeNow) pre.push({ label:"接案收入", amount: s.sideGigIncomeNow.amount });
+    if(s.partTimeEventLog && s.partTimeEventLog.earning) pre.push({ label:"打工收入", amount: s.partTimeEventLog.earning, cat:"打工收入" });
+    if(s.sideGigIncomeNow) (s.sideGigIncomeNow.deliveries||[]).forEach(d=>pre.push({ label: (d.description || `${d.category}${SIDE_GIG_SIZE_LABELS[d.size]||""}`).slice(0,16), amount: d.amount, cat:"接案收入" }));
+    // 16.11：程式產生的一次性收支(醫療費、創業資金、遺產……)帶名稱併進「其他收支」的明細
+    (s.cashLedger||[]).forEach(([label, amount])=>pre.push({ label, amount, cat:"其他收支" }));
+    s.cashLedger = [];
     // 存檔精簡(日記會存一輩子，Worker存檔上限1MB)：只存額外項目(extras)與本回合結餘(turnNet)，逐項清單在顯示時才組出來
-    const extras = pre.concat(settlementExtras).filter(x=>x && x.amount).map(x=>[x.label, Math.round(x.amount)]);
+    const extras = pre.concat(settlementExtras).filter(x=>x && x.amount).map(x=>x.cat ? [x.label, Math.round(x.amount), x.cat] : [x.label, Math.round(x.amount)]);
     const turnNet = s.cash - timeCtx.cashStart;
     if(!s.lastSettlement && (extras.length || turnNet)) s.lastSettlement = { months: 0, net: 0, incomeTotal: 0, expenseTotal: 0, student: isStudentPhase(s) };
     if(s.lastSettlement){ s.lastSettlement.turnNet = turnNet; if(extras.length) s.lastSettlement.extras = extras; }
@@ -8509,12 +9042,15 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   const focusMarks = studentTurn ? buildFocusMarks(s, turnFocus, focusChanges) : undefined; // 沒有任何重心變化時也要留空物件：代表這則用來源上色
   s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", settlement:compactSettlementForLog(s.lastSettlement), statChanges, focusMarks, relationshipHints,
     /* B5（2026-09-29）：這回合的重心也記在日記上(選擇紀錄、下載故事) */ focusLabel: turnFocus ? (turnFocus.key==="interest" ? (turnFocus.interestCategory ? `興趣：${turnFocus.interestCategory}` : "興趣：嘗試新的") : turnFocus.label) : undefined,
-    /* 二、2.4.2（A2）：分數組成在公布時攤開 */ examNote: (timeCtx && timeCtx.examCheck) ? `${timeCtx.examCheck.examType}：${examBreakdownText(timeCtx.examCheck)}` : undefined, purchaseNote: purchaseNotes.join("；")||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
+    /* 二、2.4.2（A2）：分數組成在公布時攤開 */ examNote: (timeCtx && timeCtx.examCheck) ? `${timeCtx.examCheck.examType}：${examBreakdownText(timeCtx.examCheck)}` : undefined, purchaseNote: purchaseNotes.join("；")||undefined, levelNotes: interestLevelNote||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
   // 足夠涵蓋單一人生全程(~1200-1400回合)不流失；每世reincarnate/succeedAsChild時log都會重置為[]，不會跨世累積
   if(s.log.length>2000) s.log.shift();
+  pruneSettlementDetails(s); // 十六、16.11：明細只留最近30則日記
 
   s.choices = r.choices || [];
+  { const invite = takeInviteChoice(s); // 四、4.7.3【邀】：只出現這一回合的相關選項；沒去不扣好感
+    if(invite && !s.choices.includes(invite)) s.choices = s.choices.concat([invite]); }
   // 下載故事(測試選單)用：這回合給玩家的選項跟著日記存；旁白回傳的完整資料只在測試瀏覽器留最近10回合(不含正文，正文已在日記)
   const lastLogEntry = s.log[s.log.length-1];
   if(lastLogEntry && s.choices.length) lastLogEntry.options = s.choices.slice(0,6);
@@ -9905,7 +10441,7 @@ function renderEntryBody(e, withTag){
     ? `${resultText ? renderParagraphs(resultText, true) : ``}${resultText && sceneText ? `<hr class="turn-divider" aria-hidden="true">` : ``}${renderParagraphs(sceneText, true)}`
     : renderParagraphs(text, true);
   return `${e.action ? `<div class="choice-line">→ ${escapeHtml(e.action)}${e.focusLabel ? `<span class="focus-note">　重心：${escapeHtml(e.focusLabel)}</span>` : ``}</div>` : ``}${withTag ? `<div class="age-tag">${renderEntryTag(e)}</div>` : ``}${story}
-    <div class="entry-meta">${(withTag && e.genMs!=null && devToolsOn()) ? `<p class="small-line dev-gen-time">⏱ AI生成 ${(e.genMs/1000).toFixed(1)} 秒（測試模式）</p>` : ``}${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementText(e.settlement, state.cash)}</p>` : ``}</div>`;
+    <div class="entry-meta">${(withTag && e.genMs!=null && devToolsOn()) ? `<p class="small-line dev-gen-time">⏱ AI生成 ${(e.genMs/1000).toFixed(1)} 秒（測試模式）</p>` : ``}${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}</div>`;
 }
 // 16.3.2（2026-09-28改定）：最新一回合完整卡片之上，保留更早的3個回合，各收合成一行摘要，點開展開(展開後同樣套用16.3.8.2排版)
 const OLD_ENTRY_SUMMARY_COUNT = 3;
@@ -9982,7 +10518,7 @@ function renderPlaying(loadingTurn){
   <footer class="actions glass">
     ${apOut && !busy ? `<div class="ap-out">行動點已用完，下次補點：台灣時間 00:00（每日池補到 ${AP_DAILY_REFILL} 點）</div>` : ``}
     ${renderFocusBar(s, apOut||busy)}
-    ${s.seekTarget ? `<div class="seek-tag">想找：${escapeHtml(s.seekTarget)}<button id="btn-seek-clear" aria-label="取消想找" ${busy?"disabled":""}>×</button></div>` : ``}
+    ${s.seekTarget ? `<div class="seek-tag">${characterState((s.characters||[]).find(c=>c.name===s.seekTarget))==="deceased" ? "回憶" : "想找"}：${escapeHtml(s.seekTarget)}<button id="btn-seek-clear" aria-label="取消想找" ${busy?"disabled":""}>×</button></div>` : ``}
     <div class="custom-row" style="margin-top:0;">
       <textarea id="custom-input" rows="3" placeholder="${focusModeActive(s) ? "寫下你想說或想做的事，也可以寫這段時間想怎麼過" : "或者，自己寫下你想做的事…"}" ${(apOut||busy)?"disabled":""}></textarea>
       <button id="btn-custom" class="send-btn" aria-label="送出" title="每回合消耗 1 點行動點" ${(apOut||busy)?"disabled":""}>➤</button>
@@ -10042,7 +10578,7 @@ const STAT_TIPS = {
   才識: ["影響考試成績、找工作能不能錄取、薪水高低，自己開店時也看它", "讀書、上課、鑽研會成長；天資高的人長得快，越高越難再往上"],
   表達力: ["旁白寫你說話、跟人相處的樣子時會參考；進步多了也會慢慢養出氣質", "上台、參加社團、多跟人溝通、上表達課都會成長"],
   外表: ["長相加上氣質，旁白寫別人第一眼對你的印象時會參考", "打理自己、保養穿搭、累積閱歷會加分；身體太差時氣色會變差"],
-  人脈: ["影響找工作能不能錄取、自己開店的經營，也關係到心裡的歸屬感", "主動聯絡、參加聚會、跟人合作會增加；很久沒經營會慢慢變淡"]
+  人脈: ["・找工作、創業成不成功的機率會參考它\n・心裡的「歸屬感」有六成看它（幸福感的來源之一）\n・選社交的回合，朋友帶來機會的機率也看它（每10點多5%，最高六成）", "・認識新朋友、朋友的關係升一級、選社交、參加社團、回應得體會增加\n・連續好幾回合沒和非家人互動，會慢慢變淡（每次−1）\n・越高越難再增加"]
 };
 function statTipAttr(label){
   const t = STAT_TIPS[label];
@@ -10068,20 +10604,19 @@ function relationDotCount(c){
   const v = c.affinity||0;
   return v>=80 ? 5 : v>=60 ? 4 : v>=40 ? 3 : v>=20 ? 2 : 1;
 }
-function renderRelationDots(c, gray){
+function renderRelationDots(c, faded){
   const n = relationDotCount(c);
-  return `<span class="dots5${gray?" gray":""}" aria-label="關係程度${n}/5">${[1,2,3,4,5].map(i=>`<i class="${i<=n?"on":""}"></i>`).join("")}</span>`;
+  return `<span class="dots5${faded?" faded":""}" aria-label="關係程度${n}/5">${[1,2,3,4,5].map(i=>`<i class="${i<=n?"on":""}"></i>`).join("")}</span>`;
 }
+// 四、4.6.1（2026-09-29，取代「在場／漸行漸遠」分組）：不分組、不移除任何人，依好感排序，已故、失聯排最後
 function renderRosterPanel(s){
-  const active = activeCharacters();
-  const bg = s.characters.filter(c=>!c.active);
+  const list = sortedRosterCharacters(s);
   return `<section class="sheet${openPanel==="roster"?" open":""}" id="panel-roster" aria-label="通訊錄">
     ${sheetHead("通訊錄・羈絆")}
-    <div class="roster-note">${active.length} 位在場${bg.length? ` · ${bg.length} 位漸行漸遠`:""}</div>
+    <div class="roster-note">${list.length ? `認識的人 ${list.length} 位` : ""}</div>
     <div class="roster-list">
-      ${active.map(c=>rosterCard(c,false)).join("")}
-      ${bg.map(c=>rosterCard(c,true)).join("")}
-      ${active.length+bg.length===0 ? `<div style="font-size:12.5px;color:var(--ink-soft);">目前故事裡還沒有其他重要的人。</div>` : ""}
+      ${list.map(c=>rosterCard(c)).join("")}
+      ${list.length===0 ? `<div style="font-size:12.5px;color:var(--ink-soft);">目前故事裡還沒有其他重要的人。</div>` : ""}
     </div>
   </section>`;
 }
@@ -10094,6 +10629,7 @@ function renderMenuPanel(s){
     </div>
     <div class="menu-sec">這段人生</div>
     <a class="menu-item" id="link-about-me">🪞 關於我</a>
+    <a class="menu-item" id="link-interests">🎨 我的興趣（${interestCardsForPanel(s).length}項）</a>
     <a class="menu-item" id="link-belongings">🧺 我的東西（${(s.belongings||[]).length}件）</a>
     ${s.studentCard ? `<a class="menu-item" id="link-student-card">🎓 學生證（${escapeHtml(s.studentCard.school)}）</a>` : ``}
     ${(s.familyChronicle && s.familyChronicle.length) ? `<a class="menu-item" id="link-family">🌳 家族年表（前${s.familyChronicle.length}代）</a>` : ``}
@@ -10179,6 +10715,32 @@ function scrollToCard(el, rm){
 }
 // 三、3.2.4【定案】課業成績與興趣成長兩條軌跡都要顯示給玩家（2026-09-27補上）：帳本下方一行課業、一行興趣。
 // 興趣投入度不裸露數字，改文字級距（比照4.1.1關係值「文字化呈現」的精神）；課業成績是考試分數，本來就會在考試彈窗/敘事出現，直接顯示
+// 八、8.12.3（2026-09-29）：五級興趣等級，沿用0～100投入分數換算；面板與結算提示共用
+const INTEREST_LEVELS = [["初學",0],["入門",10],["上手",25],["熟練",40],["精通",70]];
+function interestLevelIndex(v){ let i = 0; INTEREST_LEVELS.forEach(([,min],k)=>{ if(v>=min) i = k; }); return i; }
+function interestLevelName(v){ return INTEREST_LEVELS[interestLevelIndex(Math.round(v||0))][0]; }
+function interestLevelSnapshot(s){
+  const m = {};
+  (s.interestCandidates||[]).forEach(c=>{ m[c.id] = { category:c.category, idx: interestLevelIndex(Math.round(c.investment||0)) }; });
+  return m;
+}
+function interestLevelChangeNote(s, before){
+  const out = [];
+  (s.interestCandidates||[]).forEach(c=>{
+    const b = before[c.id];
+    if(!b) return;
+    const now = interestLevelIndex(Math.round(c.investment||0));
+    if(now!==b.idx) out.push(`興趣：${c.category}　${INTEREST_LEVELS[b.idx][0]} → ${INTEREST_LEVELS[now][0]}`);
+  });
+  return out.length ? out : null;
+}
+function interestLevelProgress(v){ // 距離下一級的進度(0～1)；精通回傳null
+  v = Math.round(v||0);
+  const i = interestLevelIndex(v);
+  if(i>=INTEREST_LEVELS.length-1) return null;
+  const lo = INTEREST_LEVELS[i][1], hi = INTEREST_LEVELS[i+1][1];
+  return clamp((v-lo)/(hi-lo), 0, 1);
+}
 function interestLevelLabel(c){
   if(c.status==="dormant") return "淡了";
   if(c.status==="candidate") return "剛接觸";
@@ -10240,14 +10802,19 @@ function renderRelationshipHints(hints){
     return `<div class="rel-hint">${c ? `<span class="avatar">${escapeHtml(c.name.slice(0,1))}</span>` : ``}<span>${escapeHtml(h)}</span></div>`;
   }).join("")}</div>`;
 }
-function rosterCard(c,isBg){
+function rosterCard(c){
   // 4.1.1顯示規則（9/16改版）：列表以文字化狀態為主，不裸露0-100數字；點擊可叫出詳細頁
-  // 十六、16.3.4／16.3.5（2026-09-28）：每人一列＝名字首字頭像、名字、稱謂與關係等級、關係程度圓點；漸行漸遠的圓點改灰色
+  // 十六、16.3.4／16.3.5（2026-09-28）：每人一列＝名字首字頭像、名字、稱謂與關係等級、關係程度圓點
+  // 四、4.6.2（2026-09-29）：副標題顯示漸行漸遠／已故／失聯；漸行漸遠的圓點改淡色(取代灰色)。
+  // 列的class不可用「bg」：全域.bg是固定在畫面後方的背景層(position:fixed)，會讓這一列疊到別人上面(QA 34.13#16)
+  const st = characterState(c);
   const category = relationCategoryLabel(c);
-  return `<div class="rrow ${isBg?'bg':''}" data-npc="${escapeHtml(c.name)}" role="button" tabindex="0">
-    <span class="avatar lg${isBg?" gray":""}">${escapeHtml(String(c.name||"？").slice(0,1))}</span>
-    <div class="who"><div class="nm">${escapeHtml(c.name)}</div><div class="sub">${escapeHtml(category)}・${escapeHtml(relationshipStatusLabel(c))}</div></div>
-    ${renderRelationDots(c, isBg)}
+  const label = relationshipStatusLabel(c);
+  const sub = st==="normal" || label===CHARACTER_STATE_LABELS[st] ? `${category}・${label}` : `${category}・${CHARACTER_STATE_LABELS[st]}`;
+  return `<div class="rrow st-${st}" data-npc="${escapeHtml(c.name)}" role="button" tabindex="0">
+    <span class="avatar lg${st!=="normal"?" gray":""}">${escapeHtml(String(c.name||"？").slice(0,1))}</span>
+    <div class="who"><div class="nm">${escapeHtml(c.name)}</div><div class="sub">${escapeHtml(sub)}</div></div>
+    ${renderRelationDots(c, st==="fading")}
   </div>`;
 }
 function escapeHtml(str){
@@ -10319,6 +10886,10 @@ function linkNpcNames(escapedText, enabled){
 document.addEventListener("click", e=>{
   const el = e.target && e.target.closest ? e.target.closest(".npc-link[data-npc]") : null;
   if(el) renderNpcDetailModal(el.dataset.npc);
+  // 十六、16.11：手機點一下打開結算明細，點其他地方關閉
+  const stl = e.target && e.target.closest ? e.target.closest(".stl-item:not(.plain)") : null;
+  document.querySelectorAll(".stl-item.open").forEach(x=>{ if(x!==stl) x.classList.remove("open"); });
+  if(stl) stl.classList.toggle("open");
 });
 // 一、1.2.9.4（2026-09-24實作）：〔文件:標題〕…〔/文件〕渲染成獨立文件框，其餘照一般段落顯示
 function renderParagraphs(text, linkNames){
@@ -10433,6 +11004,8 @@ function bindPlaying(){
   if(aboutLink) aboutLink.onclick = renderAboutMeModal;
   const studentCardLink = document.getElementById("link-student-card"); // 16.8.4
   if(studentCardLink) studentCardLink.onclick = renderStudentCardModal;
+  const interestsLink = document.getElementById("link-interests");
+  if(interestsLink) interestsLink.onclick = renderInterestsModal;
   const belongingsLink = document.getElementById("link-belongings");
   if(belongingsLink) belongingsLink.onclick = renderBelongingsModal;
   const bookLink = document.getElementById("link-book");
@@ -10511,6 +11084,36 @@ function renderAboutMeModal(){
   document.getElementById("btn-about-close").onclick = ()=>div.remove();
 }
 // 十七、17.4「我的東西」：每件附一句來歷，不標數字
+// 十六、16.13（2026-09-29）興趣面板：每個興趣一張卡，顯示等級名稱、「距離下一級」進度條、目前副業狀態；不直接顯示原始投入分數
+function interestCardsForPanel(s){ return (s.interestCandidates||[]).filter(c=>c.status==="active" || c.status==="dormant"); }
+function interestSideStatusLabel(c){ return c.sideBusinessStatus==="gig" ? "偶爾接案" : c.sideBusinessStatus==="formal" ? "正式經營" : "無"; }
+function renderInterestCardHtml(c){
+  const v = Math.round(c.investment||0);
+  const prog = interestLevelProgress(v);
+  const idx = interestLevelIndex(v);
+  const next = INTEREST_LEVELS[idx+1];
+  return `<div class="interest-card${c.status==="dormant"?" dormant":""}">
+    <div class="ic-head"><b>${escapeHtml(c.category)}</b><span class="ic-level">${interestLevelName(v)}${c.status==="dormant" ? "（久未投入）" : ""}</span></div>
+    <div class="ic-track" aria-label="${prog==null ? "已到頂" : "距離下一級（"+next[0]+"）"}"><span class="ic-fill" style="width:${prog==null ? 100 : Math.round(prog*100)}%"></span></div>
+    <div class="ic-sub">${prog==null ? "已到頂" : `距離「${next[0]}」`}　副業：${interestSideStatusLabel(c)}</div>
+  </div>`;
+}
+function renderInterestsModal(){
+  const cards = interestCardsForPanel(state);
+  const div = document.createElement("div");
+  div.id = "interests-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>我的興趣</h3>
+      <div style="overflow-y:auto;flex:1;text-align:left;">
+        ${cards.length ? cards.map(renderInterestCardHtml).join("") : `<p style="color:var(--ink-soft);">還沒有成形的興趣。多試試不同的事，喜歡的會慢慢留下來。</p>`}
+      </div>
+      <button class="ghost-btn" id="btn-interests-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-interests-close").onclick = ()=>div.remove();
+}
 function renderBelongingsModal(){
   const s = state;
   const items = (s.belongings||[]).slice().reverse();
@@ -10744,6 +11347,14 @@ function applyLifestyleChange(draft){
   saveGame(); render();
 }
 
+// 四、4.7.5（2026-09-29）：人物卡的「動態」——只列已得知的背景事件，格式「{遊戲內時間}・{事件名稱}」，最近10筆，更早的可展開
+function renderNpcDynamics(c){
+  const known = (c.events||[]).filter(e=>e.known).slice().reverse();
+  if(!known.length) return ``;
+  const row = e=>`<div>${escapeHtml(e.label||"")}・${escapeHtml(e.name)}</div>`;
+  const older = known.slice(10);
+  return `<div class="npc-dyn"><b>動態</b>${known.slice(0,10).map(row).join("")}${older.length ? `<details><summary>更早的動態（${older.length}）</summary>${older.map(row).join("")}</details>` : ``}</div>`;
+}
 // 四、4.1.1顯示規則（9/16新增）：點擊NPC卡片叫出的詳細頁，純讀取不涉及遊戲決策，關閉即結束不寫入存檔
 function renderNpcDetailModal(name){
   const c = state.characters.find(x=>x.name===name);
@@ -10755,17 +11366,22 @@ function renderNpcDetailModal(name){
   const identity = c.relation||"";
   const turnsAgo = state.turnCount - c.lastTurn;
   const lastInteractLabel = turnsAgo<=0 ? "剛剛" : `${turnsAgo} 回合前`;
-  const canSeek = !c.deceased && state.phase==="playing"; // 過世的角色不出現「去找他」
+  const st = characterState(c);
+  const canSeek = state.phase==="playing"; // 四、4.6.5（2026-09-29）：已故的角色改成「回憶」
+  const pron = c.gender==="女"?"她":"他";
   div.innerHTML = `
     <div class="modal">
       <h3>${escapeHtml(c.name)}</h3>
       <p style="margin-top:-8px;">${escapeHtml(identity)}${identity && category!==identity ? "　·　"+escapeHtml(category) : (!identity ? escapeHtml(category) : "")}</p>
-      <p><b>目前關係：</b>${escapeHtml(relationshipStatusLabel(c))}</p>
+      <p><b>目前關係：</b>${escapeHtml(relationshipStatusLabel(c))}${st!=="normal" && relationshipStatusLabel(c)!==CHARACTER_STATE_LABELS[st] ? `（${CHARACTER_STATE_LABELS[st]}）` : ``}</p>
       ${c.origin ? `<p style="font-size:12px;color:var(--ink-soft);">認識時間／來源：${escapeHtml(c.origin)}</p>` : ``}
+      ${c.recentStatus ? `<p><b>近況：</b>${escapeHtml(c.recentStatus)}</p>` : ``}
       ${c.summary ? `<p><b>共同記憶：</b>${escapeHtml(c.summary)}</p>` : ``}
+      ${renderNpcDynamics(c)}
       <p style="font-size:12px;">最近互動：${lastInteractLabel}</p>
       <p style="font-size:11px;">關係值（次要參考）：${Math.round(c.affinity)}/100</p>
-      ${canSeek ? `<button class="primary-btn" id="btn-npc-seek" style="margin-top:14px;">去找${c.gender==="女"?"她":"他"}</button>` : ``}
+      ${st==="lost" ? `<p style="font-size:12px;color:var(--ink-soft);">已經聯絡不上${pron}了。去找${pron}不一定找得到。</p>` : ``}
+      ${canSeek ? `<button class="primary-btn" id="btn-npc-seek" style="margin-top:14px;">${st==="deceased" ? "回憶" : `去找${pron}`}</button>` : ``}
       <button class="ghost-btn" id="btn-npc-detail-close" style="margin-top:14px;">關閉</button>
     </div>`;
   document.body.appendChild(div);
@@ -11993,6 +12609,7 @@ function buildStoryExport(s){
     if(e.purchaseNote) out.push(`購物：${e.purchaseNote}`, "");
     if(e.examNote) out.push(`考試：${e.examNote}`, "");
     if(e.sideBusinessNote) out.push(`副業：${e.sideBusinessNote}`, "");
+    if(e.levelNotes && e.levelNotes.length) out.push(e.levelNotes.join("；"), "");
     if(e.settlement) out.push(`結算：${settlementText(e.settlement, s.cash)}`, "");
     // 這回合給的選項，標出下一回合選了哪個(下一則日記的action)；自己打字的另外列出
     if(e.options && e.options.length){

@@ -13,6 +13,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const env = H.makeEnv();
 let g = await H.loadGame({ useMock: true, env, key: "homekey01" });
 let doc = g.win.document;
+g.ev("MOCK_AI_DELAY_MS = 0"); // 模擬旁白不用等，避免回合在換掉state之後才回來
 await sleep(30);
 A.check("16.10.9 有金鑰也不自動接續，進站一律先到首頁", g.ev("state.phase") === "home" && !!doc.getElementById("home"));
 A.check("16.10.0 第一次進站就顯示年齡確認(不是按開始才出現)", !!doc.getElementById("age-gate"));
@@ -77,6 +78,7 @@ g.win.localStorage.removeItem("life_sim_home:0"); g.win.localStorage.removeItem(
 g.win.localStorage.setItem("life_sim_active_slot", "1");
 await H.startNewLife(g, { name: "周語彤" });
 await H.playTurn(g); await sleep(20);
+for (let i = 0; i < 100 && g.ev("aiWritingNow"); i++) await sleep(20); // 等回合寫完再換掉state
 const m1 = JSON.parse(g.win.localStorage.getItem("life_sim_home:1") || "null");
 A.check("存檔時寫首頁摘要(名字、年齡、世代、細階段、時間、金鑰)", m1 && m1.name === "周語彤" && m1.age === 15 && m1.reincarnations === 0 && /高一/.test(m1.timeLabel) && m1.key === "homekey01" && Math.abs(m1.lastPlayedAt - Date.now()) < 60000, m1);
 const turnBefore = g.ev("state.turnCount");
@@ -93,6 +95,7 @@ A.check("舊存檔沒有摘要：讀本機存檔補(不顯示時間)", doc.query
 g.win.localStorage.setItem("life_sim_active_slot", "1");
 g.ev("state = JSON.parse(localStorage.getItem('life_sim_save_v1:1'))");
 await g.ev("endLife('ended')"); await sleep(60);
+for (let i = 0; i < 200 && g.ev("aiWritingNow"); i++) await sleep(20); // 結局那一回合寫完再換掉state
 g.ev("state = {phase:'home'}; render()");
 A.check("16.10.2 已結束的人生不列在首頁", doc.querySelectorAll(".life-card").length === 0 && !g.win.localStorage.getItem("life_sim_home:1"));
 
@@ -136,6 +139,7 @@ const newKey = g2.win.localStorage.getItem("life_sim_recovery_key");
 A.check("16.10.9 選完生活方式才顯示復原金鑰(收好)", g2.ev("state.phase") === "keyReveal" && !!newKey && d2.getElementById("app").textContent.includes(newKey), newKey);
 d2.getElementById("btn-key-reveal-confirm").click(); await sleep(80); H.clickModals(g2.win);
 A.check("記下金鑰後，剛剛設定好的那段人生正式開始(名字、第1格、禮包點)", g2.ev("state.phase") === "playing" && g2.ev("state.name") === "許念安" && g2.win.localStorage.getItem("life_sim_active_slot") === "0" && g2.ev("totalAP(state)") > 0);
+for (let i = 0; i < 100 && g2.ev("aiWritingNow"); i++) await sleep(20); // 等開場回合寫完再換掉state(否則回來時state已被換掉)
 await sleep(30);
 g2.ev("state = {phase:'home'}; render()");
 A.check("新金鑰的人生出現在首頁", /許念安/.test(d2.querySelector(".life-card")?.textContent || ""));

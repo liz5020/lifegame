@@ -25,6 +25,16 @@ export function memoryKV() {
 }
 
 // 假的Anthropic上游：依payload產生一份合法的submit_turn_result，usage可自訂
+// 一、1.2.14（2026-09-29）：Worker把名冊拆成快取的第一個content block，其餘payload是第二個；這裡還原成單一payload物件
+export function turnPayloadFromBody(body) {
+  const c = body && body.messages && body.messages[0] && body.messages[0].content;
+  if (typeof c === "string") return JSON.parse(c);
+  const blocks = Array.isArray(c) ? c : [];
+  const payload = JSON.parse(blocks[blocks.length - 1].text);
+  const roster = blocks.find(b => /^【名冊】/.test(b.text || ""));
+  if (roster) payload.character_roster = roster.text.split("\n").slice(1).filter(Boolean);
+  return payload;
+}
 export function makeFakeAnthropic(opts = {}) {
   const calls = [];
   const fake = async (url, init) => {
@@ -54,7 +64,7 @@ export function makeFakeAnthropic(opts = {}) {
       };
     } else {
       let payload = {};
-      try { payload = JSON.parse(body.messages[0].content); } catch (e) {}
+      try { payload = turnPayloadFromBody(body); } catch (e) {}
       const days = (payload.time_context && payload.time_context.round_days) || 1;
       input = Object.assign({
         action_result: "你照著剛剛的決定做了。", narrative: "隔天早上，你醒得比鬧鐘早。\n\n桌上的課本還攤著。",

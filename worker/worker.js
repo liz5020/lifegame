@@ -611,6 +611,21 @@ async function handleChapter(body, env, origin, ctx) {
 }
 
 // 10.4：Worker自己組完整的Anthropic請求，前端送來的system/tools/tool_choice/model/max_tokens/output_config一律不採用
+// 一、1.2.14（2026-09-29）：精簡名冊變動頻率低，拆成第一個content block並設cache_control，
+// 讓「system＋工具＋名冊」這段前綴可以套用提示快取；其餘每回合都會變的payload放在後面
+const MAX_ROSTER_LINES = 120, MAX_ROSTER_LINE_CHARS = 120;
+export function turnUserContent(content) {
+  let payload;
+  try { payload = JSON.parse(content); } catch (e) { return content; }
+  const roster = payload && payload.character_roster;
+  if (!Array.isArray(roster) || !roster.length) return content;
+  const lines = roster.filter(x => typeof x === "string").slice(0, MAX_ROSTER_LINES).map(x => x.slice(0, MAX_ROSTER_LINE_CHARS).replace(/\n/g, " "));
+  delete payload.character_roster;
+  return [
+    { type: "text", text: "【名冊】\n" + lines.join("\n"), cache_control: { type: "ephemeral" } },
+    { type: "text", text: JSON.stringify(payload) }
+  ];
+}
 export function buildTurnRequest(messages) {
   return {
     model: ALLOWED_MODEL,
@@ -619,7 +634,7 @@ export function buildTurnRequest(messages) {
     tools: [TURN_RESULT_TOOL],
     tool_choice: { type: "tool", name: TURN_RESULT_TOOL.name },
     system: [{ type: "text", text: TURN_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-    messages: [{ role: "user", content: messages[0].content }]
+    messages: [{ role: "user", content: turnUserContent(messages[0].content) }]
   };
 }
 
