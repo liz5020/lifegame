@@ -55,6 +55,12 @@
 //   GET  /family-book?key=...&id=...  讀回來唯讀閱讀
 //   另外存是因為一本書約100KB，直接塞進存檔傳個幾代就會撞到MAX_STATE_BYTES(1MB)。人生回顧沒有真正刪除的功能，這些書不刪
 //
+// 2026-09-29新增（十、10.7雲端存檔瘦身）：
+//   /save、/archive 改收壓縮過的存檔 {…, enc:"gzip-b64", z:"…"}(舊格式{state}照收)，大小上限一律以實際上傳的內容(壓縮後)計算；
+//   Worker不解壓，原樣存進KV，/load、GET /archive 原樣回傳 {enc, z}，由前端解壓。MAX_STATE_BYTES(1MB)是這裡自訂的上限，
+//   不是平台限制(Cloudflare KV單值上限25MiB、Worker請求本體上限100MB)
+//   POST /stage-pack        body: {key, id, enc, z}  已結束人生階段的封存包(日記＋人生之書)，只在封存當下上傳一次
+//   GET  /stage-pack?key=...&id=...  新裝置第一次打開已封存內容時才下載
 // 2026-09-28新增（十、10.5平均每條人生花費分兩種）：/archive與「同一個slot換了新life_id」時，把舊的一世標成已結束(usage.js的markLifeEnded)
 
 import { convertAnthropicResponse } from "./s2t.js";
@@ -64,7 +70,7 @@ import {
   isValidNonce, isValidLifeId, isUsableTurnResponse, taipeiDateString, nowMs,
   addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse,
   claimIdle, preIdleSummary, isUsableIdleSummaryResponse, chargeIdleRollback,
-  canAffordLifeReview, chargeLifeReview, isUsableLifeReviewResponse
+  canAffordLifeReview, chargeLifeReview, isUsableLifeReviewResponse, markAction
 } from "./ap.js";
 import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual, markLifeEnded } from "./usage.js";
 
@@ -106,6 +112,11 @@ function jsonResponse(origin, obj, status) {
 function isValidKey(key) {
   return typeof key === "string" && key.length > 0 && key.length <= MAX_KEY_LENGTH;
 }
+// 十、10.3.12（2026-09-29）：測試鑰匙名單＝secret AP_TEST_KEYS(逗號分隔)；沒設定就沒有任何人有效
+function isApTestKey(env, key) {
+  if (!env || typeof env.AP_TEST_KEYS !== "string" || !isValidKey(key)) return false;
+  return env.AP_TEST_KEYS.split(",").map(k => k.trim()).filter(Boolean).includes(key);
+}
 function isValidSlot(slot) {
   return Number.isInteger(slot) && slot >= 0 && slot < MAX_SLOTS;
 }
@@ -114,6 +125,22 @@ function kvKey(key, slot) {
 }
 function archiveKvKey(key, id) {
   return "archive:" + key + ":" + id;
+}
+function stagePackKvKey(key, id) {
+  return "stagepack:" + key + ":" + id;
+}
+const SAVE_ENCODINGS = ["gzip-b64", "json"];
+// 10.7.2（2026-09-29）：從請求取出要存的內容——壓縮格式{enc,z}或舊格式{state}；回傳{error}或{fields, size}
+function readSavePayload(body) {
+  if (body && typeof body.z === "string") {
+    if (!SAVE_ENCODINGS.includes(body.enc)) return { error: "不支援的存檔編碼" };
+    return { fields: { enc: body.enc, z: body.z }, size: body.z.length };
+  }
+  if (body && body.state && typeof body.state === "object") {
+    const s = JSON.stringify(body.state);
+    return { fields: { state: body.state }, size: s.length };
+  }
+  return { error: "缺少state" };
 }
 function familyBookKvKey(key, id) {
   return "familybook:" + key + ":" + id;
@@ -136,14 +163,15 @@ async function handleSave(request, env, origin) {
   let body;
   try { body = await request.json(); }
   catch (e) { return jsonResponse(origin, { success: false, error: "請求內容不是合法JSON" }, 400); }
-  const { key, slot, meta, state } = body || {};
+  const { key, slot, meta } = body || {};
   if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
   if (!isValidSlot(slot)) return jsonResponse(origin, { success: false, error: "slot必須是0~2的整數" }, 400);
-  if (!state || typeof state !== "object") return jsonResponse(origin, { success: false, error: "缺少state" }, 400);
-  const record = JSON.stringify({ meta: meta || {}, state });
-  if (record.length > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "存檔內容過大" }, 400);
+  const p = readSavePayload(body);
+  if (p.error) return jsonResponse(origin, { success: false, error: p.error }, 400);
+  if (p.size > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "存檔內容過大" }, 400);
+  const record = JSON.stringify(Object.assign({ meta: meta || {} }, p.fields));
   await env.SAVES.put(kvKey(key, slot), record);
-  return jsonResponse(origin, { success: true });
+  return jsonResponse(origin, { success: true, size: p.size });
 }
 
 async function handleSlots(request, env, origin) {
@@ -199,11 +227,13 @@ async function handleArchive(request, env, origin) {
   let body;
   try { body = await request.json(); }
   catch (e) { return jsonResponse(origin, { success: false, error: "請求內容不是合法JSON" }, 400); }
-  const { key, slot, id, meta, purchased, state } = body || {};
+  const { key, slot, id, meta, purchased } = body || {};
   if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
   if (!isValidSlot(slot)) return jsonResponse(origin, { success: false, error: "slot必須是0~2的整數" }, 400);
   if (!isValidArchiveId(id)) return jsonResponse(origin, { success: false, error: "封存id格式不正確" }, 400);
-  if (!state || typeof state !== "object") return jsonResponse(origin, { success: false, error: "缺少state" }, 400);
+  const p = readSavePayload(body);
+  if (p.error) return jsonResponse(origin, { success: false, error: p.error }, 400);
+  const lifeId = body.state ? body.state.lifeId : body.life_id;
   const safeMeta = {
     name: String((meta && meta.name) || "").slice(0, 20),
     age: Number(meta && meta.age) || 0,
@@ -212,11 +242,11 @@ async function handleArchive(request, env, origin) {
     reason: (meta && meta.reason) === "deleted" ? "deleted" : "ended",
     endedAt: Number(meta && meta.endedAt) || Date.now()
   };
-  const record = JSON.stringify({ meta: safeMeta, state });
-  if (record.length > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "存檔內容過大" }, 400);
+  if (p.size > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "存檔內容過大" }, 400);
+  const record = JSON.stringify(Object.assign({ meta: safeMeta }, p.fields));
   // KV metadata讓/archives清單不用逐筆讀完整存檔
   await env.SAVES.put(archiveKvKey(key, id), record, { metadata: safeMeta });
-  if (isValidLifeId(state.lifeId)) await markLifeEnded(env, key, slot, state.lifeId); // 10.5（2026-09-28）
+  if (isValidLifeId(lifeId)) await markLifeEnded(env, key, slot, lifeId); // 10.5（2026-09-28）
   await env.SAVES.delete(kvKey(key, slot));
   await env.SAVES.delete(apKvKey(key, slot)); // 10.3.11：人生結束，這條人生的點數紀錄一起刪掉(禮包點消失)
   const add = Math.max(0, Math.floor(Number(purchased) || 0));
@@ -253,8 +283,33 @@ async function handleArchiveLoad(request, env, origin) {
   if (!raw) return jsonResponse(origin, { success: false, error: "找不到這段人生" }, 404);
   try {
     const parsed = JSON.parse(raw);
-    return jsonResponse(origin, { success: true, meta: parsed.meta || {}, state: parsed.state });
+    return jsonResponse(origin, parsed.z ? { success: true, meta: parsed.meta || {}, enc: parsed.enc, z: parsed.z } : { success: true, meta: parsed.meta || {}, state: parsed.state });
   } catch (e) { return jsonResponse(origin, { success: false, error: "存檔資料損毀" }, 500); }
+}
+
+// 十、10.7.3（2026-09-29）：人生階段封存包，Worker不解壓、原樣存取
+async function handleStagePackSave(request, env, origin) {
+  let body;
+  try { body = await request.json(); }
+  catch (e) { return jsonResponse(origin, { success: false, error: "請求內容不是合法JSON" }, 400); }
+  const { key, id } = body || {};
+  if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
+  if (!isValidArchiveId(id)) return jsonResponse(origin, { success: false, error: "封存包id格式不正確" }, 400);
+  if (typeof body.z !== "string" || !SAVE_ENCODINGS.includes(body.enc)) return jsonResponse(origin, { success: false, error: "缺少封存包內容" }, 400);
+  if (body.z.length > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "封存包內容過大" }, 400);
+  await env.SAVES.put(stagePackKvKey(key, id), JSON.stringify({ enc: body.enc, z: body.z }));
+  return jsonResponse(origin, { success: true, size: body.z.length });
+}
+async function handleStagePackLoad(request, env, origin) {
+  const url = new URL(request.url);
+  const key = url.searchParams.get("key");
+  const id = url.searchParams.get("id");
+  if (!isValidKey(key)) return jsonResponse(origin, { success: false, error: "金鑰格式不正確" }, 400);
+  if (!isValidArchiveId(id)) return jsonResponse(origin, { success: false, error: "封存包id格式不正確" }, 400);
+  const raw = await env.SAVES.get(stagePackKvKey(key, id));
+  if (!raw) return jsonResponse(origin, { success: false, error: "找不到這個封存包" }, 404);
+  try { return jsonResponse(origin, Object.assign({ success: true }, JSON.parse(raw))); }
+  catch (e) { return jsonResponse(origin, { success: false, error: "資料損毀" }, 500); }
 }
 
 // 十五、15.1（2026-09-28）：世代傳承保留上一代的人生之書(唯讀)
@@ -293,7 +348,7 @@ async function handleLoad(request, env, origin) {
   if (!raw) return jsonResponse(origin, { success: false, error: "這個slot沒有存檔" }, 404);
   try {
     const parsed = JSON.parse(raw);
-    return jsonResponse(origin, { success: true, meta: parsed.meta || {}, state: parsed.state });
+    return jsonResponse(origin, parsed.z ? { success: true, meta: parsed.meta || {}, enc: parsed.enc, z: parsed.z } : { success: true, meta: parsed.meta || {}, state: parsed.state });
   } catch (e) { return jsonResponse(origin, { success: false, error: "存檔資料損毀" }, 500); }
 }
 
@@ -585,7 +640,10 @@ async function handleAIProxy(request, env, origin, ctx) {
     const endJob = markLifeEnded(env, key, slot, endedLifeId);
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(endJob); else await endJob;
   }
-  const pre = preCharge(rec, { nonce, isPrologue, lifeId: safeLifeId });
+  // 十、10.3.12（2026-09-29）：測試用「不扣行動點」——前端開關只是請求，Worker只認secret AP_TEST_KEYS登記的金鑰；
+  // 生效時完全不動行動點紀錄(不預扣、不退點、不記nonce)，回合數、章節額度、最後行動日、用量遙測照常
+  const apTestFree = body.ap_test_free === true && isApTestKey(env, key);
+  const pre = apTestFree ? { ok: true, charge: null, testFree: true } : preCharge(rec, { nonce, isPrologue, lifeId: safeLifeId });
   if (!pre.ok) {
     await saveRecord(env, key, slot, rec);
     return jsonResponse(origin, { error: pre.error, lifegame: { ap: publicAP(rec) } }, pre.status);
@@ -598,22 +656,23 @@ async function handleAIProxy(request, env, origin, ctx) {
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
-    postCharge(rec, pre, false, safeLifeId);
+    if (!apTestFree) postCharge(rec, pre, false, safeLifeId);
     await saveRecord(env, key, slot, rec);
-    return jsonResponse(origin, { error: { message: String(err) }, lifegame: { ap: publicAP(rec) } }, 502);
+    return jsonResponse(origin, { error: { message: String(err) }, lifegame: { ap: publicAP(rec), ap_test_free: apTestFree } }, 502);
   }
   const usable = !!(upstream.ok && data && isUsableTurnResponse(data));
-  postCharge(rec, pre, usable, safeLifeId, taipeiDateString(nowMs(env)));
-  if (usable && (pre.charge || pre.freePrologue)) addChapterUnit(rec); // 十五、每成功一個新回合累積章節額度
+  if (apTestFree) { if (usable) markAction(rec, taipeiDateString(nowMs(env))); }
+  else postCharge(rec, pre, usable, safeLifeId, taipeiDateString(nowMs(env)));
+  if (usable && (pre.charge || pre.freePrologue || apTestFree)) addChapterUnit(rec); // 十五、每成功一個新回合累積章節額度
   await saveRecord(env, key, slot, rec);
-  const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable) };
+  const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable), ap_test_free: apTestFree };
   // 10.5：成本遙測。只要Anthropic有回應usage(就算內容格式壞掉也已經產生費用)就記；回應送出後才寫，失敗不影響回合
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
     lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
     const job = recordUsage(env, {
       key, slot, lifeId: safeLifeId, category: "turn", usage: data.usage,
-      countsAsTurn: usable && !!(pre.charge || pre.freePrologue), payloadChars: check.chars,
+      countsAsTurn: usable && !!(pre.charge || pre.freePrologue || apTestFree), payloadChars: check.chars,
       taipeiDate: taipeiDateString(nowMs(env)), lastTone: turnEmotionalTone(data) // 6.5（2026-09-27）
     });
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
@@ -677,6 +736,8 @@ export default {
     if (url.pathname === "/archive" && request.method === "POST") return handleArchive(request, env, origin);
     if (url.pathname === "/archives" && request.method === "GET") return handleArchives(request, env, origin);
     if (url.pathname === "/archive" && request.method === "GET") return handleArchiveLoad(request, env, origin);
+    if (url.pathname === "/stage-pack" && request.method === "POST") return handleStagePackSave(request, env, origin); // 10.7.3（2026-09-29）
+    if (url.pathname === "/stage-pack" && request.method === "GET") return handleStagePackLoad(request, env, origin);
     if (url.pathname === "/family-book" && request.method === "POST") return handleFamilyBookSave(request, env, origin); // 15.1（2026-09-28）
     if (url.pathname === "/family-book" && request.method === "GET") return handleFamilyBookLoad(request, env, origin);
 

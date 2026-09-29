@@ -21,6 +21,7 @@ lifegame/
 │   └── 14-內容範例庫/                ← 依生命階段再分子檔案（14.1～14.10）
 ├── index.html                     ← 唯一正式原型檔案（前端＋遊戲邏輯），部署到Cloudflare Pages（手動上傳）
 ├── og.png                         ← 社群分享預覽圖，跟index.html一起上傳Pages
+├── lunar.min.js                   ← 農曆套件(二、2.7真實日曆，2026-09-29)，跟index.html一起上傳Pages
 ├── design-assets/                  ← og.png的原始檔（og-image.html），不上傳
 ├── worker/                         ← Cloudflare Worker中繼站（AI代理、system prompt唯一來源prompt.js、存檔KV、行動點、簡轉繁），部署見worker/README.md
 ├── tests/                          ← jsdom測試（harness.mjs、test-*.mjs、check-syntax.mjs），`node run-all.mjs`全部跑

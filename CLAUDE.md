@@ -6,7 +6,7 @@
 
 ## 檔案結構
 
-- `index.html`：遊戲本體，單一HTML檔（前端+呼叫AI的邏輯），部署到Cloudflare Pages（目前手動上傳）；**2026-09-28起Pages要一起上傳根目錄的`og.png`**（社群分享預覽圖，16.10.9唯一例外；原始檔在`design-assets/og-image.html`，不上傳）
+- `index.html`：遊戲本體，單一HTML檔（前端+呼叫AI的邏輯），部署到Cloudflare Pages（目前手動上傳）；**2026-09-28起Pages要一起上傳根目錄的`og.png`**（社群分享預覽圖，16.10.9唯一例外；原始檔在`design-assets/og-image.html`，不上傳）；**2026-09-29起也要一起上傳根目錄的`lunar.min.js`**（農曆套件lunar-javascript，二、2.7真實日曆用；沒上傳時程式退回瀏覽器內建農曆，少數年份春節會差一天。jsdom測試由`tests/harness.mjs`直接內嵌）
 - `worker/`：Cloudflare Worker中繼站（AI代理、存檔KV、行動點、簡轉繁）。**2026-09-24起用wrangler 3部署**（`cd worker && npx wrangler deploy`，步驟見`worker/README.md`），不再貼線上編輯器；API金鑰只用`wrangler secret put`存放
 - `life-sim-design/`：**唯一的設計正本**，所有規則以各章節檔案裡的【定案】標記為準。`00-總覽.md`收檔案對照表、總目錄、全域更新日誌（新條目只寫這裡；9/26以前的舊條目在`00-總覽-更新日誌封存.md`）、設計精神說明；`01`~`18`一章一檔（對照見`00-總覽.md`「檔案對照表」），`14-內容範例庫/`依生命階段再分子檔案。拆檔規則見`協作流程說明-共同基準.md`「## 唯一正本」
 - `WORKFLOW.md`：完整協作SOP（費用控制細節、與網頁版的交接流程、資料夾用途）
@@ -79,5 +79,7 @@
 - **（2026-09-20新增）**十二、職涯系統：`job_change`欄位（AI自由回報職業類別+薪資）已完全移除，出社會後的求職/升遷/轉職/裁員/創業/退休全部改由結構化彈窗處理（`checkCareerTriggers()`每回合檢查、`rollAnnualCareerChecks()`每滿一年檢查一次），薪資由`computeCareerSalary()`依才識/職級/年資查表計算，AI只透過`career_event_now` payload欄位取得敘事素材，不再能自己編造薪資或職業類別。`first_startup`里程碑同步從AI回報改為`business_status`轉為「經營中」時客戶端自動判定
 - **（2026-09-20新增）**十三、健康衰退與老年階段：新增`health_cap`（健康年齡上限，依年齡帶遞減）機制，健康現值不因年齡直接扣分，而是受這個天花板限制並每年收斂一次；死亡機率公式（`deathHealthMultiplier()`）已推廣為以`health_cap`為基準，cap=100（49歲以前）時與舊公式完全等價，7.1.5已結案的死亡年齡分布不受影響。30歲以後每年有機率生病（急性/慢性/重大疾病三種，`rollAnnualIllnessCheck()`），60歲以後父母角色卡進入需要協助/失能/過世的狀態機（`rollParentHealthStageAdvance()`）
 - **（2026-09-20新增）**婚姻/家庭系統補完：`romanceStatus`狀態機延伸為`married`/`divorced`（取代原本只到`stable`），配偶NPC結婚時自動骰定收入（`rollSpouseIncome()`）、離婚走`finalizeDivorce()`結算現金/房產/監護；`cohabiting`布林欄位標記同住NPC（配偶/未成年子女/原生家庭成員），不適用12回合背景降級，改為12回合無互動緩降且設下限；子女角色卡新增`age`/`parentingLog`欄位，成長節點（`checkParentingGrowthNode()`）觸發教養風格追蹤，世代傳承時由`computeInheritedParentingStyle()`換算給下一世
-- **（2026-09-24新增）**遊戲內日期由程式掌管（`timeState.cal`，行事曆見一、1.2.9.11.1.1），每回合算出本回合日期範圍，財務結算月數改依實際推進天數換算；AI每回合回傳`action_result`（行動結果）＋`narrative`（隔天以後的新場景）兩段與`scene_day_offset`，新場景日期違規時自動重生一次。tone_track/tension、NPC台詞上限（`{{名字|台詞}}`）、伏筆、角色撞名改名都由程式處理。system prompt的寫法規則集中在開頭的【寫作規則】【語氣軌】【時間與敘事結構】三段，之後改寫法規則改這三段，不要在下方各系統條目裡另外加寫作指示
+- **（2026-09-24新增，2026-09-29改為真實日曆）**遊戲內日期由程式掌管（`timeState.cal` v2：絕對日0＝2026/8/30，換算真實年月日星期；學期、考試日期每年計算並存在`cal.sched`，見二、2.7；年齡在跨過生日那天＋1（`syncBirthdayAge()`，家人子女同一天＋1），學年/出社會年度的「滿一年」只做年度判定、不再加歲），每回合算出本回合日期範圍，財務結算月數改依實際推進天數換算；AI每回合回傳`action_result`（行動結果）＋`narrative`（隔天以後的新場景）兩段與`scene_day_offset`，新場景日期違規時自動重生一次。tone_track/tension、NPC台詞上限（`{{名字|台詞}}`）、伏筆、角色撞名改名都由程式處理。system prompt的寫法規則集中在開頭的【寫作規則】【語氣軌】【時間與敘事結構】三段，之後改寫法規則改這三段，不要在下方各系統條目裡另外加寫作指示
+- **（2026-09-29新增，葉夜第1世回饋）**考試分數期中期末都由`rollExamScore()`擲出(預期＋擲骰±15＋讀書比例±5)並先鎖住(`examHistory[].pending`)；副業改「程式排定接案機會→AI回報交件大小(`side_gig_delivery`)→程式算份數入帳」，8.7每月副業收入已停用，學生打工固定2份；人脈衰退改看有沒有跟非家人互動(三、3.5.4，舊的每隔3回合扣1～3已移除)；結算欄逐項列出且全用整數，日記只存`compactSettlementForLog()`精簡副本(Worker存檔上限1MB，長壽人生本來就接近上限，新增存檔欄位要注意大小)；AI正文不合格自動重新產生最多2次(一、1.2.9.18，同一turn_nonce上限5次)
+- **（2026-09-29新增）**十、10.7雲端存檔：雲端只存現況(不含反悔快照)、gzip壓縮上傳(`{enc,z}`，Worker不解壓)、已結束的人生階段日記與人生之書打包成封存包(`state.stagePacks`，上傳成功才從雲端主存檔移出；新裝置`state.logOffset`＞0代表前面日記還在封存包，用`ensureArchivedContent()`補)。要看整段日記的新功能記得先呼叫`ensureArchivedContent()`；雲端同步一次只跑一個(`cloudSyncOnce`)
 - **（2026-09-29新增）**二、2.6回合結構＋十八、敘事節奏：學生時期每回合＝回應＋重心(6顆按鈕)，讀書/興趣次數、打工入帳改看重心(不再偵測文字關鍵字)，學生時期AI的stat_deltas只收負數、回應的表達力/人脈改由AI貼評價(`response_rating`)程式查表；劇情線`state.plotLines`取代舊的`state.foreshadows`(伏筆記帳)，場景條件`scene_plan`、角色輪替`focusLog`、NPC相處風格`style`，詳見CHANGELOG 2026-09-29

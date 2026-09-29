@@ -18,7 +18,8 @@ const c0 = ev("state.cash");
 await H.playTurn(g, "放學後去超商打工");
 ev("state.focus='rest'");
 const pt = JSON.parse(ev("JSON.stringify(state.partTimeEventLog)"));
-A.check("打工：時薪0.2、至少4小時、收入入帳", pt && pt.hourly === 0.2 && pt.hours >= 4 && pt.earning === Math.round(0.2 * pt.hours), pt);
+// 2026-09-29 八、8.11（A4）：學生時期打工改成每次固定2份(1份＝每回合平均零用錢)，取代時薪×時數
+A.check("打工：固定2份、收入入帳", pt && pt.shares === 2 && pt.earning === Math.max(1, Math.round(2 * ev("incomeShareUnit(state)"))), pt);
 A.check("第一次打工里程碑由程式完成", ev("state.milestones.first_part_time_job") === "completed");
 A.check("payload告訴AI打工收入", /part_time_event_now[^}]*earning/.test(flat()));
 A.check("非學生時期(沒傳重心)：文字偵測照舊", ev("applyPartTimeWork(state,'去打工',{daysAdvanced:7}), !!state.partTimeEventLog"));
@@ -72,7 +73,8 @@ A.check("期末考過了：不延畢", ev("checkNonLeaveGraduationDelay(state,{p
 const end0 = ev("state.timeState.cal.lastRoundEnd");
 A.check("沒過＋興趣3次：延畢", ev("checkNonLeaveGraduationDelay(state,{passed:false},3)") === true);
 A.check("回到這學期開頭、延畢+0.5、記半年、告訴AI", ev("state.timeState.segmentIndex") === 0 && ev("state.collegeDelayYearsUsed") === 0.5 && ev("state.halfYearCarry") === 1 && ev("state.universityEventLog.type") === "graduation_delayed");
-A.check("行事曆接續不倒退", ev("schoolAnchor(state.timeState.cal,0,0)") === end0 + 1, { anchor: ev("schoolAnchor(state.timeState.cal,0,0)"), end0 });
+// 二、2.7（2026-09-29）：真實日曆——從考完之後第一個真實學期開學日重新開始(中間的寒暑假照樣過去、沒有回合)
+A.check("行事曆接續不倒退：從之後第一個真實學期開學日重跑", ev("schoolAnchor(state.timeState.cal,0,0)") > end0 && ev("calSemesterInfo(calFirstSemesterOnOrAfter(" + (end0 + 1) + ")).start") === ev("schoolAnchor(state.timeState.cal,0,0)"), { anchor: ev("schoolAnchor(state.timeState.cal,0,0)"), end0 });
 ev("state.collegeDelayYearsUsed=COLLEGE_DELAY_CAP");
 A.check("延畢額度用完：不延畢", ev("checkNonLeaveGraduationDelay(state,{passed:false},5)") === false);
 

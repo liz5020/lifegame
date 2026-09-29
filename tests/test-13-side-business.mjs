@@ -16,21 +16,15 @@ ev(`state.businessStatus=null; state.interestCandidates=[
   {id:'a',category:'藝術創作',status:'active',investment:50,sideBusinessStatus:'kept'},
   {id:'b',category:'手作工藝',status:'active',investment:50,sideBusinessStatus:'gig'},
   {id:'c',category:'商業交易',status:'active',investment:50,sideBusinessStatus:'formal',sideBusinessSince:state.turnCount}]`);
-A.check("保持0＋零星3＋正式6＝每月9", ev("computeSideBusinessIncome(state)") === 9);
-ev("state.interestCandidates[1].status='dormant'");
-A.check("興趣淡成背景：該副業收入停止", ev("computeSideBusinessIncome(state)") === 6);
-ev("state.interestCandidates[2].sideBusinessUpgradeOffered=true; state.businessStatus='經營中'");
-A.check("正式副業已升級成事業：不重複給副業收入", ev("computeSideBusinessIncome(state)") === 0);
-ev("state.businessStatus=null; state.interestCandidates[2].sideBusinessUpgradeOffered=false");
-
-// 月結算有算進去
+// 2026-09-29 八、8.11（A4）：「每月副業收入3/6」由「接單→交件一次入帳」取代(詳細見test-41)，週期性副業收入一律0
+A.check("8.11取代8.7：週期性副業收入改為0", ev("computeSideBusinessIncome(state)") === 0);
 ev("state.interestCandidates=[{id:'b',category:'手作工藝',status:'active',investment:50,sideBusinessStatus:'gig'}]");
 await H.playTurn(g);
 const withGig = ev("state.lastSettlement && state.lastSettlement.income");
 ev("state.interestCandidates=[]");
 await H.playTurn(g);
 const without = ev("state.lastSettlement && state.lastSettlement.income");
-A.check("月結算收入含副業收入(+3)", withGig - without === 3, { withGig, without });
+A.check("月結算收入不再含副業收入", withGig === without, { withGig, without });
 
 // 彈窗選擇 → 下一回合告訴AI，之後清掉
 ev("state.interestCandidates=[{id:'z',category:'藝術創作',status:'active',investment:45,sideBusinessOffered:true}]");

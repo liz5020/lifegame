@@ -43,11 +43,12 @@ A.check("重複呼叫claim-gift不會把每日池補滿", r.json.ap.daily === 0,
 await setRec("k1", 1, { daily: 5, gift: 0 });
 const nn = nonce();
 const c0 = fake.calls.length;
-await turn("k1", 1, { nonce: nn }); await turn("k1", 1, { nonce: nn }); await turn("k1", 1, { nonce: nn });
+// 2026-09-29：上限3→5(第一次＋失敗重試＋場景日期重新生成＋輸出品質重新產生最多2次，一、1.2.9.18)
+for (let i = 0; i < 5; i++) await turn("k1", 1, { nonce: nn });
 ap = await getAP("k1", 1);
-A.check("同一回合重新生成(同turn_nonce)3次：只扣1點", ap.daily === 4 && fake.calls.length - c0 === 3, ap);
+A.check("同一回合重新生成(同turn_nonce)5次：只扣1點", ap.daily === 4 && fake.calls.length - c0 === 5, ap);
 r = await turn("k1", 1, { nonce: nn });
-A.check("同一turn_nonce第4次：429且不呼叫AI", r.status === 429 && fake.calls.length - c0 === 3);
+A.check("同一turn_nonce第6次：429且不呼叫AI", r.status === 429 && fake.calls.length - c0 === 5);
 upstreamFail = () => true;
 r = await turn("k1", 1);
 ap = await getAP("k1", 1);

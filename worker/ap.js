@@ -13,8 +13,8 @@ export const AP_DAILY_REFILL = 5;
 export const AP_NEW_LIFE_GIFT = 55;
 export const AP_GIFT_CLAIMS_PER_KEY = 3;
 export const AP_COST_PER_TURN = 1;
-// 同一個turn_nonce最多呼叫幾次AI：第一次＋失敗重試1次＋場景日期違規重新生成1次(見index.html takeTurn)
-export const MAX_CALLS_PER_TURN_NONCE = 3;
+// 同一個turn_nonce最多呼叫幾次AI：第一次＋失敗重試1次＋場景日期違規重新生成1次＋輸出品質不合格重新生成最多2次(一、1.2.9.18，2026-09-29，見index.html takeTurn)
+export const MAX_CALLS_PER_TURN_NONCE = 5;
 // 開場回合(人生正式開始那一回合)不扣點(10.3.1「開場建角不扣點」)。為了避免被拿來無限免費呼叫：
 // 同一個life_id只免費一次，且每個slot每個台灣日最多3次免費開場
 export const FREE_PROLOGUES_PER_SLOT_PER_DAY = 3;

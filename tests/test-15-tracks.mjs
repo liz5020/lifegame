@@ -35,11 +35,15 @@ A.check("轉系呼叫(不傳興趣)維持原算法", JSON.parse(ev("JSON.stringi
 // 考試紀錄與畫面顯示
 ev(`state.timeState.segmentIndex=${segIdx("期中考")}; state.timeState.turnsInSegment=0; state.studyCountThisTerm=2; state.interestCountThisTerm=0; state.examHistory=[]`);
 await H.playTurn(g);
-A.check("期中考後記一筆課業成績", ev("state.examHistory.length") === 1 && ev("state.examHistory[0].type") === "期中考" && ev("state.examHistory[0].score") === 56, ev("JSON.stringify(state.examHistory)"));
+// 2026-09-29 二、2.4.2（A2）：期中考分數＝預期(才識)＋擲骰(−15～+15)＋讀書準備(±5)；B3：正文完整顯示前先鎖住
+const ex0 = JSON.parse(ev("JSON.stringify(state.examHistory[0]||null)"));
+A.check("期中考後記一筆課業成績(A2浮動＋B3先鎖住)", ev("state.examHistory.length") === 1 && ex0.type === "期中考" && ex0.pending === "text" && Math.abs(ex0.score - Math.round(ev("state.stats.knowledge"))) <= 20, ex0);
+ev("revealPendingExams(state)");
+const midScore = ev("state.examHistory[0].score");
 ev("state.interestCandidates=[{category:'藝術創作',status:'active',investment:55},{category:'體能競技',status:'dormant',investment:20},{category:'知識研究',status:'candidate',investment:5}]");
 ev("render()");
 const txt = doc.querySelector(".ledger.tracks") ? doc.querySelector(".ledger.tracks").textContent : "";
-A.check("畫面顯示課業軌跡", txt.includes("上次期中考56分"), txt);
+A.check("畫面顯示課業軌跡", txt.includes("上次期中考" + midScore + "分"), txt);
 A.check("畫面顯示興趣軌跡(文字級距、不含候選)", txt.includes("藝術創作（漸入佳境）") && txt.includes("體能競技（淡了）") && !txt.includes("知識研究"), txt);
 A.check("興趣不裸露投入度數字", !txt.includes("55"));
 

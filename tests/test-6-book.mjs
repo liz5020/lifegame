@@ -110,7 +110,9 @@ await sleep(50);
 const arch = [...envM.SAVES._m.keys()].find(k => k.startsWith("archive:bookmock1:"));
 A.check("闔卷：封存到Worker成功", !!arch);
 if (!arch) { A.report(); process.exit(1); }
-const archived = JSON.parse(envM.SAVES._m.get(arch).v).state;
+// 十、10.7（2026-09-29）：人生封存改成壓縮上傳(gzip-b64)
+const archRec = JSON.parse(envM.SAVES._m.get(arch).v);
+const archived = archRec.z ? JSON.parse((await import("zlib")).gunzipSync(Buffer.from(archRec.z, "base64")).toString("utf8")) : archRec.state;
 A.check("闔卷：等最後一章寫完、失敗的章節再試一次才封存，人生回顧裡是完整的書", archived.book.chapters.every(c => c.status === "done"), archived.book.chapters.map(c => c.status));
 // 人生回顧唯讀頁
 g.ev(`state = { phase:"archiveView", archived: ${JSON.stringify(archived).replace(/<\/script/g, "")}, backItems: [] }; render();`);

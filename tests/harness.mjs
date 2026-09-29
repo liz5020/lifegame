@@ -112,7 +112,10 @@ export async function callWorker(env, { method = "POST", path: p = "/", body, or
 
 // 載入遊戲頁面。useMock=false時前端走真實路徑(callAI→Worker→假上游)
 export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "" } = {}) {
-  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  // 二、2.7（2026-09-29）：index.html用<script src="lunar.min.js">載入農曆套件，jsdom不抓外部檔，這裡直接內嵌
+  const lunarSrc = fs.readFileSync(path.join(ROOT, "lunar.min.js"), "utf8");
+  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8")
+    .replace('<script src="lunar.min.js"></script>', () => "<script>" + lunarSrc + "</script>");
   const vc = new VirtualConsole();
   const errors = [];
   vc.on("jsdomError", e => errors.push(e));
@@ -126,6 +129,10 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
       win.localStorage.setItem("life_sim_active_slot", String(slot));
       if (!useMock) win.localStorage.setItem("lifegame_force_real_api", "yes");
       win.alert = () => {}; win.confirm = () => true;
+      // 十、10.7（2026-09-29）：雲端存檔用瀏覽器原生gzip，jsdom沒有，借Node內建的
+      win.CompressionStream = globalThis.CompressionStream; win.DecompressionStream = globalThis.DecompressionStream;
+      if (!win.TextEncoder) win.TextEncoder = globalThis.TextEncoder;
+      if (!win.TextDecoder) win.TextDecoder = globalThis.TextDecoder;
       win.scrollTo = () => {};
       win.fetch = async (url, init = {}) => {
         // 每個請求給不同的IP，避免長程模擬撞到Worker每小時200次的IP頻率限制(那是真實環境的保險，不是這裡要測的)
