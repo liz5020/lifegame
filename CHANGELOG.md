@@ -12,7 +12,7 @@
 
 ## 2026-09-29（續6：手動存到雲端，十、10.8.1）
 
-**〔整理〕設計文件**：十、新增10.8.1(使用者在Claude Code直接定案並確認)；00-總覽日誌與目錄。快照`snapshots/life-sim-design_2026-09-29e_手動存到雲端`(09-29b移到`archive/snapshots/`)
+**〔整理〕設計文件**：十、新增10.8.1(使用者在Claude Code直接定案並確認)；00-總覽日誌與目錄。快照`snapshots/life-sim-design_2026-09-29e_手動存到雲端`(09-29c移到`archive/snapshots/`)
 
 **〔開發部〕**
 - `index.html`：
