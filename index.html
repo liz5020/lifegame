@@ -10510,7 +10510,7 @@ function renderPlaying(loadingTurn){
     <div class="tb-sub">
       ${USE_MOCK ? `<span class="demo-tag" title="目前用規則模擬旁白，不是真的AI生成">示範模式</span>` : ``}
       <span id="sync-tag-wrap">${syncTagHTML()}</span>
-      ${(()=>{ const cards = sideGigCards(s); return cards.map(c=>`<span class="demo-tag side-tag">副業：${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}${cards.length>1 ? "（"+escapeHtml(c.category)+"）" : ""}</span>`).join(""); })()}
+      ${(()=>{ const cards = (s.interestCandidates||[]).filter(c=>(c.status==="active"||c.status==="dormant") && SIDE_BUSINESS_LABELS[c.sideBusinessStatus]); return cards.map(c=>`<span class="demo-tag side-tag">副業：${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}${cards.length>1||c.status==="dormant" ? "（"+escapeHtml(c.category)+(c.status==="dormant" ? "・久未投入" : "")+"）" : ""}</span>`).join(""); })()}
       <span class="right">${progress ? `${escapeHtml(progress.label)} ${progress.current}/${progress.total}　` : ``}存款 <b id="tb-cash">${s.cash.toLocaleString()}</b></span>
     </div>
   </header>
