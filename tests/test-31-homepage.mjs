@@ -52,7 +52,7 @@ A.check("首頁沒有顯示復原金鑰", !homeText.includes("homekey01"));
 const meta = (p) => (html.match(new RegExp(`<meta property="${p}" content="([^"]*)"`)) || [])[1];
 A.check("16.10.8 og:title", meta("og:title") === "人生草稿｜這一次，換你決定要活成什麼樣子");
 A.check("16.10.8 og:description", meta("og:description") === "AI 文字人生模擬。生在哪裡你選不了，但每一頁都由你落筆。");
-A.check("16.10.8 og:image是完整網址的og.png(1200×630)", meta("og:image") === "https://lifegamepage.smile80275.workers.dev/og.png" && meta("og:image:width") === "1200" && meta("og:image:height") === "630");
+A.check("16.10.8 og:image是完整網址的og.png(1200×630)", meta("og:image") === "https://lifegame-6an.pages.dev/og.png" && meta("og:image:width") === "1200" && meta("og:image:height") === "630");
 const png = fs.readFileSync(path.join(ROOT, "og.png"));
 A.check("og.png存在且為1200×630", png.readUInt32BE(16) === 1200 && png.readUInt32BE(20) === 630);
 

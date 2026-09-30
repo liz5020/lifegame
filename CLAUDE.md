@@ -6,7 +6,7 @@
 
 ## 檔案結構
 
-- `index.html`：遊戲本體，單一HTML檔（前端+呼叫AI的邏輯），部署到Cloudflare Pages（目前手動上傳）；**2026-09-28起Pages要一起上傳根目錄的`og.png`**（社群分享預覽圖，16.10.9唯一例外；原始檔在`design-assets/og-image.html`，不上傳）；**2026-09-29起也要一起上傳根目錄的`lunar.min.js`**（農曆套件lunar-javascript，二、2.7真實日曆用；沒上傳時程式退回瀏覽器內建農曆，少數年份春節會差一天。jsdom測試由`tests/harness.mjs`直接內嵌）
+- `index.html`：遊戲本體，單一HTML檔（前端+呼叫AI的邏輯），部署到Cloudflare Pages（**2026-09-30起連GitHub自動部署**：合併進`master`就上線，`build-pages.sh`只把下列三個檔放進`dist/`，見`DEPLOY.md`；舊的手動上傳專案保留備用）；**2026-09-28起Pages要一起上傳根目錄的`og.png`**（社群分享預覽圖，16.10.9唯一例外；原始檔在`design-assets/og-image.html`，不上傳）；**2026-09-29起也要一起上傳根目錄的`lunar.min.js`**（農曆套件lunar-javascript，二、2.7真實日曆用；沒上傳時程式退回瀏覽器內建農曆，少數年份春節會差一天。jsdom測試由`tests/harness.mjs`直接內嵌）
 - `worker/`：Cloudflare Worker中繼站（AI代理、存檔KV、行動點、簡轉繁）。**2026-09-24起用wrangler 3部署**（`cd worker && npx wrangler deploy`，步驟見`worker/README.md`），不再貼線上編輯器；API金鑰只用`wrangler secret put`存放
 - `life-sim-design/`：**唯一的設計正本**，所有規則以各章節檔案裡的【定案】標記為準。`00-總覽.md`收檔案對照表、總目錄、全域更新日誌（新條目只寫這裡；9/26以前的舊條目在`00-總覽-更新日誌封存.md`）、設計精神說明；`01`~`18`一章一檔（對照見`00-總覽.md`「檔案對照表」），`14-內容範例庫/`依生命階段再分子檔案。拆檔規則見`協作流程說明-共同基準.md`「## 唯一正本」
 - `DEPLOY.md`（2026-09-30起）：部署步驟與「每次上傳／部署了哪個版本」紀錄表。**每次要上傳前**：換`index.html`的`APP_VERSION`、在`RELEASE_NOTES`最前面加一筆玩家看得懂的更新說明；`worker/`有改就同步換`worker/worker.js`的`WORKER_VERSION`；使用者說「我上傳／部署了」就在`DEPLOY.md`補一行。`tests/test-54-version.mjs`檢查這幾處對不對得上
@@ -19,13 +19,17 @@
 - `content-team/`（有新檔時再建）：內容組提供的原始docx/文件（舊檔在`archive/content-team/`）
 - `公告草稿_已知狀況.md`：公測公告草稿（2026-09-25，發布前要依實際情況修改）
 - `archive/`：封存的舊版本，不會再被讀取或引用
-- git：遠端GitHub（liz5020/lifegame），平時在本機作業，使用者確認後才push
+- git：遠端GitHub（liz5020/lifegame），平時在本機作業；測試期自動上線（2026-09-30）：**純文件改動**（設計文件、QA、CLAUDE.md、WORKFLOW.md、共同基準、CHANGELOG、DEPLOY.md等）跑`node run-all.mjs --quick`全過後可直接`git push origin HEAD:master`；只要含`index.html`／`worker/`／`tests/`等程式碼，一律開合併請求等使用者按合併；真實API照舊每次問。完整規則見`協作流程說明-共同基準.md`
 
 ## ⚠️ 費用控制鐵律（最高優先，不因任何理由讓步）
 
 - 所有測試、驗證、除錯，預設一律`USE_MOCK=true`，不需要問
 - **絕對不能自己開啟真實API去呼叫Anthropic**（`USE_MOCK`由瀏覽器localStorage旗標`lifegame_force_real_api`決定，`?dev=1`測試選單也能切換；版本庫預設永遠是mock）——每次要用真AI測試，都必須重新問「這次要花費用呼叫真實API來測試XX，是否允許？」，不能沿用之前批准過一次就當作永久授權；進入正式測試階段也一樣每次都問
 - 不確定算不算「正式測試階段」，一律當作還在免費測試階段處理
+
+## 說明技術操作：白話加術語（2026-09-30）
+
+講雲端／本機同步、git、部署等操作時，先用白話說這一步在做什麼，再標出術語（例：把雲端更新拿到本機＝pull、把本機修改送上雲端＝push、先看雲端多了什麼＝fetch），第一次出現的術語都要附白話，不只丟術語也不只講白話。完整規則見`協作流程說明-共同基準.md`。
 
 ## 與網頁版（claude.ai）的交接流程
 

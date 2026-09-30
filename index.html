@@ -10,8 +10,8 @@
 <meta property="og:site_name" content="人生草稿">
 <meta property="og:title" content="人生草稿｜這一次，換你決定要活成什麼樣子">
 <meta property="og:description" content="AI 文字人生模擬。生在哪裡你選不了，但每一頁都由你落筆。">
-<meta property="og:url" content="https://lifegamepage.smile80275.workers.dev/">
-<meta property="og:image" content="https://lifegamepage.smile80275.workers.dev/og.png">
+<meta property="og:url" content="https://lifegame-6an.pages.dev/">
+<meta property="og:image" content="https://lifegame-6an.pages.dev/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="人生草稿：15歲・起稿">
@@ -7692,8 +7692,15 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-a";
+const APP_VERSION = "2026.09.30-c";
 const RELEASE_NOTES = [
+  { version:"2026.09.30-c", date:"2026-09-30", title:"點數錢包與問題回報", items:[
+    "新增「點數錢包」：點畫面上方的點數，可以看每天補了多少、最近怎麼用掉的；新人生附贈的點數改叫「啟程禮」。",
+    "遇到點數對不上，可以在錢包按「回報帳務問題」（會自動複製明細）；其他問題用選單裡的「回報遊戲問題」。"
+  ]},
+  { version:"2026.09.30-b", date:"2026-09-30", title:"遊戲搬到新網址", items:[
+    "遊戲搬到新的網址 lifegame-6an.pages.dev，分享按鈕和分享圖上的連結都已換成新的。"
+  ]},
   { version:"2026.09.30-a", date:"2026-09-30", title:"選單、月份與人際關係大改版", items:[
     "新增底部選單：按輸入框左邊的圓形按鈕，屬性、興趣、人物、地點、帳務都收在裡面。",
     "每一回合的標題現在會寫出月份，故事裡的節日和季節會跟著月份走。",
@@ -7701,9 +7708,7 @@ const RELEASE_NOTES = [
     "副業改成有訂單：每一單有交期、進度和報酬，拖太久客人會取消。",
     "戀愛更完整：要在一起，一定會有告白的場面，而且是你自己點頭；分手也一定有一個場面。",
     "朋友之間的衝突現在有前因後果，好好收尾可以讓關係比原來更近。",
-    "新增「玩法與圖例」和「更新紀錄」，畫面圖示全面換成簡潔的線條風格。",
-    "新增「點數錢包」：點畫面上方的點數，可以看每天補了多少、最近怎麼用掉的；新人生附贈的點數改叫「啟程禮」。",
-    "遇到點數對不上，可以在錢包按「回報帳務問題」（會自動複製明細）；其他問題用選單裡的「回報遊戲問題」。"
+    "新增「玩法與圖例」和「更新紀錄」，畫面圖示全面換成簡潔的線條風格。"
   ]},
   { version:"2026.09.29-a", date:"2026-09-29", title:"考試、副業與人脈調整", items:[
     "期中期末的分數現在會先決定好，再由故事交代原因。",
@@ -13452,7 +13457,7 @@ async function unlockLifeReview(){
   }
 }
 // ---------- 16.7.0 分享這一生：圖片分享卡(沿用7.7分享卡的canvas產生方式) ----------
-const SHARE_URL = "https://lifegamepage.smile80275.workers.dev/";
+const SHARE_URL = "https://lifegame-6an.pages.dev/";
 function wrapCanvasText(ctx, text, maxWidth){
   const lines = []; let line = "";
   for(const ch of Array.from(String(text||""))){
