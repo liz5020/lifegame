@@ -86,7 +86,8 @@ const MAX_KEY_LENGTH = 100;
 const MAX_STATE_BYTES = 1024 * 1024;
 
 const ALLOWED_ORIGINS = [
-  "https://lifegamepage.smile80275.workers.dev"
+  "https://lifegamepage.smile80275.workers.dev",
+  "https://lifegame-6an.pages.dev" // 2026-09-30起玩家用的Pages網址（連GitHub自動部署）
   // , "http://localhost:8765" // 需要本機測試時再打開這行
 ];
 const ALLOWED_MODEL = "claude-sonnet-5";
