@@ -39,13 +39,14 @@ doc.getElementById("ap-total").click();
 const m = doc.getElementById("wallet-modal");
 A.check("10.10.1 點上方行動點開啟錢包", !!m);
 const txt = m ? m.textContent : "";
-A.check("10.10.2 顯示合計、每日池X／5、永久池(禮包點/購買點)", /每日池 \d+／5/.test(txt) && /永久池 \d+（禮包點 \d+、購買點 \d+）/.test(txt), txt.slice(0, 200));
+A.check("10.10.2 顯示合計、每日池X／5、永久池(啟程點/購買點)", /每日池 \d+／5/.test(txt) && /永久池 \d+（啟程點 \d+、購買點 \d+）/.test(txt), txt.slice(0, 200));
 A.check("10.10.2 小字說明補點規則", txt.includes("00:00 補到 5 點") && txt.includes("不會過期"));
 A.check("10.10.2 資料截至(台灣時間)", /資料截至 \d{4}\/\d{2}\/\d{2} \d{2}:\d{2}/.test(txt));
 A.check("10.10.2 封測期間不放購買按鈕與共用購買點、帳號狀態", !/購買點數|共用購買點|綁定信箱/.test(txt));
-A.check("10.10.4 沒設定表單網址時不出現「回報帳務問題」", !doc.getElementById("btn-wallet-report"));
-A.check("10.10.3 新手禮包 +55 有記錄", /新手禮包/.test(txt) && txt.includes("+55"), txt);
-A.check("10.10.3 每回合一般扣點不記", js("state.apLog").every(e => !/回合/.test(e.type)) && js("state.apLog").length <= 2, js("state.apLog"));
+A.check("10.11.3 錢包裡有「回報帳務問題」按鈕(表單網址已設定，不再依網址有無隱藏)", !!doc.getElementById("btn-wallet-report"));
+A.check("10.10.3 啟程禮 +55 有記錄(改名，不再叫新手禮包)", /啟程禮/.test(txt) && txt.includes("+55") && !/新手禮包|禮包點/.test(txt), txt);
+A.check("10.10.3(第二版) 每回合扣點與開場都記：開場0成功、回合-1成功", JSON.stringify(js("state.apLog").filter(e => e.type === "開場" || e.type === "回合").map(e => [e.type, e.n, e.ok])) === '[["開場",0,true],["回合",-1,true],["回合",-1,true],["回合",-1,true]]', js("state.apLog"));
+A.check("10.10.3 錢包每筆呈現日期時間、變動、原因、結果", /\d+\/\d+ \d{2}:\d{2}　回合-1　成功|\d+\/\d+ \d{2}:\d{2}　回合.{0,4}-1　成功/.test(txt.replace(/\s+/g, "")) || (txt.includes("-1") && txt.includes("成功") && txt.includes("開場")), txt.slice(-300));
 A.check("10.9.7-4 開啟錢包不呼叫AI", fake.calls.length === before);
 doc.getElementById("btn-wallet-close").click();
 A.check("10.10 可關閉", !doc.getElementById("wallet-modal"));
@@ -70,7 +71,7 @@ ev(`apLogAdd(state,'購買',10)`);
 A.check("10.10.3 測試「不扣行動點」開著時不寫入紀錄", js("state.apLog.length") === 0 || ev("apTestFreeActive()") === false, js("state.apLog"));
 ev(`setApTestFree(false)`);
 ev("render()");
-ev(`state.apLog=[{t:1,d:'2026-09-30',type:'新手禮包',n:55}]`);
+ev(`state.apLog=[{t:1,d:'2026-09-30',type:'新手禮包',n:55}]`); // 舊存檔：沒有ok欄、原因還叫新手禮包
 // 其他進行中的人生與測試中顯示
 ev(`localStorage.setItem(STORAGE_KEY+':1', JSON.stringify({phase:'playing',name:'第二人',ap:{daily:5,gift:10,purchased:0}}))`);
 ev("renderWalletModal()");
