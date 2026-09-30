@@ -11493,7 +11493,9 @@ function playTurnEffects(loadingTurn){
   let lateAt = capAt + nCaps*60 + (nCaps?150:0);
   card.querySelectorAll(".rel-hint, .small-line").forEach((el,i)=>{ el.classList.add("late"); el.style.animationDelay = (lateAt + i*60)+"ms"; });
   // B3（2026-09-29）：期中考分數等這回合正文完整顯示(段落、膠囊、結算都淡入完)後，才出現在數值面板
-  if((s.examHistory||[]).some(e=>e.pending==="text")) setTimeout(()=>{ if(revealPendingExams(state, "text")){ saveGame(); if(openPanel==="stats") render(); } }, rm ? 0 : lateAt+400);
+  // 計時器只公布「排定當下」正在等的那幾筆：前一回合留下的計時器不能把後一回合還沒寫完的分數提早公布
+  const waitingExams = (s.examHistory||[]).filter(e=>e.pending==="text").map(e=>e.label+"|"+e.type+"|"+e.score);
+  if(waitingExams.length) setTimeout(()=>{ if(revealPendingExams(state, "text", waitingExams)){ saveGame(); if(openPanel==="stats") render(); } }, rm ? 0 : lateAt+400);
   // 16.4.2第7步：頂部存款由舊數字滾到新數字(慢)
   const cashEl = document.getElementById("tb-cash");
   if(cashEl && cashFrom!==null && cashFrom!==s.cash) rollNumber(cashEl, cashFrom, s.cash, rm ? 0 : 600, rm ? 0 : lateAt);
@@ -12512,9 +12514,9 @@ function renderExamCheckModal(check){
   document.getElementById("btn-exam-confirm").onclick = ()=>{ div.remove(); revealPendingExams(state, "modal"); saveGame(); render(); };
 }
 // B3（2026-09-29）：鎖住的考試分數解鎖，之後才出現在數值面板
-function revealPendingExams(s, kind){
+function revealPendingExams(s, kind, onlyKeys){
   let changed = false;
-  (s && s.examHistory || []).forEach(e=>{ if(e.pending && (!kind || e.pending===kind)){ delete e.pending; changed = true; } });
+  (s && s.examHistory || []).forEach(e=>{ if(e.pending && (!kind || e.pending===kind) && (!onlyKeys || onlyKeys.includes(e.label+"|"+e.type+"|"+e.score))){ delete e.pending; changed = true; } });
   return changed;
 }
 function renderTransferOfferModal(){
