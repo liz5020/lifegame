@@ -16,4 +16,4 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| （待填） | 2026.09.30-a | 2026.09.30-a | （commit後填） | index.html、worker | 加入版本標記與更新紀錄；需重新部署Worker（prompt層修正、/version） |
+| 2026-09-30 | 2026.09.30-a（待使用者上傳Pages） | 2026.09.30-a（已部署，Version ID 31a856fe） | 見git log | worker | Worker已部署（含版本標記、10.9.4成本量測、10.10行動點錢包、prompt層修正）；index.html待上傳 |
