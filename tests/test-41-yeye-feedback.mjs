@@ -217,7 +217,7 @@ A.check("A9 payload標明家人身分與具體關係", momRow && momRow.is_famil
   ev("state.characters.push({name:'小翔測',relation:'弟弟',gender:'男',age:14,affinity:60,active:true,traits:'',summary:'',lastTurn:state.turnCount,cohabiting:true})");
   const p2 = JSON.parse(ev("buildUserMessage('去上學', false, {structured:true,label:'x'})"));
   const ax = p2.active_characters.find(c => c.name === "小翔測");
-  A.check("B8/A11 payload帶弟弟的年齡與學校(國中)", ax && ax.age === 14 && ax.school_or_job === "國中" && ax.family_role === "弟弟", ax);
+  A.check("B8/A11 payload帶弟弟的年齡與學校(國中)", ax && ax.age === 14 && ax.school_or_job === "讀國中" && ax.family_role === "弟弟", ax);
 }
 
 // ================= A11 關係欄位、物品、避用句型 =================

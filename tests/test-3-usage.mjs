@@ -70,7 +70,7 @@ A.check("近7日包含昨天、不含8天前", S.last_7_days.turn.calls === 7 &&
 const uaCost = 0.066 + 0.02 * 3 + (4000 * 2 + 3000 * 10) / 1e6, ubCost = 0.04, ucCost = 4;
 A.check("平均每條人生花費＝各人生總花費平均(含章節)", S.per_life.all.lives_counted === 3 && near(S.per_life.all.avg_cost_per_life_usd, Math.round((uaCost + ubCost + ucCost) / 3 * 1e4) / 1e4), S.per_life);
 A.check("平均每條人生回合數", S.per_life.all.avg_turns_per_life === 2);
-A.check("摘要附上單價與查詢日期", S.price.checked_on === "2026-09-25" && S.price.model === "claude-sonnet-5");
+A.check("摘要附上單價與查詢日期", S.price.checked_on === "2026-09-30" && S.price.model === "claude-sonnet-5");
 // 前端開發者面板
 const envF = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env: envF, dev: true, key: "devkey01" });

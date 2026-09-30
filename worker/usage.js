@@ -3,10 +3,10 @@
 // KV只存token數，花費在讀取時才用下面的單價換算——之後改價只要改這裡的常數，舊資料會自動用新單價重算。
 // 紀錄失敗絕對不能影響回合本身：recordUsage()整段try/catch吞掉錯誤，並透過ctx.waitUntil在回應送出後才寫
 
-// 【單價】Claude Sonnet 5，美元／每百萬token。查詢日期：2026-09-25，來源：Anthropic官網定價頁
+// 【單價】Claude Sonnet 5，美元／每百萬token。查詢日期：2026-09-30(十、10.9.7第3項核對，單價與9/25相同；官網註記原本到8/31的上市優惠價已轉為正式價，9/1漲價取消)，來源：Anthropic官網定價頁
 // https://platform.claude.com/docs/en/about-claude/pricing （Input $2、5分鐘快取寫入$2.5、快取讀取$0.2、Output $10）
 // 我們的prompt caching用的是預設5分鐘快取(cache_control: ephemeral)，所以快取寫入用5分鐘的價格
-export const PRICE_CHECKED_ON = "2026-09-25";
+export const PRICE_CHECKED_ON = "2026-09-30";
 export const PRICE_MODEL = "claude-sonnet-5";
 export const PRICE_PER_MTOK_USD = {
   input: 2.0,

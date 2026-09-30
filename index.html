@@ -3144,7 +3144,7 @@ async function initApp(){
 // 讀檔時的舊存檔遷移：4.1.3性別；二、2.7／B1（2026-09-29）舊行事曆換算到真實日曆、年齡依生日重算
 function migrateLoadedState(st){
   if(!st) return;
-  if(st.characters) ensureCharacterGenders(st);
+  if(st.characters){ ensureCharacterGenders(st); updateFamilyPaths(st); } // 4.9.5：舊存檔的兄弟姊妹、子女依目前年齡補擲出路
   revealPendingExams(st); // B3：上次沒看完就離開的考試分數，重新進來直接公布
   if(st.timeState && st.phase && st.phase!=="home" && st.phase!=="setup"){ try{ ensureCalendar(st); }catch(e){ console.warn("行事曆遷移失敗", e); } }
 }
@@ -4328,7 +4328,7 @@ function syncBirthdayAge(s, uptoAbs){
     if(b>cal.ageDay && b<=uptoAbs) n++;
   }
   cal.ageDay = uptoAbs;
-  if(n){ s.age += n; ageChildren(s, n); }
+  if(n){ s.age += n; ageChildren(s, n); updateFamilyPaths(s); } // 4.9.5：家人跨過18、22歲生日時擲出路
   return n;
 }
 // 行事曆欄位(timeState.cal，跟著timeState進反悔快照，反悔時日期與年齡一併還原)。
@@ -6939,24 +6939,67 @@ function applyCharacterConsistencyUpdate(s, c, cu){
     c.links = (c.links||[]).filter(x=>!add.some(a=>a.name===x.name)).concat(add).slice(-CHARACTER_LINKS_MAX);
   }
 }
-// 學校或職業：AI給過的(affiliation)優先；家人依年齡推算就學階段(B8：弟弟妹妹不會出現在主角的高中)
+// ===== 四、4.9 人物的職業／就學欄（2026-09-30）=====
+// 決定順序：劇情交代的(affiliation)→程式決定(父母開局職業、兄弟姊妹子女的就學與出路、配偶職業類別、同學、同事、老師)→都沒有＝未知
+const FAMILY_COLLEGE_RATE = 0.8; // 4.9.5：兄弟姊妹、子女滿18歲讀大學的機率【測試參數】
+const OCCUPATION_DISPLAY_NAMES = { // 4.9.4：職業類別給玩家看的名稱(配偶、兄弟姊妹、子女共用)
+  "自營/家庭事業類":"自己做生意", "受雇專業/白領類":"上班族", "勞力/服務類":"勞力/服務業", "不穩定/待業類":"待業中",
+  "長期不在身邊類":"在外地工作", "自由/創作類":"自由接案", "軍公教/警消類":"軍公教警消", "政治人物子女(自身從政)":"從政"
+};
+function occupationDisplayName(key){ return OCCUPATION_DISPLAY_NAMES[key] || String(key||"").replace(/類$/,""); }
+function hasFamilyPath(c){ return !!c && (c.isChild || ["哥哥","姊姊","弟弟","妹妹"].includes(familyRoleOf(c.relation))); }
+function rollFamilyWorkCategory(){ return pick(OCCUPATION_CATEGORIES.filter(o=>!/政治/.test(o.key))).key; }
+// 4.9.5：滿18歲擲讀大學／工作，讀大學的滿22歲畢業擲職業類別；開局或舊存檔已經18歲以上的依年齡補擲。
+// 劇情交代過(affiliation)就以劇情為準、不再擲；已故的不再變。只影響顯示與傳給AI的內容
+function updateFamilyPath(c){
+  if(!hasFamilyPath(c) || c.deceased || c.affiliation || typeof c.age!=="number" || c.age<18) return;
+  if(!c.path){
+    c.path = (c.age<22 && Math.random()<FAMILY_COLLEGE_RATE) ? { stage:"college" } : { stage:"work", category: rollFamilyWorkCategory() };
+  } else if(c.path.stage==="college" && c.age>=22){
+    c.path = { stage:"work", category: rollFamilyWorkCategory() };
+  }
+}
+function updateFamilyPaths(s){ (s.characters||[]).forEach(updateFamilyPath); }
 function schoolStageForAge(age){
   if(typeof age!=="number") return null;
-  if(age<6) return "還沒上學"; if(age<12) return "國小"; if(age<15) return "國中"; if(age<18) return "高中"; if(age<22) return "大學或已經在工作";
+  if(age<6) return "還沒上學"; if(age<12) return "讀國小"; if(age<15) return "讀國中"; if(age<18) return "讀高中";
   return null;
 }
-function npcAffiliation(s, c){
+// 4.9.6：只有關係本身就是同學才算(同學、同班同學、隔壁班同學)；「同學的姊姊」這類不算
+function isClassmateRelation(relation){
+  const r = String(relation||"").trim();
+  return /同學|同班/.test(r) && !/的/.test(r);
+}
+function parentOccupationText(c){ // 4.9.3
+  const base = c.occupation==="長期不在身邊" ? "在外地工作" : c.occupation;
+  return (c.retired && !c.deceased) ? `已退休（原本是${base}）` : base;
+}
+// 回傳null＝未知。forAI：傳給AI時，同在讀高中的兄弟姊妹補一句不同校(B8：弟弟妹妹不會出現在主角的高中)
+function npcOccupationText(s, c, forAI){
   if(c.affiliation) return c.affiliation;
-  const role = familyRoleOf(c.relation);
-  if(role && ["哥哥","姊姊","弟弟","妹妹"].includes(role) || c.isChild){
+  const mode = isStudentPhase(s) && s.timeState ? s.timeState.stageMode : null;
+  if(hasFamilyPath(c)){
+    if(typeof c.age!=="number") return null;
     const st = schoolStageForAge(c.age);
-    if(!st) return null;
-    if(st==="高中" && isStudentPhase(s) && s.timeState && s.timeState.stageMode==="highschool") return "高中（跟你不同校，除非劇情已經交代過同校）";
-    return st;
+    if(st) return (forAI && st==="讀高中" && mode==="highschool") ? "讀高中（跟你不同校，除非劇情已經交代過同校）" : st;
+    if(!c.path) return null;
+    return c.path.stage==="college" ? "讀大學" : occupationDisplayName(c.path.category);
   }
-  if(/同學|同班/.test(String(c.relation||""))) return "跟你同校";
+  if(c.occupation) return parentOccupationText(c);
+  if(c.romanceStatus==="married" && s.spouseOccupationCategory) return occupationDisplayName(s.spouseOccupationCategory);
+  const r = String(c.relation||"");
+  if(isClassmateRelation(r)){
+    const level = /高中|國中|國小/.test(r) ? "highschool" : (/大學/.test(r) ? "college" : null);
+    if(!mode || (level && level!==mode)) return null; // 主角已不是這個階段的學生，推不出同學現在在做什麼
+    return mode==="highschool" ? "讀高中（跟你同校）" : "讀大學（跟你同校）";
+  }
+  if(["同事","主管","下屬"].includes(workplaceRelationCategory(r))) return "跟你同公司";
+  const teacher = r.match(/[^\s，,、的（(]*(老師|教授|導師|班導)/);
+  if(teacher) return teacher[0];
   return null;
 }
+function npcOccupationLabel(s, c){ return npcOccupationText(s, c, false) || "未知"; } // 4.9.1：人物詳細頁
+function npcAffiliation(s, c){ return npcOccupationText(s, c, true); } // 4.9.7：傳給AI，未知時不傳
 // 重要物品清單：角色之間贈送、借出、交付的物品，以及目前在誰手上；最多10項，超過時移除最久沒被提及的一項
 const KEY_ITEMS_MAX = 10;
 function applyItemMoves(s, moves, turnText){
@@ -7480,6 +7523,7 @@ function buildTimeContextPayload(s, timeCtx){
 function buildUserMessage(actionText, forceEnding, timeCtx){
   const s = state;
   ensureCharacterGenders(s); // 4.1（2026-09-27）：舊存檔/家人卡補上性別
+  updateFamilyPaths(s); // 4.9.5：開局已經18歲以上的兄弟姊妹在第一次送出前擲好出路
   if(timeCtx) timeCtx.toldEventNames = activeCharacters().filter(c=>unknownEventNames(c).length).map(c=>c.name); // 4.7.4：給旁白看過的未得知事件，出場後標為已得知
   const roster = activeCharacters().map(c=>({
     name:c.name, relation:c.relation, traits:c.traits, gender:c.gender||null, // 4.1/1.2.5：已記錄的性別，引用時必須一致
@@ -7692,8 +7736,12 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-c";
+const APP_VERSION = "2026.09.30-d";
 const RELEASE_NOTES = [
+  { version:"2026.09.30-d", date:"2026-09-30", title:"人物的職業", items:[
+    "點開人物，現在會看到對方的職業或在讀哪個階段；還沒聊過、不清楚的人會寫「未知」。",
+    "兄弟姊妹長大後會有自己的出路：讀大學，或是出社會工作。"
+  ]},
   { version:"2026.09.30-c", date:"2026-09-30", title:"點數錢包與問題回報", items:[
     "新增「點數錢包」：點畫面上方的點數，可以看每天補了多少、最近怎麼用掉的；新人生附贈的點數改叫「啟程禮」。",
     "遇到點數對不上，可以在錢包按「回報帳務問題」（會自動複製明細）；其他問題用選單裡的「回報遊戲問題」。"
@@ -12414,6 +12462,7 @@ function renderNpcDetailModal(name){
       <h3>${escapeHtml(c.name)}</h3>
       <p style="margin-top:-8px;">${escapeHtml(identity)}${identity && category!==identity ? "　·　"+escapeHtml(category) : (!identity ? escapeHtml(category) : "")}</p>
       <p><b>目前關係：</b>${escapeHtml(relationshipStatusLabel(c))}${st!=="normal" && relationshipStatusLabel(c)!==CHARACTER_STATE_LABELS[st] ? `（${CHARACTER_STATE_LABELS[st]}）` : ``}</p>
+      <p id="npc-occupation"><b>職業：</b>${escapeHtml(npcOccupationLabel(state, c))}</p>
       ${c.origin ? `<p style="font-size:12px;color:var(--ink-soft);">認識時間／來源：${escapeHtml(c.origin)}</p>` : ``}
       ${c.recentStatus ? `<p><b>近況：</b>${escapeHtml(c.recentStatus)}</p>` : ``}
       ${c.summary ? `<p><b>共同記憶：</b>${escapeHtml(c.summary)}</p>` : ``}
