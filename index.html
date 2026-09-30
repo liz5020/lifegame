@@ -677,15 +677,26 @@ function ensureAP(s){
   return s.ap;
 }
 function totalAP(s){ const ap = ensureAP(s); return ap.daily + ap.gift + ap.purchased; }
-// 十、10.10.3（2026-09-30）：最近點數紀錄，只記入帳與一般回合以外的扣點(每回合一般扣點不記)，只留最近30筆；
-// 存在存檔的state.apLog(封測期間跟著本機存檔)；測試「不扣行動點」開著時不寫入(10.3.12)
+// 十、10.10.3（2026-09-30第二版）：最近點數紀錄，記錄這條人生所有點數異動(含每回合扣點、開場)，每筆＝時間、實際最終變動、原因、結果(成功／失敗)，只留最近30筆；
+// 存在存檔的state.apLog(封測期間跟著本機存檔)；測試「不扣行動點」開著時不寫入(10.3.12)。
+// opts.ok===false＝失敗；opts.zero===true＝變動為0也要記(開場、失敗的回合)。舊存檔的紀錄沒有ok欄、原因可能是「新手禮包」，顯示時當成功／改稱「啟程禮」
 const AP_LOG_MAX = 30;
-function apLogAdd(s, type, n){
-  if(!s || !n || apTestFreeActive()) return;
+function apLogAdd(s, type, n, opts){
+  if(!s || apTestFreeActive()) return;
+  if(!n && !(opts && opts.zero)) return;
   const arr = s.apLog || (s.apLog = []);
-  arr.push({ t:Date.now(), d:taipeiDateString(), type, n });
+  arr.push({ t:Date.now(), d:taipeiDateString(), type, n: n||0, ok: !(opts && opts.ok===false) });
   if(arr.length > AP_LOG_MAX) arr.splice(0, arr.length - AP_LOG_MAX);
 }
+// 一般回合／開場的點數紀錄：一次送出(takeTurn)只寫一筆，記實際最終變動(＝結束後餘額－扣點前餘額，扣了又退＝0；
+// 送出期間伺服器端剛好跨日補點的量另外記成每日補點、不算進這一筆)，成功與否看有沒有拿到內容
+function apLogTurn(s, isPrologue, totalBefore, startedAt, ok){
+  if(!s || apTestFreeActive()) return;
+  const refilled = (s.apLog||[]).filter(e=>e.t>=startedAt && e.type==="每日補點").reduce((a,e)=>a+e.n, 0);
+  const n = totalAP(s) - totalBefore - refilled;
+  apLogAdd(s, isPrologue ? "開場" : "回合", n, { ok, zero:true });
+}
+function apLogTypeName(type){ return type==="新手禮包" ? "啟程禮" : type; } // 2026-09-30改名，舊存檔紀錄照新名稱顯示
 // 不用排程：進入遊戲或行動時發現台灣日期不同才補。只看每日池，永久池多少不影響。回傳是否有補
 function refillDailyIfNeeded(s){
   const ap = ensureAP(s);
@@ -4088,6 +4099,7 @@ function newRoll(carry, identity){
     // 十、10.3：restart_item(轉世丹)沿用同一格子，禮包點/購買點全部保留、不另發禮包；全新人生才標giftPending，startLife()時領禮包
     ap: carry?.ap ? { ...carry.ap, giftPending:false } : newLifeAP(),
     apLog: carry?.apLog ? carry.apLog.slice() : [],
+    giftGranted: !!(carry && carry.giftGranted),
     lifeId: newLifeId(), // 2026-09-25：每一世都換新id(轉世丹也是新的一世)
     turnCount,
     characters, // 4.1.3：每張家人卡建卡時已寫入gender
@@ -7689,7 +7701,9 @@ const RELEASE_NOTES = [
     "副業改成有訂單：每一單有交期、進度和報酬，拖太久客人會取消。",
     "戀愛更完整：要在一起，一定會有告白的場面，而且是你自己點頭；分手也一定有一個場面。",
     "朋友之間的衝突現在有前因後果，好好收尾可以讓關係比原來更近。",
-    "新增「玩法與圖例」和「更新紀錄」，畫面圖示全面換成簡潔的線條風格。"
+    "新增「玩法與圖例」和「更新紀錄」，畫面圖示全面換成簡潔的線條風格。",
+    "新增「點數錢包」：點畫面上方的點數，可以看每天補了多少、最近怎麼用掉的；新人生附贈的點數改叫「啟程禮」。",
+    "遇到點數對不上，可以在錢包按「回報帳務問題」（會自動複製明細）；其他問題用選單裡的「回報遊戲問題」。"
   ]},
   { version:"2026.09.29-a", date:"2026-09-29", title:"考試、副業與人脈調整", items:[
     "期中期末的分數現在會先決定好，再由故事交代原因。",
@@ -8214,6 +8228,7 @@ async function takeTurn(actionText, cost){
   if(totalAP(state) < apCost){ renderAPExhaustedModal(); render(); return; }
   snapshotForUndo();
   const apBefore = { ...ensureAP(state) }; // 10.3.11：舊存檔第一次打Worker時，給Worker建立伺服器端紀錄用(扣點前的數字)
+  const apTotalBefore = totalAP(state), apLogStartedAt = Date.now(); // 10.10.3：這回合點數紀錄用(扣點前餘額)
   const apUsed = spendAP(state, apCost);
   state.turnCount += 1;
   const cashStart = lastRecordedCash(state); // B2（2026-09-29）：本回合結算從上一回合畫面上的存款算起
@@ -8368,6 +8383,7 @@ async function takeTurn(actionText, cost){
     const lastEntry = state.log[state.log.length-1];
     if(lastEntry) lastEntry.tone = { tone_track:effectiveTone.tone_track, tension:effectiveTone.tension, category:effectiveTone.category, switched:effectiveTone.switched };
     commitToneTrack(state, effectiveTone);
+    apLogTurn(state, wasPrologue, apTotalBefore, apLogStartedAt, true); // 10.10.3：成功＝實際扣的點(開場0)
   }catch(e){
     aiWritingNow = false;
     console.error("重試後仍失敗：", e);
@@ -8375,6 +8391,7 @@ async function takeTurn(actionText, cost){
     refundAP(state, apUsed); // 十、10.3.1：API呼叫失敗/斷線不扣點
     // 10.3.11：真實模式下callAI已經把Worker回傳的伺服器端餘額寫回state.ap，本機退點後再以伺服器端為準
     if(SERVER_AP && lastCallServerAP) syncServerAP(state, lastCallServerAP);
+    apLogTurn(state, wasPrologue, apTotalBefore, apLogStartedAt, false); // 10.10.3：失敗＝0(扣了又退)；伺服器端若真的扣了卻沒內容，這裡會是-1(異常，對帳用)
     if(e && e.apInsufficient){
       saveGame(); render(); renderAPExhaustedModal();
       return;
@@ -9688,7 +9705,7 @@ async function startLife(){
       // 10.3.11（2026-09-25）：真實模式以Worker回傳的伺服器端餘額為準；mock模式或Worker連不上時維持本機計算
       if(SERVER_AP && claim.ap) syncServerAP(state, claim.ap);
       else if(claim.granted) ap.gift = AP_NEW_LIFE_GIFT;
-      if(claim.granted) apLogAdd(state, "新手禮包", AP_NEW_LIFE_GIFT); // 10.10.3
+      if(claim.granted){ state.giftGranted = true; apLogAdd(state, "啟程禮", AP_NEW_LIFE_GIFT); } // 10.10.3；giftGranted：這條人生領過啟程禮(10.11.4複製內容用，欄位名稱沿用內部命名)
     }
   }
   state.phase = "playing";
@@ -9706,7 +9723,7 @@ function reincarnate(){
     calStartYear: calNextOpeningYear(state.timeState && state.timeState.cal && state.timeState.cal.v===2 ? state.timeState.cal.lastRoundEnd : 0), // 二、2.7：轉世從上一世結束後的下一個開局日開始
     chronicleCarry: `（說不上來的熟悉感）偶爾會有似曾相識的片刻或夢境，只能隱約帶過，不說破來由。`,
     name: state.name, gender: state.gender,
-    ap: ensureAP(state), apLog: state.apLog }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
+    ap: ensureAP(state), apLog: state.apLog, giftGranted: state.giftGranted }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
   state = newRoll(carry, null);
   saveGame();
   render();
@@ -9881,7 +9898,7 @@ async function succeedAsChild(childName){
     lifeTrajectory: [], stageAccum: null,
     // 十、10.3.6：世代傳承不算新人生，上一代的每日池/禮包點/購買點全部由下一代繼承，不另發禮包
     ap: { ...ensureAP(prev), giftPending:false }, turnCount:0,
-    apLog: (()=>{ const a = ensureAP(prev), l = (prev.apLog||[]).slice(); if(a.gift+a.purchased>0 && !apTestFreeActive()) l.push({ t:Date.now(), d:taipeiDateString(), type:"傳承繼承", n:a.gift+a.purchased }); return l.slice(-AP_LOG_MAX); })(), // 10.10.3：永久池由下一代繼承
+    apLog: (()=>{ const a = ensureAP(prev), l = (prev.apLog||[]).slice(); if(a.gift+a.purchased>0 && !apTestFreeActive()) l.push({ t:Date.now(), d:taipeiDateString(), type:"傳承繼承", n:a.gift+a.purchased, ok:true }); return l.slice(-AP_LOG_MAX); })(), giftGranted: !!prev.giftGranted, // 10.10.3：永久池由下一代繼承
     lifeId: newLifeId(), // 2026-09-25：世代傳承是新的一世，換新id
     characters, // 4.1.3：每張家人卡建卡時已寫入gender
     chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`]
@@ -10436,7 +10453,7 @@ function relativeTimeText(ts){
   return mon < 12 ? `${mon} 個月前` : `${Math.floor(mon/12)} 年前`;
 }
 const HOME_FAQ = [
-  ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_NEW_LIFE_GIFT} 點當見面禮，大約夠你走到高一結束；之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
+  ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_NEW_LIFE_GIFT} 點啟程禮，大約夠你走到高一結束；之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
   ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", ()=>CLOUD_SAVE_ENABLED ? "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。" : "封測期間，進度只存在這台裝置的瀏覽器裡。換了手機、換了瀏覽器，或清除瀏覽器資料，就接不回來了。"]],
   ["一段人生要玩多久？", ["看你想過多快。可以一個晚上走完整個高中，也可以一個月只過一個寒假。", "隨時關掉都沒關係，它會停在你離開的那一頁。"]],
   ["可以同時過好幾段人生嗎？", [()=>CLOUD_SAVE_ENABLED ? "可以。一把金鑰，最多能同時握著三段人生。" : "可以。一台裝置，最多能同時握著三段人生。"]],
@@ -11341,12 +11358,27 @@ function renderLedgerModal(){
   document.body.appendChild(div);
   document.getElementById("btn-ledger-close").onclick = ()=>div.remove();
 }
-// ===== 十、10.10 行動點錢包（2026-09-30）=====
+// ===== 十、10.10 行動點錢包（2026-09-30）／10.11 玩家回報機制 =====
 // 只讀本機資料、不呼叫AI。開放大眾後才出現的區塊(帳號狀態10.10.6、共用購買點10.10.5)、購買按鈕，封測期間都不放
-const BILLING_REPORT_FORM_URL = ""; // 10.10.4：帳務問題回報表單網址，由使用者建立後提供；空字串＝按鈕不出現
+// 十、10.11.2：兩份外部Google表單的填寫連結，集中放在這一處，日後換連結只改這裡；開啟時網址不帶任何玩家資料
+const REPORT_FORM_URLS = {
+  billing: "https://docs.google.com/forms/d/e/1FAIpQLSf4f1DheYeMzv-KF7e0zqSsTnCT38DT5J3BnrV2l7BLGiQYrA/viewform", // 帳務問題(行動點相關)
+  game:    "https://docs.google.com/forms/d/e/1FAIpQLSc0LPc0bVRKdnaN5AZol48gFcwHMHMmD5XYwrifJnRQ0dtHgg/viewform"  // 遊戲問題
+};
+function openReportForm(kind){ // 一律新分頁，遊戲畫面不關；noopener讓表單頁碰不到遊戲頁
+  const url = REPORT_FORM_URLS[kind];
+  if(url) window.open(url, "_blank", "noopener");
+}
 function taipeiStampText(ts){ return new Date((ts ?? Date.now()) + 8*3600*1000).toISOString().slice(0,16).replace("T"," ").replace(/-/g,"/"); }
+// 10.11.4：「月/日 時:分」24小時制、台灣時間(例如 9/30 14:20)
+function taipeiMDHM(ts){
+  const d = new Date((ts ?? Date.now()) + 8*3600*1000), p2 = n=>String(n).padStart(2,"0");
+  return `${d.getUTCMonth()+1}/${d.getUTCDate()} ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
+}
+function apLogChangeText(n){ return n>0 ? "+"+n : (n<0 ? "-"+Math.abs(n) : "0"); } // 10.11.6：「+5」「-1」「0」
+function apLogResultText(e){ return e.ok===false ? "失敗" : "成功"; } // 舊存檔沒有結果欄＝成功
 function apLogRowsHTML(list){
-  return list.map(e=>`<div class="ic-sub" style="display:flex;justify-content:space-between;margin:3px 0;"><span>${escapeHtml(String(e.d||"").replace(/-/g,"/"))}　${escapeHtml(e.type)}</span><b>${e.n>0?"+":"−"}${Math.abs(e.n)}</b></div>`).join("");
+  return list.map(e=>`<div class="ic-sub" style="display:flex;justify-content:space-between;gap:8px;margin:3px 0;"><span>${escapeHtml(taipeiMDHM(e.t))}　${escapeHtml(apLogTypeName(e.type))}</span><span><b>${apLogChangeText(e.n)}</b>　${apLogResultText(e)}</span></div>`).join("");
 }
 // 其他進行中的人生：讀這台裝置其他格子的本機存檔(只看名字與點數，不動存檔)
 function otherLivesForWallet(){
@@ -11364,12 +11396,56 @@ function otherLivesForWallet(){
   }
   return out;
 }
+// 10.11.4：帳務回報要複製的純文字。只讀點數與紀錄——絕對不讀、不拼入復原金鑰(金鑰＝存檔密碼)、信箱本身、故事正文
+function accountEmailBound(){ return false; } // 封測期間沒有信箱綁定功能；帳號系統(10.2)上線後改由帳號狀態決定，並改寫「已領 N／2 份」
+function giftClaimedFor(s){ return !!s.giftGranted || (s.apLog||[]).some(e=>apLogTypeName(e.type)==="啟程禮"); }
 function walletReportText(s){
-  const ap = ensureAP(s), log = (s.apLog||[]).slice(-5).reverse();
-  return [`【帳務問題回報】資料截至 ${taipeiStampText()}（台灣時間）`,
-    `目前這條人生：合計 ${totalAP(s)} 點（每日池 ${ap.daily}／${AP_DAILY_REFILL}；永久池 ${ap.gift+ap.purchased}，禮包點 ${ap.gift}、購買點 ${ap.purchased}）`,
-    `最近點數紀錄：${log.length ? log.map(e=>`${e.d} ${e.type} ${e.n>0?"+":"−"}${Math.abs(e.n)}`).join("；") : "（無）"}`,
-    `問題說明：`].join("\n");
+  const log = (s.apLog||[]).slice(-5).reverse();
+  const lastRefill = (s.apLog||[]).slice().reverse().find(e=>e.type==="每日補點");
+  const lines = [
+    "【點數明細】",
+    `複製時間：${taipeiMDHM()}（台灣時間）`,
+    `目前餘額：${totalAP(s)} 點`,
+    `信箱：${accountEmailBound() ? "已綁" : "未綁"}`,
+    `啟程禮：${giftClaimedFor(s) ? "已領" : "未領"}`
+  ];
+  if(lastRefill) lines.push(`最近補點：${taipeiMDHM(lastRefill.t)}，+${lastRefill.n} 點`);
+  lines.push("", "【最近 5 筆】");
+  if(log.length) log.forEach(e=>lines.push(`${taipeiMDHM(e.t)}｜${apLogChangeText(e.n)}｜${apLogTypeName(e.type)}｜${apLogResultText(e)}`));
+  else lines.push("目前沒有紀錄");
+  return lines.join("\n");
+}
+// 10.11.3：複製必須在按鈕的點按事件裡「直接」呼叫(手機瀏覽器只准玩家親手點按的當下寫剪貼簿)，所以這裡不能先await別的東西
+function copyToClipboardNow(text){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).then(()=>true, ()=>false);
+  }catch(e){}
+  return Promise.resolve(false);
+}
+// 複製後的提示(第二步)：「前往表單」按鈕另外按才開新分頁；複製失敗改跳文字框，內容已全選
+function renderBillingReportModal(text, copied){
+  const old = document.getElementById("billing-report-modal"); if(old) old.remove();
+  const div = document.createElement("div");
+  div.id = "billing-report-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal" style="max-width:460px;width:92vw;">
+      <h3>回報帳務問題</h3>
+      ${copied
+        ? `<p id="billing-report-msg">已複製，請到表單貼在『問題說明』欄</p>`
+        : `<p id="billing-report-msg">沒辦法自動複製。請長按下面的文字框複製，再到表單貼在『問題說明』欄</p>
+           <textarea id="billing-report-text" readonly rows="10" style="width:100%;font-size:13px;"></textarea>`}
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="primary-btn" id="btn-billing-report-go">前往表單</button>
+        <button class="ghost-btn" id="btn-billing-report-close">關閉</button>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+  const ta = document.getElementById("billing-report-text");
+  if(ta){ ta.value = text; try{ ta.focus(); ta.select(); ta.setSelectionRange(0, text.length); }catch(e){} }
+  document.getElementById("btn-billing-report-go").onclick = ()=>openReportForm("billing");
+  document.getElementById("btn-billing-report-close").onclick = ()=>div.remove();
+  div.onclick = e=>{ if(e.target===div) div.remove(); };
 }
 function renderWalletModal(){
   if(document.getElementById("wallet-modal")) return;
@@ -11387,26 +11463,22 @@ function renderWalletModal(){
         <div class="menu-sec">${escapeHtml(s.name)}・這條人生</div>
         <p style="font-size:22px;margin:4px 0;">${icon("zap")} <b>${free ? "∞ 測試中" : totalAP(s)}</b> 點</p>
         <div class="ic-sub">每日池 ${ap.daily}／${AP_DAILY_REFILL}</div>
-        <div class="ic-sub">永久池 ${ap.gift+ap.purchased}（禮包點 ${ap.gift}、購買點 ${ap.purchased}）</div>
-        <div class="ic-sub" style="margin-top:6px;opacity:.8;">每天台灣時間 00:00 補到 ${AP_DAILY_REFILL} 點，不累加。禮包點與購買點不會過期。</div>
+        <div class="ic-sub">永久池 ${ap.gift+ap.purchased}（啟程點 ${ap.gift}、購買點 ${ap.purchased}）</div>
+        <div class="ic-sub" style="margin-top:6px;opacity:.8;">每天台灣時間 00:00 補到 ${AP_DAILY_REFILL} 點，不累加。啟程點與購買點不會過期。</div>
         ${others.length ? `<div class="menu-sec" style="margin-top:14px;">其他進行中的人生</div>${others.map(o=>`<div class="ic-sub" style="display:flex;justify-content:space-between;margin:3px 0;"><span>${escapeHtml(o.name)}</span><b>${o.total} 點</b></div>`).join("")}` : ``}
         ${log.length ? `<div class="menu-sec" style="margin-top:14px;">最近點數紀錄</div>${apLogRowsHTML(log)}` : ``}
         <div class="ic-sub" style="margin-top:14px;opacity:.7;">資料截至 ${taipeiStampText()}（台灣時間）</div>
-        ${BILLING_REPORT_FORM_URL ? `<button class="ghost-btn" id="btn-wallet-report" style="margin-top:8px;">回報帳務問題</button><div class="ic-sub" id="wallet-report-note" style="margin-top:4px;"></div>` : ``}
+        <button class="ghost-btn" id="btn-wallet-report" style="margin-top:8px;">回報帳務問題</button>
       </div>
       <button class="ghost-btn" id="btn-wallet-close" style="margin-top:14px;">關閉</button>
     </div>`;
   document.body.appendChild(div);
   document.getElementById("btn-wallet-close").onclick = ()=>div.remove();
   div.onclick = e=>{ if(e.target===div) div.remove(); };
-  const rep = document.getElementById("btn-wallet-report");
-  if(rep) rep.onclick = async ()=>{
-    // 10.10.4：不帶復原金鑰；表單無法預先帶入資料時，改為自動複製說明文字再開表單讓玩家貼上
-    let copied = false;
-    try{ await navigator.clipboard.writeText(walletReportText(s)); copied = true; }catch(e){}
-    const note = document.getElementById("wallet-report-note");
-    if(note) note.textContent = copied ? "已複製點數明細，請貼到表單的問題說明，並填上聯絡方式。" : "請在表單填上聯絡方式並描述問題。";
-    window.open(BILLING_REPORT_FORM_URL, "_blank", "noopener");
+  // 10.11.3：第一步＝點按當下把點數明細複製到剪貼簿(同步呼叫)，第二步由提示視窗的「前往表單」另外開新分頁，兩步不可合併
+  document.getElementById("btn-wallet-report").onclick = ()=>{
+    const text = walletReportText(s);
+    copyToClipboardNow(text).then(ok=>renderBillingReportModal(text, ok));
   };
 }
 // 十六、16.18 玩法與圖例：本次新增的機制，用白話說明
@@ -11444,6 +11516,7 @@ function renderMenuPanel(s){
     <div class="menu-sec">設定</div>
     <a class="menu-item" id="link-view-key">${icon("key")} 我的復原金鑰</a>
     <a class="menu-item" id="link-wallet">${icon("wallet")} 行動點錢包</a>
+    <a class="menu-item" id="link-report-game">${icon("alert")} 回報遊戲問題</a>
     ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">${icon("cloud")} 存到雲端</a>`}
     ${lastKnownWallet>0 ? `<div class="menu-note">${icon("wallet")} 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
     <a class="menu-item" id="link-switch-life">${icon("refresh")} 切換其他人生</a>
@@ -11846,6 +11919,8 @@ function bindPlaying(){
   if(viewKeyLink) viewKeyLink.onclick = renderKeyViewModal;
   const walletLink = document.getElementById("link-wallet"); // 十、10.10.1：選單與上方行動點數字都能開錢包
   if(walletLink) walletLink.onclick = ()=>{ if(typeof setPanel==="function") setPanel(null); renderWalletModal(); };
+  const reportGameLink = document.getElementById("link-report-game"); // 十、10.11.5：直接開遊戲問題表單新分頁，不複製任何內容、遊戲畫面不動
+  if(reportGameLink) reportGameLink.onclick = ()=>openReportForm("game");
   const apTotalEl = document.getElementById("ap-total");
   if(apTotalEl){ apTotalEl.onclick = renderWalletModal; apTotalEl.onkeydown = e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); renderWalletModal(); } }; }
   // 十、10.6.1【定案】放置代活預設關閉，每條人生各自設定
@@ -12194,7 +12269,7 @@ function renderConfirmReset(){
   div.innerHTML = `
     <div class="modal">
       <h3>刪除這段人生？</h3>
-      <p>剩餘的購買點會移到錢包，禮包點會消失。</p>
+      <p>剩餘的購買點會移到錢包，啟程點會消失。</p>
       <p style="font-size:12.5px;color:var(--ink-soft);">這段人生會結束並收進「人生回顧」（只能翻閱，不能繼續玩），空出一個人生格子。</p>
       <button class="primary-btn" id="btn-confirm-reset" style="background:var(--stamp);">確定刪除</button>
       <button class="ghost-btn" id="btn-cancel-reset">再想想</button>
@@ -13770,7 +13845,7 @@ function debugFieldGroups(){
     ]},
     { title:"其他", fields:[
       ["每日池","ap.daily", ensureAP(s).daily],
-      ["禮包點","ap.gift", ensureAP(s).gift],
+      ["啟程點","ap.gift", ensureAP(s).gift],
       ["購買點","ap.purchased", ensureAP(s).purchased],
       ["反悔卡剩餘","undosLeft", s.undosLeft],
     ]},
