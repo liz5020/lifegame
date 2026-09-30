@@ -10,8 +10,8 @@
 <meta property="og:site_name" content="人生草稿">
 <meta property="og:title" content="人生草稿｜這一次，換你決定要活成什麼樣子">
 <meta property="og:description" content="AI 文字人生模擬。生在哪裡你選不了，但每一頁都由你落筆。">
-<meta property="og:url" content="https://lifegamepage.smile80275.workers.dev/">
-<meta property="og:image" content="https://lifegamepage.smile80275.workers.dev/og.png">
+<meta property="og:url" content="https://lifegame-6an.pages.dev/">
+<meta property="og:image" content="https://lifegame-6an.pages.dev/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="人生草稿：15歲・起稿">
@@ -7680,8 +7680,11 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-a";
+const APP_VERSION = "2026.09.30-b";
 const RELEASE_NOTES = [
+  { version:"2026.09.30-b", date:"2026-09-30", title:"遊戲搬到新網址", items:[
+    "遊戲搬到新的網址 lifegame-6an.pages.dev，分享按鈕和分享圖上的連結都已換成新的。"
+  ]},
   { version:"2026.09.30-a", date:"2026-09-30", title:"選單、月份與人際關係大改版", items:[
     "新增底部選單：按輸入框左邊的圓形按鈕，屬性、興趣、人物、地點、帳務都收在裡面。",
     "每一回合的標題現在會寫出月份，故事裡的節日和季節會跟著月份走。",
@@ -13377,7 +13380,7 @@ async function unlockLifeReview(){
   }
 }
 // ---------- 16.7.0 分享這一生：圖片分享卡(沿用7.7分享卡的canvas產生方式) ----------
-const SHARE_URL = "https://lifegamepage.smile80275.workers.dev/";
+const SHARE_URL = "https://lifegame-6an.pages.dev/";
 function wrapCanvasText(ctx, text, maxWidth){
   const lines = []; let line = "";
   for(const ch of Array.from(String(text||""))){
