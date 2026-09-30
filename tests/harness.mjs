@@ -94,12 +94,52 @@ export async function loadWorker() {
   return (await workerModPromise).default;
 }
 
-// 讓Worker裡的global fetch打到假上游
-export function installUpstream(fake) {
+// 讓Worker裡的global fetch打到假上游。resend：假的Resend(寄信)，沒傳就不允許寄信(會丟錯，Worker寄信函式會當成失敗)
+export function installUpstream(fake, resend) {
   globalThis.fetch = async (url, init) => {
     if (String(url).startsWith("https://api.anthropic.com/")) return fake(url, init);
+    if (resend && String(url).startsWith("https://api.resend.com/")) return resend(url, init);
     throw new Error("測試環境不允許連外：" + url);
   };
+}
+
+// 2026-09-30（十、10.2第二批）：假的Resend。fake.sent＝寄出的信[{to,subject,text,from}]；fake.failNext(n)＝接下來n封寄失敗
+export function makeFakeResend() {
+  const sent = []; let failures = 0;
+  const fake = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (!/^Bearer .+/.test((init.headers || {}).Authorization || "")) return new Response("{}", { status: 401 });
+    if (failures > 0) { failures--; return new Response(JSON.stringify({ message: "fake resend error" }), { status: 500 }); }
+    sent.push({ to: (body.to || [])[0], subject: body.subject, text: body.text, from: body.from });
+    return new Response(JSON.stringify({ id: "fake" }), { status: 200 });
+  };
+  fake.sent = sent;
+  fake.failNext = n => { failures = n; };
+  fake.lastCode = (to) => { // 最近一封寄給to的驗證信裡的6位數驗證碼
+    const m = sent.filter(x => x.to === to && /驗證碼/.test(x.subject)).pop();
+    const mm = m && m.subject.match(/(\d{6})$/);
+    return mm ? mm[1] : null;
+  };
+  fake.notices = () => sent.filter(x => !/^人生草稿 驗證碼/.test(x.subject));
+  return fake;
+}
+
+// 假的Durable Object命名空間(記憶體)：get/put時複製一份，行為跟真的一樣不會共用物件參照；ns._store可直接看／改資料
+export function makeFakeDO(Cls) {
+  const store = new Map();
+  const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+  const st = { storage: { get: async k => clone(store.get(k)), put: async (k, v) => { store.set(k, clone(v)); }, delete: async k => { store.delete(k); } } };
+  const inst = new Cls(st);
+  return { _store: store, idFromName: n => n, get: () => ({ fetch: (u, init) => inst.fetch(new Request(u, init)) }) };
+}
+
+// 帳號系統測試用的環境：帳號DO、用量計數DO、寄信金鑰、管理通知信地址；時間可用env.TEST_NOW_MS控制
+export async function makeAccountEnv(extra) {
+  const w = await import(path.join(ROOT, "worker/worker.js"));
+  return makeEnv(Object.assign({
+    ACCOUNTS: makeFakeDO(w.AccountStore), USAGE_COUNTER: makeFakeDO(w.UsageCounter),
+    RESEND_API_KEY: "re_test_key", ADMIN_NOTIFY_EMAIL: "admin@example.com", TEST_NOW_MS: String(Date.parse("2026-09-30T03:00:00Z"))
+  }, extra || {}));
 }
 
 export function makeEnv(extra) {

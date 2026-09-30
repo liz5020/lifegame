@@ -27,8 +27,10 @@ namespace_id = "1001"
 simple = { limit = 30, period = 60 }
 
 # 十、10.9.3.3（2026-09-30，第一批）：全站當天AI用量計數，用Durable Object(SQLite)存，不是KV，不增加每回合KV寫入。
-# 兩個可調設定值DAILY_SPEND_CAP_TWD(預設500)、DAILY_GIFT_CAP(預設20)只放Cloudflare後台Variables，
-# ⚠️不要寫進這個檔案：keep_vars=true才不會被下次部署蓋掉後台改過的值。查看：GET /usage-today(同USAGE_ADMIN_TOKEN)
+# 可調設定值只放Cloudflare後台Variables：DAILY_SPEND_CAP(預設500；第一批叫DAILY_SPEND_CAP_TWD，舊名稱後台若還留著仍認得)、DAILY_GIFT_CAP(預設20)、
+# DAILY_VERIFY_EMAIL_CAP(預設80)、AI_CALL_COST_ESTIMATE(預設1)、ADMIN_NOTIFY_EMAIL；寄信金鑰RESEND_API_KEY是secret。
+# ⚠️不要寫進這個檔案：keep_vars=true才不會被下次部署蓋掉後台改過的值。查看：GET /usage-today(同USAGE_ADMIN_TOKEN)。
+# 2026-09-30第二批起這個計數器也負責「碰到上限擋人」與管理通知信(gate.js)；完整設定步驟見repo根目錄「設定說明_帳號與寄信.md」
 [[durable_objects.bindings]]
 name = "USAGE_COUNTER"
 class_name = "UsageCounter"
@@ -36,3 +38,14 @@ class_name = "UsageCounter"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["UsageCounter"]
+
+# 十、10.2／10.9.2（2026-09-30，第二批）：帳號系統用Durable Object(SQLite)存——信箱、驗證碼、登入狀態、共用錢包、啟程禮份數與排隊、寄信次數。
+# 不是KV，所以不增加KV寫入，雲端存檔關閉時也能用。新增的類別要用新的migration(tag v2)，不能改上面已經部署過的v1。
+# 寄信金鑰RESEND_API_KEY(secret)與DAILY_SPEND_CAP等設定值只放Cloudflare後台，⚠️不要寫進這個檔案(keep_vars=true才不會被下次部署蓋掉)
+[[durable_objects.bindings]]
+name = "ACCOUNTS"
+class_name = "AccountStore"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["AccountStore"]

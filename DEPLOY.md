@@ -36,6 +36,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-09-30 | 2026.09.30-g（隨`master`自動部署） | 2026.09.30-g（隨`master`自動部署） | 見git log | index.html、worker | 帳號系統第二批(10.2／10.9.2／10.9.3)：信箱驗證碼登入、綁定／併入／換綁、共用錢包、啟程禮每日上限與排隊、全站每日花費上限擋人＋管理通知信、撰稿人第2/3/4/7則；Worker新增Durable Object `ACCOUNTS`(migration v2)、寄信(Resend)；**上線前要先照「設定說明_帳號與寄信.md」設好Resend與後台變數** |
 | 2026-09-30 | 2026.09.30-f（隨`master`自動部署） | 2026.09.30-f（隨`master`自動部署） | 見git log | index.html、worker | 撰稿人系統訊息第一批(10.12)；Worker新增全站當天用量計數(Durable Object `USAGE_COUNTER`，`/usage-today`)，wrangler.toml多了DO綁定與migrations |
 | 2026-09-30 | 2026.09.30-e（隨`master`自動部署） | 2026.09.30-e（隨`master`自動部署，只換版本號） | 見git log | index.html、worker | 錢包「啟程禮」欄改看這台裝置有沒有領過(10.10.3.1)；Worker只換版本號 |
 | 2026-09-30 | 2026.09.30-d（隨`master`自動部署） | 2026.09.30-d（隨`master`自動部署） | 見git log | index.html、worker | 人物詳細頁顯示職業／就學(四、4.9)；Worker只更新單價查詢日期(`PRICE_CHECKED_ON`，單價不變) |
@@ -49,3 +50,9 @@
 - 兩個設定值只放Cloudflare後台：life-game→Settings→Variables and Secrets→新增純文字變數`DAILY_SPEND_CAP_TWD`(全站每日花費上限，沒設預設500)、`DAILY_GIFT_CAP`(啟程禮每日發放上限，沒設預設20)；改完存檔就生效，**不要寫進`wrangler.toml`**(`keep_vars=true`才不會被部署蓋掉)。第一批只顯示、還沒拿來擋人。
 - 查當天累計：`GET https://life-game.smile80275.workers.dev/usage-today`，帶`Authorization: Bearer <USAGE_ADMIN_TOKEN>`(或`?token=`)，回傳日期、呼叫次數、估計花費(每次成功呼叫估1元)、上限與比例。台灣時間午夜歸零。
 
+## 帳號系統與寄信設定（2026-09-30第二批，十、10.2）
+
+- 第二批新增帳號資料庫（Durable Object `ACCOUNTS`，`wrangler.toml`的migration `v2`），第一次自動部署時會自動建立；部署後到後台life-game的Bindings確認有`ACCOUNTS`與`USAGE_COUNTER`。
+- **上線前要先設定寄信與後台變數**：照根目錄`設定說明_帳號與寄信.md`做（Resend帳號與網域、DNS記錄貼進Cloudflare、只能寄信的金鑰存成secret `RESEND_API_KEY`、後台變數`ADMIN_NOTIFY_EMAIL`／`DAILY_SPEND_CAP`／`DAILY_GIFT_CAP`／`DAILY_VERIFY_EMAIL_CAP`／`AI_CALL_COST_ESTIMATE`）。沒設好之前，遊戲裡按「寄送驗證碼」會顯示「現在寄不出驗證碼」，其他功能不受影響。
+- 確認方式：`GET /version`要是`2026.09.30-g`；`GET /usage-today?token=管理密碼`看`mail.resend_key_set`與`mail.admin_email_set`都是`true`，並看得到今天估計花費、啟程禮份數、通知狀態、今日驗證信數。
+- 這些設定值只放Cloudflare後台，**不要寫進`wrangler.toml`**（`keep_vars=true`才不會被部署蓋掉）；改花費上限或啟程禮上限不用重新部署，存檔就生效。

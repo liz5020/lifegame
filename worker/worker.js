@@ -68,6 +68,12 @@
 //   AI代理只驗證payload、呼叫Anthropic、簡轉繁後回傳——不檢查/不扣行動點(點數改存玩家瀏覽器)、不記成本遙測；
 //   /usage-summary回503。頻率限制改用Cloudflare內建的Rate Limiting綁定(env.RATE_LIMITER，不經KV)，沒綁定就不限制。
 //   雲端程式碼全部保留，重新打開＝CLOUD_SAVE_ENABLED改"true"並重新部署(前端index.html的CLOUD_SAVE_DEFAULT也要一起改)
+// 2026-09-30新增（十、10.2／10.9.2／10.9.3，第二批：帳號系統、寄信、共用錢包、綁定、啟程禮、花費上限擋人）：
+//   account.js：帳號Durable Object(ACCOUNTS)——信箱驗證碼登入(6位數、10分鐘、5次作廢)、登入90天、綁定／登入併入／換綁、共用錢包、
+//     啟程禮(每信箱2份、每日發放上限與隔天補發排隊)；account-routes.js：/account/*與/gate的HTTP路由；mail.js：Resend寄信；
+//     gate.js：全站每日花費計數(UsageCounter)、上限閘門與管理通知信。全部不碰KV，雲端存檔關閉時照樣能用。
+//   AI代理(POST /)：先過花費上限閘門(碰到上限暫停「從未購買過」帳號的所有AI呼叫，回503 daily_cap_reached)；body帶wallet:true且有登入token時走帳號錢包扣點。
+//   設定名稱(Cloudflare後台，不寫進wrangler.toml)：secret RESEND_API_KEY；變數ADMIN_NOTIFY_EMAIL、DAILY_SPEND_CAP、DAILY_GIFT_CAP、DAILY_VERIFY_EMAIL_CAP、AI_CALL_COST_ESTIMATE。步驟見「設定說明_帳號與寄信.md」
 // 2026-09-28新增（十、10.5平均每條人生花費分兩種）：/archive與「同一個slot換了新life_id」時，把舊的一世標成已結束(usage.js的markLifeEnded)
 
 import { convertAnthropicResponse } from "./s2t.js";
@@ -80,6 +86,16 @@ import {
   canAffordLifeReview, chargeLifeReview, isUsableLifeReviewResponse, markAction
 } from "./ap.js";
 import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual, markLifeEnded } from "./usage.js";
+import { corsHeaders, jsonResponse } from "./http.js";
+import {
+  UsageCounter, readSetting, spendCap, giftCap, callCostEstimate, usageCall, usageCounterStub, accountsCall, accountStore,
+  bearerToken, countAICall, spendGate, syncGiftStats, DEFAULT_DAILY_SPEND_CAP, DEFAULT_DAILY_GIFT_CAP
+} from "./gate.js";
+import { AccountStore } from "./account.js";
+import { handleAccountRoute, isAccountPath } from "./account-routes.js";
+
+// Durable Object類別一定要從Worker主檔匯出(wrangler.toml的binding用類別名稱找)
+export { UsageCounter, AccountStore };
 
 const MAX_SLOTS = 3;
 const MAX_KEY_LENGTH = 100;
@@ -122,15 +138,6 @@ async function checkRateLimitNoKV(request, env) {
 
 function isAllowedOrigin(origin) {
   return typeof origin === "string" && ALLOWED_ORIGINS.includes(origin);
-}
-function corsHeaders(origin, extra) {
-  return Object.assign({
-    "Access-Control-Allow-Origin": origin || "",
-    "Content-Type": "application/json"
-  }, extra || {});
-}
-function jsonResponse(origin, obj, status) {
-  return new Response(JSON.stringify(obj), { status: status || 200, headers: corsHeaders(origin) });
 }
 function isValidKey(key) {
   return typeof key === "string" && key.length > 0 && key.length <= MAX_KEY_LENGTH;
@@ -495,7 +502,7 @@ async function handleIdleSummary(body, env, origin, ctx) {
       tools: [IDLE_SUMMARY_TOOL], tool_choice: { type: "tool", name: IDLE_SUMMARY_TOOL.name },
       system: [{ type: "text", text: IDLE_SUMMARY_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: body.messages[0].content }]
-    });
+    }, ctx);
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -551,7 +558,7 @@ async function handleLifeReview(body, env, origin, ctx) {
       tools: [LIFE_REVIEW_TOOL], tool_choice: { type: "tool", name: LIFE_REVIEW_TOOL.name },
       system: [{ type: "text", text: LIFE_REVIEW_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: body.messages[0].content }]
-    });
+    }, ctx);
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -591,7 +598,7 @@ async function handleChapter(body, env, origin, ctx) {
   if (!pre.ok) return jsonResponse(origin, { error: pre.error }, pre.status);
   let upstream, text, data = null;
   try {
-    upstream = await callAnthropic(env, buildChapterRequest(body.messages));
+    upstream = await callAnthropic(env, buildChapterRequest(body.messages), ctx);
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -642,54 +649,29 @@ export function buildTurnRequest(messages) {
   };
 }
 
-// ---- 十、10.9.3.3（2026-09-30，第一批）全站當天用量計數 ----
-// 只記錄、不擋人、不寄信、不跳窗。存在Durable Object(SQLite)的儲存，不是KV，所以不增加每回合KV寫入，
-// 雲端存檔關閉(不碰KV)時也照樣計數。每次成功的AI呼叫估計花費EST_COST_PER_CALL_TWD元(約1元，10.9.3.1)。
-// 兩個設定值只放Cloudflare後台環境變數(不寫進wrangler.toml，避免部署時蓋掉後台改過的值)：
-//   DAILY_SPEND_CAP_TWD(全站每日花費上限，預設500元)、DAILY_GIFT_CAP(啟程禮每日發放上限，預設20份)。第一批只顯示、還不使用
+// ---- 十、10.9.3.3／10.9.3.1 全站當天用量計數與花費上限：實作在gate.js(UsageCounter Durable Object)，這裡只查看 ----
 export const EST_COST_PER_CALL_TWD = 1;
-export const DEFAULT_DAILY_SPEND_CAP_TWD = 500;
-export const DEFAULT_DAILY_GIFT_CAP = 20;
-export function readSetting(env, name, fallback) {
-  const n = Number(env && env[name]);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-// DO類別：一個全站實例，記「哪一天、幾次呼叫」，跨日(台灣日期不同)自動歸零。不繼承DurableObject基底類別，方便在node裡直接測試
-export class UsageCounter {
-  constructor(state) { this.state = state; }
-  async fetch(request) {
-    const url = new URL(request.url);
-    const date = url.searchParams.get("date") || "";
-    let cur = (await this.state.storage.get("day")) || { date, calls: 0 };
-    if (cur.date !== date) cur = { date, calls: 0 };
-    if (request.method === "POST") { cur.calls += 1; await this.state.storage.put("day", cur); }
-    return new Response(JSON.stringify(cur), { headers: { "Content-Type": "application/json" } });
-  }
-}
-function usageCounterStub(env) {
-  if (!env || !env.USAGE_COUNTER) return null;
-  return env.USAGE_COUNTER.get(env.USAGE_COUNTER.idFromName("global"));
-}
-async function countAICall(env) {
-  try {
-    const stub = usageCounterStub(env);
-    if (!stub) return;
-    await stub.fetch("https://usage.internal/add?date=" + taipeiDateString(nowMs(env)), { method: "POST" });
-  } catch (e) { /* 計數失敗絕不能影響回合 */ }
-}
+export const DEFAULT_DAILY_SPEND_CAP_TWD = DEFAULT_DAILY_SPEND_CAP;
+export { DEFAULT_DAILY_GIFT_CAP, readSetting };
 async function buildUsageToday(env) {
-  const date = taipeiDateString(nowMs(env));
-  const out = { date, calls: 0, est_cost_twd: 0, est_cost_per_call_twd: EST_COST_PER_CALL_TWD,
-    daily_spend_cap_twd: readSetting(env, "DAILY_SPEND_CAP_TWD", DEFAULT_DAILY_SPEND_CAP_TWD),
-    daily_gift_cap: readSetting(env, "DAILY_GIFT_CAP", DEFAULT_DAILY_GIFT_CAP), counter: !!usageCounterStub(env) };
-  const stub = usageCounterStub(env);
-  if (stub) {
-    const r = await stub.fetch("https://usage.internal/get?date=" + date);
-    const d = await r.json();
+  const now = nowMs(env), date = taipeiDateString(now);
+  const cap = spendCap(env);
+  const out = { date, calls: 0, est_cost_twd: 0, est_cost_per_call_twd: callCostEstimate(env),
+    daily_spend_cap_twd: cap, daily_gift_cap: giftCap(env), counter: !!usageCounterStub(env) };
+  if (out.counter) {
+    const d = await usageCall(env, "get", {}, "GET");
     out.calls = d.calls || 0;
-    out.est_cost_twd = out.calls * EST_COST_PER_CALL_TWD;
-    out.pct_of_cap = Math.round(out.est_cost_twd / out.daily_spend_cap_twd * 1000) / 10;
+    out.est_cost_twd = Math.round((d.spent || 0) * 100) / 100;
+    out.pct_of_cap = Math.round(out.est_cost_twd / cap * 1000) / 10;
+    out.paused_for_never_purchased = out.est_cost_twd >= cap; // 10.9.3.1：碰到上限＝暫停從未購買過的帳號
+    out.gifts = { issued: d.gifts || 0, queued: d.queued || 0, cap: out.daily_gift_cap };
+    out.notices = {};
+    for (const [k, v] of Object.entries(d.notices || {})) out.notices[k] = { sent: !!v.sent, attempts: v.attempts || 0 };
   }
+  if (accountStore(env)) {
+    try { const st = await accountsCall(env, { op: "stats" }); out.verify_emails_today = st.verify_emails; out.verify_email_cap = readSetting(env, "DAILY_VERIFY_EMAIL_CAP", 80); out.gifts_queued_accounts = st.gifts_queued; } catch (e) { /* 只是看數字 */ }
+  }
+  out.mail = { resend_key_set: !!env.RESEND_API_KEY, admin_email_set: !!env.ADMIN_NOTIFY_EMAIL };
   return out;
 }
 async function handleUsageToday(request, env) {
@@ -698,7 +680,7 @@ async function handleUsageToday(request, env) {
   return new Response(JSON.stringify(await buildUsageToday(env), null, 2), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
 
-async function callAnthropic(env, upstreamBody) {
+async function callAnthropic(env, upstreamBody, ctx) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -708,7 +690,7 @@ async function callAnthropic(env, upstreamBody) {
     },
     body: JSON.stringify(upstreamBody)
   });
-  if (res.ok) await countAICall(env); // 十、10.9.3.3：全站當天用量計數(只記錄)
+  if (res.ok) await countAICall(env, ctx); // 十、10.9.3.1／10.9.3.3：每次成功的AI呼叫記一筆估價，達80%／上限時寄管理通知信
   // 十、10.9.4（2026-09-30）：固定規則(system prompt＋工具定義)的字數，給前端逐筆成本紀錄當比例參考(不換算token)
   try {
     const sys = (upstreamBody.system || []).reduce((n, b) => n + String(b.text || "").length, 0);
@@ -719,7 +701,9 @@ async function callAnthropic(env, upstreamBody) {
 
 // 十、10.8（2026-09-29）：雲端存檔關閉時的AI代理——不碰KV：不檢查行動點(改存玩家瀏覽器)、不記成本遙測；
 // 仍然只接受遊戲的payload結構、system/工具/模型由Worker決定(10.4)，成功回應照樣簡轉繁。lifegame.usage照樣回傳給測試選單顯示
-async function handleAIProxyNoKV(body, env, origin) {
+// 十、10.9.2（2026-09-30，第二批）：wallet={token}時是「帳號共用錢包」的請求——回合先預扣1點(同一turn_nonce只扣一次、開場免費、失敗退點，規則同10.3.11)，
+// 回顧這一生成功才扣5點；錢包在帳號Durable Object裡，同樣不碰KV。回應的lifegame.wallet是最新的錢包狀態
+async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
   let check, upstreamBody, isUsable;
   if (body.kind === "chapter") {
     check = validateChapterMessages(body.messages);
@@ -749,15 +733,47 @@ async function handleAIProxyNoKV(body, env, origin) {
     isUsable = isUsableTurnResponse;
   }
   if (!check.ok) return jsonResponse(origin, { error: { type: "invalid_request", message: check.error } }, 400);
+
+  const isTurn = !body.kind;
+  const safeLifeId = isValidLifeId(body.life_id) ? body.life_id : undefined;
+  let walletInfo = null, walletEvents = [], walletPre = null;
+  const acctCall = async (payload) => { // 帳號DO呼叫；啟程禮份數有變(排隊補發)就順便同步給計數器
+    const r = await accountsCall(env, Object.assign({ token: wallet.token }, payload));
+    if (r && r.gift_changed && r.gift_stats) { const j = syncGiftStats(env, ctx, r.gift_stats); if (j && ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(j); }
+    if (r && r.wallet) walletInfo = r.wallet;
+    if (r && r.events && r.events.length) walletEvents = walletEvents.concat(r.events);
+    return r;
+  };
+  const walletFail = (r) => {
+    const err = r && r.error && typeof r.error === "object" ? r.error : { type: String((r && r.error) || "error"), message: "帳號驗證失敗" };
+    return jsonResponse(origin, { error: err, lifegame: { wallet: walletInfo, wallet_events: walletEvents } }, (r && r.status) || 401);
+  };
+  if (wallet && isTurn) {
+    if (!isValidNonce(body.turn_nonce)) return jsonResponse(origin, { error: { type: "invalid_request", message: "缺少turn_nonce" } }, 400);
+    const isPrologue = !!(check.payload.time_context && check.payload.time_context.is_prologue === true);
+    const r = await acctCall({ op: "wallet_pre", nonce: body.turn_nonce, life_id: safeLifeId, is_prologue: isPrologue });
+    if (!r.ok) return walletFail(r);
+    walletPre = r.pre;
+  } else if (wallet && body.kind === "life_review") {
+    const r = await acctCall({ op: "wallet_can_afford", n: 5 });
+    if (!r.ok) return walletFail(r);
+    if (!r.can) return jsonResponse(origin, { error: { type: "insufficient_action_points", message: "行動點不足" }, lifegame: { wallet: walletInfo, wallet_events: walletEvents } }, 402);
+  }
+
   let upstream, text, data = null;
   try {
-    upstream = await callAnthropic(env, upstreamBody);
+    upstream = await callAnthropic(env, upstreamBody, ctx);
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
-    return jsonResponse(origin, { error: { message: String(err) }, lifegame: { cloud_disabled: true } }, 502);
+    if (wallet && isTurn) await acctCall({ op: "wallet_post", nonce: body.turn_nonce, life_id: safeLifeId, success: false });
+    return jsonResponse(origin, { error: { message: String(err) }, lifegame: { cloud_disabled: true, wallet: walletInfo, wallet_events: walletEvents } }, 502);
   }
-  const lifegame = { usable: !!(upstream.ok && data && isUsable(data)), cloud_disabled: true };
+  const usable = !!(upstream.ok && data && isUsable(data));
+  if (wallet && isTurn) await acctCall({ op: "wallet_post", nonce: body.turn_nonce, life_id: safeLifeId, success: usable });
+  else if (wallet && body.kind === "life_review" && usable) await acctCall({ op: "wallet_spend", n: 5 });
+  const lifegame = { usable, cloud_disabled: true };
+  if (wallet) { lifegame.wallet = walletInfo; lifegame.wallet_events = walletEvents; lifegame.charged = !!(walletPre && walletPre.charged && usable); }
   if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
@@ -769,6 +785,13 @@ async function handleAIProxyNoKV(body, env, origin) {
     out.lifegame = lifegame;
     return new Response(JSON.stringify(out), { status: upstream.status, headers: corsHeaders(origin) });
   }
+  if (wallet) { // 上游出錯也把最新錢包狀態帶回去，前端才能把畫面上的點數校正成伺服器端的數字
+    let errBody;
+    try { errBody = JSON.parse(text); } catch (e) { errBody = null; }
+    if (!errBody || typeof errBody !== "object") errBody = { error: { message: String(text).slice(0, 200) } };
+    errBody.lifegame = lifegame;
+    return new Response(JSON.stringify(errBody), { status: upstream.status, headers: corsHeaders(origin) });
+  }
   return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
 }
 
@@ -777,7 +800,14 @@ async function handleAIProxy(request, env, origin, ctx) {
   try { body = await request.json(); }
   catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
   if (!body || typeof body !== "object") return jsonResponse(origin, { error: { message: "請求格式錯誤" } }, 400);
-  if (!cloudEnabled(env)) return handleAIProxyNoKV(body, env, origin); // 十、10.8
+  // 十、10.9.3.1（2026-09-30，第二批）：全站每日花費碰到上限時，暫停「從未購買過」帳號的所有AI呼叫(含開場、放置摘要、章節)——
+  // 在扣點之前就擋下，所以這次不扣點、不算回合；有購買紀錄的帳號不受影響。計數服務出錯時放行
+  const gate = await spendGate(request, env, ctx);
+  if (gate.blocked) return jsonResponse(origin, { error: { type: "daily_cap_reached", message: "今天的故事額度已用完，台灣時間午夜後恢復" }, lifegame: { daily_cap: true } }, 503);
+  // 十、10.9.2：帶著登入token且明說用帳號錢包的請求(雲端存檔開或關都一樣)走錢包路徑
+  const walletToken = bearerToken(request);
+  if (body.wallet === true && walletToken && accountStore(env)) return handleAIProxyNoKV(body, env, origin, ctx, { token: walletToken });
+  if (!cloudEnabled(env)) return handleAIProxyNoKV(body, env, origin, ctx, null); // 十、10.8
   if (body.kind === "chapter") return handleChapter(body, env, origin, ctx); // 十五、章節成書
   if (body.kind === "idle_summary") return handleIdleSummary(body, env, origin, ctx); // 十、10.6.4放置摘要（2026-09-27）
   if (body.kind === "life_review") return handleLifeReview(body, env, origin, ctx); // 十六、16.7.2回顧這一生（2026-09-28）
@@ -812,7 +842,7 @@ async function handleAIProxy(request, env, origin, ctx) {
 
   let upstream, text, data = null;
   try {
-    upstream = await callAnthropic(env, buildTurnRequest(body.messages));
+    upstream = await callAnthropic(env, buildTurnRequest(body.messages), ctx);
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -868,7 +898,7 @@ async function handleUsageSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.09.30-f";
+const WORKER_VERSION = "2026.09.30-g";
 
 export default {
   async fetch(request, env, ctx) {
@@ -887,7 +917,7 @@ export default {
       return new Response(null, {
         headers: corsHeaders(origin, {
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type"
+          "Access-Control-Allow-Headers": "Content-Type, Authorization" // 十、10.2：帳號登入的token放在Authorization標頭
         })
       });
     }
@@ -901,6 +931,12 @@ export default {
     const url = new URL(request.url);
     // 版本查詢（2026-09-30）：不碰KV，讓玩家與開發者確認線上跑的是哪一版
     if (url.pathname === "/version" && request.method === "GET") return jsonResponse(origin, { success: true, version: WORKER_VERSION });
+    // 十、10.2（2026-09-30，第二批）：帳號路由——資料在Durable Object，不碰KV；頻率限制一律用不經KV的Cloudflare Rate Limiting，雲端存檔開或關都一樣
+    if (isAccountPath(url.pathname)) {
+      if (!(await checkRateLimitNoKV(request, env))) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);
+      const r = await handleAccountRoute(request, env, origin, ctx, url);
+      if (r) return r;
+    }
     // 十、10.8（2026-09-29）：雲端存檔關閉時完全不碰KV——存檔類路徑直接回503，頻率限制改用不經KV的綁定
     if (!cloudEnabled(env)) {
       if (!(await checkRateLimitNoKV(request, env))) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);
