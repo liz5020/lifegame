@@ -7977,8 +7977,13 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-h";
+const APP_VERSION = "2026.09.30-i";
 const RELEASE_NOTES = [
+  { version:"2026.09.30-i", date:"2026-09-30", title:"綁定信箱更好找", items:[
+    "點數錢包裡的「綁定信箱」改成獨立按鈕，說明文字放在旁邊；「已經有帳號？用信箱登入」也改成按鈕。",
+    "上方的點數數字加了虛線底線，看得出來可以點開錢包。",
+    "「存檔．設定」選單新增帳號一列：還沒綁定時可直接綁定信箱，綁定後顯示信箱並能進入帳號資訊（登出、換綁）。",
+  ]},
   { version:"2026.09.30-h", date:"2026-09-30", title:"綁定信箱與啟程禮", items:[
     "新的人生會先附上 25 點啟程禮，大約夠走到高一的寒假；還沒綁定信箱時，同時只能過一段人生。",
     "綁定信箱後再領 30 點啟程禮，大約能走到高一結束。",
@@ -11551,7 +11556,7 @@ function renderPlaying(loadingTurn){
       ${renderAgeStamp(s.age, stageLabelForStamp(s), "tb-stamp")}
       <div class="tb-mid">
         <div class="tb-stage">${escapeHtml(timeLabel)}</div>
-        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" role="button" tabindex="0" style="cursor:pointer;" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）｜點一下開啟行動點錢包" : "點一下開啟行動點錢包"}">${icon("zap")} 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
+        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" role="button" tabindex="0" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）｜點一下開啟行動點錢包" : "點一下開啟行動點錢包"}">${icon("zap")} 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
       </div>
     </div>
     <div class="tb-sub">
@@ -11886,8 +11891,11 @@ function renderWalletModal(){
         ${acct ? `<div class="ic-sub" style="margin-top:6px;">這段人生還在原本的復原金鑰上，行動點自己算；帳號空出格子後可以轉進帳號。</div>${canTransfer ? `<button class="ghost-btn" id="btn-acct-transfer" style="margin-top:6px;">轉進帳號</button>` : ``}` : ``}`;
   // 10.12.5第3則：未綁信箱玩家的錢包常駐一行，點下去進綁定說明頁；綁定後不再出現
   const bindTip = !acct ? `
-        <div class="ic-sub glass" id="wallet-bind-tip" role="button" tabindex="0" style="margin:10px 0 4px;padding:8px 10px;cursor:pointer;">撰稿人提醒你：綁定信箱可再領 30 點啟程禮，並保存你的進度。</div>
-        <div class="ic-sub" style="margin:2px 0 6px;"><a id="btn-wallet-login" style="cursor:pointer;text-decoration:underline;">已經有帳號？用信箱登入</a></div>` : ``;
+        <div style="display:flex;align-items:center;gap:10px;margin:12px 0 6px;">
+          <button class="primary-btn" id="btn-wallet-bind" style="flex:0 0 auto;width:auto;padding:8px 16px;margin:0;">綁定信箱</button>
+          <div class="ic-sub" id="wallet-bind-tip" style="flex:1;margin:0;">撰稿人提醒你：綁定信箱可再領 30 點啟程禮，並保存你的進度。</div>
+        </div>
+        <div style="margin:2px 0 6px;"><button class="ghost-btn" id="btn-wallet-login" style="width:auto;padding:6px 14px;margin:0;">已經有帳號？用信箱登入</button></div>` : ``;
   div.innerHTML = `
     <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
       <h3>行動點錢包</h3>
@@ -11906,8 +11914,8 @@ function renderWalletModal(){
   document.getElementById("btn-wallet-close").onclick = ()=>div.remove();
   div.onclick = e=>{ if(e.target===div) div.remove(); };
   const openBind = ()=>{ div.remove(); openAccountFlow("bind"); };
-  const tip = document.getElementById("wallet-bind-tip");
-  if(tip){ tip.onclick = openBind; tip.onkeydown = e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); openBind(); } }; }
+  const bindBtn = document.getElementById("btn-wallet-bind");
+  if(bindBtn) bindBtn.onclick = openBind;
   const loginLink = document.getElementById("btn-wallet-login");
   if(loginLink) loginLink.onclick = ()=>{ div.remove(); openAccountFlow("login"); };
   const logoutBtn = document.getElementById("btn-acct-logout");
@@ -11957,6 +11965,8 @@ function renderMenuPanel(s){
     <div class="menu-sec">設定</div>
     <a class="menu-item" id="link-view-key">${icon("key")} 我的復原金鑰</a>
     <a class="menu-item" id="link-wallet">${icon("wallet")} 行動點錢包</a>
+    ${acct ? `<a class="menu-item" id="link-account">${icon("key")} 帳號：${escapeHtml(acct.email_masked||"")}</a>`
+           : `<a class="menu-item" id="link-account">${icon("key")} 綁定信箱　<span style="font-size:12px;opacity:.7;">再領 30 點、換手機找得回</span></a>`}
     <a class="menu-item" id="link-report-game">${icon("alert")} 回報遊戲問題</a>
     ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">${icon("cloud")} 存到雲端</a>`}
     ${lastKnownWallet>0 ? `<div class="menu-note">${icon("wallet")} 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
@@ -12360,6 +12370,8 @@ function bindPlaying(){
   if(viewKeyLink) viewKeyLink.onclick = renderKeyViewModal;
   const walletLink = document.getElementById("link-wallet"); // 十、10.10.1：選單與上方行動點數字都能開錢包
   if(walletLink) walletLink.onclick = ()=>{ if(typeof setPanel==="function") setPanel(null); renderWalletModal(); };
+  const accountLink = document.getElementById("link-account"); // 存檔・設定：未綁→綁定說明頁；已綁→錢包(有帳號資訊、登出、換綁)
+  if(accountLink) accountLink.onclick = ()=>{ if(typeof setPanel==="function") setPanel(null); if(acct) renderWalletModal(); else openAccountFlow("bind"); };
   const reportGameLink = document.getElementById("link-report-game"); // 十、10.11.5：直接開遊戲問題表單新分頁，不複製任何內容、遊戲畫面不動
   if(reportGameLink) reportGameLink.onclick = ()=>openReportForm("game");
   const apTotalEl = document.getElementById("ap-total");
