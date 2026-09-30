@@ -677,6 +677,15 @@ function ensureAP(s){
   return s.ap;
 }
 function totalAP(s){ const ap = ensureAP(s); return ap.daily + ap.gift + ap.purchased; }
+// 十、10.10.3（2026-09-30）：最近點數紀錄，只記入帳與一般回合以外的扣點(每回合一般扣點不記)，只留最近30筆；
+// 存在存檔的state.apLog(封測期間跟著本機存檔)；測試「不扣行動點」開著時不寫入(10.3.12)
+const AP_LOG_MAX = 30;
+function apLogAdd(s, type, n){
+  if(!s || !n || apTestFreeActive()) return;
+  const arr = s.apLog || (s.apLog = []);
+  arr.push({ t:Date.now(), d:taipeiDateString(), type, n });
+  if(arr.length > AP_LOG_MAX) arr.splice(0, arr.length - AP_LOG_MAX);
+}
 // 不用排程：進入遊戲或行動時發現台灣日期不同才補。只看每日池，永久池多少不影響。回傳是否有補
 function refillDailyIfNeeded(s){
   const ap = ensureAP(s);
@@ -684,6 +693,7 @@ function refillDailyIfNeeded(s){
   if(ap.lastRefillDate === today) return false;
   ap.lastRefillDate = today;
   if(ap.daily >= AP_DAILY_REFILL) return false;
+  apLogAdd(s, "每日補點", AP_DAILY_REFILL - ap.daily); // 10.10.3：記實際補的數量
   ap.daily = AP_DAILY_REFILL;
   return true;
 }
@@ -724,6 +734,7 @@ async function claimNewLifeGift(key, slot){
 function syncServerAP(s, ap){
   if(!s || !ap) return;
   const a = ensureAP(s);
+  if(ap.lastRefillDate && a.lastRefillDate !== ap.lastRefillDate && ap.daily > a.daily) apLogAdd(s, "每日補點", ap.daily - a.daily); // 10.10.3：伺服器端今天第一次補點
   a.daily = ap.daily; a.gift = ap.gift; a.purchased = ap.purchased;
   if(ap.lastRefillDate) a.lastRefillDate = ap.lastRefillDate;
 }
@@ -4076,6 +4087,7 @@ function newRoll(carry, identity){
     stageAccum: null,
     // 十、10.3：restart_item(轉世丹)沿用同一格子，禮包點/購買點全部保留、不另發禮包；全新人生才標giftPending，startLife()時領禮包
     ap: carry?.ap ? { ...carry.ap, giftPending:false } : newLifeAP(),
+    apLog: carry?.apLog ? carry.apLog.slice() : [],
     lifeId: newLifeId(), // 2026-09-25：每一世都換新id(轉世丹也是新的一世)
     turnCount,
     characters, // 4.1.3：每張家人卡建卡時已寫入gender
@@ -7733,6 +7745,8 @@ let lastCallServerAP = null;    // 這一次callAI收到的伺服器端行動點
 async function callAI(actionText, forceEnding, timeCtx){
   lastCallServerAP = null;
   let res;
+  const userMsgStr = buildUserMessage(actionText, forceEnding, timeCtx);
+  const callMeta = { kind: callKindFor(state, "turn", timeCtx && timeCtx.turnNonce, forceEnding), inChars: payloadBlockChars(userMsgStr) };
   try{
     res = await fetch(WORKER_URL, {
       method:"POST",
@@ -7750,7 +7764,7 @@ async function callAI(actionText, forceEnding, timeCtx){
         life_id: ensureLifeId(state),
         ap_hint: timeCtx && timeCtx.apBefore,
         ap_test_free: apTestFreeOn() || undefined, // 10.3.12：只是請求，Worker只認登記過的測試鑰匙
-        messages: [{ role:"user", content: buildUserMessage(actionText, forceEnding, timeCtx) }]
+        messages: [{ role:"user", content: userMsgStr }]
       })
     });
   }catch(networkErr){
@@ -7774,7 +7788,10 @@ async function callAI(actionText, forceEnding, timeCtx){
   if(data && data.lifegame && data.lifegame.ap){ syncServerAP(state, data.lifegame.ap); lastCallServerAP = data.lifegame.ap; }
   if(data && data.lifegame) lastTurnServerInfo = data.lifegame;
   if(data && data.lifegame && apTestFreeOn()) apTestFreeRefused = data.lifegame.ap_test_free !== true; // 10.3.12：不是測試鑰匙→開關無效
-  if(data && data.lifegame && data.lifegame.usage) addDevUsage(state, data.lifegame.usage); // 測試選單：這一世累計用量
+  if(data && data.lifegame && data.lifegame.usage){
+    callMeta.outChars = outputBlockChars(data);
+    addDevUsage(state, Object.assign({}, data.lifegame.usage, { sys_chars: data.lifegame.sys_chars||0 }), callMeta); // 測試選單：這一世累計用量＋10.9.4逐筆紀錄
+  }
   if(res.status===402 || res.status===429){
     const err = new Error(res.status===402 ? "行動點不足（伺服器端）" : "這一回合重新生成次數已達上限");
     err.noRetry = true; err.apInsufficient = res.status===402;
@@ -8934,7 +8951,7 @@ async function writeIdleSummary(s){
         kind:"idle_summary", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
         life_id: ensureLifeId(s), messages:[{ role:"user", content: JSON.stringify(payload) }] }) });
       const data = await res.json();
-      if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, data.lifegame.usage);
+      if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"idle", inChars:{ stats:JSON.stringify(payload).length }, outChars:outputBlockChars(data) });
       const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_idle_summary");
       if(block && block.input) out = block.input;
     }catch(e){ console.warn("放置摘要生成失敗", e); }
@@ -9013,6 +9030,7 @@ async function rollbackIdleDecision(roundIndex, pointIndex){
   restored.idleRun = run;
   restored.ap = Object.assign({}, ensureAP(restored), { daily:ap.daily, gift:ap.gift, purchased:ap.purchased });
   restored.snapshot = null;
+  restored.apLog = s.apLog; apLogAdd(restored, "回溯重大決定", -IDLE_ROLLBACK_COST); // 10.10.3
   restored.log = (restored.log||[]).concat([{ age: restored.age, timeLabel:"放置期間", subtitle:"回到那個決定", text:`你回到放置期間第${roundIndex+1}回合的「${point.title}」，這一次由你自己決定。之後那段放置的日子已經改寫。`, turnSummary:`回到放置期間的${point.title}，自己重新決定`, statChanges:{} }]);
   state = restored;
   saveGame(); render();
@@ -9670,6 +9688,7 @@ async function startLife(){
       // 10.3.11（2026-09-25）：真實模式以Worker回傳的伺服器端餘額為準；mock模式或Worker連不上時維持本機計算
       if(SERVER_AP && claim.ap) syncServerAP(state, claim.ap);
       else if(claim.granted) ap.gift = AP_NEW_LIFE_GIFT;
+      if(claim.granted) apLogAdd(state, "新手禮包", AP_NEW_LIFE_GIFT); // 10.10.3
     }
   }
   state.phase = "playing";
@@ -9687,7 +9706,7 @@ function reincarnate(){
     calStartYear: calNextOpeningYear(state.timeState && state.timeState.cal && state.timeState.cal.v===2 ? state.timeState.cal.lastRoundEnd : 0), // 二、2.7：轉世從上一世結束後的下一個開局日開始
     chronicleCarry: `（說不上來的熟悉感）偶爾會有似曾相識的片刻或夢境，只能隱約帶過，不說破來由。`,
     name: state.name, gender: state.gender,
-    ap: ensureAP(state) }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
+    ap: ensureAP(state), apLog: state.apLog }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
   state = newRoll(carry, null);
   saveGame();
   render();
@@ -9862,6 +9881,7 @@ async function succeedAsChild(childName){
     lifeTrajectory: [], stageAccum: null,
     // 十、10.3.6：世代傳承不算新人生，上一代的每日池/禮包點/購買點全部由下一代繼承，不另發禮包
     ap: { ...ensureAP(prev), giftPending:false }, turnCount:0,
+    apLog: (()=>{ const a = ensureAP(prev), l = (prev.apLog||[]).slice(); if(a.gift+a.purchased>0 && !apTestFreeActive()) l.push({ t:Date.now(), d:taipeiDateString(), type:"傳承繼承", n:a.gift+a.purchased }); return l.slice(-AP_LOG_MAX); })(), // 10.10.3：永久池由下一代繼承
     lifeId: newLifeId(), // 2026-09-25：世代傳承是新的一世，換新id
     characters, // 4.1.3：每張家人卡建卡時已寫入gender
     chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`]
@@ -10051,6 +10071,7 @@ function buildChapterMaterial(s, ch){
   };
 }
 async function callChapterAI(s, ch){
+  const chapterMsg = JSON.stringify(buildChapterMaterial(s, ch));
   const res = await fetch(WORKER_URL, {
     method:"POST", headers:{ "Content-Type":"application/json" },
     body: JSON.stringify({
@@ -10058,13 +10079,13 @@ async function callChapterAI(s, ch){
       key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME),
       slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
       life_id: ensureLifeId(s), chapter_id: ch.id,
-      messages: [{ role:"user", content: JSON.stringify(buildChapterMaterial(s, ch)) }]
+      messages: [{ role:"user", content: chapterMsg }]
     })
   });
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("章節回應不是合法JSON（HTTP "+res.status+"）"); }
   if(!res.ok) throw new Error("章節生成失敗 "+res.status+"："+(data?.error?.message||""));
-  if(data && data.lifegame && data.lifegame.usage){ lastChapterUsage = data.lifegame.usage; addDevUsage(s, data.lifegame.usage); }
+  if(data && data.lifegame && data.lifegame.usage){ lastChapterUsage = data.lifegame.usage; addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"chapter", inChars:{ stats:chapterMsg.length }, outChars:outputBlockChars(data) }); }
   const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_chapter");
   if(!block || !block.input) throw new Error("回應裡沒有submit_chapter");
   return block.input;
@@ -11119,7 +11140,7 @@ function renderPlaying(loadingTurn){
       ${renderAgeStamp(s.age, stageLabelForStamp(s), "tb-stamp")}
       <div class="tb-mid">
         <div class="tb-stage">${escapeHtml(timeLabel)}</div>
-        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）" : apTooltipText(s)}">${icon("zap")} 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
+        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" role="button" tabindex="0" style="cursor:pointer;" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）｜點一下開啟行動點錢包" : "點一下開啟行動點錢包"}">${icon("zap")} 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
       </div>
     </div>
     <div class="tb-sub">
@@ -11320,6 +11341,74 @@ function renderLedgerModal(){
   document.body.appendChild(div);
   document.getElementById("btn-ledger-close").onclick = ()=>div.remove();
 }
+// ===== 十、10.10 行動點錢包（2026-09-30）=====
+// 只讀本機資料、不呼叫AI。開放大眾後才出現的區塊(帳號狀態10.10.6、共用購買點10.10.5)、購買按鈕，封測期間都不放
+const BILLING_REPORT_FORM_URL = ""; // 10.10.4：帳務問題回報表單網址，由使用者建立後提供；空字串＝按鈕不出現
+function taipeiStampText(ts){ return new Date((ts ?? Date.now()) + 8*3600*1000).toISOString().slice(0,16).replace("T"," ").replace(/-/g,"/"); }
+function apLogRowsHTML(list){
+  return list.map(e=>`<div class="ic-sub" style="display:flex;justify-content:space-between;margin:3px 0;"><span>${escapeHtml(String(e.d||"").replace(/-/g,"/"))}　${escapeHtml(e.type)}</span><b>${e.n>0?"+":"−"}${Math.abs(e.n)}</b></div>`).join("");
+}
+// 其他進行中的人生：讀這台裝置其他格子的本機存檔(只看名字與點數，不動存檔)
+function otherLivesForWallet(){
+  const out = [];
+  const activeRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  for(let i=0;i<3;i++){
+    if(activeRaw!==null && Number(activeRaw)===i) continue;
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY+":"+i);
+      if(!raw) continue;
+      const o = JSON.parse(raw);
+      if(!o || o.phase!=="playing" || !o.ap) continue;
+      out.push({ name:o.name||"無名氏", total:(o.ap.daily||0)+(o.ap.gift||0)+(o.ap.purchased||0) });
+    }catch(e){}
+  }
+  return out;
+}
+function walletReportText(s){
+  const ap = ensureAP(s), log = (s.apLog||[]).slice(-5).reverse();
+  return [`【帳務問題回報】資料截至 ${taipeiStampText()}（台灣時間）`,
+    `目前這條人生：合計 ${totalAP(s)} 點（每日池 ${ap.daily}／${AP_DAILY_REFILL}；永久池 ${ap.gift+ap.purchased}，禮包點 ${ap.gift}、購買點 ${ap.purchased}）`,
+    `最近點數紀錄：${log.length ? log.map(e=>`${e.d} ${e.type} ${e.n>0?"+":"−"}${Math.abs(e.n)}`).join("；") : "（無）"}`,
+    `問題說明：`].join("\n");
+}
+function renderWalletModal(){
+  if(document.getElementById("wallet-modal")) return;
+  const s = state; if(!s) return;
+  const ap = ensureAP(s), free = apTestFreeActive();
+  const others = otherLivesForWallet();
+  const log = (s.apLog||[]).slice().reverse();
+  const div = document.createElement("div");
+  div.id = "wallet-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>行動點錢包</h3>
+      <div style="overflow-y:auto;flex:1;text-align:left;">
+        <div class="menu-sec">${escapeHtml(s.name)}・這條人生</div>
+        <p style="font-size:22px;margin:4px 0;">${icon("zap")} <b>${free ? "∞ 測試中" : totalAP(s)}</b> 點</p>
+        <div class="ic-sub">每日池 ${ap.daily}／${AP_DAILY_REFILL}</div>
+        <div class="ic-sub">永久池 ${ap.gift+ap.purchased}（禮包點 ${ap.gift}、購買點 ${ap.purchased}）</div>
+        <div class="ic-sub" style="margin-top:6px;opacity:.8;">每天台灣時間 00:00 補到 ${AP_DAILY_REFILL} 點，不累加。禮包點與購買點不會過期。</div>
+        ${others.length ? `<div class="menu-sec" style="margin-top:14px;">其他進行中的人生</div>${others.map(o=>`<div class="ic-sub" style="display:flex;justify-content:space-between;margin:3px 0;"><span>${escapeHtml(o.name)}</span><b>${o.total} 點</b></div>`).join("")}` : ``}
+        ${log.length ? `<div class="menu-sec" style="margin-top:14px;">最近點數紀錄</div>${apLogRowsHTML(log)}` : ``}
+        <div class="ic-sub" style="margin-top:14px;opacity:.7;">資料截至 ${taipeiStampText()}（台灣時間）</div>
+        ${BILLING_REPORT_FORM_URL ? `<button class="ghost-btn" id="btn-wallet-report" style="margin-top:8px;">回報帳務問題</button><div class="ic-sub" id="wallet-report-note" style="margin-top:4px;"></div>` : ``}
+      </div>
+      <button class="ghost-btn" id="btn-wallet-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-wallet-close").onclick = ()=>div.remove();
+  div.onclick = e=>{ if(e.target===div) div.remove(); };
+  const rep = document.getElementById("btn-wallet-report");
+  if(rep) rep.onclick = async ()=>{
+    // 10.10.4：不帶復原金鑰；表單無法預先帶入資料時，改為自動複製說明文字再開表單讓玩家貼上
+    let copied = false;
+    try{ await navigator.clipboard.writeText(walletReportText(s)); copied = true; }catch(e){}
+    const note = document.getElementById("wallet-report-note");
+    if(note) note.textContent = copied ? "已複製點數明細，請貼到表單的問題說明，並填上聯絡方式。" : "請在表單填上聯絡方式並描述問題。";
+    window.open(BILLING_REPORT_FORM_URL, "_blank", "noopener");
+  };
+}
 // 十六、16.18 玩法與圖例：本次新增的機制，用白話說明
 function renderLegendModal(){
   const div = document.createElement("div");
@@ -11354,6 +11443,7 @@ function renderMenuPanel(s){
     <a class="menu-item" id="link-idle-toggle">${s.idleEnabled ? icon("pause")+" 放置代活：開" : icon("play")+" 放置代活：關"}</a>
     <div class="menu-sec">設定</div>
     <a class="menu-item" id="link-view-key">${icon("key")} 我的復原金鑰</a>
+    <a class="menu-item" id="link-wallet">${icon("wallet")} 行動點錢包</a>
     ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">${icon("cloud")} 存到雲端</a>`}
     ${lastKnownWallet>0 ? `<div class="menu-note">${icon("wallet")} 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
     <a class="menu-item" id="link-switch-life">${icon("refresh")} 切換其他人生</a>
@@ -11752,6 +11842,10 @@ function bindPlaying(){
   if(familyLink) familyLink.onclick = ()=>renderFamilyChronicleModal(state.familyChronicle);
   const viewKeyLink = document.getElementById("link-view-key");
   if(viewKeyLink) viewKeyLink.onclick = renderKeyViewModal;
+  const walletLink = document.getElementById("link-wallet"); // 十、10.10.1：選單與上方行動點數字都能開錢包
+  if(walletLink) walletLink.onclick = ()=>{ if(typeof setPanel==="function") setPanel(null); renderWalletModal(); };
+  const apTotalEl = document.getElementById("ap-total");
+  if(apTotalEl){ apTotalEl.onclick = renderWalletModal; apTotalEl.onkeydown = e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); renderWalletModal(); } }; }
   // 十、10.6.1【定案】放置代活預設關閉，每條人生各自設定
   const idleLink = document.getElementById("link-idle-toggle");
   if(idleLink) idleLink.onclick = ()=>{
@@ -13238,7 +13332,7 @@ async function callLifeReviewAI(s, m){
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）"); }
   if(data && data.lifegame && data.lifegame.ap) syncServerAP(s, data.lifegame.ap);
-  if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, data.lifegame.usage);
+  if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"review", inChars:{ stats:JSON.stringify(m).length }, outChars:outputBlockChars(data) });
   if(!res.ok){ const err = new Error(data?.error?.message || ("回顧生成失敗 "+res.status)); if(res.status===402) err.apInsufficient = true; throw err; }
   const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_life_review");
   if(!block || !block.input) throw new Error("回應裡沒有submit_life_review");
@@ -13263,6 +13357,7 @@ async function unlockLifeReview(){
     if(state!==s) return;
     // 16.7.2.1：扣這條人生剩下的點數(扣點順序比照10.3.3)。真實模式由Worker成功後才扣、回傳餘額(API失敗不扣點)
     if(!SERVER_AP) spendAP(s, LIFE_REVIEW_COST); // 10.8：雲端暫停期間也在本機扣
+    apLogAdd(s, "回顧這一生", -LIFE_REVIEW_COST); // 10.10.3
     const labelOf = (stage)=>{ const g = m.stages.find(x=>x.stage===stage); return g ? g.stage_label : lifeStageLabel(stage); };
     const byStage = {}; (out.trajectory||[]).forEach(t=>{ if(t && t.stage) byStage[t.stage] = String(t.text||"").trim(); });
     s.ending.review = {
@@ -13383,13 +13478,85 @@ function ensureApiToggleUI(){
   document.body.appendChild(btn);
 }
 // 每一世各自累計(存在state.devUsage、隨存檔)：一般回合、章節成書、放置摘要、回顧這一生都算；反悔不退(花掉的錢已經花了)
-function addDevUsage(s, u){
+function addDevUsage(s, u, meta){
   if(!s || !u) return;
+  try{ recordCallLog(s, u, meta); }catch(e){ console.warn("逐筆呼叫紀錄失敗", e); } // 十、10.9.4：紀錄失敗不影響遊戲
   const d = s.devUsage || (s.devUsage = { calls:0, input:0, cache_write:0, cache_read:0, output:0, cost_usd:0 });
   d.calls += 1;
   ["input","cache_write","cache_read","output"].forEach(k=>{ d[k] += Number(u[k])||0; });
   d.cost_usd = Math.round((d.cost_usd + (Number(u.cost_usd)||0))*1e6)/1e6;
   updateDevUsageBox();
+}
+// ===== 十、10.9.4 成本量測：每次呼叫逐筆記錄（2026-09-30）=====
+// 存在玩家本機(localStorage，不碰KV、不進存檔本體所以不增加雲端存檔大小)，保留最近500筆，測試選單可匯出CSV。
+// 字數只當比例參考、不換算token；送出內容依payload欄位分成六區塊，AI輸出分旁白正文與其他欄位
+const CALL_LOG_KEY = "life_sim_call_log";
+const CALL_LOG_MAX = 500;
+const CALL_KIND_LABELS = { turn:"一般回合", opening:"開場", idle:"放置摘要", chapter:"人生之書章節", ending:"結局", retry:"失敗重試／重新生成", review:"回顧這一生" };
+const PAYLOAD_NPC_KEYS = new Set(["character_roster","active_characters","all_character_names","renamed_characters","relationship_event_now","relationship_scene_now","relationship_facts","social_feed_now","friend_news_now","friend_opportunity_now","relationship_investment_event_now","romance_flags"]);
+const PAYLOAD_RECAP_KEYS = new Set(["chronicle_recent","life_summary_material","previous_generation_events"]);
+const PAYLOAD_RECENT_KEYS = new Set(["recent_turns_full","recent_turns_summary"]);
+function payloadBlockChars(jsonStr){
+  const out = { stats:0, npc:0, recap:0, recent:0, input:0 };
+  let p; try{ p = JSON.parse(jsonStr); }catch(e){ out.stats = String(jsonStr||"").length; return out; }
+  Object.keys(p||{}).forEach(k=>{
+    if(p[k]===undefined) return;
+    const n = JSON.stringify(p[k]).length + k.length + 3;
+    if(PAYLOAD_NPC_KEYS.has(k)) out.npc += n;
+    else if(PAYLOAD_RECAP_KEYS.has(k)) out.recap += n;
+    else if(PAYLOAD_RECENT_KEYS.has(k)) out.recent += n;
+    else if(k==="player_action") out.input += n;
+    else out.stats += n;
+  });
+  return out;
+}
+function outputBlockChars(data){
+  const blk = (data && data.content || []).find(b=>b.type==="tool_use");
+  const inp = blk && blk.input;
+  if(!inp) return { narr:0, other:0 };
+  const narr = ["narrative","action_result","text","body"].reduce((n,k)=>n + (typeof inp[k]==="string" ? inp[k].length : 0), 0);
+  return { narr, other: Math.max(0, JSON.stringify(inp).length - narr) };
+}
+const callNonceCount = new Map(); // 同一個turn_nonce第二次以後的呼叫算「失敗重試／重新生成」
+function callKindFor(s, kind, nonce, forceEnding){
+  if(kind!=="turn") return kind;
+  if(nonce){
+    const n = (callNonceCount.get(nonce)||0) + 1;
+    callNonceCount.set(nonce, n);
+    if(callNonceCount.size > 200) callNonceCount.delete(callNonceCount.keys().next().value);
+    if(n > 1) return "retry";
+  }
+  if(forceEnding) return "ending";
+  if(!(s.log||[]).length) return "opening";
+  return "turn";
+}
+function readCallLog(){ try{ const a = JSON.parse(localStorage.getItem(CALL_LOG_KEY)||"[]"); return Array.isArray(a) ? a : []; }catch(e){ return []; } }
+function recordCallLog(s, u, meta){
+  if(!meta) return;
+  const rec = {
+    t: Date.now(), turn: s.turnCount||0, kind: meta.kind || "turn",
+    in: u.input||0, cw: u.cache_write||0, cr: u.cache_read||0, out: u.output||0, usd: Number(u.cost_usd)||0,
+    rules: u.sys_chars||0, stats:0, npc:0, recap:0, recent:0, input:0, narr:0, other:0
+  };
+  Object.assign(rec, meta.inChars||{}, meta.outChars||{});
+  const arr = readCallLog(); arr.push(rec);
+  if(arr.length > CALL_LOG_MAX) arr.splice(0, arr.length - CALL_LOG_MAX);
+  try{ localStorage.setItem(CALL_LOG_KEY, JSON.stringify(arr)); }catch(e){ console.warn("逐筆呼叫紀錄寫入失敗", e); }
+}
+function callLogCSV(){
+  const cols = ["time","turn","kind","input_tokens","cache_write_tokens","cache_read_tokens","output_tokens","cost_usd","chars_rules","chars_stats","chars_npc","chars_recap","chars_recent","chars_input","chars_out_narrative","chars_out_other"];
+  const rows = readCallLog().map(r=>[ new Date(r.t).toISOString(), r.turn, CALL_KIND_LABELS[r.kind]||r.kind, r.in, r.cw, r.cr, r.out, r.usd, r.rules, r.stats, r.npc, r.recap, r.recent, r.input, r.narr, r.other ]);
+  return "\ufeff" + [cols].concat(rows).map(r=>r.join(",")).join("\n");
+}
+function downloadCallLogCSV(){
+  const d = new Date(), pad = n=>String(n).padStart(2,"0");
+  try{
+    const blob = new Blob([callLogCSV()], { type:"text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = `呼叫成本紀錄_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 1000);
+  }catch(e){ console.warn("匯出CSV失敗", e); }
 }
 // 十、10.5（2026-09-25新增）：上一回合的token用量與估計花費，數字來自Worker回傳的lifegame.usage
 function devUsageText(){
@@ -13419,6 +13586,7 @@ function renderTestMenuBody(s){
     <div class="menu-sec">用量</div>
     <div class="menu-note" id="dev-usage-last">${escapeHtml(devUsageText())}</div>
     <div class="menu-note" id="dev-usage-total">${escapeHtml(devUsageTotalText(s))}</div>
+    <a class="menu-item" id="dev-download-calllog">⬇ 匯出逐筆呼叫紀錄（CSV，最近500筆，目前${readCallLog().length}筆）</a>
     <div class="menu-sec">故事</div>
     ${hasStory ? `<a class="menu-item" id="dev-download-story">⬇ 下載這一世的故事（Markdown）</a>` : `<div class="menu-note">進入一段人生後才能下載故事</div>`}
     ${USE_MOCK ? `<a class="menu-item" id="dev-open-debug">Debug 面板</a>` : ``}`;
@@ -13443,6 +13611,7 @@ function bindTestMenu(root){
   if(!root) return;
   const q = id=>root.querySelector("#"+id);
   if(q("dev-toggle-api")) q("dev-toggle-api").onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ try{ localStorage.removeItem(FORCE_REAL_API_KEY); }catch(e){} location.reload(); };
+  if(q("dev-download-calllog")) q("dev-download-calllog").onclick = downloadCallLogCSV;
   if(q("dev-download-story")) q("dev-download-story").onclick = async ()=>{ await ensureArchivedContent(state); downloadStoryExport(state); };
   if(q("dev-toggle-ap-free")) q("dev-toggle-ap-free").onclick = ()=>{
     setApTestFree(!apTestFreeOn());

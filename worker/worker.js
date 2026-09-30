@@ -501,6 +501,7 @@ async function handleIdleSummary(body, env, origin, ctx) {
     return jsonResponse(origin, { error: { message: String(err) } }, 502);
   }
   const lifegame = { usable: !!(upstream.ok && data && isUsableIdleSummaryResponse(data)) };
+  if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
     lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
@@ -560,6 +561,7 @@ async function handleLifeReview(body, env, origin, ctx) {
   const { rec } = await loadRecord(env, key, slot, null);
   if (usable) { chargeLifeReview(rec); await saveRecord(env, key, slot, rec); }
   const lifegame = { usable, ap: publicAP(rec) };
+  if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
     lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
@@ -595,6 +597,7 @@ async function handleChapter(body, env, origin, ctx) {
     return jsonResponse(origin, { error: { message: String(err) } }, 502);
   }
   const lifegame = { usable: !!(upstream.ok && data && isUsableChapterResponse(data)) };
+  if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
     lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
@@ -639,7 +642,7 @@ export function buildTurnRequest(messages) {
 }
 
 async function callAnthropic(env, upstreamBody) {
-  return fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -648,6 +651,12 @@ async function callAnthropic(env, upstreamBody) {
     },
     body: JSON.stringify(upstreamBody)
   });
+  // 十、10.9.4（2026-09-30）：固定規則(system prompt＋工具定義)的字數，給前端逐筆成本紀錄當比例參考(不換算token)
+  try {
+    const sys = (upstreamBody.system || []).reduce((n, b) => n + String(b.text || "").length, 0);
+    res.sysChars = sys + JSON.stringify(upstreamBody.tools || []).length;
+  } catch (e) { /* 只是參考數字 */ }
+  return res;
 }
 
 // 十、10.8（2026-09-29）：雲端存檔關閉時的AI代理——不碰KV：不檢查行動點(改存玩家瀏覽器)、不記成本遙測；
@@ -691,6 +700,7 @@ async function handleAIProxyNoKV(body, env, origin) {
     return jsonResponse(origin, { error: { message: String(err) }, lifegame: { cloud_disabled: true } }, 502);
   }
   const lifegame = { usable: !!(upstream.ok && data && isUsable(data)), cloud_disabled: true };
+  if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
     lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
@@ -758,6 +768,7 @@ async function handleAIProxy(request, env, origin, ctx) {
   if (usable && (pre.charge || pre.freePrologue || apTestFree)) addChapterUnit(rec); // 十五、每成功一個新回合累積章節額度
   await saveRecord(env, key, slot, rec);
   const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable), ap_test_free: apTestFree };
+  if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   // 10.5：成本遙測。只要Anthropic有回應usage(就算內容格式壞掉也已經產生費用)就記；回應送出後才寫，失敗不影響回合
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
