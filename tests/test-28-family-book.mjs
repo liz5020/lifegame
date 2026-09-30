@@ -36,7 +36,7 @@ ev("state.phase='playing'; state.spendingHabit='普通'; state.mealArrangement=s
 await ev("startLife()"); H.clickModals(g.win);
 ev("render()");
 const famLink = g.win.document.getElementById("link-family");
-A.check("遊戲畫面出現「家族年表（前1代）」入口", famLink && /家族年表（前1代）/.test(famLink.textContent), famLink && famLink.textContent);
+A.check("遊戲畫面出現「家族年表・前1代」入口(選單抽屜大格)", famLink && /家族年表/.test(famLink.textContent) && /前1代/.test(famLink.textContent), famLink && famLink.textContent);
 famLink.click();
 const bookBtn = g.win.document.querySelector(".fam-book-btn");
 A.check("家族年表每一代有「人生之書（3章）」按鈕", bookBtn && /林小晴的人生之書（3章）/.test(bookBtn.textContent), bookBtn && bookBtn.textContent);

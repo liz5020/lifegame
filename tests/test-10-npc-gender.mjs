@@ -76,7 +76,8 @@ override = () => ({});
 ev(`state.age=26; state.characters.push({name:'怡君',relation:'朋友',gender:'女',age:26,affinity:60,active:true,traits:'',summary:'',lastTurn:state.turnCount,isChild:false})`);
 const seen = new Set();
 override = () => ({ character_updates: [{ name: "怡君", affinity_delta: 1, romantic_signal: "positive" }] });
-for (let i = 0; i < 16; i++) { await H.playTurn(g); seen.add(ev("state.characters.find(c=>c.name==='怡君').romanceStatus")); }
+let confessed = false;
+for (let i = 0; i < 16; i++) { await H.playTurn(g); const st = ev("state.characters.find(c=>c.name==='怡君').romanceStatus"); seen.add(st); if (st === 'ambiguous' && !confessed) { confessed = true; ev("state.confessionResultNext={name:'怡君',success:true}"); /* 四、4.8：交往要告白場面＋成功才成立 */ } }
 ev("state.milestones.marriage_decision='available'");
 override = () => ({ milestone_updates: [{ id: "marriage_decision", status: "completed" }] });
 await H.playTurn(g);

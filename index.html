@@ -33,7 +33,8 @@
     --bar:#E0836A;
     --up-bg:rgba(99,153,34,.16); --up-fg:#3B6D11;
     --down-bg:rgba(216,90,48,.16); --down-fg:#993C1D;
-    --resp-bg:rgba(126,87,194,.15); --resp-fg:#5B3A9A; /* 二、2.6.2：回應帶來的數值(紫) */
+    --resp-bg:rgba(200,85,61,.14); --resp-fg:#9A3B27; /* 十六、16.17（2026-09-30）：取代紫色——回應帶來的數值增加＝淺珊瑚底深珊瑚字 */
+    --resp-down-bg:rgba(120,96,82,.14); --resp-down-fg:#5E4C40; /* 減少＝淺灰棕底深灰字(一律保留正負號) */
     --focus-bg:rgba(230,140,40,.18); --focus-fg:#9A5A12; /* 二、2.6.2：重心帶來的數值(橘) */
     --danger:#A32D2D;
     --serif:"Noto Serif TC","Songti TC","PMingLiU",serif;
@@ -182,7 +183,34 @@
     transition:transform var(--t-fast) var(--ease);}
   .round-btn:active{transform:scale(.94);}
   /* 測試選單(開發用，正式上線刪除)：紫色與其他圓鈕區隔 */
-  .round-btn.test-btn{background:#6B4FA0;border-color:#6B4FA0;color:#fff;}
+  /* 十六、16.17（2026-09-30）：底部選單抽屜、線條圖示、選單鈕。全面移除紫色與emoji */
+  .ic-svg{width:1.15em;height:1.15em;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.2em;flex:none;}
+  .menu-fab{width:40px;height:40px;border-radius:50%;border:none;background:var(--stamp);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:transform var(--t-fast) var(--ease);}
+  .menu-fab:active{transform:scale(.94);}
+  .menu-fab .ic-svg{width:20px;height:20px;}
+  .drawer{position:fixed;left:50%;width:100%;max-width:520px;bottom:var(--drawer-bottom,130px);max-height:66vh;overflow-y:auto;z-index:44;padding:12px 14px 16px;
+    background:rgba(250,244,234,.74);backdrop-filter:blur(18px) saturate(1.15);-webkit-backdrop-filter:blur(18px) saturate(1.15);border:1px solid rgba(255,255,255,.65);
+    border-radius:22px 22px 0 0;box-shadow:0 -8px 30px rgba(74,46,31,.14);transform:translate(-50%,115%);visibility:hidden;transition:transform 350ms var(--ease),visibility 0s 350ms;}
+  .drawer.open{transform:translate(-50%,0);visibility:visible;transition:transform 350ms var(--ease),visibility 0s;}
+  .drawer-sec{font-size:13px;font-weight:700;margin:10px 2px 9px;color:var(--ink);}
+  .drawer-sec::after{content:"";display:block;width:26px;height:2px;border-radius:2px;background:var(--stamp);margin-top:3px;}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .tile{position:relative;padding:11px 4px 9px;text-align:center;cursor:pointer;font-family:var(--sans);color:var(--ink);border:1px solid rgba(255,255,255,.6);background:rgba(255,255,255,.5);border-radius:16px;transition:transform var(--t-fast) var(--ease);}
+  .tile:active{transform:scale(.96);}
+  .tile .base{width:42px;height:42px;border-radius:50%;background:rgba(232,150,126,.22);color:#8A5A45;display:flex;align-items:center;justify-content:center;margin:0 auto 5px;transition:color var(--t-fast);}
+  .tile .base .ic-svg{width:21px;height:21px;}
+  .tile:active .base,.tile.on .base{color:var(--stamp);}
+  .tile .t{font-size:13.5px;font-weight:700;}
+  .tile .n{font-size:11.5px;color:var(--ink-soft);min-height:1.3em;}
+  .tile .dot{position:absolute;top:8px;right:10px;width:9px;height:9px;border-radius:50%;background:var(--stamp);}
+  .tile.dev .base{background:rgba(120,110,100,.18);color:#6B625A;}
+  .bars{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .bar-tile{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-family:var(--sans);font-size:13.5px;font-weight:700;color:var(--ink);border:1px solid rgba(255,255,255,.6);background:rgba(255,255,255,.5);border-radius:16px;text-align:left;}
+  .bar-tile .ic-svg{width:20px;height:20px;color:#8A5A45;}
+  .bar-tile:active .ic-svg{color:var(--stamp);}
+  .legend p{margin:6px 0;font-size:13.5px;line-height:1.75;text-align:left;}
+  .legend h4{margin:14px 0 2px;font-size:14px;}
+  .legend h4::after{content:"";display:block;width:22px;height:2px;border-radius:2px;background:var(--stamp);margin-top:3px;}
   .dev-fab{position:fixed;top:10px;right:10px;z-index:310;box-shadow:0 2px 8px rgba(0,0,0,.25);}
   #panel-test .menu-note{word-break:break-all;}
   .tb-sub{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px;color:var(--ink-soft);gap:4px 8px;} /* QA 34.13#17：標籤太多時換行，存款不凸出卡片 */
@@ -221,6 +249,7 @@
   .cap.up{background:var(--up-bg);color:var(--up-fg);}
   .cap.down{background:var(--down-bg);color:var(--down-fg);}
   .cap.resp{background:var(--resp-bg);color:var(--resp-fg);}
+  .cap.resp.neg{background:var(--resp-down-bg);color:var(--resp-down-fg);}
   .cap.focus{background:var(--focus-bg);color:var(--focus-fg);}
   /* 二、2.6.3／16.3.3 重心按鈕、三行輸入框、想找標籤 */
   .focus-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px;}
@@ -285,7 +314,7 @@
     font-family:var(--sans);font-size:14px;padding:9px 14px;color:var(--ink);
   }
   .custom-row input:focus{outline:none;border-color:var(--stamp);}
-  .send-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--stamp);color:#fff;font-size:17px;cursor:pointer;
+  .send-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--stamp);color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;
     flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;transition:transform var(--t-fast) var(--ease);}
   .send-btn:active{transform:scale(.94);}
   .send-btn:disabled{opacity:.4;cursor:default;}
@@ -1809,7 +1838,7 @@ function applyInterestCost(s, interestEvent){
   }
   if(cost.money || cost.health) s.interestCostNow = cost;
 }
-function applyInterestEvent(s, interestEvent){
+function applyInterestEvent(s, interestEvent, scale){ // scale：投入份量倍率(工作：副業X為0.5)，預設1
   if(!interestEvent || !interestEvent.category || !INTEREST_CATEGORIES.includes(interestEvent.category)) return;
   // 三、3.2.4（2026-09-28取代）：興趣路徑次數改由「興趣」重心累計(見advanceStructuredTime)，這裡不再計數
   if(!s.interestCandidates) s.interestCandidates = [];
@@ -1832,7 +1861,7 @@ function applyInterestEvent(s, interestEvent){
   }
   if(reaction==="positive"){
     const raw = rnd(4,9); // 8.3【測試參數】原始投入值，量級比照其他成長型數值
-    const grown = applyMarginalDiminish(raw*getDisciplineMultiplier(s), card.investment); // 8.3：套3.7.3自律乘數後再套邊際遞減，與才識/人脈共用同一套邊際遞減
+    const grown = applyMarginalDiminish(raw*(scale==null?1:scale)*getDisciplineMultiplier(s), card.investment); // 8.3：套3.7.3自律乘數後再套邊際遞減，與才識/人脈共用同一套邊際遞減
     card.investment = clamp(card.investment+grown, 0, 100);
     card.positiveStreak++;
     card.candidateProgress = (card.candidateProgress||0) + 1; // 8.2：候選進度+1，不設上限
@@ -2855,79 +2884,153 @@ const SIDE_BUSINESS_UPGRADE_TURNS = 24; // 【測試參數,12.8.1，2026-09-27�
 // 金額由程式決定、交件時一次入帳，AI只回報完成了什麼(side_gig_delivery)。computeSideBusinessIncome保留給既有呼叫點，一律回傳0
 function computeSideBusinessIncome(s){ return 0; }
 const SIDE_BUSINESS_LABELS = { gig:"偶爾接案", formal:"正式經營" };
-const SIDE_GIG_FIRST_OFFER = { gig:[1,3], formal:[1,2] };      // 【A3】選擇後第幾回合內，程式保證第一次機會
-const SIDE_GIG_OFFER_INTERVAL = { gig:[6,10], formal:[3,5] };  // 【A4，測試參數】下次機會的間隔
-const SIDE_GIG_SIZE_WEIGHTS = { gig:[["small",80],["medium",20]], formal:[["medium",60],["large",40]] }; // 【A4，測試參數，實作判斷的比例】
-const SIDE_GIG_ORDER_SHARES = { small:[2,4], medium:[5,8], large:[10,15] }; // 【A4，測試參數】收入(份)
+// 八、8.13（2026-09-30）副業訂單簿：取代8.11「程式排定機會→AI回報交件大小(side_gig_delivery)→程式算份數入帳」。
+// 旁白只登記新訂單(order_new)與指名訂單(order_target／order_work)，編號、交期、報酬、推進、交件、逾期全由程式判定。
+// 訂單存在副業卡的card.gigOrders(進行中＋最近幾筆已結束)，card.gigSeq編號、card.gigIncome累計收入；舊存檔的gigOpenOrders／gigNextOfferTurn一律丟棄(訂單簿從空白開始)
 const SIDE_GIG_SIZE_LABELS = { small:"小單", medium:"中單", large:"大單" };
-const SIDE_GIG_ORDER_EXPIRE_TURNS = 15; // 【實作判斷】接了一直沒交件的訂單，15回合後不再等
+const ORDER_SPEC = { small:{ need:1, due:3, base:35 }, medium:{ need:2, due:5, base:70 }, large:{ need:4, due:8, base:140 } }; // 【定案8.13.3】
+const ORDER_LATE_MULT = 0.7;          // 延遲交件報酬×0.7
+const ORDER_CANCEL_AFTER = 2;         // 超過交期2回合仍未完成→取消
+const ORDER_CANCEL_AFFINITY = -2;     // 取消時介紹人好感
+const ORDER_INQUIRY_PROB = { formal:0.3, gig:0.15 }; // 【測試參數】新詢問擲骰
+const ORDER_KEEP_FINISHED = 12;       // 存檔精簡：已結束的訂單只留最近幾筆
 const PART_TIME_SHARES = 2;             // 【A4，測試參數】打工每次固定2份
 // 「1份」＝學生時期每回合的平均零用錢；有工作收入後＝每回合的平均薪資收入(月收入×12÷每年回合數)
 function incomeShareUnit(s){
   const perYear = isStudentPhase(s) ? YEAR_SEGMENTS.reduce((a,x)=>a+x.budget,0) : roundsPerYearForAge(s.age);
   return Math.max(0, s.monthlyIncome||0) * 12 / perYear;
 }
-function sideGigInterestMult(investment){ return investment>=80 ? 1.6 : investment>=60 ? 1.3 : 1; } // 【A4】交件當下的興趣投入度
 function sideGigCards(s){ return (s.interestCandidates||[]).filter(c=>c.status==="active" && SIDE_BUSINESS_LABELS[c.sideBusinessStatus]); }
-function scheduleFirstSideGigOffer(s, card){
-  const r = SIDE_GIG_FIRST_OFFER[card.sideBusinessStatus];
-  card.gigNextOfferTurn = r ? s.turnCount + rnd(r[0], r[1]) : null;
-  card.gigOpenOrders = card.gigOpenOrders || [];
+// 接單上限與報酬乘數：偶爾接案1單；正式經營看興趣等級——精通3單×1.4、熟練2單×1.0、投入分數降到40以下1單×0.8
+// 【實作判斷】「40以下」取小於40(與8.12.3熟練從40起算一致)；偶爾接案報酬乘數用1.0(文件沒寫)
+function orderTier(card){
+  if(card.sideBusinessStatus!=="formal") return { cap:1, mult:1.0 };
+  const v = card.investment||0;
+  if(v>=70) return { cap:3, mult:1.4 };
+  if(v<40) return { cap:1, mult:0.8 };
+  return { cap:2, mult:1.0 };
 }
-// 呼叫AI之前：到了排定的回合就指示AI安排一次接案機會(A3：不交給AI自行決定時機)，並排下一次
-const SIDE_GIG_OWN_PROJECT_PROB = 0.3; // 八、8.12.2【定案】重心為「興趣：X」且擁有X類接案副業時，每回合擲30%
-function prepareSideGigTurn(s, focus){
+function orderIncomeCat(card){ return card.sideBusinessStatus==="formal" ? "副業收入" : "接案收入"; }
+function orderList(card){ return card.gigOrders || (card.gigOrders = []); }
+function activeOrders(card){ return orderList(card).filter(o=>o.status==="進行中"); }
+function nearestDueOrder(card, s){ return activeOrders(card).filter(o=>o.reg < s.turnCount).sort((a,b)=>a.due-b.due||a.no-b.no)[0] || null; }
+function orderReward(card, o, late){ return Math.round(ORDER_SPEC[o.size].base * orderTier(card).mult * (late ? ORDER_LATE_MULT : 1)); }
+function findOrderByNo(s, no){
+  if(no==null) return null;
+  const key = String(no).trim().replace(/^#/,"");
+  for(const c of sideGigCards(s)){
+    const o = activeOrders(c).find(x=>String(x.no)===key || x.id===key);
+    if(o) return { card:c, order:o };
+  }
+  return null;
+}
+// 呼叫AI之前：處理逾期(延遲／取消)、整理提示用的通知、擲新詢問。focus是學生時期的重心(出社會後為null)
+// 【實作判斷】出社會後沒有重心，新詢問擲骰改成每回合擲一次(機率同：正式30%／偶爾15%)，否則出社會後副業就不會有新訂單
+function prepareOrderTurn(s, focus){
   s.sideGigIncomeNow = null;
-  const offers = [];
+  const notice = { delivered_last_turn: null, late: [], cancelled: [], inquiry: [] };
+  if(s.orderDeliveredLast && s.orderDeliveredLast.length){ notice.delivered_last_turn = s.orderDeliveredLast; s.orderDeliveredLast = null; }
   sideGigCards(s).forEach(c=>{
-    if(c.gigNextOfferTurn==null) scheduleFirstSideGigOffer(s, c); // 舊存檔：改版前就選了副業的卡，從現在起排第一次機會
-    c.gigOpenOrders = (c.gigOpenOrders||[]).filter(o=>s.turnCount - o.turn <= SIDE_GIG_ORDER_EXPIRE_TURNS);
-    const ownProject = !!(focus && focus.key==="interest" && focus.interestCategory===c.category && s.turnCount < c.gigNextOfferTurn && Math.random() < SIDE_GIG_OWN_PROJECT_PROB);
-    if(s.turnCount < c.gigNextOfferTurn && !ownProject) return;
-    const size = weightedPick(SIDE_GIG_SIZE_WEIGHTS[c.sideBusinessStatus]);
-    if(ownProject){ // 主角自己的X類案子：與排定機會共用訂單清單，不動下一次排定的回合
-      c.gigOpenOrders.push({ id: `${c.id||c.category}-${s.turnCount}`, turn: s.turnCount, size });
-      offers.push({ category: c.category, level: SIDE_BUSINESS_LABELS[c.sideBusinessStatus], suggested_size: size, own_project: true });
-      return;
-    }
-    c.gigOpenOrders.push({ id: `${c.id||c.category}-${s.turnCount}`, turn: s.turnCount, size });
-    const iv = SIDE_GIG_OFFER_INTERVAL[c.sideBusinessStatus];
-    c.gigNextOfferTurn = s.turnCount + rnd(iv[0], iv[1]);
-    offers.push({ category: c.category, level: SIDE_BUSINESS_LABELS[c.sideBusinessStatus], suggested_size: size });
+    delete c.gigOpenOrders; delete c.gigNextOfferTurn; // 舊制欄位
+    const list = orderList(c);
+    list.filter(o=>o.status==="進行中").forEach(o=>{
+      if(s.turnCount > o.due + ORDER_CANCEL_AFTER){
+        o.status = "已取消"; o.endTurn = s.turnCount;
+        const via = o.via && (s.characters||[]).find(x=>x.name===o.via && !x.deceased && !x.lost);
+        if(via) via.affinity = clamp((via.affinity||0) + ORDER_CANCEL_AFFINITY, 0, 100);
+        notice.cancelled.push({ client:o.client, item:o.item, via:o.via||null });
+      } else if(s.turnCount > o.due && !o.lateNoted){
+        o.lateNoted = true;
+        notice.late.push({ client:o.client, item:o.item, via:o.via||null });
+      }
+    });
+    const fin = list.filter(o=>o.status!=="進行中");
+    if(fin.length > ORDER_KEEP_FINISHED) c.gigOrders = list.filter(o=>o.status==="進行中").concat(fin.slice(-ORDER_KEEP_FINISHED));
+    const rollHere = focus ? (focus.key==="work" && focus.gigCardId===c.id) : !focusModeActive(s);
+    if(rollHere && activeOrders(c).length < orderTier(c).cap && Math.random() < ORDER_INQUIRY_PROB[c.sideBusinessStatus]) notice.inquiry.push({ category:c.category });
   });
-  return offers;
+  s.orderNotice = notice;
+  return notice;
 }
-function sideGigOpenOrdersPayload(s){
-  const out = [];
-  // QA 34.13#1（2026-09-29）：這回合才排定的機會在side_gig_offer_now，還不能交件，不列在這裡
-  sideGigCards(s).forEach(c=>(c.gigOpenOrders||[]).filter(o=>o.turn < s.turnCount).forEach(o=>out.push({ order_id: o.id||null, category:c.category, size:o.size, turns_since_offer: s.turnCount-o.turn })));
-  return out;
+function orderNoticesPayload(n){
+  if(!n) return null;
+  const out = {};
+  if(n.delivered_last_turn) out.delivered_last_turn = n.delivered_last_turn;
+  if(n.late.length) out.late = n.late;
+  if(n.cancelled.length) out.cancelled = n.cancelled;
+  return Object.keys(out).length ? out : null;
 }
-// AI回報交件：每張卡每回合最多一筆，必須有等待交件的訂單；偶爾接案最多到中單。金額＝份數(範圍內均勻隨機)×1份×興趣加乘，取整數，一次入帳
-function applySideGigDeliveries(s, deliveries){
-  const list = Array.isArray(deliveries) ? deliveries : (deliveries ? [deliveries] : []);
-  const done = new Set();
-  let total = 0; const parts = [];
-  list.forEach(d=>{
-    if(!d) return;
-    // 八、8.12.2（2026-09-29，取代「對不到就沿用唯一的副業卡」）：category必須是玩家目前實際擁有的副業類別，不符就拒絕計酬並寫入錯誤紀錄
-    const card = sideGigCards(s).find(c=>c.category===d.category);
-    if(!card){ addReviewFlag(s, "side_gig_category_mismatch", `AI回報交件類別「${d.category}」不是玩家目前的副業類別，未計酬`); return; }
-    if(done.has(card.id)) return;
-    // QA 34.13#1（2026-09-29）：同一筆訂單被付兩次——新訂單在呼叫AI之前就排進清單，AI在同一回合又把它回報成交件(其實是上一筆已交過的)。
-    // 只有前幾回合就接下的訂單能交件；有order_id就對到那一筆，沒有就交最舊的一筆
-    const eligible = (card.gigOpenOrders||[]).filter(o=>o.turn < s.turnCount);
-    const order = (d.order_id && eligible.find(o=>o.id===d.order_id)) || (!d.order_id ? eligible[0] : null);
-    if(!order) return;
-    card.gigOpenOrders = card.gigOpenOrders.filter(o=>o!==order);
-    let size = SIDE_GIG_ORDER_SHARES[d.size] ? d.size : order.size;
-    if(card.sideBusinessStatus==="gig" && size==="large") size = "medium";
-    const [lo,hi] = SIDE_GIG_ORDER_SHARES[size];
-    const amount = Math.max(1, Math.round((lo + Math.random()*(hi-lo)) * incomeShareUnit(s) * sideGigInterestMult(card.investment||0)));
-    s.cash += amount; total += amount; done.add(card.id);
-    parts.push({ category: card.category, size, amount, description: d.description ? String(d.description).slice(0,20) : "" });
+function orderPayload(s){
+  const cards = sideGigCards(s);
+  if(!cards.length) return null;
+  return cards.map(c=>{
+    const t = orderTier(c), act = activeOrders(c);
+    return { category:c.category, status:SIDE_BUSINESS_LABELS[c.sideBusinessStatus], open:act.length, cap:t.cap, at_cap: act.length>=t.cap,
+      orders: act.map(o=>({ order_no:String(o.no), client:o.client, via:o.via||null, item:o.item, size:o.size, progress:`${o.done}/${o.need}`,
+        due_in_turns: o.due - s.turnCount, overdue: s.turnCount > o.due })) };
   });
-  s.sideGigIncomeNow = total ? { amount: total, deliveries: parts } : null;
+}
+// 登記新訂單：category必須是玩家擁有的副業類別；超過接單上限拒絕；價格、交期、編號由程式決定
+function registerOrders(s, list){
+  const cards = sideGigCards(s);
+  (Array.isArray(list) ? list : []).slice(0,3).forEach(d=>{
+    if(!d || !d.client || !d.item) return;
+    let card = d.category ? cards.find(c=>c.category===d.category) : (cards.length===1 ? cards[0] : null);
+    if(!card){ addReviewFlag(s, "order_new_category", `order_new類別「${d.category||"（沒寫）"}」不是玩家目前的副業類別，未登記`); return; }
+    if(!ORDER_SPEC[d.size]){ addReviewFlag(s, "order_new_size", `order_new大小「${d.size}」不合法，未登記`); return; }
+    if(activeOrders(card).length >= orderTier(card).cap){ addReviewFlag(s, "order_new_over_cap", `${card.category}已達接單上限，仍回報order_new，未登記`); return; }
+    const sp = ORDER_SPEC[d.size];
+    card.gigSeq = (card.gigSeq||0) + 1;
+    orderList(card).push({ id:`${card.id||card.category}-${card.gigSeq}`, no:card.gigSeq, client:String(d.client).slice(0,10), via: d.via ? String(d.via).slice(0,10) : null,
+      item:String(d.item).slice(0,24), size:d.size, need:sp.need, done:0, reg:s.turnCount, due:s.turnCount+sp.due, status:"進行中" });
+  });
+}
+// 推進一格並在完成時交件入帳(每回合最多推進1格；這回合才登記的訂單不推進)。回傳交件紀錄
+function advanceOrder(s, card, o){
+  if(!o || o.status!=="進行中" || o.reg >= s.turnCount) return null;
+  o.done = Math.min(o.need, o.done + 1);
+  if(o.done < o.need) return null;
+  const late = s.turnCount > o.due;
+  const reward = orderReward(card, o, late);
+  o.status = late ? "延遲交件" : "已交件"; o.endTurn = s.turnCount; o.reward = reward;
+  o.endAbs = s.timeState && s.timeState.cal ? s.timeState.cal.lastRoundEnd : null; // 交件紀錄顯示月份用
+  s.cash += reward; card.gigIncome = (card.gigIncome||0) + reward;
+  const rec = { category:card.category, amount:reward, description:`${o.client}的${o.item}`.slice(0,16), cat:orderIncomeCat(card), late, client:o.client, item:o.item };
+  s.orderDeliveredLast = (s.orderDeliveredLast||[]).concat([{ client:o.client, item:o.item, late }]);
+  return rec;
+}
+// applyResult內：登記新訂單→決定本回合推進哪一筆→交件。focus是這回合的重心
+// 一起做副業的人：旁白回報gig_partner_add，程式登記(必須是人物名單上活著、沒失聯的人)
+function registerGigPartners(s, list){
+  const cards = sideGigCards(s);
+  (Array.isArray(list) ? list : []).slice(0,3).forEach(d=>{
+    if(!d || !d.name) return;
+    const card = d.category ? cards.find(c=>c.category===d.category) : (cards.length===1 ? cards[0] : null);
+    const ch = (s.characters||[]).find(c=>c.name===d.name && !c.deceased && !c.lost);
+    if(!card || !ch){ addReviewFlag(s, "gig_partner_invalid", `gig_partner_add「${d.name}」對不到副業或人物名單，未登記`); return; }
+    card.gigPartners = card.gigPartners||[];
+    if(!card.gigPartners.includes(ch.name) && card.gigPartners.length<6) card.gigPartners.push(ch.name);
+  });
+}
+function applyOrderResult(s, r, focus){
+  registerGigPartners(s, r && r.gig_partner_add);
+  registerOrders(s, r && r.order_new);
+  const deliveries = [];
+  let hit = null;
+  const named = r && r.order_target!=null ? findOrderByNo(s, r.order_target) : null;
+  if(focus && focus.key==="work" && focus.gigCardId){
+    const card = sideGigCards(s).find(c=>c.id===focus.gigCardId);
+    if(card){ const near = nearestDueOrder(card, s); hit = (named && named.card===card) ? named : (near ? { card, order:near } : null); }
+  } else if(r && r.order_work===true && named) hit = named;
+  if(hit){ const d = advanceOrder(s, hit.card, hit.order); if(d) deliveries.push(d); }
+  s.sideGigIncomeNow = deliveries.length ? { amount: deliveries.reduce((a,d)=>a+d.amount,0), deliveries } : null;
+  return s.sideGigIncomeNow;
+}
+// 放置模式：每回合每張副業卡自動推進交期最近的一筆(玩家不在場，旁白也不登記新訂單，只做已有的單)
+function idleOrderRound(s){
+  const deliveries = [];
+  sideGigCards(s).forEach(c=>{ const o = nearestDueOrder(c, s); if(o){ const d = advanceOrder(s, c, o); if(d) deliveries.push(d); } });
+  s.sideGigIncomeNow = deliveries.length ? { amount: deliveries.reduce((a,d)=>a+d.amount,0), deliveries } : null;
   return s.sideGigIncomeNow;
 }
 function playerPronoun(s){ return s && s.gender==="女" ? "妳" : "你"; } // 一、1.2.9.15（2026-09-29 A1）：依主角性別
@@ -3128,7 +3231,7 @@ async function showCloudPicker(cloudKey){
   }catch(e){ console.warn("讀取雲端存檔清單失敗", e); }
   if(!slots){ state = { phase:"keyInput", error:"讀不到這組金鑰的雲端存檔，請確認網路後再試。" }; render(); return; }
   state = { phase:"slotPicker", slots, wallet:0, currentSlot:null, fromCloud:true, cloudKey,
-    notice: slots.some(x=>x && x.meta) ? null : "這組金鑰在雲端沒有存檔。請確認金鑰有沒有打錯，或先在原本的裝置按「☁️ 存到雲端」。" };
+    notice: slots.some(x=>x && x.meta) ? null : "這組金鑰在雲端沒有存檔。請確認金鑰有沒有打錯，或先在原本的裝置按「存到雲端」。" };
   render();
 }
 function bindCloudPicker(){
@@ -3371,7 +3474,7 @@ function showSyncFailToast(){
 }
 function syncTagHTML(){
   if(!cloudSyncStatus || cloudSyncStatus.success!==false) return ``;
-  return `<span class="demo-tag side-tag sync-tag" id="sync-tag" title="同步完成前，先別換裝置" tabindex="0" role="button">☁ 未同步</span>`;
+  return `<span class="demo-tag side-tag sync-tag" id="sync-tag" title="同步完成前，先別換裝置" tabindex="0" role="button">${icon("cloud")} 未同步</span>`;
 }
 async function saveGame(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
@@ -3458,9 +3561,9 @@ function cloudSyncStatusHTML(){
     const d = new Date(cloudSyncStatus.time);
     const hh = String(d.getHours()).padStart(2,"0");
     const mm = String(d.getMinutes()).padStart(2,"0");
-    return `☁️ 已同步：${hh}:${mm}`;
+    return `${icon("cloud")} 已同步：${hh}:${mm}`;
   }
-  return `⚠️ 雲端同步失敗，這段進度目前只存在本機 <a id="link-retry-sync">重試同步</a>`;
+  return `${icon("alert")} 雲端同步失敗，這段進度目前只存在本機 <a id="link-retry-sync">重試同步</a>`;
 }
 function updateCloudSyncStatusUI(){
   // 10.7.4：頂部狀態列下一行的「☁ 未同步」小標籤(沿用16.3.1狀態列小標籤樣式)，同步成功自動消失
@@ -4252,6 +4355,7 @@ function buildRoundWindow(cal, anchorStart, anchorEnd){
   const end = Math.max(start, anchorEnd);
   const daysAdvanced = Math.max(0, end - cal.lastRoundEnd);
   cal.lastRoundEnd = end;
+  cal.lastWinStart = start; // 二、2.8.1：大標題月份取本回合範圍的中點
   return { start, end, daysAdvanced };
 }
 function calSpanText(days){
@@ -4687,6 +4791,35 @@ function computeTimeLabel(s){
   }
   return `${s.age}歲`;
 }
+// 二、2.8.1／十六、16.14（2026-09-30）：大標題「年級・學期・月份」，月份取本回合真實日期範圍(2.7)的中點所在月份；畢業後「○歲・○月」
+// 開場段落、休學中、沒有日期資料時回傳null，呼叫端退回computeTimeLabel
+function computeMonthTitle(s){
+  const ts = s.timeState, cal = ts && ts.cal;
+  if(!ts || !cal || ts.prologue || cal.lastRoundEnd==null) return null;
+  const a = cal.lastWinStart!=null ? cal.lastWinStart : cal.lastRoundEnd;
+  const mid = Math.floor((a + cal.lastRoundEnd)/2);
+  const month = calAbsToDate(mid).m+"月";
+  const mode = ts.stageMode;
+  if(mode==="college" && s.leaveStatus==="onLeave") return null;
+  if(mode==="highschool" || mode==="college"){
+    const idx = ts.segmentIndex % YEAR_SEGMENTS.length;
+    const seg = YEAR_SEGMENTS[idx];
+    const yr = mode==="highschool" ? ["高一","高二","高三"][clamp(ts.yearInStage,1,3)-1] : collegeYearLabel(s);
+    const term = seg.key==="假期" ? segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry) : seg.half;
+    return `${yr}・${term}・${month}`;
+  }
+  if(mode==="career") return `${s.age}歲・${month}`;
+  return null;
+}
+// 十五、15.8（2026-09-30）：學生時期回合標題在學期後面加月份(取本回合日期範圍中點)，例「高三・上學期・11月・期末準備期」；出社會後維持原樣
+function labelWithMonth(label, win){
+  if(!label || !win || win.start==null) return label;
+  const parts = String(label).split("・");
+  const hi = parts.findIndex(p=>MEMOIR_HALF_KEYS.includes(p.replace(/（[^）]*）/g,"")));
+  if(hi<0 || hi>=parts.length-1) return label; // 沒有階段名稱可接(例如「寒假」)時不加，標題已是學期名
+  parts.splice(hi+1, 0, calAbsToDate(Math.floor((win.start+win.end)/2)).m+"月");
+  return parts.join("・");
+}
 // 介面：現階段進度指示（9/16新增）——依目前所在模式，回傳「這個小段落」還剩多少回合的進度資訊，供UI畫進度條
 // 三種模式各自的「一個段落」定義不同：學生時期是目前學期段落(開學初/準備期/考試/假期等)；休學中是休學倒數；出社會是本年度
 function computeStageProgress(s){
@@ -4700,7 +4833,7 @@ function computeStageProgress(s){
   if(mode==="highschool" || mode==="college"){
     const idx = s.timeState.segmentIndex % YEAR_SEGMENTS.length;
     const seg = YEAR_SEGMENTS[idx];
-    return { label:segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry)+"進度", current:Math.min(s.timeState.turnsInSegment||0, seg.budget), total:seg.budget };
+    return { label:segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry)+"進度", shortLabel:(seg.key==="假期" ? segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry) : seg.key), current:Math.min(s.timeState.turnsInSegment||0, seg.budget), total:seg.budget };
   }
   if(mode==="career"){
     const total = roundsPerYearForAge(s.age);
@@ -4969,6 +5102,18 @@ function releaseCohabiting(c){
   // 4.1.2【定案】解除同住標記後，回歸4.1既有的12回合降級規則
   if(c) c.cohabiting = false;
 }
+// QA 34.15 #5（2026-09-30）：關係提示的用詞——第一次認識寫「認識了○○」；級距改變要分升級與降級，不再用「好像不一樣了」
+const relLabelRanks = ()=>[["關係生疏","認識不深","普通朋友","熟悉的朋友","多年好友"], FAMILY_RELATION_LABELS, ["漸行漸遠","貌合神離","平穩","恩愛"]]; // 用函式包起來，避免載入時FAMILY_RELATION_LABELS還沒定義
+function relLabelRank(from, to){
+  for(const list of relLabelRanks()){ const a = list.indexOf(from), b = list.indexOf(to); if(a>=0 && b>=0) return b>a ? 1 : b<a ? -1 : 0; }
+  return 0;
+}
+function labelChangeHint(name, from, to){
+  const r = relLabelRank(from, to);
+  if(r>0) return `和${name}的關係更近了，現在是「${to}」`;
+  if(r<0) return `和${name}的關係退了一步，現在只是「${to}」`;
+  return `和${name}的關係有了變化，現在是「${to}」`;
+}
 // 四、4.1.1（2026-09-22新增）：hintCandidates為選填參數，供同住緩降造成的關係狀態級距改變推入第2層提示候選——
 // 緩降本身不產生第3層一般提示（呼應4.1.2「不跳一般提示」定案），只有下滑跨過relationshipStatusLabel()的級距邊界時才提示
 function demoteStaleCharacters(hintCandidates){
@@ -4982,7 +5127,7 @@ function demoteStaleCharacters(hintCandidates){
         c.affinity = clamp(c.affinity - COHABITING_DECAY_AMOUNT, COHABITING_AFFINITY_FLOOR, 100);
         const afterLabel = relationshipStatusLabel(c);
         if(hintCandidates && afterLabel!==beforeLabel){
-          hintCandidates.push({ tier:2, text:`和${c.name}的關係好像不一樣了，現在更像是「${afterLabel}」` });
+          hintCandidates.push({ tier:2, text: labelChangeHint(c.name, beforeLabel, afterLabel) });
         }
       }
       return;
@@ -5001,6 +5146,9 @@ function demoteStaleCharacters(hintCandidates){
 const ROMANCE_AMBIGUOUS_PROGRESS = 3; // 【測試參數,待驗證】累積正向次數達此值，從null進入「曖昧中」
 const ROMANCE_DATING_PROGRESS = 9; // 【測試參數,待驗證】累積正向次數達此值(=3+6)，從「曖昧中」進入「交往中」
 const ROMANCE_STABLE_STREAK = 6; // 【測試參數,待驗證】「交往中」時連續正向次數達此值，進入「穩定交往」
+const ROMANCE_AMBIGUOUS_UNDO_NEGATIVE = 2; // 四、4.8：曖昧中累積2次負面訊號解除
+const ROMANCE_BREAKUP_AFFINITY = 40; // 【實作判斷，文件只寫「交往門檻」沒有數字】好感低於這個數字才可能由NPC主動提分手
+const CONFESSION_PLAYER_PROB = { ambiguous:0.8, familiar:0.4, other:0.1 }; // 四、4.8【測試參數】玩家告白成功機率：曖昧中／熟悉的朋友以上／其他
 const ROMANCE_BREAKUP_STREAK = 3; // 【測試參數,待驗證】「交往中」或「穩定交往」時連續負向次數達此值，判定「分手」
 // 四、4.1（9/19補充,修正既有定案未落實問題）：「重要共同記憶」欄位機制性上限2則,FIFO捨棄最舊一則,
 // 由程式機械判定不交由AI決定——原本是無上限字串累加,違反4.1「1-2句話等級」的既有定案文字
@@ -5406,8 +5554,8 @@ function applyRomanceSignal(s, c, signal){
     if(!c.romanceStatus && c.romanceProgress>=ROMANCE_AMBIGUOUS_PROGRESS){
       c.romanceStatus = "ambiguous";
       c.beganAsMinors = s.age<18 && c.age<18; // 1.2.11.7：進入曖昧的那一刻寫入，之後不再變動
-    } else if(c.romanceStatus==="ambiguous" && c.romanceProgress>=ROMANCE_DATING_PROGRESS){
-      c.romanceStatus = "dating";
+    } else if(c.romanceStatus==="ambiguous"){
+      // 四、4.8（2026-09-30，取代「累積正向次數達門檻直接進入交往中」）：交往必須有告白場面＋玩家點頭，由confession_from_npc／confession_from_player走startDating()，訊號只累積不成立
     } else if(c.romanceStatus==="dating"){
       c.romanceStableStreak += 1;
       if(c.romanceStableStreak>=ROMANCE_STABLE_STREAK){
@@ -5418,11 +5566,15 @@ function applyRomanceSignal(s, c, signal){
   } else if(signal==="negative"){
     c.romanceProgress = Math.max(0, c.romanceProgress-1);
     c.romanceStableStreak = 0;
-    if(c.romanceStatus==="dating" || c.romanceStatus==="stable"){
+    if(c.romanceStatus==="ambiguous"){
+      c.romanceNegativeStreak += 1; // 四、4.8：進入曖昧中之後累積2次負面感情訊號則解除
+      if(c.romanceNegativeStreak>=ROMANCE_AMBIGUOUS_UNDO_NEGATIVE){ c.romanceStatus = null; c.romanceProgress = 0; c.romanceNegativeStreak = 0; }
+    } else if(c.romanceStatus==="dating" || c.romanceStatus==="stable"){
       c.romanceNegativeStreak += 1;
-      if(c.romanceNegativeStreak>=ROMANCE_BREAKUP_STREAK){
-        c.romanceStatus = "breakup";
-        releaseCohabiting(c); // 七、7.6.1.1：穩定交往轉分手時解除同住標記
+      // 四、4.8（取代「連續負向次數達門檻直接判分手」）：NPC主動提分手的前提二選一——好感低於交往門檻、或人物卡有「裂痕」標記；成立時排入下一回合的分手場面，狀態在場面那一回合結束才改
+      if(c.romanceNegativeStreak>=ROMANCE_BREAKUP_STREAK && ((c.affinity||0) < ROMANCE_BREAKUP_AFFINITY || c.rift) && !s.pendingBreakup){
+        s.pendingBreakup = { name:c.name, by:"npc" };
+        c.romanceNegativeStreak = 0;
       }
     }
   }
@@ -5430,6 +5582,158 @@ function applyRomanceSignal(s, c, signal){
   if(prevStatus!=="dating" && c.romanceStatus==="dating" &&
      s.milestones.first_romance!=="completed" && s.milestones.first_romance!=="skipped"){
     s.milestones.first_romance = "completed";
+  }
+}
+// ===== 四、4.8（2026-09-30）關係里程碑：場面＋玩家點頭 =====
+function characterByName(s, name){ return (s.characters||[]).find(c=>c.name===String(name||"").trim()) || null; }
+function currentMonthMid(s){
+  const cal = s.timeState && s.timeState.cal;
+  if(!cal || cal.lastRoundEnd==null) return null;
+  const a = cal.lastWinStart!=null ? cal.lastWinStart : cal.lastRoundEnd;
+  return Math.floor((a + cal.lastRoundEnd)/2);
+}
+// 成立交往：記錄開始的月份(每回合提示「你們從○月開始交往」，防止重演)、第一次戀愛里程碑
+function startDating(s, c){
+  if(c.beganAsMinors===undefined) c.beganAsMinors = s.age<18 && (typeof c.age==="number" ? c.age<18 : false);
+  c.romanceStatus = "dating"; c.romanceStableStreak = 0; c.romanceNegativeStreak = 0;
+  c.romanceProgress = Math.max(c.romanceProgress||0, ROMANCE_DATING_PROGRESS);
+  c.datingSinceAbs = currentMonthMid(s); c.datingSinceTurn = s.turnCount;
+  c.rift = false;
+  if(s.milestones.first_romance!=="completed" && s.milestones.first_romance!=="skipped") s.milestones.first_romance = "completed";
+}
+const CONFESSION_RE = {
+  accept: /答應|願意(和|跟)|我們在一起|交往吧|做你的(男|女)朋友|當你的(男|女)朋友/,
+  no: /不答應|不願意|拒絕|不確定|不要|對不起|只當朋友|不行/
+};
+// 回應對方告白：點選項比對三個回應選項的原文；自由輸入用關鍵字判斷(不確定、拒絕優先於答應)
+function classifyConfessionResponse(text, pend){
+  const t = String(text||"");
+  const ch = pend.choices || {};
+  if(ch.accept && t===ch.accept) return "accept";
+  if(ch.unsure && t===ch.unsure) return "unsure";
+  if(ch.reject && t===ch.reject) return "reject";
+  if(/還不確定|不確定|讓我想想|需要時間/.test(t)) return "unsure";
+  if(/拒絕|不答應|不願意|對不起|只當朋友|不行/.test(t)) return "reject";
+  if(CONFESSION_RE.accept.test(t)) return "accept";
+  return "other";
+}
+// 呼叫AI之前：結算上一回合的告白(回應／擲骰結果)、玩家提分手、排定的分手場面，回傳這回合要寫的「關係場面」
+function prepareRelationScene(s, actionText){
+  let scene = null;
+  const pend = s.pendingConfession;
+  if(pend){
+    s.pendingConfession = null;
+    const c = characterByName(s, pend.name);
+    if(c && !c.deceased && !c.lost){
+      const kind = classifyConfessionResponse(actionText, pend);
+      if(kind==="accept"){ startDating(s, c); scene = { mode:"started_dating", name:c.name, by:"對方告白，玩家答應" }; }
+      else if(kind==="reject"){ c.romanceStatus = null; c.romanceProgress = 0; c.romanceStableStreak = 0; c.romanceNegativeStreak = 0; scene = { mode:"confession_rejected", name:c.name }; }
+      else scene = { mode:"confession_unsure", name:c.name };
+    }
+  } else if(s.confessionResultNext){
+    const res = s.confessionResultNext; s.confessionResultNext = null;
+    const c = characterByName(s, res.name);
+    if(c && !c.deceased && !c.lost){
+      if(res.success){ startDating(s, c); scene = { mode:"started_dating", name:c.name, by:"玩家告白，對方答應" }; }
+      else scene = { mode:"player_confession_declined", name:c.name };
+    }
+  }
+  if(!scene && !s.pendingBreakup && /分手/.test(actionText||"")){ // 玩家自己提分手：這一回合就寫分手場面
+    const partners = (s.characters||[]).filter(c=>!c.deceased && !c.lost && (c.romanceStatus==="dating" || c.romanceStatus==="stable"));
+    const named = partners.filter(c=>String(actionText).includes(c.name));
+    const target = named.length===1 ? named[0] : (partners.length===1 ? partners[0] : null);
+    if(target) s.pendingBreakup = { name:target.name, by:"player" };
+  }
+  if(!scene && s.pendingBreakup){
+    const c = characterByName(s, s.pendingBreakup.name);
+    if(c && (c.romanceStatus==="dating" || c.romanceStatus==="stable")) scene = { mode:"breakup", name:c.name, by: s.pendingBreakup.by==="player" ? "玩家提出" : "對方提出" };
+    else s.pendingBreakup = null;
+  }
+  return scene;
+}
+// AI回報告白：對方告白→下一回合選項必須含答應／還不確定／拒絕；玩家告白→程式擲骰、結果下一回合交給旁白
+function applyConfessionReports(s, r){
+  const nm = r.confession_from_npc ? String(r.confession_from_npc).trim() : "";
+  const pn = r.confession_from_player ? String(r.confession_from_player).trim() : "";
+  const okTarget = c=>c && !c.deceased && !c.lost && !c.isChild && !isFamilyCharacter(c) && romanceSignalAllowed(s, c) && !["dating","stable","married"].includes(c.romanceStatus);
+  if(nm){
+    const c = characterByName(s, nm);
+    if(okTarget(c) && !s.pendingConfession) s.pendingConfession = { name:c.name, turn:s.turnCount };
+    else addReviewFlag(s, "confession_invalid", `confession_from_npc「${nm}」不符合條件(已交往、家人、年齡限制或已有待回應的告白)，未處理`);
+  } else if(pn){
+    const c = characterByName(s, pn);
+    if(okTarget(c) && !s.confessionResultNext){
+      const p = c.romanceStatus==="ambiguous" ? CONFESSION_PLAYER_PROB.ambiguous : (relationshipTierIndex(c)>=3 ? CONFESSION_PLAYER_PROB.familiar : CONFESSION_PLAYER_PROB.other);
+      s.confessionResultNext = { name:c.name, success: Math.random() < p };
+    } else addReviewFlag(s, "confession_invalid", `confession_from_player「${pn}」不符合條件，未處理`);
+  }
+}
+// 對方告白的下一回合，選項一定要有三種回應；旁白沒寫齊的補上預設文字(從最後一個選項往前換)
+// QA 34.15 #4（2026-09-30）：選項只能用主角已知道的人名。名字還不知道的角色(nameKnown===false)，選項裡出現他的名字就換成外貌稱呼並寫入錯誤紀錄；
+// 旁白用names_revealed回報名字已經被主角知道(自我介紹、被叫出名字)才解除
+function applyNamesRevealed(s, r){
+  const out = [];
+  (Array.isArray(r.names_revealed) ? r.names_revealed : []).forEach(n=>{
+    const c = characterByName(s, n);
+    if(c && c.nameKnown===false){ delete c.nameKnown; out.push(c.name); }
+  });
+  return out;
+}
+function unknownNameCharacters(s){ return (s.characters||[]).filter(c=>c.nameKnown===false && !c.deceased); }
+function sanitizeChoiceNames(s, choices){
+  const unk = unknownNameCharacters(s);
+  if(!unk.length) return choices;
+  return (choices||[]).map(t=>{
+    let out = String(t);
+    unk.forEach(c=>{
+      if(out.includes(c.name)){
+        addReviewFlag(s, "choice_unknown_name", `選項提前寫出主角還不知道的名字「${c.name}」，已改成外貌稱呼`);
+        out = out.split(c.name).join(c.gender==="男" ? "那個男生" : c.gender==="女" ? "那個女生" : "那個人");
+      }
+    });
+    return out;
+  });
+}
+function enforceConfessionChoices(s, choices){
+  const pend = s.pendingConfession;
+  if(!pend || pend.turn!==s.turnCount) return choices;
+  const n = pend.name;
+  const defs = [
+    ["accept", /答應|願意|我也喜歡|在一起/, `答應${n}，和${n}在一起`],
+    ["unsure", /還不確定|不確定|想想|需要時間/, `告訴${n}自己還不確定`],
+    ["reject", /拒絕|對不起|只當朋友|不能答應/, `拒絕${n}的心意`]
+  ];
+  let list = (choices||[]).slice(0,4);
+  const chosen = {};
+  const used = new Set();
+  defs.forEach(([k, re])=>{ const i = list.findIndex((t,idx)=>!used.has(idx) && re.test(t)); if(i>=0){ chosen[k] = list[i]; used.add(i); } });
+  const missing = defs.filter(([k])=>!chosen[k]);
+  const keep = list.filter((t,idx)=>used.has(idx));
+  const others = list.filter((t,idx)=>!used.has(idx)).slice(0, Math.max(0, 4 - keep.length - missing.length));
+  missing.forEach(([k,,txt])=>{ chosen[k] = txt; });
+  pend.choices = chosen;
+  return keep.concat(missing.map(([k])=>chosen[k])).concat(others);
+}
+// 每回合提示：目前的關係狀態與從何時開始(防止重演成立場面)
+function relationshipFactsPayload(s){
+  const out = [];
+  (s.characters||[]).forEach(c=>{
+    if(c.deceased) return;
+    if(c.romanceStatus==="dating" || c.romanceStatus==="stable"){
+      const m = c.datingSinceAbs!=null ? calAbsToDate(c.datingSinceAbs).m : null;
+      out.push({ name:c.name, status: c.romanceStatus==="stable" ? "穩定交往中" : "交往中", note: m ? `你們從${m}月開始交往` : "你們已經在交往" });
+    } else if(c.romanceStatus==="ambiguous") out.push({ name:c.name, status:"曖昧中", note:"還沒有正式在一起，沒有告白成立的場面之前不要寫成交往" });
+  });
+  return out.length ? out : null;
+}
+// applyResult內：關係場面的收尾(分手場面寫完才改狀態)與提示文字
+function applyRelationScene(s, scene, hints){
+  if(!scene) return;
+  const c = characterByName(s, scene.name);
+  if(scene.mode==="started_dating") hints.push({ tier:1, text:`你和${scene.name}開始交往了` });
+  else if(scene.mode==="breakup" && c){
+    c.romanceStatus = "breakup"; releaseCohabiting(c); s.pendingBreakup = null;
+    hints.push({ tier:1, text:`你和${scene.name}分手了` });
   }
 }
 // 四、4.4.1（2026-09-20新增）：完整鏈 曖昧中→交往中→(分岔)分手 或 穩定交往→已婚→(分岔)離婚 或 終老
@@ -6086,6 +6390,8 @@ function truncateDialogueLine(line, limit){
 // 一、1.2.9.18（2026-09-29 A14）輸出品質檢查：只看AI交回的正文(行動結果＋新場景)，合法的{{名字|台詞}}標記先換成「台詞」再檢查
 const OUTPUT_QUALITY_MAX_RETRIES = 2; // 【定案，A14】
 const OUTPUT_PARAGRAPH_END_OK = /[。！？!?…」』）)～~—.．*＊〕】"”'’]$/;
+// 只挑幾乎不可能是一般口語的詞，避免誤殺(例如「重心」「回合」在一般句子裡也會出現，只抓系統用法)
+const SYSTEM_TERM_RE = /正式副業|投入度|好感度|行動點|訂單簿|接單上限|興趣卡|興趣等級|(?:這|本|上|下|每)回合|重心(?:選|按鈕|是)|把重心|存檔|數值(?:面板|變化)/;
 function detectOutputQualityIssues(r){
   if(!r || typeof r!=="object") return [];
   const issues = [];
@@ -6104,6 +6410,8 @@ function detectOutputQualityIssues(r){
       else if(!OUTPUT_PARAGRAPH_END_OK.test(p)) issues.push(`${where}第${i+1}段沒有寫完就結束`);
     });
     if(/[{}]/.test(text) || /["“”]\w+["“”]\s*:/.test(text)) issues.push(`${where}出現資料格式符號`);
+    const sys = text.match(SYSTEM_TERM_RE); // QA 34.15 #6：台詞與敘事都不可以出現遊戲系統用語
+    if(sys) issues.push(`${where}出現系統用語「${sys[0]}」，台詞與敘事都要改成角色會說的話`);
   });
   return Array.from(new Set(issues)).slice(0, 6);
 }
@@ -6135,7 +6443,7 @@ function processDialogueMarkup(s, text){
 // 學生時期(含延畢、休學)一回合＝回應(點選項或自由輸入)＋重心(6顆按鈕)。重心帶來的數值全部由程式計算，AI只寫「這段時間」；
 // 回應帶來的數值改成AI貼評價四級、程式查表(2.6.5)。放置代活不套用(10.6)；跳過指令的回合不結算重心(2.2.2)
 const FOCUS_KEYS = ["study","interest","social","rest","work","family"];
-const FOCUS_LABELS = { study:"讀書", interest:"興趣", social:"社交", rest:"休息", work:"打工", family:"家人" };
+const FOCUS_LABELS = { study:"讀書", interest:"興趣", social:"社交", rest:"休息", work:"工作", family:"家人" }; // 二、2.8.2（2026-09-30）：「打工」按鈕改「工作」，展開清單＝打工＋玩家擁有的每個副業
 const FOCUS_HINTS = {
   study:"主要給才識，下個場景可能在教室或書桌前", interest:"主要給興趣投入，下個場景可能在做這件事",
   social:"主要給人脈，下個場景可能跟朋友在一起", rest:"主要給健康，下個場景可能在家或出門散心",
@@ -6176,6 +6484,11 @@ function formalInterestCards(s){
     .slice().sort((a,b)=>(b.lastEngagedRound||0)-(a.lastEngagedRound||0));
 }
 function currentFocus(s){ return FOCUS_KEYS.includes(s.focus) ? s.focus : FOCUS_DEFAULT; }
+// 二、2.8.2：「工作」按鈕目前選的是打工(null)還是某個副業卡；副業卡沒了(淡出、不再是副業)就退回打工
+function currentWorkChoice(s){
+  if(!s.focusWorkId) return null;
+  return sideGigCards(s).find(c=>c.id===s.focusWorkId) || null;
+}
 function currentInterestChoice(s){ // 回傳正式興趣卡，或null＝嘗試新的
   const cards = formalInterestCards(s);
   if(s.focusInterestId==="new") return null;
@@ -6195,6 +6508,8 @@ function focusSceneDirective(focus, programEvent){
   if(focus.key==="interest"){
     text = focus.interestCategory ? `本回合須有主角實際從事${focus.interestCategory}的描寫（題材可與其他興趣交疊，但主角在做的事必須是${focus.interestCategory}）`
       : "本回合須有主角實際嘗試一件新事物的描寫";
+  } else if(focus.key==="work" && focus.gigCategory){
+    text = "本回合須有主角實際處理訂單（製作、備料、交件、跟客人溝通）的描寫"; // 二、2.8.2：重心指令表新增一列
   } else text = FOCUS_SCENE_DIRECTIVES[focus.key];
   if(!text) return null;
   // 優先順序：高張力白名單節點(考試、成績公布、程式事件) ＞ 玩家自由輸入 ＞ 重心指令
@@ -6226,6 +6541,10 @@ function resolveTurnFocus(s, actionText){
     focus.interestCategory = card ? card.category : null; // null＝嘗試新的，類別由AI判斷(8.10)
   }
   if(key==="family") focus.familyTargets = focusFamilyTargets(s, actionText).map(c=>c.name);
+  if(key==="work"){
+    const gig = currentWorkChoice(s);
+    if(gig){ focus.gigCardId = gig.id; focus.gigCategory = gig.category; }
+  }
   return focus;
 }
 // 重心數值結算(AI回來之後、applyResult內呼叫)；才識另外在applyResult的才識公式裡處理(讀書保證至少ordinary)。
@@ -6284,6 +6603,11 @@ function applyFocusSettlement(s, focus, r){
       names.push(c.name);
     });
     if(names.length) out.family = names;
+  } else if(focus.key==="work" && focus.gigCategory){
+    // 二、2.8.2：選「工作：副業X」對X對應的興趣卡計入投入，份量為選「興趣：X」時的一半(訂單推進在applyOrderResult)
+    const rx = r && r.interest_event && ["positive","neutral","negative"].includes(r.interest_event.reaction) ? r.interest_event.reaction : "positive";
+    applyInterestEvent(s, { category: focus.gigCategory, reaction: rx }, 0.5);
+    out.interest = focus.gigCategory;
   } else if(focus.key==="interest" && focus.interestCategory){
     // 八、8.12.1（2026-09-29，取代8.10「一律算喜歡」）：投入直接記到指定的興趣卡，AI回報的category一律忽略，只讀reaction；沒回報時視為positive
     const rx = r && r.interest_event && ["positive","neutral","negative"].includes(r.interest_event.reaction) ? r.interest_event.reaction : "positive";
@@ -6300,7 +6624,7 @@ function buildFocusMarks(s, focus, changes){
   // 存檔精簡(日記會存一輩子)：只存有變化的項目，stats/extra沒有就不寫
   const stats = {}, extra = [];
   ["knowledge","network","health"].forEach(k=>{ const v = Math.round(changes[k]||0); if(v) stats[k] = v; });
-  if(focus && focus.key==="work" && s.partTimeEventLog && s.partTimeEventLog.earning) extra.push(`存款 +${s.partTimeEventLog.earning}`);
+  if(focus && focus.key==="work" && !focus.gigCardId && s.partTimeEventLog && s.partTimeEventLog.earning) extra.push(`存款 +${s.partTimeEventLog.earning}`);
   if(changes.family && changes.family.length) extra.push(`${changes.family.length===1 ? changes.family[0] : "家人"}：更親近了一些`);
   if(changes.interest) extra.push(`${changes.interest}：又投入了一些`);
   if(Object.keys(stats).length) marks.stats = stats;
@@ -6312,7 +6636,9 @@ function normalizeResponseRating(rating, fromChoice){
   if(!rating || !RESPONSE_GRADES[rating.grade]) return null;
   const grade = (fromChoice && rating.grade==="excellent") ? "good" : rating.grade;
   const ability = (rating.ability==="expression" || rating.ability==="network") ? rating.ability : null;
-  return { grade, ability, target: rating.target ? String(rating.target) : null };
+  // 十八、18.16.3（2026-09-30）：靠近／推遠／中性；接人際衝突線在十八、18.16實作，這裡先正規化
+  const approach = ["approach","away","neutral"].includes(rating.approach) ? rating.approach : null;
+  return { grade, ability, target: rating.target ? String(rating.target) : null, approach, approach_type: approach && rating.approach_type ? String(rating.approach_type).slice(0,20) : null };
 }
 
 // ===== 十八、敘事節奏（2026-09-28 claude.ai網頁版定案，含補充定案、補充定案之二） =====
@@ -6330,6 +6656,16 @@ const FOCUS_SCENE_RELATED = {
   social:"跟朋友、同學在一起，地點不限", family:"跟家人在一起，或跟不同住的家人講電話、視訊，地點不限"
 };
 // 18.3②程式觸發的事件(家人生病、明牌檢定、里程碑等)：這些*_event_now有值的回合，地點依事件本身決定
+// 一、1.2.17（2026-09-30）：玩家選擇一定先執行，偶爾偏離——每回合擲15%【測試參數】，擲中就在提示中要求「本回合讓事情偏離預期」
+// 不擲：前一回合已偏離；回應告白(答應／還不確定／拒絕)；高張力抉擇白名單節點(考試、程式事件回合)；玩家自由輸入的回合；開場
+const CHOICE_DEVIATION_PROB = 0.15;
+function rollChoiceDeviation(s, ctx){
+  if(ctx.prologue || !ctx.fromChoice) return false; // 自由輸入的回合不擲
+  if(s.lastDeviated) return false;
+  if(s.pendingConfession) return false;
+  if(ctx.whitelist) return false;
+  return Math.random() < CHOICE_DEVIATION_PROB;
+}
 function programEventNow(s){
   const logs = { parentHealthEventLog:"家人健康", parentDeathEventLog:"家人過世", illnessEventLog:"生病", majorIllnessEventLog:"重大疾病",
     universityEventLog:"學業狀態", fertilityEventLog:"生育", careerEventLog:"職涯", breakthroughEventLog:"破格時刻", divorceEventLog:"離婚",
@@ -6362,8 +6698,66 @@ function buildScenePlan(s, ctx){
   if(streak.cat && streak.n>=SCENE_STREAK_MAX){ // 18.3補充定案：已連續3回合，不擲「相關／換到別處」，直接換到別處並排除該類
     return { mode:"away", category: pickSceneCategory(weights, streak.cat), banned_category: streak.cat, period };
   }
-  if(Math.random() < SCENE_RELATED_PROB) return { mode:"related", related_to: FOCUS_SCENE_RELATED[ctx.focus.key], period };
+  if(Math.random() < SCENE_RELATED_PROB) return { mode:"related", related_to: (ctx.focus.key==="work" && ctx.focus.gigCategory) ? "處理副業訂單的地方（工作室、店面、家裡的工作角落等）" : FOCUS_SCENE_RELATED[ctx.focus.key], period };
   return { mode:"away", category: pickSceneCategory(weights, null), period };
+}
+// ----- 十八、18.15 地點名單（2026-09-30）：取代AI事後回報scene_category；類別以名單為準 -----
+const PLACE_MAX = 40; // 存檔精簡：名單超過時，丟掉最久沒去、次數最少的(家與學校保留)
+function ensurePlaces(s){
+  if(!Array.isArray(s.places) || !s.places.length){
+    s.places = [
+      { name:"家", category:"住處", feature:"", owner:null, status:"營業中", visits:0, lastTurn:0, lastAbs:null, who:{} },
+      { name:"學校", category:"學校", feature:"", owner:null, status:"營業中", visits:0, lastTurn:0, lastAbs:null, who:{} }
+    ];
+  }
+  return s.places;
+}
+function findPlace(s, name){ const n = String(name||"").trim(); return n ? ensurePlaces(s).find(p=>p.name===n) || null : null; }
+// 每回合附給旁白：最近造訪過的10個地點
+function recentPlacesPayload(s){
+  const list = ensurePlaces(s).filter(p=>p.visits>0 && p.status!=="已關閉").sort((a,b)=>b.lastTurn-a.lastTurn).slice(0,10);
+  const seed = list.length ? list : ensurePlaces(s).slice(0,2);
+  return seed.map(p=>({ name:p.name, category:p.category, feature:p.feature||undefined, owner:p.owner||undefined }));
+}
+// applyResult內：登記／更新地點、記造訪與在場角色，回傳這回合場景的類別(給18.3連續次數用)
+function applyPlacesResult(s, r, ctx){
+  const places = ensurePlaces(s);
+  const turn = s.turnCount;
+  let place = findPlace(s, r.location);
+  const ln = r.location_new || {};
+  const plan = ctx && ctx.plan;
+  if(r.location && !place){
+    const name = String(r.location).trim().slice(0,12);
+    let cat = SCENE_CATEGORIES.includes(ln.category) ? ln.category : null;
+    if(!cat){ cat = (plan && plan.mode==="away" && plan.category) || "外面"; addReviewFlag(s, "location_no_category", `新地點「${name}」沒附合法類別，暫記為${cat}`); }
+    place = { name, category:cat, feature: ln.feature ? String(ln.feature).slice(0,40) : "", owner: ln.owner ? String(ln.owner).slice(0,12) : null, status:"營業中", visits:0, lastTurn:0, lastAbs:null, who:{} };
+    places.push(place);
+  } else if(place && ln.category && SCENE_CATEGORIES.includes(ln.category) && ln.category!==place.category){
+    addReviewFlag(s, "location_category_mismatch", `地點「${place.name}」名單類別是${place.category}，旁白報${ln.category}，以名單為準`);
+  }
+  if(place && plan && plan.mode==="away" && plan.category && plan.category!==place.category) addReviewFlag(s, "location_plan_mismatch", `指定類別${plan.category}，旁白寫的「${place.name}」是${place.category}`);
+  // place_updates：特徵或狀態有變化(例：文具行頂讓後改為已關閉)
+  (Array.isArray(r.place_updates) ? r.place_updates : []).slice(0,3).forEach(u=>{
+    const p = u && findPlace(s, u.name); if(!p) return;
+    if(u.feature) p.feature = String(u.feature).slice(0,40);
+    if(u.status==="已關閉" || u.status==="營業中") p.status = u.status;
+  });
+  s.placeCatNow = place ? place.category : null;
+  if(!place) return null;
+  place.visits++; place.lastTurn = turn;
+  place.lastAbs = s.timeState && s.timeState.cal ? s.timeState.cal.lastSceneDay : null;
+  s.currentPlace = place.name;
+  (ctx && ctx.names || []).forEach(n=>{ place.who[n] = (place.who[n]||0)+1; });
+  const wk = Object.entries(place.who).sort((a,b)=>b[1]-a[1]); if(wk.length>8) place.who = Object.fromEntries(wk.slice(0,8)); // 只留次數最多的8位
+  if(ctx && ctx.gigCardId){ // 副業據點：做副業那幾回合去得最多的地方
+    const card = (s.interestCandidates||[]).find(c=>c.id===ctx.gigCardId);
+    if(card){ card.gigPlaces = card.gigPlaces||{}; card.gigPlaces[place.name] = (card.gigPlaces[place.name]||0)+1; }
+  }
+  if(places.length>PLACE_MAX){
+    const drop = places.filter(p=>p.name!=="家" && p.name!=="學校").sort((a,b)=>(a.visits-b.visits)||(a.lastTurn-b.lastTurn))[0];
+    if(drop) s.places = places.filter(p=>p!==drop);
+  }
+  return place.category;
 }
 // AI事後回報場景類別(只算分隔線下方的新場景)，程式以回報結果計算連續次數
 function recordSceneCategory(s, cat){
@@ -6373,7 +6767,16 @@ function recordSceneCategory(s, cat){
 }
 
 // ----- 18.5 劇情線 -----
-const PLOT_KINDS = ["心結","伏筆","約定","衝突"];
+const PLOT_KINDS = ["心結","伏筆","約定","衝突","人際衝突"];
+// ----- 十八、18.16 人際衝突線（2026-09-30）-----
+const CONFLICT_STAGES = ["徵兆","試探","攤牌","收尾"];
+const CONFLICT_TOUCH_CAP = 4;      // 【定案】同一條人際衝突線被碰觸滿4次仍未收尾→要求本回合收尾或升級為冷戰；升級後重新計數，再滿4次必須收尾
+const CONFLICT_OUTCOMES = {        // 【定案】收尾效果：好感、人物卡
+  "和好":     { affinity:5,  caresLine:true, rift:false },
+  "各退一步": { affinity:2,  caresLine:false, rift:false },
+  "裂痕":     { affinity:-5, caresLine:false, rift:true }
+};
+const CONFLICT_CLOSED_SHOWN = 3;   // 已收尾的線，最近幾條每回合告知旁白「此事已落幕」
 const PLOT_MAX_ACTIVE = 6;          // 【測試參數,18.5.2】
 const PLOT_DODGE_TO_MORPH = 2;      // 【測試參數,18.5.3】
 const PLOT_MORPH_TO_SHELVE = 2;     // 18.5.3：變形2次後仍閃開→擱置
@@ -6730,6 +7133,11 @@ function prepareNarrativeRhythm(s, ctx){
   const activeLines = lines.filter(l=>l.status==="active" && !plotPaused(s, l)).map(l=>{
     const o = { id:l.id, text:l.text, kind:l.morphAsForeshadow ? "伏筆" : l.kind, characters:l.chars, main_character:l.main||null };
     // 18.11（A6）：已揭露線索、併進摘要的舊線索、角色說過還沒被揭穿的謊；追查3次沒新資訊→must_reveal_clue；原地踏步8回合且玩家有追查→must_advance
+    if(l.cf){
+      o.conflict = { event:l.cf.event, unspoken_need:l.cf.need, resolve_condition:l.cf.resolve, stage:l.cfStage||"徵兆", touches:l.cfTouches||0,
+        approach_so_far:{ toward:l.cfToward||0, away:l.cfAway||0 }, last_response: l.cfLastApproach==="approach" ? "靠近" : l.cfLastApproach==="away" ? "推遠" : null };
+      if((l.cfTouches||0) >= CONFLICT_TOUCH_CAP) o.conflict.directive = l.cfEscalated ? "已經升級過冷戰，本回合必須以任一outcome收尾" : "本回合收尾，或升級為冷戰(conflict_stage照填，加escalate_cold:true)";
+    }
     if(l.summaryExtra) o.summary = l.summaryExtra;
     if((l.clues||[]).length) o.clues = l.clues.slice();
     const lies = (l.lies||[]).filter(x=>!x.exposed);
@@ -6767,6 +7175,7 @@ function prepareNarrativeRhythm(s, ctx){
     plot_touched_last_turn: ctx.prologue ? [] : touchedLast,
     plot_surface_now: surface,
     plot_closure_now: closures.length ? closures : null,
+    conflict_closed: closedConflictsPayload(s), // 18.16.4：已收尾不得重演
     dropped_plot_lines: dropped,
     focus_candidates: candidates.slice(0, 12),
     focus_streak_blocked: streakName && !exemptNames.has(streakName) ? streakName : null,
@@ -6776,6 +7185,34 @@ function prepareNarrativeRhythm(s, ctx){
   };
 }
 // AI回來之後：記錄劇情線、焦點角色、新角色登場回合
+// 18.16.4 收尾：outcome由旁白回報，程式套用好感與人物卡；缺outcome或不合法時記錄並當作「各退一步」
+function applyConflictOutcome(s, l, outcome){
+  let key = CONFLICT_OUTCOMES[outcome] ? outcome : null;
+  if(!key){ key = "各退一步"; addReviewFlag(s, "conflict_outcome_missing", `人際衝突線${l.id}收尾沒有合法outcome(「${outcome||"沒填"}」)，當作各退一步`); }
+  const eff = CONFLICT_OUTCOMES[key];
+  const c = characterByName(s, l.main);
+  if(c){
+    c.affinity = clamp((c.affinity||0) + eff.affinity, 0, 100);
+    if(eff.caresLine){ c.cares = (c.cares||[]).concat([String(l.cf.need).slice(0,60)]).slice(-3); } // 「他在意的，其實是○○」
+    if(eff.rift) c.rift = true;
+  }
+  l.cfOutcome = key;
+}
+// 每回合提示：已收尾的人際衝突線「此事已落幕」，旁白不得再寫同一件事的攤牌
+function closedConflictsPayload(s){
+  const list = (s.plotLines||[]).filter(l=>l.cf && l.status==="resolved").sort((a,b)=>(b.closedTurn||0)-(a.closedTurn||0)).slice(0,CONFLICT_CLOSED_SHOWN);
+  return list.length ? list.map(l=>({ id:l.id, text:l.text, character:l.main, outcome:l.cfOutcome||null, note:"此事已落幕，可以寫一點餘韻，不得再寫同一件事的攤牌" })) : null;
+}
+// 回應為靠近→衝突往收尾推進；推遠→升溫(累計給旁白判斷收尾的outcome)。只看上一回合碰到的人際衝突線，互動對象要對得上
+function applyConflictApproach(s, rating){
+  if(!rating || !rating.approach || rating.approach==="neutral") return;
+  const turn = s.turnCount;
+  (s.plotLines||[]).filter(l=>l.cf && l.status==="active" && l.lastTouchTurn===turn-1).forEach(l=>{
+    if(rating.target && l.main && rating.target!==l.main && !(l.chars||[]).includes(rating.target)) return;
+    if(rating.approach==="approach") l.cfToward = (l.cfToward||0)+1; else l.cfAway = (l.cfAway||0)+1;
+    l.cfLastApproach = rating.approach;
+  });
+}
 function applyNarrativeRhythmResult(s, r, ctx){
   const lines = ensurePlotLines(s);
   const turn = s.turnCount;
@@ -6791,8 +7228,13 @@ function applyNarrativeRhythmResult(s, r, ctx){
     applyPlotReaction(s, l, x.reaction);
     if(x.reaction==="advance") markPlotProgress(s, l); // 18.11（A6）：玩家推進也算推進
   });
-  (Array.isArray(r.plot_resolved) ? r.plot_resolved : []).forEach(id=>{
-    const l = byId(id); if(l && l.status==="active"){ l.status = "resolved"; l.closedTurn = turn; l.pendingMorph = null; }
+  (Array.isArray(r.plot_resolved) ? r.plot_resolved : []).forEach(item=>{
+    const id = item && typeof item==="object" ? item.id : item;
+    const l = byId(id);
+    if(l && l.status==="active"){
+      if(l.cf) applyConflictOutcome(s, l, item && typeof item==="object" ? item.outcome : null);
+      l.status = "resolved"; l.closedTurn = turn; l.pendingMorph = null;
+    }
   });
   // 放下的線被玩家主動提起→重新打開；角色過世後重開的改用伏筆的變形方式
   (Array.isArray(r.plot_reopened) ? r.plot_reopened : []).forEach(id=>{
@@ -6806,6 +7248,13 @@ function applyNarrativeRhythmResult(s, r, ctx){
     if(!l || l.status!=="active") return;
     const mode = ["light","ask","omen"].includes(x.mode) ? x.mode : "light";
     l.lastTouchTurn = turn; l.lastTouchMode = mode==="omen" ? "light" : mode; l.touches = (l.touches||0)+1;
+    if(l.cf){ // 18.16：人際衝突線——回報階段(只能前進或停留)、累計碰觸次數、升級為冷戰重新計數
+      const from = CONFLICT_STAGES.indexOf(l.cfStage||"徵兆"), to = CONFLICT_STAGES.indexOf(x.conflict_stage);
+      if(to>=0 && to>=from) l.cfStage = x.conflict_stage;
+      else if(to>=0 && to<from) addReviewFlag(s, "conflict_stage_backward", `人際衝突線${l.id}階段從${l.cfStage}倒退成${x.conflict_stage}，忽略`);
+      l.cfTouches = (l.cfTouches||0)+1;
+      if(x.escalate_cold && !l.cfEscalated && (l.cfTouches-1)>=CONFLICT_TOUCH_CAP){ l.cfEscalated = 1; l.cfTouches = 1; l.cfStage = "攤牌"; }
+    }
     const shown = shownToAI.get(l.id) || {};
     if(mode!=="omen"){
       if(shown.morph && l.pendingMorph===shown.morph) l.pendingMorph = null;
@@ -6833,7 +7282,16 @@ function applyNarrativeRhythmResult(s, r, ctx){
     const chars = (Array.isArray(p.characters) ? p.characters : []).map(String).filter(known).slice(0,4);
     const main = chars.includes(p.main_character) ? p.main_character : (chars[0]||null);
     s.plotSeq = (s.plotSeq||0)+1;
-    const l = newPlotLine(s, { id:"p"+s.plotSeq, text:String(p.text).slice(0,80), kind: PLOT_KINDS.includes(p.kind) ? p.kind : "伏筆", chars, main, lastTouchMode:"light" });
+    let kind = PLOT_KINDS.includes(p.kind) ? p.kind : "伏筆";
+    let cf = null;
+    if(kind==="人際衝突"){
+      // 18.16.1：登記時必填三欄(conflict_event／unspoken_need／resolve_condition)＋主要角色，存檔後鎖定；缺欄位就降為一般「衝突」線並寫入錯誤紀錄
+      const f = k=>p[k] ? String(p[k]).slice(0,80) : "";
+      if(f("conflict_event") && f("unspoken_need") && f("resolve_condition") && main) cf = { event:f("conflict_event"), need:f("unspoken_need"), resolve:f("resolve_condition") };
+      else { kind = "衝突"; addReviewFlag(s, "conflict_line_incomplete", `人際衝突線「${String(p.text).slice(0,20)}」沒有填齊三欄或主要角色，降為一般衝突線`); }
+    }
+    const l = newPlotLine(s, { id:"p"+s.plotSeq, text:String(p.text).slice(0,80), kind, chars, main, lastTouchMode:"light" });
+    if(cf){ l.cf = cf; l.cfStage = "徵兆"; l.cfTouches = 0; l.cfEscalated = 0; l.cfToward = 0; l.cfAway = 0; }
     lines.push(l); born.push(l);
   });
   // 18.5.2：超過6條→最久沒碰的轉擱置(不計擱置次數)；當回合新寫出的、剛回到進行中的不會被擠掉
@@ -6852,6 +7310,7 @@ function applyNarrativeRhythmResult(s, r, ctx){
   if(focusName) appeared.add(focusName);
   if(!Array.isArray(r.scene_characters) || !r.scene_characters.length) (r.character_updates||[]).forEach(cu=>{ if(cu && known(cu.name)) appeared.add(String(cu.name)); });
   s.appearLog = (s.appearLog||[]).filter(e=>e.turn > turn-APPEARANCE_WINDOW).concat([{ turn, names: Array.from(appeared) }]);
+  applyPlacesResult(s, r, { plan: ctx.plan, gigCardId: ctx.gigCardId, names: Array.from(appeared) }); // 十八、18.15：地點名單
   pruneClosedPlotLines(s);
 }
 // 存檔精簡：已解開的線不再被引用，只留最近5條；放下的線只有最近10條會給AI比對(18.6)，更早的刪掉(被提起時當新線登記)；
@@ -6935,6 +7394,12 @@ function resolveEffectiveTone(planned, r){
 }
 function commitToneTrack(s, tone){ s.mutterStreak = tone.tone_track==="mutter" ? (s.mutterStreak||0)+1 : 0; }
 
+// 二、2.8.1：「○月上旬～○月中旬」，上旬1~10日、中旬11~20日、下旬21日以後
+function monthRangeText(a, b){
+  const f = abs=>{ const t = calAbsToDate(abs); return `${t.m}月${t.d<=10?"上旬":t.d<=20?"中旬":"下旬"}`; };
+  const x = f(a), y = f(b);
+  return x===y ? x : `${x}～${y}`;
+}
 // ===== 一、1.2.9.11.2（2026-09-24新增）每回合送給AI的時間資訊 =====
 function buildTimeContextPayload(s, timeCtx){
   const win = timeCtx && timeCtx.window;
@@ -6951,6 +7416,7 @@ function buildTimeContextPayload(s, timeCtx){
     round_start_date: calFormatMdw(win.start),
     round_end_date: calFormatMdw(win.end),
     round_days: win.end - win.start + 1,
+    month_range: monthRangeText(win.start, win.end), // 二、2.8.1：旁白不得寫出超出此範圍的時間、節日或季節
     dates_by_offset: days, // scene_day_offset＝0,1,2…對應的日期與星期
     span_text: calSpanText(win.end - win.start + 1),
     stage_label: timeCtx.label,
@@ -6965,6 +7431,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
   if(timeCtx) timeCtx.toldEventNames = activeCharacters().filter(c=>unknownEventNames(c).length).map(c=>c.name); // 4.7.4：給旁白看過的未得知事件，出場後標為已得知
   const roster = activeCharacters().map(c=>({
     name:c.name, relation:c.relation, traits:c.traits, gender:c.gender||null, // 4.1/1.2.5：已記錄的性別，引用時必須一致
+    name_known: c.nameKnown===false ? false : undefined, // QA 34.15 #4：主角還不知道名字→選項與主角視角敘事用外貌稱呼
     affinity:c.affinity, summary:c.summary, is_child:!!c.isChild,
     style: c.style||null, // 四、4.1相處風格(2026-09-28)：null代表還沒記錄，這回合出場時用style_fill回填一次
     dialogue_style: c.dialogueStyle||"normal", // 一、1.2.8.4.2（2026-09-24實作）：台詞句數上限，程式依{{名字|台詞}}標記截斷
@@ -7053,9 +7520,10 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     milestone_status: MILESTONE_DEFS.map(def=>({ id:def.id, label:def.label, status:s.milestones[def.id] })),
     interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, status:c.status, investment:Math.round(c.investment), side_business: c.sideBusinessStatus||null })),
     side_business_event_now: s.sideBusinessEventLog || null, // 8.7（2026-09-27）：玩家剛在副業彈窗做的選擇
-    // 八、8.11（2026-09-29 A3/A4）：程式排定的接案機會(這回合要安排有人來下訂單)、還沒交件的訂單；交件用side_gig_delivery回報大小，金額由系統算
-    side_gig_offer_now: (timeCtx && timeCtx.sideGigOffers && timeCtx.sideGigOffers.length) ? timeCtx.sideGigOffers : null,
-    side_gig_open_orders: sideGigOpenOrdersPayload(s),
+    // 八、8.13（2026-09-30）：副業訂單簿(接單量與上限、每筆進度)、程式判定的交件／逾期／取消通知、新詢問；旁白只用order_new登記、order_target指名，價格交期與交件由程式決定
+    side_gig_orders: orderPayload(s),
+    order_notices: orderNoticesPayload(timeCtx && timeCtx.orderNotice),
+    order_inquiry_now: (timeCtx && timeCtx.orderNotice && timeCtx.orderNotice.inquiry.length) ? timeCtx.orderNotice.inquiry : null,
     // 一、1.2.14（2026-09-29）精簡名冊：所有認識過的角色(含漸行漸遠、已故、失聯)，Worker把它放在提示快取的位置
     character_roster: buildCharacterRoster(s),
     // 四、4.6.4～4.6.6：這回合去找的人(重逢／找失聯者的擲骰結果／回憶已故者)
@@ -7095,12 +7563,17 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
       key: timeCtx.focus.key, label: timeCtx.focus.label,
       interest_category: timeCtx.focus.key==="interest" ? (timeCtx.focus.interestCategory||"嘗試新的") : undefined,
       family_targets: timeCtx.focus.familyTargets || undefined,
-      part_time: timeCtx.focus.key==="work" ? (s.partTimeEventLog||null) : undefined,
+      part_time: timeCtx.focus.key==="work" && !timeCtx.focus.gigCardId ? (s.partTimeEventLog||null) : undefined,
+      gig_category: timeCtx.focus.gigCategory || undefined, // 八、8.13：重心是「工作：副業X」
       scene_directive: focusSceneDirective(timeCtx.focus, programEventNow(s)) // 一、1.2.16
     } : null,
+    relationship_scene_now: (timeCtx && timeCtx.relationScene) || undefined, // 四、4.8：本回合必須寫出的關係場面(交往成立、被拒、還不確定、分手)
+    relationship_facts: relationshipFactsPayload(s) || undefined, // 四、4.8：目前的關係狀態與開始月份，不得再寫第二次告白或確認
+    choice_deviation_now: (timeCtx && timeCtx.deviation) ? true : undefined, // 一、1.2.17：這回合讓事情偏離預期
     response_source: timeCtx && timeCtx.focus && !timeCtx.prologue ? (timeCtx.fromChoice ? "choice" : "free_input") : null,
     // 十八、敘事節奏(2026-09-28)：場景條件(學生時期)、劇情線、焦點角色輪替、新角色登場，見system prompt【敘事節奏】
     scene_plan: timeCtx ? (timeCtx.scenePlan||null) : null,
+    places_recent: recentPlacesPayload(s), // 十八、18.15：最近造訪過的10個地點，寫到就必須沿用名稱與特徵
     narrative_rhythm: timeCtx ? (timeCtx.rhythm||null) : null,
     exam_triggered: !!(timeCtx && timeCtx.examTriggered),
     exam_type: (timeCtx && timeCtx.examType) || null,
@@ -7496,7 +7969,11 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
   const response_rating = (timeCtx && timeCtx.focus && !timeCtx.prologue) ? {
     grade: weightedPick(timeCtx.fromChoice ? [["good",30],["plain",60],["blunder",10]] : [["excellent",20],["good",35],["plain",35],["blunder",10]]),
     ability: pick(["expression","network",null]), target: (npcForLine && Math.random()<0.7) ? npcForLine.name : null } : null;
-  const scene_category = plan ? (plan.mode==="away" ? plan.category : pick(SCENE_CATEGORIES.filter(c=>c!==plan.banned_category))) : null;
+  const mockCat = plan ? (plan.mode==="away" ? plan.category : pick(SCENE_CATEGORIES.filter(c=>c!==plan.banned_category))) : "住處";
+  // 十八、18.15 mock版：優先挑名單上類別相符的地點，沒有(或20%)就登記一個新地點
+  const samePlaces = ensurePlaces(s).filter(p=>p.category===mockCat && p.status!=="已關閉");
+  const location = (samePlaces.length && Math.random()<0.8) ? pick(samePlaces).name : `（模擬）${pick(["咖啡店","河堤","書局","小吃店"])}${rnd(1,99)}`;
+  const location_new = findPlace(s, location) ? undefined : { category: mockCat, feature:"（模擬）巷子裡的小地方", owner: Math.random()<0.3 ? "老闆" : undefined };
   const focusPool = (rhythm.focus_candidates||[]);
   const focus_character = rhythm.seek_character || (focusPool.length && Math.random()<0.8 ? pick(focusPool) : null);
   const activePlots = rhythm.plot_lines||[];
@@ -7510,11 +7987,16 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
   if(rhythm.plot_surface_now && !plot_touched.some(t=>t.id===rhythm.plot_surface_now.id)) plot_touched.push({ id:rhythm.plot_surface_now.id, mode:"light" });
   const plot_reactions = (rhythm.plot_touched_last_turn||[]).map(t=>({ id:t.id, reaction: weightedPick([["dodge",40],["gloss",25],["catch",20],["advance",15]]) }));
   const plot_new = (timeCtx && timeCtx.prologue) ? [{ text:"（模擬伏筆）抽屜裡那封沒拆的信", kind:"伏筆", characters:[], main_character:null }]
-    : (Math.random()<0.15 ? [{ text:`（模擬劇情線）${s.age}歲時一件還沒說開的事`, kind: pick(PLOT_KINDS), characters: npcForLine ? [npcForLine.name] : [], main_character: npcForLine ? npcForLine.name : null }] : []);
+    : (Math.random()<0.15 ? [{ text:`（模擬劇情線）${s.age}歲時一件還沒說開的事`, kind: pick(PLOT_KINDS), characters: npcForLine ? [npcForLine.name] : [], main_character: npcForLine ? npcForLine.name : null, conflict_event:"（模擬）一件沒被放在心上的小事", unspoken_need:"想被放在心上", resolve_condition:"對方讓他覺得被放在心上" }] : []);
   const plot_resolved = (activePlots.length && Math.random()<0.05) ? [pick(activePlots).id] : [];
   // 2026-09-29 mock版：接案交件(A4)、約定(A10)、物品轉手(A11)、新場景出場角色(A7)；MOCK_OUTPUT_QUALITY_VIOLATION_RATE測A14自動重新產生
-  const openGig = (JSON.parse(JSON.stringify(sideGigOpenOrdersPayload(s)))||[])[0];
-  const side_gig_delivery = openGig && Math.random()<0.5 ? { category: openGig.category, size: openGig.size, description:"（模擬）交了一批作品" } : null;
+  // 八、8.13 mock版：有副業時，被指示安排詢問或隨機20%登記一筆新訂單(超過上限程式會拒絕，故意不管上限也不影響測試)
+  let order_new;
+  const gigCardsNow = sideGigCards(s);
+  if(gigCardsNow.length && timeCtx && !timeCtx.prologue && (timeCtx.orderNotice && timeCtx.orderNotice.inquiry.length || Math.random()<0.2)){
+    const c = pick(gigCardsNow);
+    order_new = [{ category:c.category, client:pick(["林小姐","阿宇","陳老闆"]), item:`（模擬）${c.category}小物×${rnd(2,9)}`, size:pick(["small","medium","large"]) }];
+  }
   const dueP = promisesPayload(s, win).promises_due_now;
   const promise_results = dueP.map(p=>({ id:p.id, outcome: pick(["kept","postponed","cancelled"]) }));
   const promise_new = (npcForLine && !npcForLine.isChild && Math.random()<0.15) ? [{ character: npcForLine.name, content:"（模擬約定）一起去吃豆花", due_date: win ? calFormat(win.end + rnd(2,10)) : null }] : [];
@@ -7524,11 +8006,11 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
     if(Array.isArray(narrativeParas)) narrativeParas = narrativeParas.concat(["她回頭喊你："]);
   }
   return {
-    side_gig_delivery, promise_results, promise_new, item_moves, scene_characters,
+    order_new, promise_results, promise_new, item_moves, scene_characters,
     action_result, scene_day_offset, scene_summary:`（模擬）${sceneDate}，${pick(["在教室","在家裡","在路上","在打工的店裡"])}`,
     chapter_subtitle: pick(["沒寄出的訊息","雨停之前","多出來的碗筷","第三節下課"]),
     tone_switch: Math.random()<0.05 ? pick(["key_event_reveal","relationship_turning"]) : null, // 1.2.8.7 mock版
-    response_rating, scene_category, focus_character, plot_new, plot_touched, plot_reactions, plot_resolved, plot_reopened: [],
+    response_rating, location, location_new, focus_character, plot_new, plot_touched, plot_reactions, plot_resolved, plot_reopened: [],
     narrative: narrativeParas, turn_summary, age_advance: structured ? 0 : pickAgeAdvance(s.age),
     stat_deltas: deltas, event_type, event_id, interest_event, emotional_tone,
     club_activity: Math.random()<0.15, // 3.8.2 mock版（2026-09-27）
@@ -7584,7 +8066,7 @@ function snapshotForUndo(){
     // 遊戲內日期(timeState.cal)已經包在上面的timeState裡，反悔時一併回到上一回合的狀態(1.2.9.11.5)
     mutterStreak:state.mutterStreak||0, renameNotices:state.renameNotices||[],
     // 十八、敘事節奏(2026-09-28)：劇情線、場景連續次數、焦點角色紀錄也跟著反悔；重心按鈕是介面選擇，不還原
-    plotLines:ensurePlotLines(state), plotSeq:state.plotSeq||0, sceneStreak:state.sceneStreak||null,
+    plotLines:ensurePlotLines(state), plotSeq:state.plotSeq||0, sceneStreak:state.sceneStreak||null, places:state.places||null, currentPlace:state.currentPlace||null, lastDeviated:!!state.lastDeviated, pendingConfession:state.pendingConfession||null, confessionResultNext:state.confessionResultNext||null, pendingBreakup:state.pendingBreakup||null,
     focusLog:state.focusLog||[], newCharTurns:state.newCharTurns||[], seekTarget:state.seekTarget||null,
     playStyle: state.playStyle||newPlayStyle(), // 十六、16.2：反悔時行為計數也回到上一回合
     fateRolls: state.fateRolls||[], chronicleSeen: state.chronicleSeen, // 十六、16.7.2.5命運的骰子紀錄、16.6重大事件比對長度也回到上一回合
@@ -7674,8 +8156,8 @@ async function takeTurn(actionText, cost){
   maybeRollBackgroundEvents(state, adv); // 四、4.7：學生時期每學期(假期第一回合)、出社會後每年(跨入新年第一回合)擲一次NPC背景事件
   const focus = (turnFocus && !adv.bigJump) ? turnFocus : null; // 2.6.1：跳過指令的回合不結算重心
   // 3.4.2（2026-09-27）：打工收入由程式依時薪×時數算好，AI只負責敘事；學生時期改由打工重心觸發(2026-09-28)
-  applyPartTimeWork(state, actionText, adv.window, turnFocus ? (!!focus && focus.key==="work") : undefined);
-  const sideGigOffers = wasPrologue ? [] : prepareSideGigTurn(state, turnFocus); // 八、8.11（2026-09-29 A3/A4）：到了排定回合就指示AI安排接案機會
+  applyPartTimeWork(state, actionText, adv.window, turnFocus ? (!!focus && focus.key==="work" && !focus.gigCardId) : undefined);
+  const orderNotice = wasPrologue ? null : prepareOrderTurn(state, turnFocus); // 八、8.13（2026-09-30）：逾期處理、交件／逾期通知、新詢問擲骰
   applyFertilityTurn(state, actionText); // 7.3.2（2026-09-27）：生育/領養的大方向由程式判定
   if(!state.timeState.prologue) checkLockedParentDeath(state); // 七、7.4.3.3.1（2026-09-28）：傳承中的上一代到鎖定年紀過世
   // 十一、11.4（9/19新增）：期末考是首版明牌檢定白名單唯一節點，命中就在呼叫AI之前先擲骰決定確切分數
@@ -7693,7 +8175,7 @@ async function takeTurn(actionText, cost){
   // 2026-09-23修正（時間標籤慢一拍bug）：這回合顯示/送給AI的標籤改用currentLabel(這回合實際所在的段落)，
   // 不再用toLabel(換段後、下一回合才生效的段落)；jump提示(from/to)維持給跳過動作用，語意不變
   let timeCtx = { structured:true, label: adv.currentLabel, jump: adv.bigJump ? {from:adv.fromLabel, to:adv.toLabel} : null, monthsCrossed: adv.monthsCrossed||0, examTriggered: !!adv.examTriggered, examType: adv.examType||null, examCheck, studyCountAtExam: studyCountBeforeAdvance, interestCountAtExam: interestCountBeforeAdvance, deathForeshadowNow: !!adv.deathForeshadowNow, window: adv.window||null, prologue: wasPrologue,
-    focus, fromChoice, seek, cashStart, sideGigOffers, relationEvent };
+    focus, fromChoice, seek, cashStart, orderNotice, relationEvent };
   // 十八、敘事節奏（2026-09-28）：呼叫AI之前由程式定好場景條件(學生時期)與劇情線/角色輪替的要求，重新生成時沿用同一組
   timeCtx.scenePlan = buildScenePlan(state, { focus, prologue: wasPrologue, skip: !!adv.bigJump, seek, actionText,
     examTriggered: !!adv.examTriggered, examType: adv.examType, segKey: adv.segKey, segTurn: adv.segTurn, half: adv.half, holiday: !!adv.holiday });
@@ -7701,6 +8183,8 @@ async function takeTurn(actionText, cost){
   timeCtx.friendNews = wasPrologue ? null : takeFriendNews(state);           // 四、4.7.4：熟悉朋友的轉折／重大事件，一回合最多一件
   timeCtx.socialFeed = wasPrologue ? null : pickSocialFeed(state, [seek, timeCtx.friendNews && timeCtx.friendNews.name]); // 四、4.6.8
   timeCtx.friendOpportunity = wasPrologue ? null : takeFriendOpportunity(state); // 三、3.5.5：朋友帶來的機會
+  timeCtx.deviation = rollChoiceDeviation(state, { prologue: wasPrologue, fromChoice, whitelist: !!adv.examTriggered || !!programEventNow(state) || !!(timeCtx.scenePlan && timeCtx.scenePlan.mode==="override" && timeCtx.scenePlan.reason!=="player_named") }); // 一、1.2.17
+  timeCtx.relationScene = wasPrologue ? null : prepareRelationScene(state, actionText); // 四、4.8：上一回合告白的回應／擲骰結果、玩家提分手、排定的分手場面(deviation要先擲，才看得到待回應的告白)
   timeCtx.expenseMentions = state.pendingExpenseMentions || []; state.pendingExpenseMentions = []; // 一、1.2.15
   // 十八、18.12（2026-09-29 A7）：這回合指定為主角日常場景時，取代18.2「跟重心相關／換到別處」的擲骰(考試、事件等覆寫仍優先)
   if(timeCtx.rhythm.daily_scene_now && timeCtx.scenePlan && timeCtx.scenePlan.mode!=="override")
@@ -7935,7 +8419,7 @@ function idleResolvePendingPopups(s, record){
     if(s.mealJustUnlocked){ s.mealJustUnlocked = false; continue; }
     if(s.pendingSideBusinessCardId){
       const card = (s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId); s.pendingSideBusinessCardId = null;
-      if(card){ snap("sideBusiness", { pendingSideBusinessCardId: card.id }); const k = idleChooseOption(s, IDLE_POPUP_MAP.sideBusiness); card.sideBusinessStatus = k; if(k==="formal") card.sideBusinessSince = s.turnCount; if(k!=="kept") scheduleFirstSideGigOffer(s, card); s.sideBusinessEventLog = { category:card.category, choice:k }; decide("sideBusiness", k); }
+      if(card){ snap("sideBusiness", { pendingSideBusinessCardId: card.id }); const k = idleChooseOption(s, IDLE_POPUP_MAP.sideBusiness); card.sideBusinessStatus = k; if(k==="formal") card.sideBusinessSince = s.turnCount; s.sideBusinessEventLog = { category:card.category, choice:k }; decide("sideBusiness", k); }
       continue;
     }
     if(s.pendingMajorSelection){
@@ -8057,8 +8541,7 @@ function simulateIdleRound(s, index){
   }
   applyMonthlySettlement(s, adv.monthsCrossed||0);
   // 八、8.11（2026-09-29 A4）：放置期間照樣有人下單，接到就當回合交件(照建議的訂單大小入帳)
-  const idleOffers = prepareSideGigTurn(s);
-  if(idleOffers.length) applySideGigDeliveries(s, idleOffers.map(o=>({ category:o.category, size:o.suggested_size })));
+  prepareOrderTurn(s, null); idleOrderRound(s); s.orderDeliveredLast = null; // 八、8.13：放置期間只推進已有的訂單，不登記新單；交件場面不留到回來後
   const tag = pickIdleTag(s);
   applyIdleTag(s, tag);
   record.tag = tag;
@@ -8136,7 +8619,7 @@ function signed(n){ return (n>=0?"+":"−") + Math.abs(n).toLocaleString(); }
 // B2（2026-09-29）：結算欄的項目。月收支兩項＋已知來源的收支；差額(列不出來源的)併成「其他收支」
 // 十六、16.11（2026-09-29）：每一項附明細(details：名稱＋金額)。extras的cat是歸屬的項目(打工收入／接案收入／購物／其他收支)，
 // 舊存檔沒有cat的，一筆自成一項(沿用舊顯示)
-const SETTLEMENT_GROUP_ORDER = ["打工收入","接案收入","購物","其他收支"];
+const SETTLEMENT_GROUP_ORDER = ["打工收入","接案收入","副業收入","購物","其他收支"];
 function buildSettlementItems(st, extras, turnNet){
   const items = [];
   if(st && st.months>0){
@@ -8525,6 +9008,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   const studentTurn = !!turnFocus;
   if(studentTurn){ ["health","network","expression"].forEach(k=>{ if((d[k]||0)>0) d[k] = 0; }); }
   const rating = (studentTurn && !(timeCtx && timeCtx.prologue)) ? normalizeResponseRating(r.response_rating, !!(timeCtx && timeCtx.fromChoice)) : null;
+  applyConflictApproach(s, rating); // 18.16.3：靠近／推遠
   const focusChanges = {}; // 重心帶來的變化(畫面橘色)
   // 十三、13.3.3（2026-09-20新增）：慢性病命中機率×0.85（每項疊乘），不封鎖選項本身，只是這次健康加分沒有生效；
   // 同時追蹤「連續健康經營行為」讓慢性病轉為控制良好狀態(控制良好後移除此機率折扣，保留支出與cap影響)
@@ -8644,7 +9128,9 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 
   // 八、興趣系統v1（9/16新增）：AI只分類，候選成立/投入度/自律加成/副業契機一律由程式計算
   // 8.10（2026-09-28）：選興趣重心並指定正式興趣卡的回合，已由applyFocusSettlement直接算一次投入，AI的interest_event不再讀
-  const interestHandledByFocus = !!(turnFocus && turnFocus.key==="interest" && turnFocus.interestCategory);
+  const interestHandledByFocus = !!(turnFocus && ((turnFocus.key==="interest" && turnFocus.interestCategory) || (turnFocus.key==="work" && turnFocus.gigCategory)));
+  // 一、1.2.18（2026-09-30）：interest_event有reaction時必須附category(重心為「興趣:X」由程式記錄的回合除外)，缺少就寫入錯誤紀錄
+  if(!interestHandledByFocus && r.interest_event && r.interest_event.reaction && !r.interest_event.category) addReviewFlag(s, "interest_event_no_category", "interest_event有reaction卻沒有category");
   if(!interestHandledByFocus){
     applyInterestEvent(s, r.interest_event);
     applyInterestCost(s, r.interest_event); // 8.4（2026-09-27）：興趣的代價
@@ -8721,7 +9207,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     s.cash += amt;
     if(amt) settlementExtras.push({ label: String(tx.label||"其他收支").slice(0,16), amount: amt, cat:"其他收支" });
   });
-  applySideGigDeliveries(s, r.side_gig_delivery); // 八、8.11（2026-09-29 A4）：交件一次入帳，金額由程式決定
+  s.lastDeviated = !!(timeCtx && timeCtx.deviation); // 一、1.2.17：連續兩回合不偏離
+  applyOrderResult(s, r, turnFocus); // 八、8.13（2026-09-30）：登記新訂單、推進一格、完成就交件入帳，金額由程式決定
   // QA 34.13#2（2026-09-29）：購物金額要在接案入帳之後才開始量，否則接案收入會被算成「購物 +X」，再用「其他收支 −X」抵銷
   const cashBeforePurchase = s.cash;
   const purchaseNote = applyAppearanceShoppingResult(s, r); // 十七、17.1.2／17.3（2026-09-28）
@@ -8769,6 +9256,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     }
   }
 
+  const newlyMet = []; // 第一次認識的人：關係提示寫「認識了○○」
   (r.new_characters||[]).forEach(nc=>{
     if(!nc.name) return;
     let name = String(nc.name).trim();
@@ -8791,6 +9279,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
       gender: resolveNewCharacterGender(nc), // 4.1.3：讀AI給的gender，缺漏或不合法時客戶端補骰
       dialogueStyle: DIALOGUE_STYLE_LIMITS[nc.dialogue_style] ? nc.dialogue_style : "normal", // 一、1.2.8.4.2：建卡時設定一次，之後固定不變
       style: NPC_STYLES.includes(nc.style) ? nc.style : null, // 四、4.1相處風格(2026-09-28)：第一次登場由AI判斷，之後固定
+      nameKnown: nc.name_known===false ? false : undefined, // QA 34.15 #4：主角還不知道對方名字(對方沒自我介紹、沒被叫出名字)；只存false，沒有這欄＝已知
       affinity: clamp(nc.initial_affinity ?? 50,0,100),
       summary:"", lastTurn:s.turnCount, active:true, isChild:!!nc.is_child,
       origin: nc.origin||"", // 四、4.1（9/19新增）：認識時間／來源，AI建立新角色卡時提供
@@ -8806,7 +9295,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     // 四、4.2.2（9/19新增）：is_child是既有結構化訊號，生育/領養自動判定完成
     if(nc.is_child && s.milestones.first_child!=="completed") s.milestones.first_child = "completed";
     // 十八、18.7：新角色登場的回合(不含家人、子女)，供「滾動6回合至少1位新角色」判斷
-    if(!nc.is_child && !familyRoleOf(nc.relation)) s.newCharTurns = (s.newCharTurns||[]).filter(t=>t > s.turnCount-12).concat([s.turnCount]);
+    if(!nc.is_child && !familyRoleOf(nc.relation)){ s.newCharTurns = (s.newCharTurns||[]).filter(t=>t > s.turnCount-12).concat([s.turnCount]); newlyMet.push(name); }
   });
   // 7.3.2（2026-09-27）：系統判定出生/領養但AI沒有建子女卡時，程式補一張(名字先用暫名，之後AI可在敘事裡取名)
   if(s.birthNow && !s.birthNow.created){
@@ -8828,6 +9317,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   let ratingTargetApplied = false;
   // 4.1.1：離婚在回合之間的彈窗結算（finalizeDivorce），先暫存在pendingRelationshipHints，由敘事承接離婚的這一回合一起提示
   const relationshipHintCandidates = (s.pendingRelationshipHints||[]).slice();
+  newlyMet.forEach(n=>{ if(!(s.characters||[]).find(c=>c.name===n && c.nameKnown===false)) relationshipHintCandidates.push({ tier:2, text:`認識了${n}` }); }); // 名字還不知道的人，等主角知道名字時才提示
+  applyNamesRevealed(s, r).forEach(n=>relationshipHintCandidates.push({ tier:2, text:`認識了${n}` })); // QA 34.15 #4：名字被主角知道了
   s.pendingRelationshipHints = [];
   (r.character_updates||[]).forEach(cu=>{
     const c = s.characters.find(x=>x.name===cu.name);
@@ -8871,7 +9362,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     }
     const nowLabel = relationshipStatusLabel(c);
     if(nowLabel !== before.label){
-      relationshipHintCandidates.push({ tier:2, text:`和${c.name}的關係好像不一樣了，現在更像是「${nowLabel}」` });
+      relationshipHintCandidates.push({ tier:2, text: labelChangeHint(c.name, before.label, nowLabel) });
       return;
     }
     if(delta!==0){
@@ -8944,7 +9435,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   if(breakthroughFired && s.stageAccum) s.stageAccum.breakthroughEvents.push(breakthroughFired.label);
 
   const tagAge = structured ? s.age : ageAtEvent;
-  const tagLabel = structured ? timeCtx.label : null;
+  const tagLabel = structured ? labelWithMonth(timeCtx.label, timeCtx.window) : null; // 十五、15.8：日記、人生之書、下載紀錄的回合標題加月份
 
   // 四、4.2.2（9/19新增）：achievement/setback類型受每人生階段2次上限管制，程式擋下超額觸發時整個不記錄，
   // 避免AI過度觸發把履歷洗成流水帳；其餘類型（既有里程碑等）不受影響，維持原本行為
@@ -8964,7 +9455,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   if(timeCtx && typeof timeCtx.cashStart==="number"){
     const pre = [];
     if(s.partTimeEventLog && s.partTimeEventLog.earning) pre.push({ label:"打工收入", amount: s.partTimeEventLog.earning, cat:"打工收入" });
-    if(s.sideGigIncomeNow) (s.sideGigIncomeNow.deliveries||[]).forEach(d=>pre.push({ label: (d.description || `${d.category}${SIDE_GIG_SIZE_LABELS[d.size]||""}`).slice(0,16), amount: d.amount, cat:"接案收入" }));
+    if(s.sideGigIncomeNow) (s.sideGigIncomeNow.deliveries||[]).forEach(d=>pre.push({ label: (d.description || `${d.category}${SIDE_GIG_SIZE_LABELS[d.size]||""}`).slice(0,16), amount: d.amount, cat: d.cat || "接案收入" }));
     // 16.11：程式產生的一次性收支(醫療費、創業資金、遺產……)帶名稱併進「其他收支」的明細
     (s.cashLedger||[]).forEach(([label, amount])=>pre.push({ label, amount, cat:"其他收支" }));
     s.cashLedger = [];
@@ -8998,6 +9489,8 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   const purchaseNotes = [s.carryPurchaseNote, purchaseNote].filter(Boolean);
   s.carryPurchaseNote = null;
 
+  applyRelationScene(s, timeCtx && timeCtx.relationScene, relationshipHintCandidates); // 四、4.8：成立／分手場面同一回合的提示
+  applyConfessionReports(s, r); // 四、4.8：旁白回報的告白
   // 四、4.1.1：候選依tier排序（1戀愛狀態轉換／2級距改變／3一般累積），每回合最多顯示RELATIONSHIP_HINT_MAX_PER_TURN則；
   // Array.prototype.sort為穩定排序，同tier內維持原本互動發生的順序
   const relationshipHints = relationshipHintCandidates
@@ -9018,10 +9511,10 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     sceneDate = calFormat(win.start + off);
   }
   // 十八、敘事節奏（2026-09-28，取代一、1.2.9.7的伏筆記帳）：劇情線、焦點角色由程式記錄；場景類別依AI事後回報計連續次數(學生時期)
-  applyNarrativeRhythmResult(s, r, { prologue: !!(timeCtx && timeCtx.prologue) });
+  applyNarrativeRhythmResult(s, r, { prologue: !!(timeCtx && timeCtx.prologue), plan: timeCtx && timeCtx.scenePlan, gigCardId: timeCtx && timeCtx.focus && timeCtx.focus.gigCardId });
   // 十八、18.13（2026-09-29 A10）：約定的新增、兌現/延期/取消；淡出中的約定在角色出場後移除
   { const lastAppear = (s.appearLog||[]).slice(-1)[0]; applyPromiseResults(s, r, timeCtx && timeCtx.window, new Set(lastAppear && lastAppear.turn===s.turnCount ? lastAppear.names : [])); }
-  if(timeCtx && timeCtx.scenePlan) recordSceneCategory(s, r.scene_category);
+  if(timeCtx && timeCtx.scenePlan) recordSceneCategory(s, s.placeCatNow || r.scene_category); // 18.15：類別以地點名單為準，scene_category只當舊回報的退路
   // 一、1.2.9.11.3（2026-09-24新增）：敘事分成「行動結果」＋「時間推進後的新場景」兩段依序呈現；
   // 1.2.8.4.2：{{名字|台詞}}依角色dialogue_style截斷後換成「台詞」，沒用這個格式的文字照常顯示
   // 十六、16.3.8（2026-09-28）：行動結果與新場景分開存，畫面上中間加分隔線；text仍存兩段合併的全文(回憶錄、AI的recent_turns等沿用)
@@ -9041,14 +9534,15 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 二、2.6.2（2026-09-28）：學生時期的數值標記依來源上色——重心帶來的橘色、回應(及其他)帶來的紫色
   const focusMarks = studentTurn ? buildFocusMarks(s, turnFocus, focusChanges) : undefined; // 沒有任何重心變化時也要留空物件：代表這則用來源上色
   s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", settlement:compactSettlementForLog(s.lastSettlement), statChanges, focusMarks, relationshipHints,
-    /* B5（2026-09-29）：這回合的重心也記在日記上(選擇紀錄、下載故事) */ focusLabel: turnFocus ? (turnFocus.key==="interest" ? (turnFocus.interestCategory ? `興趣：${turnFocus.interestCategory}` : "興趣：嘗試新的") : turnFocus.label) : undefined,
+    /* B5（2026-09-29）：這回合的重心也記在日記上(選擇紀錄、下載故事) */ focusLabel: turnFocus ? (turnFocus.key==="interest" ? (turnFocus.interestCategory ? `興趣：${turnFocus.interestCategory}` : "興趣：嘗試新的") : turnFocus.key==="work" ? (turnFocus.gigCategory ? `工作：${turnFocus.gigCategory}` : "工作：打工") : turnFocus.label) : undefined,
     /* 二、2.4.2（A2）：分數組成在公布時攤開 */ examNote: (timeCtx && timeCtx.examCheck) ? `${timeCtx.examCheck.examType}：${examBreakdownText(timeCtx.examCheck)}` : undefined, purchaseNote: purchaseNotes.join("；")||undefined, levelNotes: interestLevelNote||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
   // 足夠涵蓋單一人生全程(~1200-1400回合)不流失；每世reincarnate/succeedAsChild時log都會重置為[]，不會跨世累積
   if(s.log.length>2000) s.log.shift();
   pruneSettlementDetails(s); // 十六、16.11：明細只留最近30則日記
 
-  s.choices = r.choices || [];
+  applyNamesRevealed(s, r); // QA 34.15 #4：名字被主角知道的角色解除
+  s.choices = sanitizeChoiceNames(s, enforceConfessionChoices(s, r.choices || []));
   { const invite = takeInviteChoice(s); // 四、4.7.3【邀】：只出現這一回合的相關選項；沒去不扣好感
     if(invite && !s.choices.includes(invite)) s.choices = s.choices.concat([invite]); }
   // 下載故事(測試選單)用：這回合給玩家的選項跟著日記存；旁白回傳的完整資料只在測試瀏覽器留最近10回合(不含正文，正文已在日記)
@@ -9592,7 +10086,7 @@ function showBookToast(){
   div.id = "book-toast";
   div.className = "book-toast";
   div.setAttribute("role","status");
-  div.textContent = "📚 新的一章已經寫好";
+  div.innerHTML = `${icon("book")} 新的一章已經寫好`;
   div.onclick = ()=>{ div.remove(); openBookPage(state.book, { owner: state.name }); };
   document.body.appendChild(div);
   setTimeout(()=>div.remove(), 6000);
@@ -9600,7 +10094,7 @@ function showBookToast(){
 function bookLinkText(s){
   const b = s.book;
   const done = b ? b.chapters.filter(c=>c.status==="done").length : 0;
-  return `📚 人生之書（${done}章${b && b.unseen ? `・${b.unseen}章新` : ""}）`;
+  return `人生之書（${done}章${b && b.unseen ? `・${b.unseen}章新` : ""}）`;
 }
 // 十六、16.3.4：選單大卡顯示「人生之書（N章）」；結局頁等其他入口仍用bookLinkText()整行文字
 function bookMenuCountText(s){
@@ -9612,7 +10106,7 @@ function updateBookLink(){
   const a = document.getElementById("link-book");
   if(!a || !state) return;
   const n = a.querySelector(".n");
-  if(n) n.textContent = bookMenuCountText(state);
+  if(n) n.textContent = `第${state.reincarnations+1}世`; // 16.17：人生之書大格的即時資訊＝第幾世
   else a.textContent = bookLinkText(state);
 }
 let bookPageCtx = null; // { book, readOnly, owner, openId }
@@ -10042,9 +10536,9 @@ function renderSlotPicker(){
     ${s.notice ? `<p class="glass" style="padding:10px 14px;font-size:13px;text-align:left;">${escapeHtml(s.notice)}</p>` : ``}
     <p style="color:var(--ink-soft);font-size:12.5px;">${s.fromCloud ? "拿回的是最後一次「存到雲端」的進度，會放進這台裝置空著的格子" : (CLOUD_SAVE_ENABLED ? "這組金鑰" : "這台裝置")+"最多可以同時進行3段人生；已結束的人生收在「人生回顧」，不佔格子"}</p>
     <div style="text-align:left;">${cards}</div>
-    ${s.wallet>0 ? `<p style="font-size:12.5px;">👛 金鑰錢包：${s.wallet} 點</p>` : ``}
-    ${s.fromCloud ? `` : `<button class="ghost-btn" id="btn-archive-list" style="margin-top:10px;">📚 人生回顧</button>`}
-    ${!CLOUD_SAVE_ENABLED && !s.fromCloud ? `<button class="ghost-btn" id="btn-cloud-restore" style="margin-top:10px;">🔑 輸入金鑰，拿回存到雲端的進度</button>` : ``}
+    ${s.wallet>0 ? `<p style="font-size:12.5px;">${icon("wallet")} 金鑰錢包：${s.wallet} 點</p>` : ``}
+    ${s.fromCloud ? `` : `<button class="ghost-btn" id="btn-archive-list" style="margin-top:10px;">${icon("book")} 人生回顧</button>`}
+    ${!CLOUD_SAVE_ENABLED && !s.fromCloud ? `<button class="ghost-btn" id="btn-cloud-restore" style="margin-top:10px;">${icon("key")} 輸入金鑰，拿回存到雲端的進度</button>` : ``}
     <button class="ghost-btn" id="btn-slot-home" style="margin-top:10px;">← 回首頁</button>
   </div>`;
 }
@@ -10220,7 +10714,7 @@ function renderFamilyChronicleModal(list){
   div.className = "modal-backdrop";
   div.innerHTML = `<div class="modal"><h3>家族年表</h3>
       ${(list||[]).map((g,i)=>`<button class="ghost-btn fam-gen-btn" data-i="${i}" style="display:block;width:100%;text-align:left;margin:4px 0;">第${g.generation}代・${escapeHtml(g.name||"")}・${g.age||"?"}歲</button>
-        ${g.book ? `<button class="ghost-btn fam-book-btn" data-i="${i}" style="display:block;width:100%;text-align:left;margin:0 0 8px;padding-left:22px;font-size:13px;">📚 ${escapeHtml(g.name||"")}的人生之書（${g.book.chapterCount||0}章）</button>` : ``}`).join("")}
+        ${g.book ? `<button class="ghost-btn fam-book-btn" data-i="${i}" style="display:block;width:100%;text-align:left;margin:0 0 8px;padding-left:22px;font-size:13px;">${icon("book")} ${escapeHtml(g.name||"")}的人生之書（${g.book.chapterCount||0}章）</button>` : ``}`).join("")}
       <div id="fam-book-msg" style="font-size:12px;color:var(--ink-soft);min-height:1em;"></div>
       <button class="primary-btn" id="btn-fam-close" style="margin-top:10px;">關閉</button></div>`;
   document.body.appendChild(div);
@@ -10257,7 +10751,7 @@ function renderArchiveView(){
     ${a.ending?.epitaph ? `<div class="end-title" style="font-size:17px;line-height:1.7;margin:14px 0;text-align:center;">${escapeHtml(a.ending.epitaph)}</div>` : ``}
     <button class="ghost-btn" id="btn-archive-traits" style="display:block;margin:0 auto 10px;">看看這一生的樣子</button>
     ${(a.familyChronicle && a.familyChronicle.length) ? `<button class="ghost-btn" id="btn-archive-family" style="display:block;margin:0 auto 10px;">家族年表（前${a.familyChronicle.length}代）</button>` : ``}
-    ${(a.book && a.book.chapters && a.book.chapters.length) ? `<button class="ghost-btn" id="btn-archive-book" style="display:block;margin:0 auto 10px;">📚 人生之書（${a.book.chapters.filter(c=>c.status==="done").length}章）</button>` : ``}
+    ${(a.book && a.book.chapters && a.book.chapters.length) ? `<button class="ghost-btn" id="btn-archive-book" style="display:block;margin:0 auto 10px;">${icon("book")} 人生之書（${a.book.chapters.filter(c=>c.status==="done").length}章）</button>` : ``}
     <div class="journal" style="max-height:none;">${logHtml || `<p style="color:var(--ink-soft);">沒有留下紀錄。</p>`}</div>
     <button class="ghost-btn" id="btn-archive-view-back" style="margin-top:10px;">← 回到人生回顧</button>
   </div>`;
@@ -10417,6 +10911,37 @@ let prevEntryExpanded = false; // （16.3.8起不再使用，保留宣告避免�
 const expandedOldEntries = new Set(); // 16.3.2／16.3.8.2（2026-09-28）：主畫面上展開中的舊回合(日記索引)
 let pendingChoiceIdx = null;   // 16.4.2第1步：等待旁白時，被按下的選項保持原樣、其他淡成半透明
 let lastKnownWallet = 0;       // 十、10.3.3金鑰錢包：選人生畫面讀到的數字(封測期間都是0)
+// 十六、16.17（2026-09-30）：介面圖示一律用同一套Lucide風格細線條圖示(路徑內嵌，沒有外部相依)，不用emoji。平常暖棕色、按下或選中時珊瑚紅(CSS)
+const ICON_PATHS = {
+  menu:'<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
+  x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  zap:'<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  chart:'<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+  palette:'<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+  briefcase:'<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
+  book:'<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+  scroll:'<path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>',
+  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  pin:'<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  wallet:'<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+  help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  save:'<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+  send:'<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
+  undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
+  timer:'<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
+  flask:'<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/>',
+  package:'<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/>',
+  cap:'<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>',
+  tree:'<circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4m0 0-7 6m7-6 7 6"/>',
+  user:'<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  cloud:'<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  key:'<path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/>',
+  refresh:'<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  play:'<polygon points="6 3 20 12 6 21 6 3"/>',
+  pause:'<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>'
+};
+function icon(name){ return `<svg class="ic-svg" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]||""}</svg>`; }
 function stageLabelForStamp(s){ return stageLabel(s.age); }
 function renderAgeStamp(age, label, extraClass){
   // 階段名稱較長(例如「大學／技職」)時縮小字級、允許換行，避免擠出圓框
@@ -10441,7 +10966,7 @@ function renderEntryBody(e, withTag){
     ? `${resultText ? renderParagraphs(resultText, true) : ``}${resultText && sceneText ? `<hr class="turn-divider" aria-hidden="true">` : ``}${renderParagraphs(sceneText, true)}`
     : renderParagraphs(text, true);
   return `${e.action ? `<div class="choice-line">→ ${escapeHtml(e.action)}${e.focusLabel ? `<span class="focus-note">　重心：${escapeHtml(e.focusLabel)}</span>` : ``}</div>` : ``}${withTag ? `<div class="age-tag">${renderEntryTag(e)}</div>` : ``}${story}
-    <div class="entry-meta">${(withTag && e.genMs!=null && devToolsOn()) ? `<p class="small-line dev-gen-time">⏱ AI生成 ${(e.genMs/1000).toFixed(1)} 秒（測試模式）</p>` : ``}${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}</div>`;
+    <div class="entry-meta">${(withTag && e.genMs!=null && devToolsOn()) ? `<p class="small-line dev-gen-time">${icon("timer")} AI生成 ${(e.genMs/1000).toFixed(1)} 秒（測試模式）</p>` : ``}${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}</div>`;
 }
 // 16.3.2（2026-09-28改定）：最新一回合完整卡片之上，保留更早的3個回合，各收合成一行摘要，點開展開(展開後同樣套用16.3.8.2排版)
 const OLD_ENTRY_SUMMARY_COUNT = 3;
@@ -10488,7 +11013,7 @@ function renderStory(s, loadingTurn){
 function renderPlaying(loadingTurn){
   const s = state;
   const apOut = !apTestFreeActive() && totalAP(s)===0; // 十、10.3.8：點數歸零時選項/自由輸入都停用，直到補回來(10.3.12測試不扣點時不停用)
-  const timeLabel = s.timeState ? computeTimeLabel(s) : stageLabel(s.age);
+  const timeLabel = (s.timeState && computeMonthTitle(s)) || (s.timeState ? computeTimeLabel(s) : stageLabel(s.age));
   const progress = s.timeState ? computeStageProgress(s) : null;
   const busy = !!loadingTurn;
   const canUndo = !!(s.snapshot && s.undosLeft>0);
@@ -10498,20 +11023,14 @@ function renderPlaying(loadingTurn){
       ${renderAgeStamp(s.age, stageLabelForStamp(s), "tb-stamp")}
       <div class="tb-mid">
         <div class="tb-stage">${escapeHtml(timeLabel)}</div>
-        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）" : apTooltipText(s)}">⚡ 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
-      </div>
-      <div class="tb-btns">
-        ${devToolsOn() ? `<button class="round-btn test-btn" data-panel="test" aria-label="測試選單" title="測試選單（開發用）">🧪</button>` : ``}
-        <button class="round-btn" data-panel="stats" aria-label="數值" title="數值">📊</button>
-        <button class="round-btn" data-panel="roster" aria-label="通訊錄" title="通訊錄">👥</button>
-        <button class="round-btn" data-panel="menu" aria-label="選單" title="選單">☰</button>
+        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）" : apTooltipText(s)}">${icon("zap")} 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
       </div>
     </div>
     <div class="tb-sub">
       ${USE_MOCK ? `<span class="demo-tag" title="目前用規則模擬旁白，不是真的AI生成">示範模式</span>` : ``}
       <span id="sync-tag-wrap">${syncTagHTML()}</span>
       ${(()=>{ const cards = (s.interestCandidates||[]).filter(c=>(c.status==="active"||c.status==="dormant") && SIDE_BUSINESS_LABELS[c.sideBusinessStatus]); return cards.map(c=>`<span class="demo-tag side-tag">副業：${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}${cards.length>1||c.status==="dormant" ? "（"+escapeHtml(c.category)+(c.status==="dormant" ? "・久未投入" : "")+"）" : ""}</span>`).join(""); })()}
-      <span class="right">${progress ? `${escapeHtml(progress.label)} ${progress.current}/${progress.total}　` : ``}存款 <b id="tb-cash">${s.cash.toLocaleString()}</b></span>
+      <span class="right">${progress ? `${escapeHtml(progress.shortLabel||progress.label)} ${progress.current}/${progress.total}　` : ``}存款 <b id="tb-cash">${s.cash.toLocaleString()}</b></span>
     </div>
   </header>
   <main class="journal">${renderStory(s, loadingTurn)}</main>
@@ -10520,13 +11039,14 @@ function renderPlaying(loadingTurn){
     ${renderFocusBar(s, apOut||busy)}
     ${s.seekTarget ? `<div class="seek-tag">${characterState((s.characters||[]).find(c=>c.name===s.seekTarget))==="deceased" ? "回憶" : "想找"}：${escapeHtml(s.seekTarget)}<button id="btn-seek-clear" aria-label="取消想找" ${busy?"disabled":""}>×</button></div>` : ``}
     <div class="custom-row" style="margin-top:0;">
+      <button id="btn-drawer" class="menu-fab" aria-label="${drawerOpen ? "關閉選單" : "打開選單"}" aria-expanded="${drawerOpen}">${icon(drawerOpen ? "x" : "menu")}</button>
       <textarea id="custom-input" rows="3" placeholder="${focusModeActive(s) ? "寫下你想說或想做的事，也可以寫這段時間想怎麼過" : "或者，自己寫下你想做的事…"}" ${(apOut||busy)?"disabled":""}></textarea>
-      <button id="btn-custom" class="send-btn" aria-label="送出" title="每回合消耗 1 點行動點" ${(apOut||busy)?"disabled":""}>➤</button>
+      <button id="btn-custom" class="send-btn" aria-label="送出" title="每回合消耗 1 點行動點" ${(apOut||busy)?"disabled":""}>${icon("send")}</button>
     </div>
     <div id="custom-input-error" class="input-error"></div>
     <div class="act-foot">
-      ${canUndo ? `<button class="text-btn" id="btn-undo" ${busy?"disabled":""}>↺ 反悔上一步（剩${s.undosLeft}次）</button>`
-        : (s.undoUnavailableHere && s.undosLeft>0 ? `<span><button class="text-btn" id="btn-undo" disabled>↺ 反悔上一步</button><span class="undo-note">在這台裝置上還沒有可以回到的時間點</span></span>` : `<span></span>`)}
+      ${canUndo ? `<button class="text-btn" id="btn-undo" ${busy?"disabled":""}>${icon("undo")} 反悔上一步（剩${s.undosLeft}次）</button>`
+        : (s.undoUnavailableHere && s.undosLeft>0 ? `<span><button class="text-btn" id="btn-undo" disabled>${icon("undo")} 反悔上一步</button><span class="undo-note">在這台裝置上還沒有可以回到的時間點</span></span>` : `<span></span>`)}
       <span id="custom-input-count">0／${CUSTOM_INPUT_MAX_CHARS}</span>
     </div>
   </footer>
@@ -10534,11 +11054,13 @@ function renderPlaying(loadingTurn){
   ${renderStatsPanel(s, loadingTurn)}
   ${renderRosterPanel(s)}
   ${renderMenuPanel(s)}
+  ${renderDrawer(s)}
   ${devToolsOn() ? renderTestPanel(s) : ``}`;
 }
 // 二、2.6.3／十六、16.3.3（2026-09-28）：重心按鈕放在自由輸入框上方，預設亮上一回合的選擇；只在學生時期出現。
 // 「興趣」只有一顆：有正式興趣卡時寫興趣名稱，再點一次可切換(所有正式興趣卡＋嘗試新的)；沒有可聯絡的家人時不顯示「家人」
 let interestPickerOpen = false;
+let workPickerOpen = false; // 二、2.8.2：「工作」按鈕展開清單
 // 按重心按鈕會重畫整個畫面，輸入框裡還沒送出的字要留著
 function keepDraftAndRender(){
   const el = document.getElementById("custom-input");
@@ -10555,14 +11077,22 @@ function renderFocusBar(s, disabled){
   const cards = formalInterestCards(s);
   const chosenCard = currentInterestChoice(s);
   const interestLabel = chosenCard ? `興趣：${chosenCard.category}${cards.length ? " ▾" : ""}` : (cards.length ? "興趣：嘗試新的 ▾" : "興趣");
-  const btn = k=>`<button class="focus-btn${key===k?" on":""}" data-focus="${k}" role="radio" aria-checked="${key===k}" ${disabled?"disabled":""}>${escapeHtml(k==="interest" ? interestLabel : FOCUS_LABELS[k])}</button>`;
+  const gigCards = sideGigCards(s);
+  const workGig = currentWorkChoice(s);
+  const workLabel = gigCards.length ? `工作：${workGig ? workGig.category : "打工"} ▾` : "工作";
+  const btn = k=>`<button class="focus-btn${key===k?" on":""}" data-focus="${k}" role="radio" aria-checked="${key===k}" ${disabled?"disabled":""}>${escapeHtml(k==="interest" ? interestLabel : k==="work" ? workLabel : FOCUS_LABELS[k])}</button>`;
   const keys = FOCUS_KEYS.filter(k=>k!=="family" || hasFamily);
   const picker = (interestPickerOpen && cards.length && !disabled) ? `<div class="interest-pick" id="interest-pick">
       ${cards.map(c=>`<button class="focus-btn${chosenCard && chosenCard.id===c.id?" on":""}" data-interest-card="${escapeHtml(c.id)}">${escapeHtml(c.category)}</button>`).join("")}
       <button class="focus-btn${!chosenCard?" on":""}" data-interest-card="new">嘗試新的</button>
     </div>` : ``;
-  const hint = key==="interest" && !chosenCard ? "主要給興趣投入，下個場景可能在嘗試新的事物" : FOCUS_HINTS[key];
-  return `<div class="focus-row" role="radiogroup" aria-label="這段時間的重心">${keys.map(btn).join("")}</div>${picker}<div class="focus-hint">${escapeHtml(hint)}</div>`;
+  const workPicker = (workPickerOpen && gigCards.length && !disabled) ? `<div class="interest-pick" id="work-pick">
+      <button class="focus-btn${!workGig?" on":""}" data-work-pick="part">打工</button>
+      ${gigCards.map(c=>`<button class="focus-btn${workGig && workGig.id===c.id?" on":""}" data-work-pick="${escapeHtml(c.id)}">${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}：${escapeHtml(c.category)}</button>`).join("")}
+    </div>` : ``;
+  const hint = key==="interest" && !chosenCard ? "主要給興趣投入，下個場景可能在嘗試新的事物"
+    : (key==="work" && workGig) ? "主要推進手上的訂單（也算一半興趣投入），下個場景可能在處理訂單的地方" : FOCUS_HINTS[key];
+  return `<div class="focus-row" role="radiogroup" aria-label="這段時間的重心">${keys.map(btn).join("")}</div>${picker}${workPicker}<div class="focus-hint">${escapeHtml(hint)}</div>`;
 }
 function sheetHead(title){
   return `<div class="sheet-grip"></div><div class="sheet-head"><h3>${title}</h3><button class="sheet-close" aria-label="關閉">×</button></div>`;
@@ -10620,25 +11150,116 @@ function renderRosterPanel(s){
     </div>
   </section>`;
 }
-function renderMenuPanel(s){
-  return `<section class="sheet${openPanel==="menu"?" open":""}" id="panel-menu" aria-label="選單">
-    ${sheetHead("選單")}
-    <div class="menu-cards">
-      <button class="menu-card glass" id="link-memoir"><div class="ic">📖</div><div class="t">回憶錄</div><div class="n">（${s.log.length + (s.logOffset||0)}則）</div></button>
-      <button class="menu-card glass" id="link-book"><div class="ic">📚</div><div class="t">人生之書</div><div class="n">${bookMenuCountText(s)}</div></button>
+// 十六、16.17（2026-09-30）：底部選單抽屜三組——我的人生／身邊的世界／其他；大格附一行即時資訊、少數格有小紅點
+// 分組原則：跟玩家這一世的自己有關→我的人生；跟別人或周遭世界有關→身邊的世界；跟遊戲本身有關(說明、存檔、設定)→其他
+let drawerOpen = false;
+function drawerTile(id, ico, title, info, opts){
+  const o = opts||{};
+  return `<button class="tile${o.dev?" dev":""}" id="${id}"${o.panel?` data-panel="${o.panel}"`:``}>${o.dot?`<span class="dot" aria-label="有新消息"></span>`:``}<div class="base">${icon(ico)}</div><div class="t">${title}</div><div class="n">${info==null?"":info}</div></button>`;
+}
+function gigNeedsAttention(s){ return sideGigCards(s).some(c=>activeOrders(c).some(o=>s.turnCount > o.due || o.due - s.turnCount <= 1)); }
+function newCharacterLastTurn(s){ const last = (s.appearLog||[]).slice(-1)[0]; return !!(last && last.turn===s.turnCount && (s.newCharTurns||[]).includes(s.turnCount)); }
+function drawerInterestInfo(s){
+  const cards = interestCardsForPanel(s).slice().sort((a,b)=>(b.lastEngagedRound||0)-(a.lastEngagedRound||0));
+  return cards.length ? `${escapeHtml(cards[0].category)}・${interestLevelName(Math.round(cards[0].investment||0))}` : "還沒有";
+}
+function renderDrawer(s){
+  const gig = sideGigCards(s);
+  const mine = [
+    drawerTile("tile-stats","chart","屬性",`才識 ${Math.round(s.stats.knowledge)}`,{panel:"stats"}),
+    drawerTile("link-interests","palette","興趣",drawerInterestInfo(s)),
+    gig.length ? drawerTile("link-gig","briefcase","副業",`進行中 ${gig.reduce((a,c)=>a+activeOrders(c).length,0)} 單`,{dot:gigNeedsAttention(s)}) : ``,
+    drawerTile("link-book","book","人生之書",`第${s.reincarnations+1}世`),
+    drawerTile("link-memoir","scroll","回憶錄",`${s.log.length + (s.logOffset||0)}則`),
+    drawerTile("link-belongings","package","我的東西",`${(s.belongings||[]).length}件`),
+    s.studentCard ? drawerTile("link-student-card","cap","學生證",escapeHtml(s.studentCard.school)) : ``,
+    (s.familyChronicle && s.familyChronicle.length) ? drawerTile("link-family","tree","家族年表",`前${s.familyChronicle.length}代`) : ``
+  ].join("");
+  const world = [
+    drawerTile("tile-roster","users","人物",`${(s.characters||[]).filter(c=>!c.isSelf).length}人`,{panel:"roster",dot:newCharacterLastTurn(s)}),
+    drawerTile("link-places","pin","地點",`${placeVisited(s).length}處`),
+    drawerTile("link-ledger","wallet","帳務",Math.round(s.cash).toLocaleString())
+  ].join("");
+  return `<section class="drawer${drawerOpen?" open":""}" id="drawer" aria-label="選單" aria-hidden="${!drawerOpen}">
+    <div class="drawer-sec">我的人生</div><div class="tiles">${mine}</div>
+    <div class="drawer-sec">身邊的世界</div><div class="tiles">${world}</div>
+    <div class="drawer-sec">其他</div>
+    <div class="bars">
+      <button class="bar-tile" id="link-legend">${icon("help")}玩法與圖例</button>
+      <button class="bar-tile" id="tile-settings" data-panel="menu">${icon("save")}存檔・設定</button>
+      <button class="bar-tile" id="link-about-me">${icon("user")}關於我</button>
+      ${devToolsOn() ? `<button class="bar-tile tile dev" id="tile-test" data-panel="test" style="text-align:left;">${icon("flask")}測試</button>` : ``}
     </div>
-    <div class="menu-sec">這段人生</div>
-    <a class="menu-item" id="link-about-me">🪞 關於我</a>
-    <a class="menu-item" id="link-interests">🎨 我的興趣（${interestCardsForPanel(s).length}項）</a>
-    <a class="menu-item" id="link-belongings">🧺 我的東西（${(s.belongings||[]).length}件）</a>
-    ${s.studentCard ? `<a class="menu-item" id="link-student-card">🎓 學生證（${escapeHtml(s.studentCard.school)}）</a>` : ``}
-    ${(s.familyChronicle && s.familyChronicle.length) ? `<a class="menu-item" id="link-family">🌳 家族年表（前${s.familyChronicle.length}代）</a>` : ``}
-    <a class="menu-item" id="link-idle-toggle">${s.idleEnabled ? "⏸ 放置代活：開" : "▶ 放置代活：關"}</a>
+  </section>`;
+}
+function setDrawer(open){
+  drawerOpen = !!open;
+  const d = document.getElementById("drawer");
+  if(d){
+    const foot = document.querySelector("footer.actions");
+    if(foot) d.style.setProperty("--drawer-bottom", foot.offsetHeight+"px");
+    d.classList.toggle("open", drawerOpen); d.setAttribute("aria-hidden", String(!drawerOpen));
+  }
+  const b = document.getElementById("btn-drawer");
+  if(b){ b.innerHTML = icon(drawerOpen ? "x" : "menu"); b.setAttribute("aria-label", drawerOpen ? "關閉選單" : "打開選單"); b.setAttribute("aria-expanded", String(drawerOpen)); }
+}
+// 帳務：收納每回合的收支明細(16.11)與開銷細項說明(2026-09-29決定)
+function renderLedgerModal(){
+  const s = state;
+  const rows = (s.log||[]).filter(e=>!e.error && e.settlement).slice(-10).reverse();
+  const div = document.createElement("div");
+  div.id = "ledger-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>帳務</h3>
+      <div style="overflow-y:auto;flex:1;text-align:left;">
+        <p style="font-size:15px;margin:0 0 8px;">目前存款 <b>${Math.round(s.cash).toLocaleString()}</b></p>
+        <div class="ic-sub" style="margin-bottom:8px;">每月生活開銷、房租、慢性病費用會依實際過了幾個月自動結算；打工、副業、購物、醫療和意外的錢也都會列在這裡。點結算列裡的項目可以看明細。</div>
+        ${rows.length ? rows.map(e=>`<div class="ic-sub" style="margin:6px 0;"><b>${escapeHtml(e.timeLabel||"")}</b><br>${settlementHtml(e.settlement, e.settlement.balanceAfter ?? s.cash)}</div>`).join("") : `<p style="color:var(--ink-soft);">還沒有收支紀錄。</p>`}
+      </div>
+      <button class="ghost-btn" id="btn-ledger-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-ledger-close").onclick = ()=>div.remove();
+}
+// 十六、16.18 玩法與圖例：本次新增的機制，用白話說明
+function renderLegendModal(){
+  const div = document.createElement("div");
+  div.id = "legend-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal legend" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>玩法與圖例</h3>
+      <div style="overflow-y:auto;flex:1;">
+        <h4>月份怎麼看</h4>
+        <p>畫面最上面的大標題是「年級・學期・月份」，例如「高一・上學期・10月」。下面那行小字是這個學期階段走到哪了，例如「期中準備期 5/6」。每一回合大約是一到兩週，故事裡的時間、節日和季節會跟著月份走。</p>
+        <h4>地點</h4>
+        <p>去過的地方都會記在「地點」裡：那個地方有什麼特別、誰常在那裡、上次是哪個月去的。按「去這裡」只會幫你在輸入框寫好「去○○，」，可以再補上你想做什麼，送出才算一回合、才會花 1 點行動點。關掉的店會變灰、排在最後，不會消失。</p>
+        <h4>這段時間想做什麼</h4>
+        <p>輸入框上方的按鈕是這段時間主要花在哪裡。選「興趣」是專心練那項興趣，投入全部算進去，不會推進訂單；選「工作」再挑「副業」是趕手上的單，訂單會往前一格，同一項興趣也會跟著練到一半的份量。想練功選興趣，想賺錢或怕逾期選工作。你自己寫的話永遠優先。</p>
+        <h4>訂單</h4>
+        <p>副業的訂單會排在訂單簿裡：每一單有交期、進度格和報酬。每回合最多做一格，做滿就會自動交件、錢直接進存款。超過交期一點點還來得及，只是報酬打七折；拖太久客人會取消，介紹人也會覺得尷尬。手上的單有上限，接不下的時候客人只能排隊或婉拒。</p>
+        <h4>曖昧中與在一起</h4>
+        <p>跟某個人互動得多，關係欄會出現「曖昧中」，太冷淡又會退回去。要在一起，必須真的有告白的場面，而且是你自己點頭：對方告白時選「答應」，或是你主動告白（成不成看你們有多熟）。在一起之後，這件事不會再重來一次。分手也一定會有一個場面。</p>
+        <h4>人物</h4>
+        <p>衝突背後，通常有一件沒說出口的在意。</p>
+      </div>
+      <button class="ghost-btn" id="btn-legend-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-legend-close").onclick = ()=>div.remove();
+}
+// 存檔・設定面板(取代原本的選單面板；其餘項目已搬到選單抽屜)
+function renderMenuPanel(s){
+  return `<section class="sheet${openPanel==="menu"?" open":""}" id="panel-menu" aria-label="存檔・設定">
+    ${sheetHead("存檔・設定")}
+    <a class="menu-item" id="link-idle-toggle">${s.idleEnabled ? icon("pause")+" 放置代活：開" : icon("play")+" 放置代活：關"}</a>
     <div class="menu-sec">設定</div>
-    <a class="menu-item" id="link-view-key">🔑 我的復原金鑰</a>
-    ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">☁️ 存到雲端</a>`}
-    ${lastKnownWallet>0 ? `<div class="menu-note">👛 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
-    <a class="menu-item" id="link-switch-life">🔄 切換其他人生</a>
+    <a class="menu-item" id="link-view-key">${icon("key")} 我的復原金鑰</a>
+    ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">${icon("cloud")} 存到雲端</a>`}
+    ${lastKnownWallet>0 ? `<div class="menu-note">${icon("wallet")} 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
+    <a class="menu-item" id="link-switch-life">${icon("refresh")} 切換其他人生</a>
     <a class="menu-item danger" id="link-reset">刪除這段人生</a>
   </section>`;
 }
@@ -10769,7 +11390,7 @@ function ledgerRow(label,val){
 }
 function renderStatChanges(statChanges, focusMarks){
   // 可見數值變化顯示（9/15新增）：只在真的有變化時才顯示。十六、16.3.2（2026-09-28）：改為膠囊標籤，增加淡綠、減少淡珊瑚
-  // 二、2.6.2（2026-09-28）：學生時期依來源上色——重心帶來的橘色，回應(及其他)帶來的紫色；不加小標題
+  // 二、2.6.2（2026-09-28）：學生時期依來源上色——重心帶來的橘色，回應(及其他)帶來的珊瑚色(增加)／灰棕色(減少，2026-09-30由紫色改)；不加小標題
   if(!statChanges && !focusMarks) return ``;
   const cap = (cls, label, v)=>`<span class="cap ${cls}">${label} ${v>0?'+':''}${v}</span>`;
   const parts = [];
@@ -10777,7 +11398,7 @@ function renderStatChanges(statChanges, focusMarks){
     const v = (statChanges||{})[k]||0;
     if(!focusMarks){ if(v) parts.push(cap(v>0?"up":"down", VISIBLE_STAT_LABELS[k], v)); return; }
     const f = (focusMarks.stats||{})[k]||0; // focusMarks是空物件＝這則有重心但沒有重心帶來的數值變化
-    if(v-f) parts.push(cap("resp", VISIBLE_STAT_LABELS[k], v-f));
+    if(v-f) parts.push(cap(v-f>0 ? "resp" : "resp neg", VISIBLE_STAT_LABELS[k], v-f));
     if(f) parts.push(cap("focus", VISIBLE_STAT_LABELS[k], f));
   });
   if(focusMarks) (focusMarks.extra||[]).forEach(t=>parts.push(`<span class="cap focus">${escapeHtml(t)}</span>`));
@@ -10813,7 +11434,7 @@ function rosterCard(c){
   const sub = st==="normal" || label===CHARACTER_STATE_LABELS[st] ? `${category}・${label}` : `${category}・${CHARACTER_STATE_LABELS[st]}`;
   return `<div class="rrow st-${st}" data-npc="${escapeHtml(c.name)}" role="button" tabindex="0">
     <span class="avatar lg${st!=="normal"?" gray":""}">${escapeHtml(String(c.name||"？").slice(0,1))}</span>
-    <div class="who"><div class="nm">${escapeHtml(c.name)}</div><div class="sub">${escapeHtml(sub)}</div></div>
+    <div class="who"><div class="nm">${escapeHtml(c.name)}</div><div class="sub">${escapeHtml(sub)}</div>${(c.cares||[]).length ? `<div class="sub">他在意的，其實是${escapeHtml(c.cares[c.cares.length-1])}</div>` : ``}</div>
     ${renderRelationDots(c, st==="fading")}
   </div>`;
 }
@@ -10923,14 +11544,22 @@ function bindPlaying(){
     };
   });
   // 十六、16.3.4：三個圓形按鈕開關面板；點暗色背景或×關閉
-  document.querySelectorAll(".round-btn[data-panel]").forEach(btn=>{
-    btn.onclick = ()=> setPanel(openPanel===btn.dataset.panel ? null : btn.dataset.panel);
+  document.querySelectorAll("[data-panel]").forEach(btn=>{
+    btn.onclick = ()=>{ setDrawer(false); setPanel(openPanel===btn.dataset.panel ? null : btn.dataset.panel); };
   });
+  // 十六、16.17：輸入框左側的選單鈕開關底部抽屜；抽屜裡的項目點了先收起抽屜
+  const drawerBtn = document.getElementById("btn-drawer");
+  if(drawerBtn) drawerBtn.onclick = ()=>setDrawer(!drawerOpen);
+  document.querySelectorAll("#drawer .tile:not([data-panel]), #drawer .bar-tile:not([data-panel])").forEach(el=>{
+    el.addEventListener("click", ()=>setDrawer(false), true);
+  });
+  const ledgerLink = document.getElementById("link-ledger"); if(ledgerLink) ledgerLink.onclick = renderLedgerModal;
+  const legendLink = document.getElementById("link-legend"); if(legendLink) legendLink.onclick = renderLegendModal;
   const backdrop = document.getElementById("sheet-backdrop");
   if(backdrop) backdrop.onclick = ()=>setPanel(null);
   document.querySelectorAll(".sheet-close").forEach(b=>{ b.onclick = ()=>setPanel(null); });
   // 選單裡的項目：先收起面板再開啟對應畫面(彈窗疊在面板上方會很擠)
-  document.querySelectorAll("#panel-menu .menu-card, #panel-menu .menu-item").forEach(el=>{
+  document.querySelectorAll("#panel-menu .menu-item").forEach(el=>{
     el.addEventListener("click", ()=>{ if(el.id!=="link-idle-toggle") setPanel(null); }, true);
   });
   // 16.3.2：舊回合摘要點一下展開，再點收回；A13（2026-09-29）：等待旁白時也可以點(render會沿用等待畫面)
@@ -10957,9 +11586,14 @@ function bindPlaying(){
       const k = btn.dataset.focus;
       if(k==="interest" && currentFocus(state)==="interest" && formalInterestCards(state).length) interestPickerOpen = !interestPickerOpen;
       else interestPickerOpen = false;
+      if(k==="work" && currentFocus(state)==="work" && sideGigCards(state).length) workPickerOpen = !workPickerOpen;
+      else workPickerOpen = false;
       state.focus = k;
       keepDraftAndRender();
     };
+  });
+  document.querySelectorAll(".focus-btn[data-work-pick]").forEach(btn=>{
+    btn.onclick = ()=>{ state.focusWorkId = btn.dataset.workPick==="part" ? null : btn.dataset.workPick; state.focus = "work"; workPickerOpen = false; keepDraftAndRender(); };
   });
   document.querySelectorAll(".focus-btn[data-interest-card]").forEach(btn=>{
     btn.onclick = ()=>{ state.focusInterestId = btn.dataset.interestCard; state.focus = "interest"; interestPickerOpen = false; keepDraftAndRender(); };
@@ -11006,6 +11640,10 @@ function bindPlaying(){
   if(studentCardLink) studentCardLink.onclick = renderStudentCardModal;
   const interestsLink = document.getElementById("link-interests");
   if(interestsLink) interestsLink.onclick = renderInterestsModal;
+  const placesLink = document.getElementById("link-places"); // 16.15 地點面板(入口在16.17底部選單抽屜完成前先放在現行選單)
+  if(placesLink) placesLink.onclick = renderPlacesModal;
+  const gigLink = document.getElementById("link-gig"); // 16.16 副業面板(入口在16.17底部選單抽屜完成前先放在現行選單)
+  if(gigLink) gigLink.onclick = renderGigModal;
   const belongingsLink = document.getElementById("link-belongings");
   if(belongingsLink) belongingsLink.onclick = renderBelongingsModal;
   const bookLink = document.getElementById("link-book");
@@ -11113,6 +11751,109 @@ function renderInterestsModal(){
     </div>`;
   document.body.appendChild(div);
   document.getElementById("btn-interests-close").onclick = ()=>div.remove();
+}
+// 十六、16.16（2026-09-30）副業面板：生意概況、訂單簿(依交期排序、進度格、警示色、「趕這單」)、交件紀錄(最近5筆＋累計收入)
+// 交期月份＝依目前日期＋剩下回合數×最近一回合的平均天數估算(訂單只記回合數，沒有真實日期)
+function orderDueMonth(s, o){
+  const cal = s.timeState && s.timeState.cal;
+  if(!cal || cal.lastRoundEnd==null) return "";
+  const span = Math.max(1, cal.lastRoundEnd - (cal.lastWinStart!=null ? cal.lastWinStart : cal.lastRoundEnd) + 1);
+  return calAbsToDate(cal.lastRoundEnd + Math.max(0, o.due - s.turnCount) * span).m + "月";
+}
+function gigProgressBar(o){ return "■".repeat(o.done) + "□".repeat(Math.max(0, o.need - o.done)); }
+function renderGigCardHtml(s, c){
+  const t = orderTier(c), act = activeOrders(c).slice().sort((a,b)=>a.due-b.due||a.no-b.no);
+  const done = orderList(c).filter(o=>o.status==="已交件" || o.status==="延遲交件").slice(-5).reverse();
+  const cal = s.timeState && s.timeState.cal;
+  const monthOf = abs=> abs==null ? "" : calAbsToDate(abs).m+"月";
+  return `<div class="interest-card">
+    <div class="ic-head"><b>${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}・${escapeHtml(c.category)}</b><span class="ic-level">${interestLevelName(Math.round(c.investment||0))}</span></div>
+    <div class="ic-sub">手上 ${act.length} 單／上限 ${t.cap} 單</div>
+    ${(()=>{ const gp = Object.entries(c.gigPlaces||{}).sort((a,b)=>b[1]-a[1])[0]; return gp && findPlace(s, gp[0]) ? `<div class="ic-sub">據點：${escapeHtml(gp[0])}</div>` : ``; })()}
+    ${(c.gigPartners||[]).length ? `<div class="ic-sub">一起做的人：${(c.gigPartners||[]).map(n=>{ const ch=(s.characters||[]).find(x=>x.name===n); return escapeHtml(n)+(ch&&ch.relation?"（"+escapeHtml(ch.relation)+"）":""); }).join("、")}</div>` : ``}
+    <div style="margin-top:8px;font-size:13px;"><b>訂單簿</b></div>
+    ${act.length ? act.map(o=>{
+      const overdue = s.turnCount > o.due, soon = !overdue && o.due - s.turnCount <= 1;
+      const color = overdue ? "#b23a2e" : soon ? "#c46a1c" : "inherit";
+      return `<div class="gig-order" style="margin:6px 0;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.45);color:${color};">
+        <div>${escapeHtml(o.client)}${o.via ? `（${escapeHtml(o.via)}介紹）` : ``}：${escapeHtml(o.item)}</div>
+        <div style="font-size:12.5px;">${gigProgressBar(o)}　交期 ${orderDueMonth(s, o)}${overdue ? "（已逾期）" : soon ? "（快到了）" : ""}　預估報酬 ${orderReward(c, o, overdue)}</div>
+        <button class="ghost-btn gig-rush" data-card="${escapeHtml(c.id)}" data-client="${escapeHtml(o.client)}" data-item="${escapeHtml(o.item)}" style="margin-top:4px;padding:2px 10px;font-size:12.5px;">趕這單</button>
+      </div>`;
+    }).join("") : `<div class="ic-sub">目前沒有進行中的訂單。</div>`}
+    <div style="margin-top:8px;font-size:13px;"><b>交件紀錄</b>　累計收入 ${(c.gigIncome||0).toLocaleString()}</div>
+    ${done.length ? done.map(o=>`<div class="ic-sub">${escapeHtml(o.client)}：${escapeHtml(o.item)}　${monthOf(o.endAbs)}　${o.reward!=null ? o.reward : ""}　${o.status==="延遲交件" ? "延遲" : "準時"}</div>`).join("") : `<div class="ic-sub">還沒有交過件。</div>`}
+  </div>`;
+}
+function renderGigModal(){
+  const cards = sideGigCards(state);
+  const div = document.createElement("div");
+  div.id = "gig-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>我的副業</h3>
+      <div style="overflow-y:auto;flex:1;text-align:left;">
+        ${cards.length ? cards.map(c=>renderGigCardHtml(state, c)).join("") : `<p style="color:var(--ink-soft);">還沒有副業。興趣練到一定程度，會有機會把它做成副業。</p>`}
+      </div>
+      <button class="ghost-btn" id="btn-gig-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-gig-close").onclick = ()=>div.remove();
+  // 「趕這單」：輸入框填入「趕○○的○○」並把重心切到該副業，不自動送出
+  div.querySelectorAll(".gig-rush").forEach(btn=>{
+    btn.onclick = ()=>{
+      state.focus = "work"; state.focusWorkId = btn.dataset.card;
+      div.remove();
+      openPanel = null;
+      render();
+      const ta = document.getElementById("custom-input");
+      if(ta){ ta.value = `趕${btn.dataset.client}的${btn.dataset.item}`; ta.dispatchEvent(new Event("input")); ta.focus(); }
+    };
+  });
+}
+// 十六、16.15（2026-09-30）地點面板：現況摘要(住在／現在在／常去)＋地點卡(名稱、主理人、特徵、常在這裡的人、上次去、「去這裡」)
+function placeVisited(s){ return ensurePlaces(s).filter(p=>p.visits>0); }
+function renderPlacesModal(){
+  const s = state;
+  const all = placeVisited(s);
+  const open = all.filter(p=>p.status!=="已關閉").sort((a,b)=>b.lastTurn-a.lastTurn);
+  const closed = all.filter(p=>p.status==="已關閉").sort((a,b)=>b.lastTurn-a.lastTurn);
+  const mates = (s.characters||[]).filter(c=>c.cohabiting && !c.deceased && !c.lost).map(c=>c.name);
+  const often = all.slice().sort((a,b)=>b.visits-a.visits||b.lastTurn-a.lastTurn).slice(0,3).map(p=>p.name);
+  const card = p=>{
+    const who = Object.entries(p.who||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]);
+    const isClosed = p.status==="已關閉";
+    return `<div class="interest-card place-card${isClosed?" dormant":""}" style="${isClosed?"opacity:.55;filter:grayscale(1);":""}">
+      <div class="ic-head"><b>${escapeHtml(p.name)}</b>${p.owner ? `<span class="ic-level">${escapeHtml(p.owner)}</span>` : ``}</div>
+      ${p.feature ? `<div class="ic-sub">${escapeHtml(p.feature)}</div>` : ``}
+      ${who.length ? `<div class="ic-sub">常在這裡的人：${who.map(escapeHtml).join("、")}</div>` : ``}
+      <div class="ic-sub">上次去：${p.lastAbs!=null ? calAbsToDate(p.lastAbs).m+"月" : "—"}${isClosed ? "　（已關閉）" : ""}</div>
+      ${isClosed ? `` : `<button class="ghost-btn place-go" data-name="${escapeHtml(p.name)}" style="margin-top:4px;padding:2px 10px;font-size:12.5px;">去這裡</button>`}
+    </div>`;
+  };
+  const div = document.createElement("div");
+  div.id = "places-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>我去過的地方</h3>
+      <div style="overflow-y:auto;flex:1;text-align:left;">
+        <div class="ic-sub" style="margin-bottom:8px;">住在：家${mates.length ? "（"+mates.map(escapeHtml).join("、")+"）" : ""}<br>現在在：${escapeHtml(s.currentPlace||"—")}<br>常去：${often.length ? often.map(escapeHtml).join("、") : "—"}</div>
+        ${open.concat(closed).map(card).join("") || `<p style="color:var(--ink-soft);">還沒有去過什麼地方。</p>`}
+      </div>
+      <button class="ghost-btn" id="btn-places-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-places-close").onclick = ()=>div.remove();
+  // 「去這裡」：只在輸入框填入「去○○，」，不自動送出；送出後照常扣1行動點
+  div.querySelectorAll(".place-go").forEach(btn=>{
+    btn.onclick = ()=>{
+      div.remove(); openPanel = null; render();
+      const ta = document.getElementById("custom-input");
+      if(ta){ ta.value = `去${btn.dataset.name}，`; ta.dispatchEvent(new Event("input")); ta.focus(); }
+    };
+  });
 }
 function renderBelongingsModal(){
   const s = state;
@@ -11422,8 +12163,7 @@ function renderSideBusinessModal(cardId){
     if(chosen==="formal") card.sideBusinessSince = state.turnCount;
     // 8.7（2026-09-27）：選擇結果下一回合告訴AI（原本AI只在pending_side_business_category看得到，但那個欄位在彈窗前就被清掉，AI實際上收不到）
     state.sideBusinessEventLog = { category: card.category, choice: chosen };
-    // 八、8.11（2026-09-29 A3）：程式排定第一次接案機會；當回合在日記上顯示一句說明
-    if(chosen!=="kept") scheduleFirstSideGigOffer(state, card);
+    // 八、8.13：訂單簿從空白開始，新客人要等旁白依「新詢問擲骰」安排；當回合在日記上顯示一句說明
     const lastE = (state.log||[]).slice().reverse().find(e=>!e.error);
     if(lastE) lastE.sideBusinessNote = sideBusinessChoiceNote(state, card, chosen);
     div.remove();
@@ -12549,7 +13289,7 @@ function renderTestMenuBody(s){
   return `
     <div class="menu-sec">模式</div>
     <div class="menu-note">目前：${USE_MOCK ? "模擬模式（不呼叫AI、不花錢）" : "真實API（每回合都會花費）"}</div>
-    <a class="menu-item" id="dev-toggle-api">${USE_MOCK ? "💸 切換成真實API" : "🔌 切回模擬模式"}</a>
+    <a class="menu-item" id="dev-toggle-api">${USE_MOCK ? "切換成真實API" : "切回模擬模式"}</a>
     <div class="menu-sec">行動點</div>
     <a class="menu-item" id="dev-toggle-ap-free">${apTestFreeOn() ? "☑" : "☐"} 測試：不扣行動點</a>
     ${apTestFreeOn() && SERVER_AP && apTestFreeRefused ? `<div class="menu-note">伺服器不認這把金鑰是測試鑰匙，開關無效（照常扣點）</div>` : ``}
@@ -12558,11 +13298,11 @@ function renderTestMenuBody(s){
     <div class="menu-note" id="dev-usage-total">${escapeHtml(devUsageTotalText(s))}</div>
     <div class="menu-sec">故事</div>
     ${hasStory ? `<a class="menu-item" id="dev-download-story">⬇ 下載這一世的故事（Markdown）</a>` : `<div class="menu-note">進入一段人生後才能下載故事</div>`}
-    ${USE_MOCK ? `<a class="menu-item" id="dev-open-debug">🛠 Debug 面板</a>` : ``}`;
+    ${USE_MOCK ? `<a class="menu-item" id="dev-open-debug">Debug 面板</a>` : ``}`;
 }
 function renderTestPanel(s){
   return `<section class="sheet${openPanel==="test"?" open":""}" id="panel-test" aria-label="測試選單">
-    ${sheetHead("🧪 測試選單")}
+    ${sheetHead("測試選單")}
     ${renderTestMenuBody(s)}
   </section>`;
 }
@@ -12571,7 +13311,7 @@ function renderTestMenuModal(){
   const div = document.createElement("div");
   div.id = "test-menu-modal";
   div.className = "modal-backdrop";
-  div.innerHTML = `<div class="modal" style="text-align:left;"><h3>🧪 測試選單</h3>${renderTestMenuBody(state)}<button class="ghost-btn" id="btn-test-menu-close" style="margin-top:14px;">關閉</button></div>`;
+  div.innerHTML = `<div class="modal" style="text-align:left;"><h3>測試選單</h3>${renderTestMenuBody(state)}<button class="ghost-btn" id="btn-test-menu-close" style="margin-top:14px;">關閉</button></div>`;
   document.body.appendChild(div);
   bindTestMenu(div);
   div.querySelector("#btn-test-menu-close").onclick = ()=>div.remove();

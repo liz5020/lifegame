@@ -6,7 +6,7 @@ const apRec = async (env, key) => JSON.parse(await env.SAVES.get(`ap:${key}:0`))
 const apSum = (r) => r.daily + r.gift + r.purchased;
 
 // ---------- 一、資料精簡：假上游只回必填欄位(真實路徑：callAI→Worker→假上游) ----------
-const REQUIRED = ["action_result", "narrative", "scene_day_offset", "scene_summary", "chapter_subtitle", "turn_summary", "emotional_tone", "choices"];
+const REQUIRED = ["action_result", "narrative", "scene_day_offset", "scene_summary", "location", "chapter_subtitle", "turn_summary", "emotional_tone", "choices"];
 let variant = "minimal";
 H.installUpstream(H.makeFakeAnthropic({
   turnOverride: (p) => {
@@ -65,7 +65,7 @@ const env = H.makeEnv({ AP_TEST_KEYS: "someoneelse, " + TEST_KEY });
 { // Worker的tool定義
   const { TURN_RESULT_TOOL } = await import("../worker/prompt.js");
   const req = TURN_RESULT_TOOL.input_schema.required;
-  A.check("精簡：schema required只剩每回合一定有內容的欄位", req.length === 7 && !req.includes("stat_deltas") && !req.includes("is_ending") && !req.includes("age_advance") && req.every(k => REQUIRED.includes(k)), req);
+  A.check("精簡：schema required只剩每回合一定有內容的欄位", req.length === 8 && !req.includes("stat_deltas") && !req.includes("is_ending") && !req.includes("age_advance") && req.every(k => REQUIRED.includes(k)), req);
   const p = TURN_RESULT_TOOL.input_schema.properties;
   A.check("精簡：數值物件不再要求每一項", !p.stat_deltas.required && !p.attachment_shift.required && !p.conscientiousness_shift.required);
 }

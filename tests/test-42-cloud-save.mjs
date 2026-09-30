@@ -52,7 +52,7 @@ A.check("5 新裝置載入：日記前面封存的部分先不下載", ev2("stat
 ev2("render()");
 const undoBtn = g2.win.document.getElementById("btn-undo");
 A.check("2 換裝置後反悔按鈕不可用並顯示說明", undoBtn && undoBtn.disabled && /在這台裝置上還沒有可以回到的時間點/.test(g2.win.document.querySelector(".act-foot").textContent));
-A.check("2 選單的回憶錄則數照算全部", /（\d+則）/.test(g2.win.document.getElementById("app").innerHTML) && g2.win.document.getElementById("app").innerHTML.includes(`（${fullLog.length}則）`));
+A.check("2 選單的回憶錄則數照算全部", g2.win.document.getElementById("link-memoir").textContent.includes(`${fullLog.length}則`));
 g2.win.document.getElementById("link-memoir").click();
 await waitFor(() => !!g2.win.document.getElementById("memoir-modal"));
 A.check("5 第一次打開回憶錄才下載封存包、補回完整日記", ev2("stagePackFetchLog.length") === 1 && ev2("state.logOffset") === 0 && JSON.stringify(JSON.parse(ev2("JSON.stringify(state.log)"))) === JSON.stringify(fullLog));

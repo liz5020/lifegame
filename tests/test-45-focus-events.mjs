@@ -77,23 +77,8 @@ const lvNotes = js("state.log[state.log.length-1].levelNotes");
 A.check("8.12.3 等級變動的回合：結算區加一行「興趣：X　上手 → 熟練」", lvNotes && lvNotes[0] === "興趣：藝術創作　上手 → 熟練", lvNotes);
 A.check("8.12.3 畫面上顯示這一行", [...doc.querySelectorAll(".small-line")].some(p => /上手 → 熟練/.test(p.textContent)));
 
-// ---------- 8.12.2 副業交件類別、主角自己的案子 ----------
+// 2026-09-30：8.12.2(交件類別檢查、30%主角自己的案子)已由8.13訂單簿取代，改測見test-47-order-book.mjs
 override = () => ({});
-ev(`state.interestCandidates.find(c=>c.id==='g1').sideBusinessStatus='formal'; state.interestCandidates.find(c=>c.id==='g1').gigNextOfferTurn=state.turnCount+99; state.interestCandidates.find(c=>c.id==='g1').gigOpenOrders=[{id:'g1-a',turn:state.turnCount-2,size:'medium'}]; state.monthlyIncome=100`);
-A.check("8.12.2 交件類別不是玩家的副業類別：拒絕計酬並寫入錯誤紀錄", ev("JSON.stringify(applySideGigDeliveries(state, {category:'手作工藝', size:'medium'}))") === "null" && ev("(state.reviewFlags||[]).some(f=>f.type==='side_gig_category_mismatch'||f.flag==='side_gig_category_mismatch'||JSON.stringify(f).includes('side_gig_category_mismatch'))"));
-A.check("8.12.2 類別對得上才計酬", js("applySideGigDeliveries(state, {category:'藝術創作', size:'medium'})") !== null);
-ev("state.interestCandidates.find(c=>c.id==='g1').gigOpenOrders=[]");
-ev("window.__rnd = Math.random; Math.random = ()=>0.1");
-const offers = js("prepareSideGigTurn(state, {key:'interest', interestCategory:'藝術創作'})");
-ev("Math.random = window.__rnd");
-A.check("8.12.2 重心「興趣：X」且有X類接案副業：擲中30%就安排主角自己的案子", offers.length === 1 && offers[0].own_project === true && offers[0].category === "藝術創作" && js("state.interestCandidates.find(c=>c.id==='g1').gigOpenOrders").length === 1, offers);
-ev("state.interestCandidates.find(c=>c.id==='g1').gigOpenOrders=[]; window.__rnd = Math.random; Math.random = ()=>0.5");
-A.check("8.12.2 沒擲中(≥30%)：不安排", js("prepareSideGigTurn(state, {key:'interest', interestCategory:'藝術創作'})").length === 0);
-A.check("8.12.2 重心不是該興趣：不擲", js("prepareSideGigTurn(state, {key:'study'})").length === 0);
-ev("Math.random = ()=>0.1");
-A.check("8.12.2 重心是別的興趣類別：不擲", js("prepareSideGigTurn(state, {key:'interest', interestCategory:'體能競技'})").length === 0);
-ev("Math.random = window.__rnd");
-ev("state.interestCandidates.find(c=>c.id==='g1').gigOpenOrders=[]; state.interestCandidates.find(c=>c.id==='g1').sideBusinessStatus=null");
 
 // ---------- 3.5.5 社交回合 ----------
 reset();
@@ -285,7 +270,7 @@ A.check("16.13 選單有「我的興趣」入口", !!doc.getElementById("link-in
 
 // ---------- prompt ----------
 const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
-A.check("prompt：重心場景指令、字數額度、填充描寫、投入歸屬、背景事件、朋友機會", ["scene_directive", "focus_extra_words", "recent_ambient_categories", "category照抄興趣名稱", "own_project", "new_events", "friend_news_now", "friend_opportunity_now", "left_circle", "events_while_apart"].every(k => prompt.includes(k)));
+A.check("prompt：重心場景指令、字數額度、填充描寫、投入歸屬、背景事件、朋友機會", ["scene_directive", "focus_extra_words", "recent_ambient_categories", "category照抄興趣名稱", "new_events", "friend_news_now", "friend_opportunity_now", "left_circle", "events_while_apart"].every(k => prompt.includes(k)));
 A.check("prompt：不再要求重心只放在新場景開頭兩三句", !/重心改在narrative新場景開頭兩三句/.test(prompt));
 
 A.check("沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));

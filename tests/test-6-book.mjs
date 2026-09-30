@@ -35,7 +35,7 @@ A.check("章節成書不扣行動點", g.ev("totalAP(state)") === apAtClose);
 A.check("章節成書不影響任何遊戲數值", statsBeforeGen === statsAfterGen);
 A.check("完成後畫面出現「新的一章已經寫好」提示", !!g.win.document.getElementById("book-toast") && /新的一章已經寫好/.test(g.win.document.getElementById("book-toast").textContent));
 A.check("寫好後刪掉素材節省存檔空間", c1.items === undefined);
-A.check("入口顯示章數與新章", /人生之書（1章・1章新）/.test(g.win.document.getElementById("link-book").textContent), g.win.document.getElementById("link-book").textContent);
+A.check("入口顯示「人生之書・第1世」(16.17)，章數與新章仍由bookMenuCountText提供", /人生之書/.test(g.win.document.getElementById("link-book").textContent) && /第1世/.test(g.win.document.getElementById("link-book").textContent) && g.ev("bookMenuCountText(state)") === "（1章・1章新）", g.win.document.getElementById("link-book").textContent);
 // 人生之書頁面
 g.win.document.getElementById("link-book").click();
 let page = g.win.document.getElementById("book-page");

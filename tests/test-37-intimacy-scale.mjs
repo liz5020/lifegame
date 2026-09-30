@@ -45,7 +45,7 @@ e2("MOCK_AI_DELAY_MS = 0");
 await H.startNewLife(m, { name: "林以晴", gender: "女" });
 const addNpc = (name, npcAge, extra = "") => e2(`state.characters = state.characters.filter(c=>c.name!=='${name}'); state.characters.push({name:'${name}',relation:'朋友',gender:'男',${npcAge === null ? "" : "age:" + npcAge + ","}affinity:60,active:true,traits:'',summary:'',lastTurn:0,isChild:false${extra}})`);
 const flags = (name) => JSON.parse(e2(`JSON.stringify(romanceAgeFlags(state, state.characters.find(c=>c.name==='${name}')))`));
-const pushSignals = (name, n) => e2(`(()=>{ const c=state.characters.find(x=>x.name==='${name}'); for(let i=0;i<${n};i++) applyRomanceSignal(state, c, 'positive'); return c.romanceStatus||null; })()`);
+const pushSignals = (name, n) => e2(`(()=>{ const c=state.characters.find(x=>x.name==='${name}'); for(let i=0;i<${n};i++){ applyRomanceSignal(state, c, 'positive'); if(c.romanceStatus==='ambiguous' && c.romanceProgress>=ROMANCE_DATING_PROGRESS) startDating(state, c); /* 4.8：交往要告白場面＋點頭，測試直接走成立函式 */ } return c.romanceStatus||null; })()`);
 
 e2("state.age = 25"); addNpc("成年甲", 27);
 A.check("1.2.11.7 兩人皆成年：both_adult", JSON.stringify(flags("成年甲")) === JSON.stringify({ both_adult: true, any_minor: false, age_gap_cross: false, began_as_minors: false, continuing: false }));

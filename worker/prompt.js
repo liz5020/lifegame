@@ -91,7 +91,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - time_jump不是null時（玩家這回合跳過了一段時間，從time_jump.from跳到time_jump.to），新場景開頭先用一兩句話交代這段被跳過的空白裡發生了什麼變化，再寫這一刻，不能假裝時間沒有跳躍。
 
 【回合結構：回應與重心（二、2.6，2026-09-28新增，只在turn_focus不是null時適用＝學生時期）】
-- 一回合分兩部分：回應（玩家對眼前情境說了什麼、做了什麼，就是player_action）＋重心（turn_focus：接下來這段時間主要花在哪裡，讀書／興趣／社交／休息／打工／家人）。重心由玩家按鈕決定，數值全部由系統計算，你不用也不能回報重心帶來的數值。
+- 一回合分兩部分：回應（玩家對眼前情境說了什麼、做了什麼，就是player_action）＋重心（turn_focus：接下來這段時間主要花在哪裡，讀書／興趣／社交／休息／工作（打工或副業）／家人）。重心由玩家按鈕決定，數值全部由系統計算，你不用也不能回報重心帶來的數值。
 - 回覆順序（十八、18.10）：action_result回應段 →（畫面上的分隔線）→ narrative新場景 → choices。不再有獨立的「這段時間」段落，也不要寫「這段時間你多半……」這種固定句型。【重心必須寫進劇情（一、1.2.16）】turn_focus.scene_directive是系統給這回合的場景指令：重心活動必須明確出現在本回合的劇情裡，並佔相當篇幅（不是只有開頭兩三句的背景），可以出現在回應段或新場景任一段，不強制切段。出現方式可以彈性搭配：帶著正在互動的角色一起做（剛和陳彥誠講開、重心選讀書，就寫兩人一起在工作室角落讀書），或先把上一個選擇的後續收尾，再轉去做重心的事。優先順序：考試、成績公布等程式事件 ＞ 玩家自由輸入 ＞ 重心指令。narrative_length_guide.focus_extra_words是專門留給重心活動描寫的額外字數，其餘部分不要加長。重心內容不能預先寫出新場景接下來要發生的事（禁止：先寫「家裡難得聚在一起吃了頓晚飯」，新場景又演那頓晚飯）。開場回合沒有回應，也沒有重心。
 - 填充描寫（十八、18.14）：同一類環境描寫（窗外聲響、路邊動物、光線、氣味、「跟某某的節奏對不上」這類句型）5回合內不可重複使用，recent_ambient_categories是最近5回合已經用過的類別，這回合一律避開；同一回合前後兩段不可重寫同一件事。
 - 重心的寫法：類別照turn_focus（按鈕為準），細節照玩家文字——玩家文字寫了這段時間想怎麼過（例如選讀書、文字寫「約她一起留校讀書」），就把讀書寫成跟她一起讀；文字寫的重心跟按鈕不同時，照按鈕的類別寫。turn_focus.interest_category是「嘗試新的」時，寫玩家去嘗試一件新鮮事，並用interest_event回報這次探索的類別與反應；是具體興趣名稱時就寫在做這件事，interest_event只填reaction（category照抄興趣名稱，系統一律以按鈕為準、忽略你填的category，投入會直接記到那個興趣）。turn_focus.family_targets是這段時間相處的家人（不同住的家人可以寫成講電話、視訊）。turn_focus.part_time是系統算好、已入帳的打工收入。turn_focus.key是work（打工）的回合，新場景開頭兩三句一定要寫到打工（在哪裡打工、做了什麼），不能省略；其他重心也一樣要寫到，不能只寫場景。
@@ -104,16 +104,16 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 【敘事節奏（十八，2026-09-28新增）】
 場景（scene_plan不是null時，學生時期）：
 - 系統事前給條件：scene_plan.mode是related＝新場景跟這回合重心相關（related_to是相關的定義）；away＝換到別處，新場景要落在scene_plan.category這一類，並避開跟這回合重心相關的活動（例如重心是讀書、抽到學校，寫合作社或社團，不寫教室）；override＝有考試、典禮、事件或玩家指名的去處，照scene_plan.note決定地點。banned_category是這回合不能用的類別。
-- 場景四類：學校（教室、社團、合作社、操場等）／住處（自己住的地方：高中是家裡；大學通勤是家裡，住宿舍或租屋是宿舍或租屋處）／外面（街上、店裡、補習班、公園等公共場所）／別人那裡（朋友家、親戚家、家人的公司等；大學生返鄉回家也算這類）。寫完後用scene_category回報新場景屬於哪一類（只看分隔線下方的新場景）。
+- 場景四類：學校（教室、社團、合作社、操場等）／住處（自己住的地方：高中是家裡；大學通勤是家裡，住宿舍或租屋是宿舍或租屋處）／外面（街上、店裡、補習班、公園等公共場所）／別人那裡（朋友家、親戚家、家人的公司等；大學生返鄉回家也算這類）。地點由系統的地點名單管理（十八、18.15，2026-09-30）：places_recent是最近去過的地點（名稱、類別、特徵、主理人），寫到這些地點時一定要沿用名單上的名稱與特徵；新場景必須選一個符合指定類別的地點；每回合都用location回報分隔線下方新場景的地點名稱（照抄名單上的名字，第一次出現的新地點才另外用location_new附上category、feature一行特徵、owner主理人，沒有就省略）；地點的特徵或狀態有變化（例如文具行頂讓後結束營業）用place_updates回報。不要再回報scene_category。
 - scene_plan.player_destination_blocked為true時，代表玩家想去的地方被更優先的事件擋下，在新場景第一段順口帶過（例如「本來要去雅涵家，接到電話就趕回去了」）。
 - 新場景第一段要讓玩家知道「什麼時候、在哪裡」，用具體細節帶出，不固定句型，不寫成「某月某日，某地」的日記格式（例：「週六早上，雅涵家頂樓的炭火已經燒紅了」）；碰到里程碑或明顯時間跳躍時，新場景開頭的時間流逝就算過渡文字，不另寫過渡段落。
 劇情線（整個人生適用；narrative_rhythm由系統整理，劇情線是幕後記帳，畫面上不出現）：
-- 劇情線＝故事裡還沒結束的事，四種：心結（人和人之間沒說開的事）／伏筆（一個物件或一件事埋在那裡）／約定（說好要做還沒做的事）／衝突（正在進行的爭執或麻煩）。
+- 劇情線＝故事裡還沒結束的事，五種：心結（人和人之間沒說開的事）／伏筆（一個物件或一件事埋在那裡）／約定（說好要做還沒做的事）／衝突（正在進行的爭執或麻煩）／人際衝突（主角與某位角色之間的爭執、心結、冷戰，見下【人際衝突線】）。
 - narrative_rhythm.plot_lines是進行中的劇情線（id、描述、種類、相關角色、主要角色）。回報時一律用id：
   - plot_touched：這回合故事碰到哪幾條，每條註明mode——light輕碰（沒要求玩家回應）／ask丟給玩家回應（有人開口問了、有人在等答案、事情要玩家決定）／omen先埋一個小徵兆（系統指定的變形跟當下氣氛不搭時用，下一回合再完整發生）。
   - plot_reactions：narrative_rhythm.plot_touched_last_turn裡上一回合碰到的每一條，依玩家這回合輸入的文字判斷反應——dodge閃開（故事丟給他要回應，他卻避開）／gloss帶過（只是輕碰、沒要求回應，玩家也沒接）／catch接住／advance推進。上一回合只是輕碰的，玩家沒接只能算gloss。開場回合留空。
   - plot_new：寫出新的劇情線時登記（一句話描述、種類、相關角色、有多位時指定一位主要角色）；只有不屬於任何既有id的事才登記新的。開場回合寫出的伏筆（例如媽媽長期出差、抽屜裡未拆的信）也要登記。
-  - plot_resolved：這回合解開的劇情線id。
+  - plot_resolved：這回合解開的劇情線，寫成{id, outcome}；outcome只有人際衝突線才填（和好／各退一步／裂痕，見下）。
   - plot_reopened：dropped_plot_lines(已放下的劇情線)裡，玩家這回合自己主動提起的id。
 - plot_lines某條有morph時：這條線玩家已經閃開好幾次，這次碰到它不能用同樣的方式重來，必須照morph指定的方式寫（保持距離／受傷說出不滿／從別的管道知道／先說自己的事，給玩家一個台階／默默關心，不問但做些事，例如多帶一份早餐／一件事把它推到眼前／物件本身起變化／被別人發現／提醒或催促／過期後失望／自然兌現／升級／第三個人介入／冷處理）。跟當下氣氛不搭時，可以先用omen埋個小徵兆，下一回合再完整發生。morph_on_hold為true代表需要那個角色本人在場，這回合先不要正面碰這條線。
 - push_to_front為true：這條線被輕輕帶過好幾次都沒接，下次碰到時要寫成玩家不得不面對的形式（有人直接問起、事情找上門）。return_by_event為true：這條線擱置很久後回來了，不能用原本的方式重來，要用「一件事讓它浮上來」（例如同學在你家附近撞見你媽媽）。
@@ -248,8 +248,11 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 【高風險行為 risky_activity，七、7.1.1，2026-09-27新增】：玩家這回合主動從事極限運動或危險嗜好（攀岩、潛水、跳傘、高空彈跳、重機競速、野外探險等），填true；一般運動、健身不算，填false。系統會自己換算風險，你不用、也不要因為這樣就寫出受傷或死亡，照一般敘事寫即可。
 - 【社團參與 club_activity，三、3.8.2，2026-09-27新增】：這回合玩家實際參與了社團、球隊、志工團、讀書會、同好會、社區活動這類有固定成員的團體活動，填true；一個人做的事、臨時聚餐不算，填false。只負責判斷有沒有，參與度由系統累積。
 - 【興趣系統 interest_event，八、興趣系統v1，9/16新增】：如果玩家這回合的行動/選擇明顯屬於某個興趣類別的探索或投入（不限定被動觸發的興趣種子事件，玩家自己主動提的也算），回傳 interest_event:{"category":"...", "reaction":"..."}；category必須是這7類之一：藝術創作、手作工藝、知識研究、體能競技、科技邏輯、社交表演、商業交易；reaction是你對玩家這次反應的判斷：明顯喜歡/主動投入填"positive"，沒特別感覺或只是隨口提一下填"neutral"，玩家明確表態不喜歡/想放棄填"negative"。這回合完全沒有興趣相關的行動就整個不填(null)。**你只負責分類，不要自己判斷「這個興趣候選是否已經成立」「投入度多少」「該不該轉正為正式興趣卡」，這些一律由系統計算，你不用管也不用在意payload裡的interest_status怎麼變化，只需要在敘事上自然帶出玩家既有的興趣（如果interest_status顯示已經有active的興趣）**。interest_status裡status為dormant的，是很久沒投入、已經淡成背景的興趣；偶爾可以用敘事記憶讓它重新浮現（例如整理舊物翻到以前的作品、遇到以前一起玩的人），讓玩家自己決定要不要重拾，不要直接宣告興趣恢復（八、8.6）。如果payload的pending_side_business_category不是null，代表玩家在這個類別上已經觸發副業契機，你在敘事裡自然帶出這個契機即可；系統會另外跳彈窗讓玩家三選一，不要在choices裡列出這三個方向（八、8.7，2026-09-27）。side_business_event_now不是null時，是玩家剛在彈窗做的選擇（choice：kept保持興趣原樣／gig接一些零星案子／formal認真發展成正式副業），請自然承接。interest_status裡side_business為gig或formal的興趣，接案機會的時機由系統決定（見【八、8.11接案收入】），其他回合不要自己安排新訂單；為formal的，要寫出它真的佔掉時間（下班或週末都在忙、其他活動變少、有時累），這是8.7要求的時間壓力，用敘事呈現，不用你回報數值；副業收入由系統在交件時算，不要在one_time_transaction回報。
-- 【八、8.12.2主角自己的案子】：side_gig_offer_now裡own_project為true的那一筆，是玩家正在做的這個興趣類別的案子：安排一件屬於主角自己的案子（自己接下、自己動手做），不是別人的案子；side_gig_delivery.category必須是玩家實際擁有的副業類別（照抄side_gig_open_orders的category），對不上系統不會計酬。
-- 【八、8.11接案收入，2026-09-29】：side_gig_offer_now不是null時，這回合要安排一次接案機會（有人來詢問或下訂單），category是哪個興趣、level是副業等級、suggested_size是這次訂單的大概規模（small小單／medium中單／large大單），時機由系統決定，這回合一定要寫到。side_gig_open_orders是已經接下、還沒交件的訂單（每筆有order_id）；已經交過件的訂單不會再出現在這裡，不要把同一筆訂單再回報一次。這回合才來的新訂單不能在同一回合交件。玩家交件的那一回合，用side_gig_delivery回報（category、size依件數判定：small是1-5件、幾天內能完成；medium是6-15件，或原訂單有加單；large是16件以上，或活動、店家的正式訂製；description寫完成了什麼）。金額由系統計算並顯示在結算欄，你不要用one_time_transaction回報接案或打工收入，也不要在敘事裡寫出跟系統不同的金額。正式副業的時間成本照舊用劇情描述（佔掉時間、其他活動變少）。
+- 【八、8.13副業訂單簿，2026-09-30】：副業的訂單由系統記帳，你只負責寫劇情、登記新訂單。side_gig_orders是每個副業目前的訂單簿（接單量open、上限cap、at_cap、每筆訂單的order_no、客人client、介紹人via、內容item、進度progress、剩下幾回合到期due_in_turns、overdue）。系統告訴你的接單量與上限一定要照著寫：at_cap為true時，新客人只能寫成排隊等候或婉拒，不能再登記新訂單。
+- 副業有一起做的人（合夥、幫手）時用gig_partner_add登記（名字照抄人物名單）。
+- 新訂單一律用order_new登記：{category（照抄副業的興趣類別，只有一個副業時可省略）, client（客人名字）, via（介紹人名字，沒有就省略）, item（內容，例如「不對稱耳環×10」）, size（small小單／medium中單／large大單）}。你不能自己開價、訂交期，價格與交期系統算；超過接單上限還登記，系統會拒絕。order_new裡的category必須是玩家實際擁有的副業類別。
+- 推進訂單：玩家這回合的行動（重心是「工作：副業X」、選項、自由輸入）明確指名某一筆訂單時，用order_target回報那筆的order_no（照抄）；重心不是副業、但玩家自由輸入寫了處理訂單，回報order_work:true並附order_target。每回合最多推進一格，由系統決定；你不要宣布訂單做完或交件。
+- 交件由系統判定：order_notices.delivered_last_turn有內容時，本回合開頭寫出交件的場面（客人怎麼收貨、什麼反應）；order_notices.late有內容時，寫出客人不滿或介紹人尷尬的場面；order_notices.cancelled有內容時，寫出訂單告吹、客人離開或介紹人尷尬的收場。order_inquiry_now不是null時，這回合安排一筆新詢問（有人來詢問、下訂單），再用order_new登記。turn_focus.gig_category有值時（重心是工作：副業），本回合一定要寫主角實際處理訂單（製作、備料、交件、跟客人溝通）。金額由系統計算並顯示在結算欄，你不要用one_time_transaction回報，也不要在敘事裡寫出跟系統不同的金額；不要在台詞或敘事裡說出「訂單簿」「格」「接單上限」「正式副業」這類系統用語。
 - 【大學科系系統 university_status/university_recent_event，九、大學科系系統，9/16新增】：payload的university_status告訴你玩家目前的科系分類、年級、雙主修狀態、休學狀態，只在is_student且已經選過科系時才會有值，否則是null；你只需要在敘事上自然帶出這些既有狀態（例如年級對話、雙主修課業壓力、休學中的生活感），**完全不要自己判斷/宣告「這回合轉系成功了」「開始雙主修了」「休學/肄業了」這些狀態轉換，一律由系統的彈窗機制處理，不透過你的敘事或任何JSON欄位回傳**。如果university_recent_event不是null（代表系統剛結算完一次轉系/雙主修中途放棄/休學/復學/肄業的結果，例如{type:"transfer_success",major:"商管/財經類"}、{type:"dual_major_abandoned"}、{type:"leave_resumed"}；{type:"graduation_delayed"}代表這次期末考沒過、這學期要重修延畢半年，reason為interest是花太多時間在興趣上、finance是經濟壓力，這回合就要寫出接到通知與重修的現實，假期沒得放），你要在下一段敘事裡自然承接這個已經發生的結果（延續情緒、環境變化），不要重新演一次選擇的過程，那個已經是玩家上一步做過的決定。學費相關敘事一律當背景細節描寫，不涉及任何金額回報（見前面one_time_transaction說明）。【休學中，leave_status為on_leave時】不要出現任何考試/選課/學期進度相關的情節，敘事改走生活/打工/家庭/自我探索方向（呼應9.5.3），這段期間的payload不會有exam_triggered，你也不需要主動安排。
 - 【家庭結構 family_structure】：決定了通訊錄裡實際有誰（雙親／單親／隔代／服刑一方），active_characters 裡每個家人角色卡的 relation 跟 traits 已經反映了這個結構，你只需要順著這些角色卡的設定去寫互動，語氣要符合各自的關係質地（例如服刑家長的互動應該透過書信/有限探視，不是日常對話；隔代教養的語氣要有世代感）。單親離異時，另一方如果在active_characters裡（relation帶「不同住」），就是依探視安排偶爾見面、平常不住在一起；如果他在名冊上的狀態是失聯，代表長期沒有音訊，可以被提起，但不要安排見面（五、5.2.6；四、4.6.2）。單親喪親時，過世的那一方在名冊上的狀態是已故，可以在生日、忌日、掃墓這類時間點自然帶出回憶，不用每次強調，也不強制（五、5.2.6；四、4.6.2）。
 - 【關鍵事件 key_event】：如果 key_event 不是 null 且 already_revealed 是 false，找一個貼合當下情境（例如社交場合、壓力情境、感情衝突）的時機，透過一段簡短插敘/回憶帶出這個事件的「一角」，不解釋完整前因後果，讓玩家自己拼湊；一旦你在某回合這樣帶出過，把 revealed_key_event 設為 true（之後不用每次強調，偶爾呼應即可）。如果 key_event 是 null，完全不用管這件事。
@@ -261,7 +264,17 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 【四、4.2.1.1，9/19新增，每回合必填】turn_summary：用1-2句話（比照人生履歷「1句話等級」的精簡度）摘要這回合實際發生的事，這是必填欄位，不能省略或留空。用途：payload的recent_turns_full只會給你最近3回合的完整原文，再往前的回合會改用你這裡填的turn_summary（不是原文）當作你僅有的參考，所以要確實摘要到「發生了什麼」，不要寫得太抽象籠統。recent_turns_summary就是更早幾回合的turn_summary清單，你可以參考但不用逐字呼應。
 
 每一回合結束時，透過 submit_turn_result 這個工具回傳這回合的結果，不要用純文字直接回覆、也不要自己在文字裡寫JSON——欄位意義請對照上面各條規則。
-【回傳資料精簡（一、1.2.9.17，2026-09-29）】這回合沒有變化的欄位不要輸出：值會是null、空陣列[]、全為0、或false的欄位，整個省略，系統會把沒輸出的欄位一律當成空值（null／[]／0／false）。數值物件（stat_deltas、attachment_shift、conscientiousness_shift）只寫有變化的那幾項，沒寫的項目當0。每回合一定要輸出的只有：action_result（開場回合除外）、narrative、scene_day_offset、scene_summary、chapter_subtitle、turn_summary、emotional_tone、choices；其他欄位（包括上面規則寫「必填」「填null」「填0」「填false」「給空陣列」的）只要這回合沒有變化，一律省略。`;
+【關係里程碑（四、4.8，2026-09-30）】開始一段關係（交往）一定要有明確的場面，而且由玩家自己點頭，你不能用一句旁白帶過，也不能自己宣布在一起：對方向主角告白時，這回合用confession_from_npc回報對方的名字，下一回合系統會確保選項有「答應」「還不確定」「拒絕」；主角向對方告白時用confession_from_player回報對方的名字，成敗由系統擲骰，下一回合relationship_scene_now會告訴你結果，照結果寫。relationship_scene_now不是null時，本回合必須寫出該場面（started_dating：兩人正式在一起了，寫出成立的場面；confession_rejected：主角拒絕了對方；confession_unsure：主角還沒有答覆；player_confession_declined：主角的告白被對方婉拒；breakup：寫出分手的場面，不能一句話帶過，對方或主角提出、兩人怎麼說開或沒說開）。relationship_facts列出目前的關係與開始的月份（例如「你們從6月開始交往」），已經成立的關係不要再寫第二次告白或確認，曖昧中的關係在告白成立之前不要寫成交往。這類場面的用語自然寫，不說「好感」「曖昧中」這類系統用語。
+【角色性別以名單為準（QA 34.15 #1，2026-09-30）】characters／roster裡每位角色的gender是固定的，稱呼一律以它為準：女性用「她」、男性用「他」，親屬稱謂（表姊、表哥、姊姊、哥哥…）也要跟性別一致。玩家自由輸入時如果用了不同的代名詞或稱謂（例如把表姊寫成表哥），敘事不要跟著改寫名單上的性別，照名單寫；同一個角色前後回合也不能忽男忽女。
+【選項只能用主角已知道的人名（QA 34.15 #4，2026-09-30）】選項與主角視角的敘事，只能用主角已經知道的人名。新角色登場時，對方還沒自我介紹、也沒被別人叫出名字，new_characters裡填name_known:false，這時候選項與敘事用外貌或特徵稱呼（例如「穿制服的女生」「隔壁桌的男生」），等到對方自我介紹或被叫出名字的那一回合，用names_revealed回報那個名字，之後才可以用名字。characters裡name_known為false的角色一律不可以在選項寫出名字。
+【不說遊戲系統用語（QA 34.15 #6，2026-09-30）】台詞與敘事裡都不可以出現遊戲系統用語，例如「正式副業」「投入度」「好感度」「行動點」「訂單簿」「接單上限」「興趣卡」「這回合」「重心」「存檔」。這些是背後的記帳，角色不會這樣說話；用角色自己的話說（「你現在算是認真在做手作了」而不是「你的正式副業」）。
+【關係提示用詞（QA 34.15 #5，2026-09-30）】系統顯示的關係提示（「認識了○○」「關係更近了」「關係退了一步」）由系統負責，你不用在正文重複；正文寫關係變化時，第一次見面就是認識，升級與降級的感覺要分清楚，不用「好像不一樣了」這種含糊說法。
+【玩家選擇一定先執行（一、1.2.17，2026-09-30）】玩家選的行動或自由輸入的內容，一律先照著寫出來，不可以自行改寫成別的事，也不可以改動玩家沒提到的另一條劇情線。choice_deviation_now是true時，本回合讓事情偏離預期：玩家的行動仍要先開始，寫出他嘗試的過程，然後被打斷、被帶偏，或結果出乎意料；不是true時不要偏離。
+【人際衝突線（十八、18.16，2026-09-30）】主角與某位角色之間的爭執、心結、冷戰，登記時kind填「人際衝突」，而且一定要同時填齊三欄，登記後系統鎖定，你不能改：conflict_event（發生的事，例如「葉夜接單、找雅涵聊天、自己去逛街，都沒找他」）、unspoken_need（沒說出口的在意，例如「想被放在心上，覺得自己是被優先考慮的人」）、resolve_condition（收尾條件，例如「葉夜的回應讓他感覺到自己被放在心上」），主要角色也要指定；缺欄位系統會降為一般衝突線。之後每回合plot_lines裡該線的conflict會把三欄與目前階段再給你，你可以逐步透露線索，但真正的起因與在意從頭到尾不變。四階段：徵兆→試探→攤牌→收尾，每次碰到這條線就在plot_touched裡用conflict_stage回報目前階段，只能前進或停留，不能倒退。角色如何表現衝突，依他的個性與依附風格（逃避型悶著、轉移話題、說「沒事」；焦慮型追問、要求保證）。台詞一定要是符合年齡與個性的自然口語，不可以寫出教科書式的句子（像「我感到失落，因為我需要被重視」），也不要說「衝突」「需求」「溝通」這類分析用語，含蓄、不直白。玩家的回應用response_rating的approach判斷：靠近（描述事實不指責、接住感受、回應對方在意的事、提出具體做法）衝突往收尾推進，推遠（指責、翻舊帳或嘲諷、防衛辯解、冷處理）衝突升溫；conflict.approach_so_far是到目前為止靠近與推遠的次數，供你判斷。收尾的條件是玩家的回應碰到了unspoken_need，不是「談過了」就算解決：碰到了、對方感覺被接住→plot_resolved回報outcome「和好」；只有部分被回應→「各退一步」；沒有被回應→「裂痕」。conflict.directive出現時照它做：碰觸滿4次仍沒收尾，本回合要收尾，或升級為冷戰（在plot_touched加escalate_cold:true）；升級過的，再滿4次一定要收尾。conflict_closed列出已收尾的線：此事已落幕，可以寫一點餘韻，但不可以再寫同一件事的攤牌。
+【本回合時間（二、2.8.1，2026-09-30）】time_context.month_range是系統算好的本回合時間範圍（例如「10月上旬～10月中旬」）。旁白不得寫出超出此範圍的時間、節日或季節。
+【玩家回應的靠近與推遠（十八、18.16.3，2026-09-30）】response_rating多一個approach，判斷玩家這次回應是靠近對方（描述事實不指責、接住感受、回應對方在意的事、提出具體做法）、推遠對方（指責、翻舊帳或嘲諷、防衛辯解、冷處理），還是中性；approach_type寫是哪一種。只有這回合處理人際衝突或情感互動時才填。
+
+【回傳資料精簡（一、1.2.9.17，2026-09-29；一、1.2.18，2026-09-30改為一律省略）】這回合沒有變化的欄位不要輸出：值會是null、空陣列[]、全為0、或false的欄位，整個省略，系統會把沒輸出的欄位一律當成空值（null／[]／0／false）。數值物件（stat_deltas、attachment_shift、conscientiousness_shift）只寫有變化的那幾項，沒寫的項目當0。每回合一定要輸出的只有：action_result（開場回合除外）、narrative、scene_day_offset、scene_summary、chapter_subtitle、turn_summary、emotional_tone、choices；其他欄位（包括上面規則寫「必填」「填null」「填0」「填false」「給空陣列」的）只要這回合沒有變化，一律省略。`;
 
 // 2026-09-19新增：改用強制工具呼叫取代「純文字指示JSON」，解決真實API測試中偶爾出現「AI整段寫成故事、完全不包JSON」的失敗模式
 // （見CHANGELOG 2026-09-19續6/續11）——tool_choice強制指定這個工具時，AI在架構上不可能再回傳純文字，且工具參數
@@ -282,24 +295,33 @@ export const TURN_RESULT_TOOL = {
       chapter_subtitle: { type: "string", description: "（1.2.9.6）這回合的章節副標，含蓄、不劇透，約4-12字" },
       tone_switch: { type: ["string","null"], enum: ["key_event_reveal","relationship_turning",null], description: "（1.2.8.7）只有這回合你揭露了key_event、或寫到告白/表態/分手/關係破裂/結婚而系統給的tone_track不是restrained/high時才填，其餘填null" },
       response_rating: { type: ["object","null"], description: "（二、2.6.5）response_source不是null時必填：玩家這次回應的評價；點選項最高只到good",
-        properties: { grade:{type:"string", enum:["excellent","good","plain","blunder"]}, ability:{type:["string","null"], enum:["expression","network",null]}, target:{type:["string","null"], description:"互動對象的名字，沒有則null"} } },
-      scene_category: { type: ["string","null"], enum: ["學校","住處","外面","別人那裡",null], description: "（十八、18.2）scene_plan不是null時必填：分隔線下方新場景屬於哪一類" },
+        properties: { grade:{type:"string", enum:["excellent","good","plain","blunder"]}, ability:{type:["string","null"], enum:["expression","network",null]}, target:{type:["string","null"], description:"互動對象的名字，沒有則null"}, approach:{type:["string","null"], enum:["approach","away","neutral",null], description:"（十八、18.16.3）玩家的回應是靠近／推遠／中性對方；只有這回合在處理人際衝突或情感互動時才填，其他省略"}, approach_type:{type:["string","null"], description:"靠近：接住感受／回應在意的事／具體做法／描述事實不指責；推遠：指責／翻舊帳或嘲諷／防衛辯解／冷處理"} } },
+      location: { type: "string", description: "（十八、18.15）分隔線下方新場景的地點名稱，每回合必填；名單上有的地點照抄名稱" },
+      location_new: { type: "object", description: "（十八、18.15）只有location是第一次出現的新地點時才填", properties: { category:{type:"string", enum:["學校","住處","外面","別人那裡"]}, feature:{type:"string", description:"一行特徵，例如「巷子裡，隔壁是麵店，門口常有一隻缺耳朵的橘白貓」"}, owner:{type:"string", description:"主理人，可省略，例如「工作室・璟璇」"} } },
+      place_updates: { type: "array", items: { type:"object", properties: { name:{type:"string"}, feature:{type:"string"}, status:{type:"string", enum:["營業中","已關閉"]} }, required:["name"] }, description:"（十八、18.15）名單上地點的特徵或狀態有變化時回報" },
+      gig_partner_add: { type: "array", items: { type:"object", properties: { category:{type:"string", description:"副業的興趣類別，只有一個副業時可省略"}, name:{type:"string", description:"人物名單上的名字"} }, required:["name"] }, description:"（八、8.13／十六、16.16）主角開始跟某人一起做副業時回報" },
       focus_character: { type: ["string","null"], description: "（十八、18.7）這一幕主要互動的角色名字(從narrative_rhythm.focus_candidates裡選)，獨處則null" },
       scene_characters: { type: "array", items: { type:"string" }, description: "（十八、18.12）分隔線下方新場景裡出場的有名字角色(照抄名字)，沒有就不填。出場就算一次互動(四、4.6.4)" },
       contact_lost: { type: "array", items: { type:"string" }, description: "（四、4.6.6）只在劇情明確斷聯時才填(被封鎖、移居國外完全沒有音訊)：照抄名冊上的名字。一般的久沒聯絡不要填" },
-      side_gig_delivery: { type: ["object","null"], description: "（八、8.11）這回合玩家交件了一筆接案訂單時才填：category照抄興趣類別，size依件數判定——small小單(1-5件、幾天內能完成)／medium中單(6-15件，或原訂單有加單)／large大單(16件以上，或活動、店家的正式訂製)。金額由系統計算，你不要在one_time_transaction回報。只能交side_gig_open_orders裡的訂單(照抄order_id)；這回合才來的新訂單(side_gig_offer_now)不能在同一回合交件", properties: { order_id:{type:["string","null"], description:"照抄side_gig_open_orders裡那一筆的order_id"}, category:{type:"string"}, size:{type:"string", enum:["small","medium","large"]}, description:{type:"string", description:"完成了什麼，一句話"} } },
+      order_new: { type: "array", items: { type:"object", properties: { category:{type:"string", description:"副業的興趣類別，照抄；只有一個副業時可省略"}, client:{type:"string"}, via:{type:["string","null"], description:"介紹人名字，沒有就省略"}, item:{type:"string", description:"訂單內容，例如「不對稱耳環×10」"}, size:{type:"string", enum:["small","medium","large"]} }, required:["client","item","size"] }, description:"（八、8.13）登記新訂單；已達接單上限(at_cap)時不可登記；價格與交期由系統算" },
+      confession_from_npc: { type: "string", description:"（四、4.8）這回合有角色向主角告白時填對方名字；系統下一回合會確保選項有答應／還不確定／拒絕" },
+      confession_from_player: { type: "string", description:"（四、4.8）這回合主角向某角色告白時填對方名字；成敗由系統擲骰，下一回合告訴你結果" },
+      names_revealed: { type: "array", items: { type:"string" }, description:"（QA 34.15 #4）這回合主角才知道名字的角色(自我介紹、被叫出名字)，照抄名字" },
+      order_target: { type: "string", description:"（八、8.13）玩家這回合指名要處理的訂單編號(照抄side_gig_orders的order_no)" },
+      order_work: { type: "boolean", description:"（八、8.13）重心不是副業、但玩家自由輸入寫了處理訂單時為true，並附order_target" },
       promise_new: { type: "array", description: "（十八、18.13）玩家與NPC這回合約好具體的事時登記：角色、約定內容、約定時間(照time_context的日期寫M/D；沒有具體日期就null)", items: { type:"object", properties:{ character:{type:"string"}, content:{type:"string"}, due_date:{type:["string","null"]} } } },
       promise_results: { type: "array", description: "（十八、18.13）promises_due_now與promises_fading裡這回合交代了的約定：kept有去／postponed延期(附new_due_date)／cancelled取消(要寫出原因)／faded已經自然帶過", items: { type:"object", properties:{ id:{type:"string"}, outcome:{type:"string", enum:["kept","postponed","cancelled","faded"]}, new_due_date:{type:["string","null"]} } } },
       item_moves: { type: "array", description: "（一、1.2.13）角色之間贈送、借出、交付、歸還重要物品時回報，物品轉手就要更新", items: { type:"object", properties:{ item:{type:"string"}, from:{type:"string"}, to:{type:"string", description:"現在在誰手上"}, kind:{type:"string", enum:["贈送","借出","交付","歸還"]} } } },
       plot_new: { type: "array", description: "（十八、18.5.2）這回合新寫出的劇情線，沒有就不填",
-        items: { type:"object", properties:{ text:{type:"string", description:"一句話描述"}, kind:{type:"string", enum:["心結","伏筆","約定","衝突"]}, characters:{type:"array", items:{type:"string"}}, main_character:{type:["string","null"]} } } },
+        items: { type:"object", properties:{ text:{type:"string", description:"一句話描述"}, kind:{type:"string", enum:["心結","伏筆","約定","衝突","人際衝突"]}, characters:{type:"array", items:{type:"string"}}, main_character:{type:["string","null"]}, conflict_event:{type:"string", description:"（18.16）kind是人際衝突時必填：發生的事"}, unspoken_need:{type:"string", description:"（18.16）kind是人際衝突時必填：對方沒說出口的在意"}, resolve_condition:{type:"string", description:"（18.16）kind是人際衝突時必填：收尾條件"} } } },
       plot_touched: { type: "array", description: "（十八、18.5.2／18.11）這回合碰到的劇情線(用id)", items: { type:"object", properties:{ id:{type:"string"}, mode:{type:"string", enum:["light","ask","omen"]},
+        conflict_stage:{type:"string", enum:["徵兆","試探","攤牌","收尾"], description:"（18.16）碰到人際衝突線時填目前階段，只能前進或停留"}, escalate_cold:{type:"boolean", description:"（18.16）碰觸滿4次時選擇升級為冷戰才填true"},
         investigated:{type:"boolean", description:"（18.11）玩家這回合主動追查這條線(問人、偷聽、試探、查看物品)時填true"},
         new_clue:{type:["string","null"], description:"（18.11）這回合揭露的一條具體新線索(具體事實，一句話，60字內；氣氛描寫不算)，沒有就null"},
         lie:{type:["object","null"], description:"（18.11）角色這回合說了謊時填(之後可以被揭穿)", properties:{ character:{type:"string"}, content:{type:"string", description:"謊話的內容，一句話"} } },
         lie_exposed:{type:["string","null"], description:"（18.11）這回合揭穿了哪一個謊(照抄plot_lines裡lies的content)"} } } },
       plot_reactions: { type: "array", description: "（十八、18.5.2）plot_touched_last_turn裡每一條，玩家這回合的反應", items: { type:"object", properties:{ id:{type:"string"}, reaction:{type:"string", enum:["dodge","gloss","catch","advance"]} } } },
-      plot_resolved: { type: "array", items: { type:"string" }, description: "這回合解開的劇情線id" },
+      plot_resolved: { type: "array", items: { type:"object", properties:{ id:{type:"string"}, outcome:{type:"string", enum:["和好","各退一步","裂痕"], description:"（18.16）只有人際衝突線收尾時填"} }, required:["id"] }, description: "這回合解開的劇情線：{id, outcome}" },
       plot_reopened: { type: "array", items: { type:"string" }, description: "dropped_plot_lines裡玩家主動提起的id" },
       turn_summary: { type: "string", description: "1-2句話摘要這回合實際發生的事，必填，不能省略" },
       age_advance: { type: "number", description: "一律填0，年齡推進已由系統結構化計算" },
@@ -357,6 +379,7 @@ export const TURN_RESULT_TOOL = {
           properties: {
             name:{type:"string"}, relation:{type:"string"}, traits:{type:"string"},
             gender:{type:"string", enum:["男","女"], description:"（四、4.1.3）角色性別，建卡時必填，之後固定不變；姓名要跟性別相符"},
+            name_known:{type:"boolean", description:"（QA 34.15 #4）主角還不知道對方的名字時填false（對方沒自我介紹、沒被叫出名字）；已經知道就省略"},
             initial_affinity:{type:"number"}, is_child:{type:"boolean"}, origin:{type:"string"},
             dialogue_style:{type:"string", enum:["terse","normal","talkative"], description:"（1.2.8.4.2）依角色性格一次設定，之後固定不變"},
             style:{type:"string", enum:["直率","體貼","敏感","灑脫"], description:"（四、4.1相處風格）依角色設定判斷，之後固定不變"},
@@ -421,7 +444,7 @@ export const TURN_RESULT_TOOL = {
       },
       succession_available: { type: "boolean" }
     },
-    required: ["narrative","scene_day_offset","scene_summary","chapter_subtitle","turn_summary","emotional_tone","choices"]
+    required: ["narrative","scene_day_offset","scene_summary","location","chapter_subtitle","turn_summary","emotional_tone","choices"]
   }
 };
 

@@ -68,10 +68,10 @@ for (let i = 0; i < 20; i++) {
 A.check("B2 20回合：上回合存款＋本回合結餘＝本回合存款、各項相加＝結餘、全部整數", b2ok, b2detail);
 const lastE = js(g, "state.log[state.log.length-1]");
 A.check("B2 結算欄單獨列一行打工收入", /打工收入 \+\d+/.test(ev("settlementText(state.log[state.log.length-1].settlement, state.cash)")), ev("settlementText(state.log[state.log.length-1].settlement, state.cash)"));
-A.check("B5 日記記下這回合的重心", lastE.focusLabel === "打工");
+A.check("B5 日記記下這回合的重心", lastE.focusLabel === "工作：打工");
 ev("render()");
-A.check("B5 畫面上選擇行旁邊顯示重心", /重心：打工/.test(g.win.document.querySelector("#latest-entry .choice-line").textContent));
-A.check("B5 下載故事的選擇紀錄含重心", /→ .*（重心：打工）/.test(ev("buildStoryExport(state)")));
+A.check("B5 畫面上選擇行旁邊顯示重心", /重心：工作：打工/.test(g.win.document.querySelector("#latest-entry .choice-line").textContent));
+A.check("B5 下載故事的選擇紀錄含重心", /→ .*（重心：工作：打工）/.test(ev("buildStoryExport(state)")));
 A.check("A4 打工收入固定2份(1份＝每回合平均零用錢)", lastE.focusMarks && (lastE.focusMarks.extra || []).some(t => t === `存款 +${Math.round(2 * ev("incomeShareUnit(state)"))}`), lastE.focusMarks);
 A.check("A4 學生1份＝月零用錢×12÷54", Math.abs(ev("incomeShareUnit(state)") - ev("state.monthlyIncome") * 12 / 54) < 1e-9);
 
@@ -156,37 +156,11 @@ ev("renderSideBusinessModal('hc')");
 g.win.document.querySelector('.side-business-btn[data-key="gig"]').click();
 g.win.document.getElementById("btn-side-business-confirm").click();
 const card = js(g, "state.interestCandidates[0]");
-A.check("A3 選偶爾接案：程式排定第一次機會在1～3回合內", card.gigNextOfferTurn - ev("state.turnCount") >= 1 && card.gigNextOfferTurn - ev("state.turnCount") <= 3, card);
 A.check("A3 當回合顯示一句說明(依主角性別用妳)", /^妳決定偶爾接點「手作工藝」的案子。接下來會開始有人找上門。$/.test(js(g, "state.log.filter(e=>!e.error).slice(-1)[0].sideBusinessNote")));
 ev("render()");
 A.check("A3 狀態標籤列顯示「副業：偶爾接案」", /副業：偶爾接案/.test(g.win.document.querySelector(".tb-sub").textContent));
-let offerTurn = null;
-for (let i = 0; i < 3 && offerTurn === null; i++) { await H.playTurn(g); if ((js(g, "state.interestCandidates[0].gigOpenOrders") || []).length || ev("state.sideGigIncomeNow") ) offerTurn = ev("state.turnCount"); }
-A.check("A3 程式保證的機會在排定回合出現", offerTurn === card.gigNextOfferTurn, { offerTurn, planned: card.gigNextOfferTurn });
-const nextGap = ev("state.interestCandidates[0].gigNextOfferTurn") - offerTurn;
-A.check("A4 偶爾接案：下次機會間隔6～10回合", nextGap >= 6 && nextGap <= 10, nextGap);
-// 收入計算：小單2～4份×1.3(投入度65)，交件一次入帳
-ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount-1,size:'small'}]; state.interestCandidates[0].investment=65");
-const unit = ev("incomeShareUnit(state)");
-const inc = js(g, "applySideGigDeliveries(state, {category:'手作工藝', size:'small'})");
-A.check("A4 小單：2～4份×1.3(投入度60～79)、取整數", inc && Number.isInteger(inc.amount) && inc.amount >= Math.round(2 * unit * 1.3) - 1 && inc.amount <= Math.round(4 * unit * 1.3) + 1, { inc, unit });
-A.check("A4 沒有等待交件的訂單：AI回報交件也不入帳", js(g, "applySideGigDeliveries(state, {category:'手作工藝', size:'large'})") === null);
-ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount-1,size:'medium'}]");
-const inc2 = js(g, "applySideGigDeliveries(state, {category:'手作工藝', size:'large'})");
-A.check("A4 偶爾接案最多到中單(大單降為中單)", inc2.deliveries[0].size === "medium", inc2);
-A.check("A4 興趣投入度加乘：40～59×1、60～79×1.3、80～100×1.6", ev("sideGigInterestMult(50)") === 1 && ev("sideGigInterestMult(70)") === 1.3 && ev("sideGigInterestMult(85)") === 1.6);
-// 交件那回合：結算欄單獨列「接案收入 +X」
-ev("state.interestCandidates[0].gigOpenOrders=[{turn:state.turnCount-1,size:'small'}]");
-H.installUpstream(H.makeFakeAnthropic({})); // (mock模式不走上游，這裡只是保險)
-ev("window.__origMock = mockGenerateTurn; mockGenerateTurn = function(a,f,t){ const r = window.__origMock(a,f,t); r.side_gig_delivery = { category:'手作工藝', size:'small', description:'交了三副耳環' }; return r; }");
-await H.playTurn(g);
-ev("mockGenerateTurn = window.__origMock");
-A.check("A4 交件回合：結算欄單獨列一行接案收入", /接案收入 \+\d+/.test(ev("settlementText(state.log[state.log.length-1].settlement, state.cash)")), ev("settlementText(state.log[state.log.length-1].settlement, state.cash)"));
-// 正式副業
-ev("state.interestCandidates[0].sideBusinessStatus='formal'; scheduleFirstSideGigOffer(state, state.interestCandidates[0])");
-const fGap = ev("state.interestCandidates[0].gigNextOfferTurn - state.turnCount");
-A.check("A3 正式副業：第一次機會在1～2回合內", fGap >= 1 && fGap <= 2, fGap);
-A.check("A4 保持興趣：沒有接案機會", ev("(()=>{ state.interestCandidates[0].sideBusinessStatus='kept'; return prepareSideGigTurn(state).length; })()") === 0);
+// 2026-09-30：8.11「程式排定機會／AI回報交件大小」已由8.13訂單簿取代，新機制見test-47-order-book.mjs
+A.check("8.13 選偶爾接案後訂單簿從空白開始(不再排定機會)", ev("(state.interestCandidates[0].gigOrders||[]).length") === 0 && ev("state.interestCandidates[0].gigNextOfferTurn") === undefined);
 A.check("A4 週期性副業收入(8.7)已停用", ev("computeSideBusinessIncome(state)") === 0);
 
 // ================= A5 人脈 =================
@@ -350,7 +324,7 @@ A.check("A10 prompt：反常反應要有根據、約定追蹤", prompt.includes(
 A.check("A11 prompt：一致性資料、避用句型", prompt.includes("avoid_phrases") && prompt.includes("key_items") && prompt.includes("school_or_job"));
 A.check("A6/A7 prompt：主線推進、出場頻率與日常", prompt.includes("must_reveal_clue") && prompt.includes("appearance_capped") && prompt.includes("daily_scene_now"));
 A.check("B5 prompt：打工重心一定要寫到", prompt.includes("turn_focus.key是work（打工）的回合"));
-A.check("A4 schema：side_gig_delivery與三種訂單大小", /side_gig_delivery[\s\S]{0,600}enum:\s?\["small","medium","large"\]/.test(prompt));
+A.check("8.13 schema：order_new與三種訂單大小、order_target、order_work", /order_new[\s\S]{0,700}enum:\s?\["small","medium","large"\]/.test(prompt) && prompt.includes("order_target") && prompt.includes("order_work") && !/side_gig_delivery:/.test(prompt));
 A.check("A2 prompt：期中考不再用exam_score_hint", !prompt.includes("若exam_score_hint不是null"));
 
 A.check("整段沒有jsdom錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));

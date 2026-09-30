@@ -52,7 +52,7 @@ await sleep(80); H.clickModals(g.win);
 A.check("4 恢復金鑰畫面隱藏：沒有經過金鑰畫面，直接開始", ev("state.phase") === "playing" && !g.win.document.getElementById("app").textContent.includes("這是你的復原金鑰"), ev("state.phase"));
 A.check("4 金鑰仍在背景產生(本機存檔的編號)", !!ev("localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)"));
 A.check("3 新人生禮包55點(本機計數第1次)＋每日5點", ev("totalAP(state)") === 60 && ev("state.ap.gift") === 55 && ev(`Number(localStorage.getItem(GIFT_CLAIMS_LOCAL_PREFIX+localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)))`) === 1, ev("JSON.stringify(state.ap)"));
-A.check("4 選單保留「我的復原金鑰」、多了「存到雲端」、沒有自動同步狀態(10.8.1)", ev(`renderMenuPanel(state)`).includes("我的復原金鑰") && ev(`renderMenuPanel(state)`).includes("☁️ 存到雲端") && !ev(`renderMenuPanel(state)`).includes("cloud-sync-status-wrap"));
+A.check("4 選單保留「我的復原金鑰」、多了「存到雲端」、沒有自動同步狀態(10.8.1)", ev(`renderMenuPanel(state)`).includes("我的復原金鑰") && ev(`renderMenuPanel(state)`).includes("存到雲端") && !ev(`renderMenuPanel(state)`).includes("cloud-sync-status-wrap"));
 ev(`state.phase="keyReveal"; state.newKey="X"; render();`);
 A.check("4 開新人生的金鑰畫面狀態會導回首頁", ev("state.phase") === "home");
 await ev(`tryLoadSlot(localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), 0, false)`);

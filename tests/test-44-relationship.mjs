@@ -174,23 +174,8 @@ const opened = it.classList.contains("open");
 doc.body.dispatchEvent(new g.win.MouseEvent("click", { bubbles: true }));
 A.check("16.11 點一下打開、點其他地方關閉", opened && !it.classList.contains("open"));
 doc.getElementById("stl-test").remove();
-// 34.13#1：同一回合才排定的訂單不能交件；有order_id就對到那一筆
-ev(`state.interestCandidates=[{id:'ic1',category:'手作工藝',status:'active',investment:50,sideBusinessStatus:'formal',gigNextOfferTurn:state.turnCount+99,gigOpenOrders:[{id:'ic1-new',turn:state.turnCount,size:'large'}]}]; state.monthlyIncome=state.monthlyIncome||100`);
-A.check("34.13#1 這回合才來的訂單，同一回合回報交件不付錢", ev("JSON.stringify(applySideGigDeliveries(state, {category:'手作工藝', size:'large'}))") === "null");
-A.check("34.13#1 這回合的新訂單不列在待交件清單", js("sideGigOpenOrdersPayload(state)").length === 0);
-ev("state.interestCandidates[0].gigOpenOrders=[{id:'ic1-a',turn:state.turnCount-3,size:'medium'},{id:'ic1-b',turn:state.turnCount-1,size:'large'}]");
-const d1 = js("applySideGigDeliveries(state, {order_id:'ic1-b', category:'手作工藝', size:'large'})");
-A.check("34.13#1 照order_id交對應那一筆，交過就從清單移除", d1 && js("state.interestCandidates[0].gigOpenOrders.map(o=>o.id)").join() === "ic1-a");
-A.check("34.13#1 已交過的order_id再報一次不付錢", ev("JSON.stringify(applySideGigDeliveries(state, {order_id:'ic1-b', category:'手作工藝', size:'large'}))") === "null");
-ev("(()=>{ const e = state.log[state.log.length-1]; e.cash = state.cash; if(e.settlement) e.settlement.balanceAfter = state.cash; })()"); // 上面直接呼叫交件入帳的錢不算進下一回合
-// 34.13#2：交件回合的結算不再出現「購物 +X」「其他收支 −X」互相抵銷
-ev("state.interestCandidates[0].gigOpenOrders=[{id:'ic1-c',turn:state.turnCount-1,size:'medium'}]");
-override = () => ({ side_gig_delivery: { order_id: "ic1-c", category: "手作工藝", size: "medium", description: "交出十副耳環" } });
-await H.playTurn(g, "把訂單做完交出去");
-const lastSt = js("state.log[state.log.length-1].settlement");
-const lastText = ev("settlementText(state.log[state.log.length-1].settlement, state.cash)");
-A.check("34.13#2 交件回合只列一次接案收入，沒有購物/其他收支抵銷", /接案收入 \+\d+/.test(lastText) && !/購物/.test(lastText) && !/其他收支/.test(lastText), lastText);
-A.check("16.11 接案收入明細用交件說明當名稱", (lastSt.extras || []).some(e => e[0] === "交出十副耳環" && e[2] === "接案收入"), lastSt.extras);
+// 2026-09-30：34.13#1／#2(接案交件重複付、購物鏡像)所對應的舊「AI回報交件」機制已由8.13訂單簿取代，改測見test-47-order-book.mjs
+override = () => ({});
 // 1.2.15：程式產生的大筆支出，列給旁白、明細有名稱
 override = () => ({});
 ev("state.cash = 1000; noteCashEntry(state, '醫療費', -300); state.cash -= 300");
@@ -206,7 +191,7 @@ A.check("16.11 明細只留在最近30則日記", ev("pruneSettlementDetails(sta
 // ---------- prompt ----------
 const fs = await import("fs");
 const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
-A.check("prompt：名冊規則、contact_lost、recent_status、重逢、回憶、滑到動態、大筆支出", ["【精簡名冊與角色狀態", "contact_lost", "recent_status", "一見如故", "recall", "social_feed_now", "program_expenses_now", "order_id"].every(k => prompt.includes(k)));
+A.check("prompt：名冊規則、contact_lost、recent_status、重逢、回憶、滑到動態、大筆支出", ["【精簡名冊與角色狀態", "contact_lost", "recent_status", "一見如故", "recall", "social_feed_now", "program_expenses_now"].every(k => prompt.includes(k)));
 
 A.check("沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
 process.exit(A.report() ? 0 : 1);

@@ -60,7 +60,7 @@ A.check("16.3.8.5 反悔：這一回合的日記與選項一起移除", ev("stat
 A.check("16.3.7 選單沒有親密場景開關", !doc.getElementById("link-intimacy-toggle"));
 
 // 測試選單
-A.check("dev旗標：頂部列有紫色🧪", !!doc.querySelector(".tb-btns .test-btn[data-panel='test']") && !!doc.getElementById("panel-test"));
+A.check("dev旗標：選單抽屜多一格中性灰的「測試」(不用紫色)、頂部列沒有圓鈕", !!doc.querySelector("#drawer #tile-test.dev[data-panel='test']") && !!doc.getElementById("panel-test") && !doc.querySelector(".tb-btns") && !/6B4FA0/i.test(doc.querySelector("style").textContent));
 A.check("遊戲畫面不另外放右上角浮動鈕", !doc.getElementById("dev-fab"));
 const u = JSON.parse(ev("JSON.stringify(state.devUsage)"));
 A.check("累計用量：每次真實呼叫都加上(假上游每次輸入5000)", u && u.calls >= 6 && u.input === 5000 * u.calls && u.cost_usd > 0, u);
