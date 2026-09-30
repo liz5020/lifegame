@@ -101,7 +101,7 @@ A.check("4.8 有「裂痕」標記：排入分手場面，但狀態還沒改", j
 scene = js("prepareRelationScene(state, '嗯')");
 A.check("4.8 下一回合提示旁白寫分手場面", scene.mode === "breakup" && scene.name === "阿峰");
 ev(`window.__h = []; applyRelationScene(state, ${JSON.stringify(scene)}, window.__h)`);
-A.check("4.8 場面那一回合結束才改狀態為分手、同回合提示", ev(`${C("阿峰")}.romanceStatus`) === "breakup" && ev("state.pendingBreakup") === null && /你和阿峰分手了/.test(ev("JSON.stringify(window.__h)")));
+A.check("4.8 場面那一回合結束才改狀態為「已分手」(ended)、同回合提示", ev(`${C("阿峰")}.romanceStatus`) === "ended" && ev(`relationshipStatusLabel(${C("阿峰")})`) === "已分手" && ev(`relationCategoryLabel(${C("阿峰")})`) === "前任" && ev("state.pendingBreakup") === null && /你和阿峰分手了/.test(ev("JSON.stringify(window.__h)")));
 npc("小低", ",romanceStatus:'dating',romanceNegativeStreak:2,affinity:30");
 ev(`state.pendingBreakup=null; applyRomanceSignal(state, ${C("小低")}, 'negative')`);
 A.check("4.8 好感低於交往門檻：可以主動提分手", js("state.pendingBreakup").name === "小低");
@@ -112,6 +112,35 @@ scene = js("prepareRelationScene(state, '我想跟小玉分手')");
 A.check("4.8 玩家自己提分手：這一回合就寫分手場面", scene && scene.mode === "breakup" && scene.name === "小玉" && /玩家/.test(scene.by));
 ev("state.pendingBreakup=null");
 
+
+// ---------- 貌合神離不算分手：要有場面才會真的分手 ----------
+const isolate = (name) => ev(`state.characters.forEach(c=>{ if(c.name!==${JSON.stringify(name)}){ if(c.romanceStatus==="breakup") c.romanceStatus=null; c.lastTurn=state.turnCount; } })`); // 只留一個目標，避免前面測試留下的其他冷掉的人干擾
+npc("老朋友", ",romanceStatus:'dating',lastTurn:0,affinity:50");
+ev("state.turnCount=200; state.pendingBreakup=null"); isolate("老朋友"); ev(`${C("老朋友")}.lastTurn=100; demoteStaleCharacters([])`);
+A.check("4.8 長期沒互動淡出：狀態是「貌合神離」(冷了但沒結束)，不是已分手，記下開始回合", ev(`${C("老朋友")}.romanceStatus`) === "breakup" && ev(`relationshipStatusLabel(${C("老朋友")})`) === "貌合神離" && ev(`${C("老朋友")}.breakupSinceTurn`) === 200);
+scene = js("prepareRelationScene(state, '嗯')");
+A.check("4.8 貌合神離剛開始：不會馬上排分手場面", scene === null && ev("state.pendingBreakup") === null);
+ev(`state.turnCount=200+BREAKUP_SCENE_AFTER_TURNS-1`);
+A.check("4.8 貌合神離還沒滿門檻回合：不排場面", js("prepareRelationScene(state, '嗯')") === null);
+ev(`state.turnCount=200+BREAKUP_SCENE_AFTER_TURNS`); isolate("老朋友");
+scene = js("prepareRelationScene(state, '嗯')");
+A.check("4.8 貌合神離維持夠久：程式排一個明確的分手場面(電話、訊息、當面說開)，不是默默改狀態", scene && scene.mode === "breakup" && /電話|訊息/.test(scene.by) && ev(`${C("老朋友")}.romanceStatus`) === "breakup", scene);
+ev(`window.__h = []; applyRelationScene(state, ${JSON.stringify(scene)}, window.__h)`);
+A.check("4.8 場面寫完才變成「已分手」", ev(`${C("老朋友")}.romanceStatus`) === "ended" && /你和老朋友分手了/.test(ev("JSON.stringify(window.__h)")), { st: ev(`${C("老朋友")}.romanceStatus`), h: ev("JSON.stringify(window.__h)"), scene });
+npc("失聯前任", ",romanceStatus:'stable',lastTurn:0,affinity:50");
+ev(`state.turnCount=300; state.pendingBreakup=null; applyContactLost(state, ['失聯前任'])`);
+A.check("4.8 失聯的戀愛對象：也是「貌合神離」，不會因為失聯就默默變成分手", ev(`${C("失聯前任")}.romanceStatus`) === "breakup" && ev(`${C("失聯前任")}.lost`) === true);
+ev(`state.turnCount=300+BREAKUP_SCENE_AFTER_TURNS`); isolate("失聯前任");
+scene = js("prepareRelationScene(state, '嗯')");
+A.check("4.8 失聯的貌合神離一樣要排明確場面(訊息、電話)才分手", scene && scene.name === "失聯前任" && scene.mode === "breakup", scene);
+ev("state.pendingBreakup=null");
+const rfb = js("relationshipFactsPayload(state)");
+npc("冷掉的", ",romanceStatus:'breakup',breakupSinceTurn:state.turnCount");
+A.check("提示：貌合神離的人附註「還沒有結束、不要寫成已經分手」", (js("relationshipFactsPayload(state)") || []).some(f => f.name === "冷掉的" && /還沒有結束/.test(f.note)));
+A.check("復合：已分手的對象可以再告白(confession_from_player)重新走場面", (() => { ev(`state.confessionResultNext=null; state.reviewFlags=[]; applyConfessionReports(state, { confession_from_player:'阿峰' })`); return !!ev("state.confessionResultNext"); })());
+A.check("分手門檻40＝「認識不深／普通朋友」分界，和關係等級同一組數字", ev("ROMANCE_BREAKUP_AFFINITY") === 40 && ev("(()=>{ const c={affinity:39,active:true}; const d={affinity:40,active:true}; return relationshipStatusLabel(c)+'|'+relationshipStatusLabel(d); })()") === "認識不深|普通朋友");
+
+ev("state.characters.forEach(c=>{ if(c.romanceStatus==='breakup') c.romanceStatus=null; }); state.pendingBreakup=null");
 // ---------- 整回合流程 ----------
 npc("小晴", ",romanceStatus:'ambiguous',romanceProgress:5");
 ev("state.pendingConfession=null; state.pendingBreakup=null; state.confessionResultNext=null; state.lastDeviated=false");

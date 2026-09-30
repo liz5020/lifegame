@@ -27,7 +27,7 @@ A.check("16.17 抽屜預設關閉", !doc.getElementById("drawer").classList.cont
 fab.click();
 A.check("16.17 按選單鈕：抽屜升起，圖示變叉叉", doc.getElementById("drawer").classList.contains("open") && ev("drawerOpen") === true && /M18 6 6 18/.test(doc.getElementById("btn-drawer").innerHTML));
 doc.getElementById("btn-drawer").click();
-A.check("16.17 再按一次：關閉，圖示變回選單", !doc.getElementById("drawer").classList.contains("open") && /y1="12" y2="12"|y1="12"/.test(doc.getElementById("btn-drawer").innerHTML));
+A.check("16.17 再按一次：關閉，圖示變回選單", !doc.getElementById("drawer").classList.contains("open") && /M4 5h16/.test(doc.getElementById("btn-drawer").innerHTML));
 
 // ---------- 三組與大格 ----------
 const secs = [...doc.querySelectorAll("#drawer .drawer-sec")].map(x => x.textContent);
@@ -93,6 +93,12 @@ A.check("18.16.5 人物說明加一句「衝突背後，通常有一件沒說出
 A.check("16.18 白話：不出現系統用語(好感度、投入度、重心)", !/好感度|投入度|重心/.test(lg.textContent));
 lg.remove();
 
+
+// 人物大格人數：不算已故、失聯仍算
+ev(`state.characters.push({name:'已故甲',relation:'朋友',gender:'男',age:60,affinity:50,active:false,traits:'',summary:'',lastTurn:0,isChild:false,deceased:true},{name:'失聯乙',relation:'朋友',gender:'女',age:30,affinity:50,active:false,traits:'',summary:'',lastTurn:0,isChild:false,lost:true}); render()`);
+const alive = ev("state.characters.filter(c=>!c.deceased).length");
+A.check("16.17 人物大格人數不算已故的人、失聯的仍算", tile("tile-roster").querySelector(".n").textContent === `${alive}人` && ev("state.characters.length") === alive + 1, tile("tile-roster").querySelector(".n").textContent);
+
 // ---------- 無emoji、無紫色 ----------
 ev("state.interestCandidates=[]; state.reviewFlags=[]; render()");
 const visible = doc.getElementById("app").textContent;
@@ -102,6 +108,7 @@ A.check("16.17 樣式表沒有紫色(原回應數值、想找標籤、測試鈕�
 ev(`window.__caps = renderStatChanges({ knowledge: 7, network: -2 }, { stats: { knowledge: 2 } })`);
 A.check("16.17 回應數值標記：增加＝珊瑚系、減少＝灰棕系、一律保留正負號", /cap resp">才識 \+5/.test(ev("window.__caps")) && /cap resp neg">人脈 -2/.test(ev("window.__caps")) && /cap focus">才識 \+2/.test(ev("window.__caps")), ev("window.__caps"));
 ev(`window.__caps2 = renderStatChanges({}, null)`);
-A.check("16.17 圖示只用內嵌線條圖示、沒有外部相依", /svg class="ic-svg"/.test(doc.getElementById("app").innerHTML) && !/lucide/i.test(css));
+A.check("16.17 圖示是內嵌的Lucide官方線條圖示、沒有外部相依", /svg class="ic-svg"/.test(doc.getElementById("app").innerHTML) && !/cdn|unpkg|jsdelivr/i.test(ev("ICON_PATHS.menu + ICON_PATHS.x")));
+A.check("16.17 圖示路徑取自官方檔案(選單三條橫線、叉叉)", ev("ICON_PATHS.menu") === '<path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/>' && ev("ICON_PATHS.x") === '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>');
 A.check("沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
 process.exit(A.report() ? 0 : 1);

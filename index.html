@@ -4811,14 +4811,15 @@ function computeMonthTitle(s){
   if(mode==="career") return `${s.age}歲・${month}`;
   return null;
 }
-// 十五、15.8（2026-09-30）：學生時期回合標題在學期後面加月份(取本回合日期範圍中點)，例「高三・上學期・11月・期末準備期」；出社會後維持原樣
+// 十五、15.8（2026-09-30）：回合標題加月份(取本回合日期範圍中點)，例「高三・上學期・11月・期末準備期」「高二・暑假・7月」「23歲・7月」
 function labelWithMonth(label, win){
   if(!label || !win || win.start==null) return label;
+  if(/\d+月/.test(label)) return label;
+  const month = calAbsToDate(Math.floor((win.start+win.end)/2)).m+"月";
   const parts = String(label).split("・");
   const hi = parts.findIndex(p=>MEMOIR_HALF_KEYS.includes(p.replace(/（[^）]*）/g,"")));
-  if(hi<0 || hi>=parts.length-1) return label; // 沒有階段名稱可接(例如「寒假」)時不加，標題已是學期名
-  parts.splice(hi+1, 0, calAbsToDate(Math.floor((win.start+win.end)/2)).m+"月");
-  return parts.join("・");
+  if(hi>=0 && hi<parts.length-1){ parts.splice(hi+1, 0, month); return parts.join("・"); } // 有階段名稱：接在學期後面
+  return `${label}・${month}`; // 寒暑假、休學中、出社會後(「23歲」「入職第2年・上半年」)：沒有階段名稱，直接接月份
 }
 // 介面：現階段進度指示（9/16新增）——依目前所在模式，回傳「這個小段落」還剩多少回合的進度資訊，供UI畫進度條
 // 三種模式各自的「一個段落」定義不同：學生時期是目前學期段落(開學初/準備期/考試/假期等)；休學中是休學倒數；出社會是本年度
@@ -5136,7 +5137,7 @@ function demoteStaleCharacters(hintCandidates){
       c.active=false;
       shelvePlotLinesForFadedCharacter(state, c.name); // 十八、18.6：以他為主要角色的劇情線一起擱置(不計擱置次數)
       // 四、4.4戀愛系統：曖昧中/交往中的對象長期沒互動，沿用既有12回合降級機制視為自然淡出分手（呼應4.4「分手不另建專屬機制」定案）
-      if(c.romanceStatus==="ambiguous" || c.romanceStatus==="dating") c.romanceStatus = "breakup";
+      if(c.romanceStatus==="ambiguous" || c.romanceStatus==="dating"){ c.romanceStatus = "breakup"; c.breakupSinceTurn = state.turnCount; }
     }
   });
 }
@@ -5146,8 +5147,9 @@ function demoteStaleCharacters(hintCandidates){
 const ROMANCE_AMBIGUOUS_PROGRESS = 3; // 【測試參數,待驗證】累積正向次數達此值，從null進入「曖昧中」
 const ROMANCE_DATING_PROGRESS = 9; // 【測試參數,待驗證】累積正向次數達此值(=3+6)，從「曖昧中」進入「交往中」
 const ROMANCE_STABLE_STREAK = 6; // 【測試參數,待驗證】「交往中」時連續正向次數達此值，進入「穩定交往」
+const BREAKUP_SCENE_AFTER_TURNS = 12; // 【實作判斷】貌合神離維持這麼多回合沒挽回，程式排一個明確的分手場面
 const ROMANCE_AMBIGUOUS_UNDO_NEGATIVE = 2; // 四、4.8：曖昧中累積2次負面訊號解除
-const ROMANCE_BREAKUP_AFFINITY = 40; // 【實作判斷，文件只寫「交往門檻」沒有數字】好感低於這個數字才可能由NPC主動提分手
+const ROMANCE_BREAKUP_AFFINITY = 40; // 【使用者2026-09-30確認】好感低於40才可能由NPC主動提分手(只是前提，不是自動分手)；40正好是「認識不深／普通朋友」的分界線，與relationshipStatusLabel()、關係程度圓點(20／40／60／80)同一組數字
 const CONFESSION_PLAYER_PROB = { ambiguous:0.8, familiar:0.4, other:0.1 }; // 四、4.8【測試參數】玩家告白成功機率：曖昧中／熟悉的朋友以上／其他
 const ROMANCE_BREAKUP_STREAK = 3; // 【測試參數,待驗證】「交往中」或「穩定交往」時連續負向次數達此值，判定「分手」
 // 四、4.1（9/19補充,修正既有定案未落實問題）：「重要共同記憶」欄位機制性上限2則,FIFO捨棄最舊一則,
@@ -5179,6 +5181,7 @@ function relationCategoryLabel(c){
   if(c.romanceStatus==="widowed") return "已故的配偶";
   if(c.romanceStatus==="ambiguous") return "曖昧對象";
   if(c.romanceStatus==="dating" || c.romanceStatus==="stable") return "戀愛對象";
+  if(c.romanceStatus==="ended") return "前任";
   return workplaceRelationCategory(c.relation) || c.relation||"";
 }
 // 四、4.1.1（2026-09-22新增）：第3層一般關係值增減的累積提示門檻、每回合提示則數上限
@@ -5199,7 +5202,8 @@ function relationshipStatusLabel(c){
   if(c.romanceStatus==="ambiguous") return "曖昧中";
   if(c.romanceStatus==="dating") return "交往中";
   if(c.romanceStatus==="stable") return "穩定交往中";
-  if(c.romanceStatus==="breakup") return "貌合神離";
+  if(c.romanceStatus==="breakup") return "貌合神離"; // 關係冷了但還沒結束，不算結束一段關係
+  if(c.romanceStatus==="ended") return "已分手"; // 四、4.8：必須有明確的分手場面才會進到這個狀態
   // 四、4.1.5（2026-09-29 A12）：家人(父母、手足、祖父母、子女等)改用專屬五級標籤，門檻沿用朋友等級；非家人不變
   if(isFamilyCharacter(c)) return FAMILY_RELATION_LABELS[relationshipTierIndex(c)];
   if(c.deceased) return "已故"; // 四、4.6.5（2026-09-29）
@@ -5251,7 +5255,7 @@ function applyContactLost(s, names){
     c.lost = true; c.active = false; c.lostTurn = s.turnCount;
     shelvePlotLinesForFadedCharacter(s, c.name);
     // 比照4.4：曖昧中／交往中的對象斷了聯絡，視為分手(已婚對象不在這裡處理，婚姻狀態由七、7.6離婚流程決定)
-    if(c.romanceStatus==="ambiguous" || c.romanceStatus==="dating" || c.romanceStatus==="stable") c.romanceStatus = "breakup";
+    if(c.romanceStatus==="ambiguous" || c.romanceStatus==="dating" || c.romanceStatus==="stable"){ c.romanceStatus = "breakup"; c.breakupSinceTurn = s.turnCount; }
     if(s.seekTarget===c.name) s.seekTarget = null;
     out.push(c.name);
   });
@@ -5644,10 +5648,17 @@ function prepareRelationScene(s, actionText){
     const target = named.length===1 ? named[0] : (partners.length===1 ? partners[0] : null);
     if(target) s.pendingBreakup = { name:target.name, by:"player" };
   }
+  // 貌合神離(淡出、失聯造成)維持一段時間還沒挽回：程式排一個「正式收掉」的分手場面，狀態不會因為一直失聯就默默改成分手
+  if(!scene && !s.pendingBreakup){
+    const cooled = (s.characters||[]).find(c=>c.romanceStatus==="breakup" && !c.deceased && (c.breakupSinceTurn==null ? (c.breakupSinceTurn = s.turnCount, false) : s.turnCount - c.breakupSinceTurn >= BREAKUP_SCENE_AFTER_TURNS));
+    if(cooled) s.pendingBreakup = { name:cooled.name, by:"fade", lost: !!cooled.lost };
+  }
   if(!scene && s.pendingBreakup){
     const c = characterByName(s, s.pendingBreakup.name);
-    if(c && (c.romanceStatus==="dating" || c.romanceStatus==="stable")) scene = { mode:"breakup", name:c.name, by: s.pendingBreakup.by==="player" ? "玩家提出" : "對方提出" };
-    else s.pendingBreakup = null;
+    if(c && (c.romanceStatus==="dating" || c.romanceStatus==="stable" || c.romanceStatus==="breakup")){
+      const by = s.pendingBreakup.by;
+      scene = { mode:"breakup", name:c.name, by: by==="player" ? "玩家提出" : by==="fade" ? "兩人的關係早就冷掉了，這次把它正式收掉，要有明確的場面（例如一通電話、一則訊息、當面說開），不能只是不了了之" : "對方提出" };
+    } else s.pendingBreakup = null;
   }
   return scene;
 }
@@ -5723,6 +5734,7 @@ function relationshipFactsPayload(s){
       const m = c.datingSinceAbs!=null ? calAbsToDate(c.datingSinceAbs).m : null;
       out.push({ name:c.name, status: c.romanceStatus==="stable" ? "穩定交往中" : "交往中", note: m ? `你們從${m}月開始交往` : "你們已經在交往" });
     } else if(c.romanceStatus==="ambiguous") out.push({ name:c.name, status:"曖昧中", note:"還沒有正式在一起，沒有告白成立的場面之前不要寫成交往" });
+    else if(c.romanceStatus==="breakup") out.push({ name:c.name, status:"貌合神離", note:"關係冷了下來但還沒有結束，不要寫成已經分手；要分開必須有明確的場面" });
   });
   return out.length ? out : null;
 }
@@ -5732,7 +5744,7 @@ function applyRelationScene(s, scene, hints){
   const c = characterByName(s, scene.name);
   if(scene.mode==="started_dating") hints.push({ tier:1, text:`你和${scene.name}開始交往了` });
   else if(scene.mode==="breakup" && c){
-    c.romanceStatus = "breakup"; releaseCohabiting(c); s.pendingBreakup = null;
+    c.romanceStatus = "ended"; c.endedTurn = s.turnCount; releaseCohabiting(c); s.pendingBreakup = null;
     hints.push({ tier:1, text:`你和${scene.name}分手了` });
   }
 }
@@ -6414,6 +6426,22 @@ function detectOutputQualityIssues(r){
     if(sys) issues.push(`${where}出現系統用語「${sys[0]}」，台詞與敘事都要改成角色會說的話`);
   });
   return Array.from(new Set(issues)).slice(0, 6);
+}
+// QA 34.15 #1（2026-09-30）：「人名＋親屬稱謂」跟名單性別矛盾(例如表姊璟璇被寫成「璟璇表哥」)時，只寫錯誤紀錄、不擋遊戲。
+// 代名詞對不對需要語意，程式判斷不準，只比對名字緊貼稱謂的寫法
+const MALE_KIN_TITLES = ["表哥","堂哥","哥哥","大哥","弟弟","表弟","堂弟","叔叔","伯伯","舅舅","姑丈","姨丈","爸爸","爺爺","外公","阿公","先生"];
+const FEMALE_KIN_TITLES = ["表姊","表姐","堂姊","堂姐","姊姊","姐姐","大姐","妹妹","表妹","堂妹","阿姨","姑姑","舅媽","嬸嬸","媽媽","奶奶","外婆","阿嬤","小姐","太太"];
+function detectGenderTitleMismatch(s, text){
+  const found = [];
+  const t = String(text||"");
+  (s.characters||[]).forEach(c=>{
+    if(!c.gender || !c.name || String(c.name).length<2) return;
+    const wrong = c.gender==="女" ? MALE_KIN_TITLES : FEMALE_KIN_TITLES;
+    wrong.forEach(title=>{
+      if(t.includes(c.name+title) || t.includes(title+c.name)) found.push({ name:c.name, gender:c.gender, title });
+    });
+  });
+  return found;
 }
 function processDialogueMarkup(s, text){
   const notes = [];
@@ -7435,7 +7463,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     affinity:c.affinity, summary:c.summary, is_child:!!c.isChild,
     style: c.style||null, // 四、4.1相處風格(2026-09-28)：null代表還沒記錄，這回合出場時用style_fill回填一次
     dialogue_style: c.dialogueStyle||"normal", // 一、1.2.8.4.2（2026-09-24實作）：台詞句數上限，程式依{{名字|台詞}}標記截斷
-    romance_status: c.romanceStatus||null, // 四、4.4戀愛狀態機（9/16新增）：null/ambiguous/dating/stable/breakup，僅供你參考語氣，不可自行變更
+    romance_status: c.romanceStatus||null, // 四、4.4戀愛狀態機（9/16新增）：null/ambiguous/dating/stable/breakup(貌合神離，冷了但沒結束)/ended(已分手)，僅供你參考語氣，不可自行變更
     prev_life: c.prevLifeProfile && !c.deceased ? c.prevLifeProfile : undefined, // 七、7.4.3.3.1：這位家長是上一世的主角，說話方式與生活狀態要跟上一世一致
     age: typeof c.age==="number" ? c.age : null, // 4.1.4：null代表還沒有年齡，登場時用age_fill回填一次
     // 一、1.2.12／1.2.13（2026-09-29 A9／A11）：家人身分與具體關係、學校或職業、與其他角色的關係
@@ -8541,7 +8569,10 @@ function simulateIdleRound(s, index){
   }
   applyMonthlySettlement(s, adv.monthsCrossed||0);
   // 八、8.11（2026-09-29 A4）：放置期間照樣有人下單，接到就當回合交件(照建議的訂單大小入帳)
-  prepareOrderTurn(s, null); idleOrderRound(s); s.orderDeliveredLast = null; // 八、8.13：放置期間只推進已有的訂單，不登記新單；交件場面不留到回來後
+  // 八、8.13：放置期間只推進已有的訂單、不登記新單；交期暫停(每過一回合所有進行中訂單的交期一起往後延一回合，不會在玩家不在時逾期被罰)，回來後才照常計算；交件場面不留到回來後
+  s.sideGigIncomeNow = null;
+  sideGigCards(s).forEach(c=>activeOrders(c).forEach(o=>{ o.due += 1; }));
+  idleOrderRound(s); s.orderDeliveredLast = null;
   const tag = pickIdleTag(s);
   applyIdleTag(s, tag);
   record.tag = tag;
@@ -9356,7 +9387,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
         ambiguous:`你和${c.name}之間，好像開始有點曖昧了`,
         dating:`你和${c.name}正式開始交往了`,
         stable:`你和${c.name}的感情穩定了下來`,
-        breakup:`你和${c.name}，分開了`
+        breakup:`你和${c.name}之間，漸漸冷了下來`
       }[nowStatus];
       if(transitionText){ relationshipHintCandidates.push({ tier:1, text:transitionText }); return; }
     }
@@ -9491,6 +9522,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 
   applyRelationScene(s, timeCtx && timeCtx.relationScene, relationshipHintCandidates); // 四、4.8：成立／分手場面同一回合的提示
   applyConfessionReports(s, r); // 四、4.8：旁白回報的告白
+  { const txt = narrativeParagraphs(r.action_result).concat(narrativeParagraphs(r.narrative)).join("\n"); detectGenderTitleMismatch(s, txt).forEach(m=>addReviewFlag(s, "gender_title_mismatch", `「${m.name}」名單性別是${m.gender}，正文卻寫成「${m.name}${m.title}」(或「${m.title}${m.name}」)`)); } // QA 34.15 #1：只記錄不擋
   // 四、4.1.1：候選依tier排序（1戀愛狀態轉換／2級距改變／3一般累積），每回合最多顯示RELATIONSHIP_HINT_MAX_PER_TURN則；
   // Array.prototype.sort為穩定排序，同tier內維持原本互動發生的順序
   const relationshipHints = relationshipHintCandidates
@@ -10911,17 +10943,17 @@ let prevEntryExpanded = false; // （16.3.8起不再使用，保留宣告避免�
 const expandedOldEntries = new Set(); // 16.3.2／16.3.8.2（2026-09-28）：主畫面上展開中的舊回合(日記索引)
 let pendingChoiceIdx = null;   // 16.4.2第1步：等待旁白時，被按下的選項保持原樣、其他淡成半透明
 let lastKnownWallet = 0;       // 十、10.3.3金鑰錢包：選人生畫面讀到的數字(封測期間都是0)
-// 十六、16.17（2026-09-30）：介面圖示一律用同一套Lucide風格細線條圖示(路徑內嵌，沒有外部相依)，不用emoji。平常暖棕色、按下或選中時珊瑚紅(CSS)
+// 十六、16.17（2026-09-30）：介面圖示一律用同一套Lucide細線條圖示，不用emoji。路徑取自官方套件lucide-static 1.49.0(ISC授權，https://lucide.dev)的icons/*.svg，內嵌在這裡、沒有外部相依。平常暖棕色、按下或選中時珊瑚紅(CSS)
 const ICON_PATHS = {
-  menu:'<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
+  menu:'<path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/>',
   x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-  zap:'<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  zap:'<path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"/>',
   chart:'<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
-  palette:'<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+  palette:'<path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z"/><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>',
   briefcase:'<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
-  book:'<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+  book:'<path d="M12 5v16"/><path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z"/>',
   scroll:'<path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>',
-  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>',
   pin:'<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
   wallet:'<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
   help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
@@ -10930,16 +10962,16 @@ const ICON_PATHS = {
   undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
   timer:'<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
   flask:'<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/>',
-  package:'<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/>',
+  package:'<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/>',
   cap:'<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>',
-  tree:'<circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4m0 0-7 6m7-6 7 6"/>',
+  tree:'<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
   user:'<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   cloud:'<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
   alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-  key:'<path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/>',
+  key:'<path d="m2 21 9.6-9.6"/><path d="m7.5 15.5 2.3 2.3a1 1 0 0 1 0 1.4l-2.1 2.1a1 1 0 0 1-1.4 0L4 19"/><circle cx="15.5" cy="7.5" r="5.5"/>',
   refresh:'<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
-  play:'<polygon points="6 3 20 12 6 21 6 3"/>',
-  pause:'<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>'
+  play:'<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
+  pause:'<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>'
 };
 function icon(name){ return `<svg class="ic-svg" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]||""}</svg>`; }
 function stageLabelForStamp(s){ return stageLabel(s.age); }
@@ -11176,7 +11208,7 @@ function renderDrawer(s){
     (s.familyChronicle && s.familyChronicle.length) ? drawerTile("link-family","tree","家族年表",`前${s.familyChronicle.length}代`) : ``
   ].join("");
   const world = [
-    drawerTile("tile-roster","users","人物",`${(s.characters||[]).filter(c=>!c.isSelf).length}人`,{panel:"roster",dot:newCharacterLastTurn(s)}),
+    drawerTile("tile-roster","users","人物",`${(s.characters||[]).filter(c=>!c.deceased).length}人`,{panel:"roster",dot:newCharacterLastTurn(s)}),
     drawerTile("link-places","pin","地點",`${placeVisited(s).length}處`),
     drawerTile("link-ledger","wallet","帳務",Math.round(s.cash).toLocaleString())
   ].join("");
@@ -11754,10 +11786,35 @@ function renderInterestsModal(){
 }
 // 十六、16.16（2026-09-30）副業面板：生意概況、訂單簿(依交期排序、進度格、警示色、「趕這單」)、交件紀錄(最近5筆＋累計收入)
 // 交期月份＝依目前日期＋剩下回合數×最近一回合的平均天數估算(訂單只記回合數，沒有真實日期)
+// 第「ahead」個未來回合(1＝下一回合)的日期範圍中點所在月份，依2.7已排好的學年日期(學生時期)或年度回合預算(出社會後)換算；
+// 超出已排好的日期(下學年以後)或休學中、開場時回傳null，呼叫端再用估算
+function futureTurnMonth(s, ahead){
+  const ts = s.timeState, cal = ts && ts.cal;
+  if(!cal || ts.prologue || ahead<1 || s.leaveStatus==="onLeave") return null;
+  let a, b;
+  if(isStudentCalendarMode(s) && cal.sched){
+    let idx = ts.segmentIndex % YEAR_SEGMENTS.length, t = ts.turnsInSegment||0;
+    for(let k=1;k<=ahead;k++){
+      if(t >= YEAR_SEGMENTS[idx].budget){ idx++; t = 0; }
+      if(idx >= YEAR_SEGMENTS.length) return null;
+      if(k===ahead){ a = schoolAnchor(cal, idx, t); b = schoolAnchor(cal, idx, t+1)-1; }
+      t++;
+    }
+  } else if(cal.careerYearBase!=null){
+    const budget = roundsPerYearForAge(s.age);
+    const t = (ts.adultTurnsInYear||0) + ahead - 1;
+    if(t >= budget) return null;
+    a = careerAnchor(cal, t, budget); b = careerAnchor(cal, t+1, budget)-1;
+  } else return null;
+  if(!(a>0) || b<a) return null;
+  return calAbsToDate(Math.floor((a+b)/2)).m + "月";
+}
 function orderDueMonth(s, o){
   const cal = s.timeState && s.timeState.cal;
   if(!cal || cal.lastRoundEnd==null) return "";
-  const span = Math.max(1, cal.lastRoundEnd - (cal.lastWinStart!=null ? cal.lastWinStart : cal.lastRoundEnd) + 1);
+  const real = futureTurnMonth(s, o.due - s.turnCount);
+  if(real) return real;
+  const span = Math.max(1, cal.lastRoundEnd - (cal.lastWinStart!=null ? cal.lastWinStart : cal.lastRoundEnd) + 1); // 排好的日期用完了，才用「最近一回合的天數」估算
   return calAbsToDate(cal.lastRoundEnd + Math.max(0, o.due - s.turnCount) * span).m + "月";
 }
 function gigProgressBar(o){ return "■".repeat(o.done) + "□".repeat(Math.max(0, o.need - o.done)); }
@@ -11916,7 +11973,7 @@ function memoirGroupOf(e){
   const hi = parts.findIndex(p=>MEMOIR_HALF_KEYS.includes(p));
   if(hi>=0) return { key:"s:"+parts.slice(0,hi+1).join("・"), name:parts.slice(0,hi+1).join("・"), sub:parts.slice(hi+1).join("・"), age:e.age };
   if(/^(高[一二三]|大[一二三四五])/.test(parts[0]||"")) return { key:"s:"+parts[0], name:parts[0], sub:parts.slice(1).join("・"), age:e.age };
-  return { key:"a:"+e.age, name:stageLabel(e.age), sub: label && !/^\d+歲$/.test(label) ? label : "", age:e.age };
+  return { key:"a:"+e.age, name:stageLabel(e.age), sub: label && !/^\d+歲$/.test(label) ? label.replace(/^\d+歲・/, "") : "", age:e.age };
 }
 function memoirCashOf(e){
   if(typeof e.cash==="number") return e.cash;

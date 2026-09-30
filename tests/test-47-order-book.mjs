@@ -179,6 +179,44 @@ A.check("16.16 交件紀錄：最近的交件與累計收入", /交件紀錄/.te
 doc.querySelector("#gig-modal .gig-rush").click();
 A.check("16.16 「趕這單」：輸入框填入「趕○○的○○」、重心切到該副業、不自動送出", doc.getElementById("custom-input").value === "趕阿宇的貼紙×20" && ev("state.focus") === "work" && ev("state.focusWorkId") === "hc" && !doc.getElementById("gig-modal"), doc.getElementById("custom-input").value);
 
+
+// ---------- 放置期間暫停交期、交期月份用2.7真實日曆 ----------
+setCard("formal", 50);
+ev(`state.turnCount=400; ${C}.gigOrders=[]; registerOrders(state, [{client:'甲', item:'A', size:'medium'},{client:'乙', item:'B', size:'small'}]); state.cash=1000`);
+const dueBefore = js(`${C}.gigOrders.map(o=>o.due)`);
+const tcBefore = ev("state.turnCount");
+ev("state.idleEnabled=true; state.idleMode=true");
+for (let i = 0; i < 12; i++) ev("(()=>{ state.turnCount += 1; state.sideGigIncomeNow=null; sideGigCards(state).forEach(c=>activeOrders(c).forEach(o=>{ o.due += 1; })); idleOrderRound(state); state.orderDeliveredLast=null; })()");
+ev("state.idleMode=false");
+const ords = js(`${C}.gigOrders`);
+A.check("放置期間：訂單不會逾期被取消或罰款(交期跟著往後延)，做完的按準時價入帳", ords.every(o => o.status !== "已取消") && ords.filter(o => o.status === "已交件").length === 2 && ev("state.cash") === 1000 + 35 + 70, ords.map(o => o.status + ":" + o.reward));
+ev(`${C}.gigOrders=[]; state.turnCount=500; registerOrders(state, [{client:'丙', item:'C', size:'large'}]); ${C}.gigOrders[0].done=0`);
+const due0 = ev(`${C}.gigOrders[0].due`);
+ev("(()=>{ for(let i=0;i<3;i++){ state.turnCount += 1; sideGigCards(state).forEach(c=>activeOrders(c).forEach(o=>{ o.due += 1; })); } })()");
+A.check("放置期間：交期一回合一回合往後延，回來後才照常計算", ev(`${C}.gigOrders[0].due`) === due0 + 3 && ev(`${C}.gigOrders[0].due - state.turnCount`) === due0 - 500);
+const src = ev("simulateIdleRound.toString()");
+A.check("放置模式的實際程式不呼叫逾期處理(prepareOrderTurn)，改成延後交期", !/prepareOrderTurn/.test(src) && /o\.due \+= 1/.test(src));
+
+ev("state.timeState.segmentIndex=YEAR_SEGMENTS.findIndex(x=>x.key==='期中準備期'); state.timeState.turnsInSegment=1; state.leaveStatus=null");
+const monthOf = (idx, t) => ev(`(()=>{ const cal=state.timeState.cal; const a=schoolAnchor(cal, ${idx}, ${t}), b=schoolAnchor(cal, ${idx}, ${t}+1)-1; return calAbsToDate(Math.floor((a+b)/2)).m+"月"; })()`);
+const idx = ev("state.timeState.segmentIndex");
+A.check("交期月份：下一回合＝排好的日期中點所在月份(2.7真實日曆)", ev("futureTurnMonth(state, 1)") === monthOf(idx, 1), ev("futureTurnMonth(state, 1)"));
+A.check("交期月份：第3個未來回合仍在同一階段時，照階段內平均分配的日期換算", ev("futureTurnMonth(state, 3)") === monthOf(idx, 3));
+const budget = ev("YEAR_SEGMENTS[state.timeState.segmentIndex].budget");
+A.check("交期月份：跨到下一個段落也照排好的日期換算", ev(`futureTurnMonth(state, ${budget})`) === monthOf(idx + 1, 0) || ev(`futureTurnMonth(state, ${budget})`) === monthOf(idx, budget - 1), ev(`futureTurnMonth(state, ${budget})`));
+A.check("交期月份：超出已排好的學年日期時回傳null(才用估算)、開場回傳null", ev("futureTurnMonth(state, 999)") === null && ev("(()=>{ state.timeState.prologue=true; const r=futureTurnMonth(state,1); state.timeState.prologue=false; return r; })()") === null);
+ev(`${C}.gigOrders=[]; state.turnCount=600; registerOrders(state, [{client:'丁', item:'D', size:'small'}])`);
+A.check("副業面板的交期(月份)優先用真實日曆、算不出來才估算", ev(`orderDueMonth(state, ${C}.gigOrders[0])`) === ev(`futureTurnMonth(state, ${C}.gigOrders[0].due - state.turnCount) || orderDueMonth(state, ${C}.gigOrders[0])`) && /^\d+月$/.test(ev(`orderDueMonth(state, ${C}.gigOrders[0])`)));
+
+// 實際的放置程式(simulateIdleRound)跑一回合：交期延後、不逾期
+setCard("formal", 50);
+ev(`state.turnCount=700; ${C}.gigOrders=[]; registerOrders(state, [{client:'戊', item:'E', size:'large'}]); state.cash=1000; state.idleEnabled=true; state.idleMode=true`);
+const dueR = ev(`${C}.gigOrders[0].due`);
+let idleErr = null;
+try { ev("simulateIdleRound(state, 0)"); ev("simulateIdleRound(state, 1)"); } catch (e) { idleErr = String(e).slice(0, 120); }
+ev("state.idleMode=false");
+A.check("放置：實際跑simulateIdleRound，交期順延、沒有被判逾期或取消", !idleErr && ev(`${C}.gigOrders[0].due`) > dueR && ev(`${C}.gigOrders[0].status`) !== "已取消" && ev(`${C}.gigOrders[0].done`) >= 1 && ev("state.turnCount") === 702, { idleErr, due: ev(`${C}.gigOrders[0].due`), dueR, st: ev(`${C}.gigOrders[0].status`), done: ev(`${C}.gigOrders[0].done`), tc: ev("state.turnCount") });
+
 // ---------- 放置、舊存檔、prompt ----------
 setCard("formal", 50);
 ev(`state.turnCount=200; ${C}.gigOpenOrders=[{turn:1,size:'large'}]; ${C}.gigNextOfferTurn=5; ${C}.gigOrders=[]; registerOrders(state, [{client:'a', item:'b', size:'small'}]); state.turnCount=201`);

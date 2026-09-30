@@ -22,7 +22,8 @@ A.check("小字進度行只留階段名稱", !/學期/.test(JSON.parse(prog).sho
 const last = JSON.parse(ev("JSON.stringify(state.log[state.log.length-1])"));
 A.check("日記回合標題含月份", /・\d{1,2}月/.test(last.timeLabel) || /^高一・(寒假|暑假)$/.test(last.timeLabel), last.timeLabel);
 A.check("labelWithMonth：學期後接月份、階段名稱在後", ev(`labelWithMonth("高三・上學期・期末準備期",{start:${ev("state.timeState.cal.lastRoundEnd")},end:${ev("state.timeState.cal.lastRoundEnd")}})`).startsWith("高三・上學期・") && /・\d+月・期末準備期$/.test(ev(`labelWithMonth("高三・上學期・期末準備期",{start:0,end:0})`)));
-A.check("labelWithMonth：出社會標籤不動", ev(`labelWithMonth("入職第2年・上半年",{start:0,end:0})`) === "入職第2年・上半年" && ev(`labelWithMonth("30歲",{start:0,end:0})`) === "30歲");
+A.check("labelWithMonth：寒暑假、出社會後沒有階段名稱時直接接月份", ev(`labelWithMonth("高二・暑假",{start:0,end:0})`) === "高二・暑假・8月" && ev(`labelWithMonth("30歲",{start:0,end:0})`) === "30歲・8月" && ev(`labelWithMonth("入職第2年・上半年",{start:0,end:0})`) === "入職第2年・上半年・8月" && ev(`labelWithMonth("大二・休學中",{start:0,end:0})`) === "大二・休學中・8月");
+A.check("labelWithMonth：已經有月份不重複加", ev(`labelWithMonth("高二・暑假・7月",{start:0,end:0})`) === "高二・暑假・7月");
 
 // ---------- 本回合時間範圍、靠近推遠欄位、interest_event必填檢查 ----------
 await H.playTurn(g, "嗯");

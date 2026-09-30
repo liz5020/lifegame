@@ -56,6 +56,19 @@ A.check("#6 敘事出現「好感度」「行動點」「投入度」「這回�
 A.check("#6 一般句子不誤殺(身體重心、生活重心、一個回合)", q("他把身體重心壓低，穩穩接住球。").length === 0 && q("她的生活重心慢慢移到了工作室。").length === 0 && q("這一輪比賽打得很久。").length === 0);
 A.check("#6 一般口語(「我現在認真在做手作了」)通過", q("「我現在算是認真在做手作了。」").length === 0);
 
+
+// ---------- #1 性別：人名＋親屬稱謂的矛盾，只記錄不擋 ----------
+ev(`state.characters = state.characters.filter(c=>c.name!=='璟璇'&&c.name!=='阿豪'); state.characters.push({name:'璟璇',relation:'表姊',gender:'女',age:22,affinity:60,active:true,traits:'',summary:'',lastTurn:state.turnCount,isChild:false},{name:'阿豪',relation:'朋友',gender:'男',age:16,affinity:60,active:true,traits:'',summary:'',lastTurn:state.turnCount,isChild:false})`);
+const gm = (txt) => js(`detectGenderTitleMismatch(state, ${JSON.stringify(txt)})`);
+A.check("#1 「璟璇表哥」(女性寫成男性稱謂)：抓到", gm("你看見璟璇表哥站在門口。").some(m => m.name === "璟璇" && m.title === "表哥"));
+A.check("#1 「表姊璟璇」(名單性別正確)：不誤抓", gm("表姊璟璇站在門口，阿豪哥哥般地笑了。").filter(m => m.name === "璟璇").length === 0);
+A.check("#1 男生被寫成「阿豪姊姊」：抓到；「阿豪的哥哥」(中間有字)不算", gm("阿豪姊姊來了").some(m => m.name === "阿豪") && gm("阿豪的哥哥來了").length === 0);
+ev("state.reviewFlags=[]");
+override = () => ({ action_result: ["你朝璟璇表哥點了點頭。"], narrative: ["隔天，教室裡很安靜。"] });
+await H.playTurn(g, "嗯");
+override = () => ({});
+A.check("#1 整回合：只寫錯誤紀錄gender_title_mismatch、不擋遊戲(回合照常完成)", /gender_title_mismatch/.test(flags()) && !ev("state.log[state.log.length-1].error"), flags());
+
 // ---------- #1 prompt ----------
 const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
 A.check("prompt #1：性別以名單為準、玩家用錯代名詞不改寫", ["角色性別以名單為準", "不要跟著改寫名單上的性別", "表姊、表哥"].every(k => prompt.includes(k)));
