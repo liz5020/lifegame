@@ -19,7 +19,7 @@
 - `content-team/`（有新檔時再建）：內容組提供的原始docx/文件（舊檔在`archive/content-team/`）
 - `公告草稿_已知狀況.md`：公測公告草稿（2026-09-25，發布前要依實際情況修改）
 - `archive/`：封存的舊版本，不會再被讀取或引用
-- git：遠端GitHub（liz5020/lifegame），平時在本機作業，使用者確認後才push
+- git：遠端GitHub（liz5020/lifegame），平時在本機作業；測試期自動上線（2026-09-30）：**純文件改動**（設計文件、QA、CLAUDE.md、WORKFLOW.md、共同基準、CHANGELOG、DEPLOY.md等）跑`node run-all.mjs --quick`全過後可直接`git push origin HEAD:master`；只要含`index.html`／`worker/`／`tests/`等程式碼，一律開合併請求等使用者按合併；真實API照舊每次問。完整規則見`協作流程說明-共同基準.md`
 
 ## ⚠️ 費用控制鐵律（最高優先，不因任何理由讓步）
 
