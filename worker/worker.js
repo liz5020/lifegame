@@ -791,6 +791,9 @@ async function handleUsageSummary(request, env) {
   return new Response(JSON.stringify(summary, null, 2), { headers });
 }
 
+// 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
+const WORKER_VERSION = "2026.09.30-a";
+
 export default {
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
@@ -818,6 +821,8 @@ export default {
     }
 
     const url = new URL(request.url);
+    // 版本查詢（2026-09-30）：不碰KV，讓玩家與開發者確認線上跑的是哪一版
+    if (url.pathname === "/version" && request.method === "GET") return jsonResponse(origin, { success: true, version: WORKER_VERSION });
     // 十、10.8（2026-09-29）：雲端存檔關閉時完全不碰KV——存檔類路徑直接回503，頻率限制改用不經KV的綁定
     if (!cloudEnabled(env)) {
       if (!(await checkRateLimitNoKV(request, env))) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);

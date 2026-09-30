@@ -7664,6 +7664,69 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
 }
 
 const WORKER_URL = "https://life-game.smile80275.workers.dev/";
+// ===== 版本與更新紀錄（2026-09-30新增）=====
+// 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
+// ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
+// 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
+const APP_VERSION = "2026.09.30-a";
+const RELEASE_NOTES = [
+  { version:"2026.09.30-a", date:"2026-09-30", title:"選單、月份與人際關係大改版", items:[
+    "新增底部選單：按輸入框左邊的圓形按鈕，屬性、興趣、人物、地點、帳務都收在裡面。",
+    "每一回合的標題現在會寫出月份，故事裡的節日和季節會跟著月份走。",
+    "新增「地點」：去過的地方都會記下來，可以看誰常在那裡、上次是哪個月去的。",
+    "副業改成有訂單：每一單有交期、進度和報酬，拖太久客人會取消。",
+    "戀愛更完整：要在一起，一定會有告白的場面，而且是你自己點頭；分手也一定有一個場面。",
+    "朋友之間的衝突現在有前因後果，好好收尾可以讓關係比原來更近。",
+    "新增「玩法與圖例」和「更新紀錄」，畫面圖示全面換成簡潔的線條風格。"
+  ]},
+  { version:"2026.09.29-a", date:"2026-09-29", title:"考試、副業與人脈調整", items:[
+    "期中期末的分數現在會先決定好，再由故事交代原因。",
+    "學生時期每回合分成「回應」和「這段時間想做什麼」兩步。",
+    "人脈只有在你和家人以外的人互動時才會維持，太久沒聯絡會慢慢淡掉。",
+    "結算欄逐項列出收入和支出，數字都改成整數。"
+  ]}
+];
+function currentRelease(){ return RELEASE_NOTES[0]; }
+const SEEN_VERSION_STORAGE_NAME = "lifegame_seen_version";
+function hasUnseenRelease(){
+  try{ return localStorage.getItem(SEEN_VERSION_STORAGE_NAME) !== APP_VERSION; }catch(e){ return false; }
+}
+function markReleaseSeen(){
+  try{ localStorage.setItem(SEEN_VERSION_STORAGE_NAME, APP_VERSION); }catch(e){}
+}
+async function fetchWorkerVersion(){
+  try{
+    const r = await fetch(WORKER_URL.replace(/\/$/,"") + "/version");
+    const j = await r.json();
+    return j && j.version ? String(j.version) : null;
+  }catch(e){ return null; }
+}
+function renderUpdatesModal(){
+  markReleaseSeen();
+  const cur = currentRelease();
+  const div = document.createElement("div");
+  div.id = "updates-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal legend" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>更新紀錄</h3>
+      <p id="updates-ver" style="font-size:12.5px;opacity:.75;margin:0 0 8px;">目前版本 ${escapeHtml(APP_VERSION)}（${escapeHtml(cur.date)}）${USE_MOCK ? "・測試模式" : "・伺服器版本查詢中…"}</p>
+      <div style="overflow-y:auto;flex:1;">
+        ${RELEASE_NOTES.map(r=>`<h4>${escapeHtml(r.date)}　${escapeHtml(r.title)}</h4><ul style="margin:4px 0 12px 18px;padding:0;text-align:left;">${r.items.map(x=>`<li>${escapeHtml(x)}</li>`).join("")}</ul>`).join("")}
+      </div>
+      <button class="ghost-btn" id="btn-updates-close" style="margin-top:14px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-updates-close").onclick = ()=>div.remove();
+  const fab = document.getElementById("btn-drawer"); if(fab) fab.querySelector(".dot")?.remove();
+  const dot = document.querySelector("#link-updates .dot"); if(dot) dot.remove();
+  if(!USE_MOCK){
+    fetchWorkerVersion().then(v=>{
+      const el = document.getElementById("updates-ver"); if(!el) return;
+      el.textContent = `目前版本 ${APP_VERSION}（${cur.date}）・伺服器版本 ${v || "查不到"}`;
+    });
+  }
+}
 let lastTurnServerInfo = null; // Worker回傳的lifegame欄位(行動點、遙測)，開發者面板顯示用
 let lastCallServerAP = null;    // 這一次callAI收到的伺服器端行動點(失敗時takeTurn用它校正本機退點)
 
@@ -10431,7 +10494,7 @@ function renderHome(){
       <p class="serif">這一頁讀完了，下一頁還空著。</p>
       <button class="ghost-btn" id="btn-home-top">↑ 翻回第一頁</button>
       <div class="foot-mark">人生草稿</div>
-      <div class="foot-copy">© 2026 人生草稿</div>
+      <div class="foot-copy">© 2026 人生草稿・版本 ${escapeHtml(APP_VERSION)}（${escapeHtml(currentRelease().date)}）</div>
     </footer>
     ${renderAgeGate()}
   </div>`;
@@ -10971,7 +11034,8 @@ const ICON_PATHS = {
   key:'<path d="m2 21 9.6-9.6"/><path d="m7.5 15.5 2.3 2.3a1 1 0 0 1 0 1.4l-2.1 2.1a1 1 0 0 1-1.4 0L4 19"/><circle cx="15.5" cy="7.5" r="5.5"/>',
   refresh:'<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
   play:'<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
-  pause:'<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>'
+  pause:'<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>',
+  sparkles:'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>'
 };
 function icon(name){ return `<svg class="ic-svg" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name]||""}</svg>`; }
 function stageLabelForStamp(s){ return stageLabel(s.age); }
@@ -11071,7 +11135,7 @@ function renderPlaying(loadingTurn){
     ${renderFocusBar(s, apOut||busy)}
     ${s.seekTarget ? `<div class="seek-tag">${characterState((s.characters||[]).find(c=>c.name===s.seekTarget))==="deceased" ? "回憶" : "想找"}：${escapeHtml(s.seekTarget)}<button id="btn-seek-clear" aria-label="取消想找" ${busy?"disabled":""}>×</button></div>` : ``}
     <div class="custom-row" style="margin-top:0;">
-      <button id="btn-drawer" class="menu-fab" aria-label="${drawerOpen ? "關閉選單" : "打開選單"}" aria-expanded="${drawerOpen}">${icon(drawerOpen ? "x" : "menu")}</button>
+      <button id="btn-drawer" class="menu-fab" aria-label="${drawerOpen ? "關閉選單" : "打開選單"}" aria-expanded="${drawerOpen}" style="position:relative;">${icon(drawerOpen ? "x" : "menu")}${hasUnseenRelease() ? `<span class="dot" aria-label="有新的更新" style="position:absolute;top:2px;right:2px;width:9px;height:9px;border-radius:50%;background:#fff;border:2px solid var(--stamp);box-sizing:border-box;"></span>` : ``}</button>
       <textarea id="custom-input" rows="3" placeholder="${focusModeActive(s) ? "寫下你想說或想做的事，也可以寫這段時間想怎麼過" : "或者，自己寫下你想做的事…"}" ${(apOut||busy)?"disabled":""}></textarea>
       <button id="btn-custom" class="send-btn" aria-label="送出" title="每回合消耗 1 點行動點" ${(apOut||busy)?"disabled":""}>${icon("send")}</button>
     </div>
@@ -11220,6 +11284,7 @@ function renderDrawer(s){
       <button class="bar-tile" id="link-legend">${icon("help")}玩法與圖例</button>
       <button class="bar-tile" id="tile-settings" data-panel="menu">${icon("save")}存檔・設定</button>
       <button class="bar-tile" id="link-about-me">${icon("user")}關於我</button>
+      <button class="bar-tile" id="link-updates" style="position:relative;">${hasUnseenRelease() ? `<span class="dot" aria-label="有新的更新"></span>` : ``}${icon("sparkles")}更新紀錄<span style="margin-left:auto;font-weight:400;font-size:12px;opacity:.65;">${escapeHtml(APP_VERSION)}</span></button>
       ${devToolsOn() ? `<button class="bar-tile tile dev" id="tile-test" data-panel="test" style="text-align:left;">${icon("flask")}測試</button>` : ``}
     </div>
   </section>`;
@@ -11587,6 +11652,7 @@ function bindPlaying(){
   });
   const ledgerLink = document.getElementById("link-ledger"); if(ledgerLink) ledgerLink.onclick = renderLedgerModal;
   const legendLink = document.getElementById("link-legend"); if(legendLink) legendLink.onclick = renderLegendModal;
+  const updatesLink = document.getElementById("link-updates"); if(updatesLink) updatesLink.onclick = renderUpdatesModal;
   const backdrop = document.getElementById("sheet-backdrop");
   if(backdrop) backdrop.onclick = ()=>setPanel(null);
   document.querySelectorAll(".sheet-close").forEach(b=>{ b.onclick = ()=>setPanel(null); });
