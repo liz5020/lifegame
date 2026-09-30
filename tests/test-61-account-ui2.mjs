@@ -55,16 +55,16 @@ const mailsToB = () => resend.sent.filter(x => x.to === "b61@example.com").lengt
 const mailsBefore = mailsToB();
 bump(26 * 3600 * 1000); // 隔天
 await gB.ev("refreshAccount()");
-A.check("隔天午夜後自動補發：錢包補到55點，點數明細「啟程禮補發 +52」，不寄信給玩家", gB.ev("totalAP(state)") === 55 && gB.ev("state.apLog.some(e=>e.type==='啟程禮補發' && e.n===52)") && mailsToB() === mailsBefore && gB.ev("acct.gifts.claimed") === 1 && gB.ev("acct.gifts.queued") === 0, [gB.ev("totalAP(state)"), gB.ev("state.apLog.slice(-3)")]);
+A.check("隔天午夜後自動補發：錢包補發+30點(3→33)，點數明細「啟程禮補發 +30」，不寄信給玩家", gB.ev("totalAP(state)") === 33 && gB.ev("state.apLog.some(e=>e.type==='啟程禮補發' && e.n===30)") && mailsToB() === mailsBefore && gB.ev("acct.gifts.claimed") === 1 && gB.ev("acct.gifts.queued") === 0, [gB.ev("totalAP(state)"), gB.ev("state.apLog.slice(-3)")]);
 A.check("補發不新增訊息：沒有彈窗、沒有提示條(只有點數明細)", !gB.win.document.querySelector(".modal-backdrop") && !gB.win.document.getElementById("refill-toast") && !gB.win.document.getElementById("writer-toast"));
 delete env.DAILY_GIFT_CAP;
 
 // ================= 每日補點：第8則提示只在實際補到點時出現 =================
 const gC = await newDevice("k61c0000003", "丙");
-gC.ev("state.ap.daily = 0; state.ap.gift = 0;"); // 綁定後錢包剛好55點
+gC.ev("state.ap.daily = 0; state.ap.gift = 0;"); // 綁定後錢包剛好30點
 await flow(gC, "bind", "c61@example.com"); ok(gC);
 const tC = gC.ev("acctToken()");
-await post("/account/wallet", { op: "spend", n: 50 }, tC); await post("/account/wallet", { op: "spend", n: 5 }, tC);
+await post("/account/wallet", { op: "spend", n: 30 }, tC); // 綁定後剛好30點，扣光
 await gC.ev("refreshAccount()"); gC.win.document.getElementById("refill-toast")?.remove();
 A.check("(準備：錢包剩0點，畫面同步)", gC.ev("totalAP(state)") === 0);
 bump(26 * 3600 * 1000);

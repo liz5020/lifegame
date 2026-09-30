@@ -34,16 +34,16 @@ const aiTurn = (token, opts = {}) => post("/", { wallet: true, turn_nonce: opts.
 setNow(0);
 let r = await bind("one@example.com", "KEY-ONE", [L("lifeone01", 5, 30)]);
 const tOne = r.json.token;
-A.check("首次綁定：成功、未綁人生剩下的35點併入錢包後補到55點", r.status === 200 && r.json.account.wallet.total === 55 && r.json.result.carried === 35 && r.json.result.gift.status === "granted" && r.json.result.gift.added === 20, r.json);
+A.check("首次綁定：成功、未綁人生剩下的35點併入錢包後再+30點(2026-09-30第三批)", r.status === 200 && r.json.account.wallet.total === 65 && r.json.result.carried === 35 && r.json.result.gift.status === "granted" && r.json.result.gift.added === 30, r.json);
 A.check("首次綁定：這段人生成為帳號第1段(slot 0)、金鑰綁在帳號上", r.json.account.lives.length === 1 && r.json.account.lives[0].lid === "lifeone01" && r.json.account.lives[0].slot === 0 && r.json.account.recovery_key === "KEY-ONE", r.json.account);
-A.check("首次綁定：點數明細有「啟程禮 +20」(補到55點的實際增加量)", evTypes(r) === "啟程禮:20", r.json.events);
+A.check("首次綁定：點數明細有「啟程禮 +30」(固定+30)", evTypes(r) === "啟程禮:30", r.json.events);
 A.check("首次綁定：已領1／2份", r.json.account.gifts.claimed === 1 && r.json.account.gifts.max === 2 && r.json.account.gifts.queued === 0, r.json.account.gifts);
 r = await bind("big@example.com", "KEY-BIG", [L("lifebig01", 5, 55)]);
-A.check("首次綁定：剩下的點數已經超過55→不再補(加0)，錢包＝帶過來的60點", r.json.account.wallet.total === 60 && r.json.result.gift.added === 0, r.json);
+A.check("首次綁定：帶過來的點數再多(60點)也照樣+30：錢包90點", r.json.account.wallet.total === 90 && r.json.result.gift.added === 30, r.json);
 r = await bind("none@example.com", "KEY-NONE", []);
-A.check("首次綁定：沒有人生也能綁(錢包直接55點)", r.status === 200 && r.json.account.wallet.total === 55 && r.json.account.lives.length === 0, r.json);
+A.check("首次綁定：沒有人生也能綁(錢包直接30點)", r.status === 200 && r.json.account.wallet.total === 30 && r.json.account.lives.length === 0, r.json);
 // 錢包沒有「每條人生各一池」：只有一個總數
-A.check("錢包是整個帳號共用的一個數字(free＋purchased)", r.json.account.wallet.free === 55 && r.json.account.wallet.purchased === 0);
+A.check("錢包是整個帳號共用的一個數字(free＋purchased)", r.json.account.wallet.free === 30 && r.json.account.wallet.purchased === 0);
 
 // ================= 情境2：綁到已有帳號的信箱→拒絕 =================
 const before = (await me(tOne)).json.account;
@@ -58,47 +58,47 @@ A.check("沒有驗證碼就想綁到已有帳號的信箱→只會得到驗證�
 setNow(10 * MIN);
 r = await login("one@example.com", [L("lifedev01", 3, 10)]);
 const tOneDev2 = r.json.token;
-A.check("登入既有帳號：裝置上的未綁人生併入(第2段)、剩下13點併入錢包、不發啟程禮", r.status === 200 && r.json.result.accepted.length === 1 && r.json.result.overflow.length === 0 && r.json.result.carried === 13 && r.json.account.wallet.total === 55 + 13 && r.json.account.lives.length === 2 && r.json.account.gifts.claimed === 1, r.json);
+A.check("登入既有帳號：裝置上的未綁人生併入(第2段)、剩下13點併入錢包、不發啟程禮", r.status === 200 && r.json.result.accepted.length === 1 && r.json.result.overflow.length === 0 && r.json.result.carried === 13 && r.json.account.wallet.total === 65 + 13 && r.json.account.lives.length === 2 && r.json.account.gifts.claimed === 1, r.json);
 A.check("登入併入：點數明細「帳號併入 +13」，沒有啟程禮", evTypes(r) === "帳號併入:13", r.json.events);
 A.check("登入併入：兩段人生各占一個格子(slot 0與1)", new Set(r.json.account.lives.map(l => l.slot)).size === 2);
 r = await login("one@example.com", []);
-A.check("再從第三台裝置登入(沒有人生要併入)：錢包不變、不重發啟程禮", r.status === 200 && r.json.account.wallet.total === 68 && r.json.account.gifts.claimed === 1 && !r.json.events.length, r.json);
+A.check("再從第三台裝置登入(沒有人生要併入)：錢包不變、不重發啟程禮", r.status === 200 && r.json.account.wallet.total === 78 && r.json.account.gifts.claimed === 1 && !r.json.events.length, r.json);
 r = await login("nobody-here@example.com", []);
 A.check("登入沒有帳號的信箱→409 no_account(要從遊戲裡綁定信箱)", r.status === 409 && r.json.error === "no_account", r.json);
 
 // ================= 情境4：併入超過2段 =================
 setNow(20 * MIN);
 r = await login("one@example.com", [L("lifemore1", 5, 55), L("lifemore2", 5, 55)]);
-A.check("已有2段的帳號再併入更多人生→全部超額：不收、不刪(overflow)，點數也不併入(人生留在原金鑰帶著自己的點數)", r.status === 200 && r.json.result.accepted.length === 0 && r.json.result.overflow.length === 2 && r.json.result.carried === 0 && r.json.account.lives.length === 2 && r.json.account.wallet.total === 68, r.json);
+A.check("已有2段的帳號再併入更多人生→全部超額：不收、不刪(overflow)，點數也不併入(人生留在原金鑰帶著自己的點數)", r.status === 200 && r.json.result.accepted.length === 0 && r.json.result.overflow.length === 2 && r.json.result.carried === 0 && r.json.account.lives.length === 2 && r.json.account.wallet.total === 78, r.json);
 r = await bind("three@example.com", "KEY-THREE", [L("lifet001", 5, 55), L("lifet002", 5, 55), L("lifet003", 5, 55)]);
 A.check("封測留下3段人生首次綁定：收2段(依傳入順序)、第3段留在原金鑰", r.json.result.accepted.map(x => x.lid).join() === "lifet001,lifet002" && r.json.result.overflow.join() === "lifet003" && r.json.account.lives.length === 2, r.json.result);
-A.check("超額的那段人生的點數不併入：錢包＝前2段各60點的累計(有上限120)", r.json.account.wallet.total === 120, r.json.account.wallet);
+A.check("超額的那段人生的點數不併入：錢包＝前2段帶入(上限120)＋30點啟程禮", r.json.account.wallet.total === 150, r.json.account.wallet);
 const tThree = r.json.token;
 r = await post("/account/lives", { op: "add", lid: "lifet004" }, auth(tThree));
 A.check("帳號滿2段時再開新人生→409 account_full", r.status === 409 && r.json.error === "account_full", r.json);
 await post("/account/lives", { op: "remove", lid: "lifet001" }, auth(tThree));
 r = await post("/account/lives", { op: "attach", lives: [L("lifet003", 5, 55)] }, auth(tThree));
-A.check("帳號空出格子後可以手動轉入：不發啟程禮、剩餘點數併入錢包", r.status === 200 && r.json.result.accepted.length === 1 && r.json.account.gifts.claimed === 1 && r.json.account.wallet.total === 120, r.json);
+A.check("帳號空出格子後可以手動轉入：不發啟程禮、剩餘點數併入錢包", r.status === 200 && r.json.result.accepted.length === 1 && r.json.account.gifts.claimed === 1 && r.json.account.wallet.total === 150, r.json);
 
 // ================= 第2份啟程禮 =================
 setNow(30 * MIN);
 r = await bind("two@example.com", "KEY-TWO", [L("lifetwo01", 5, 10)]);
 const tTwo = r.json.token;
 r = await post("/account/lives", { op: "add", lid: "lifetwo02" }, auth(tTwo));
-A.check("帳號第一次開第2段人生：錢包直接增加55點(第2份)", r.status === 200 && r.json.result.gift && r.json.result.gift.status === "granted" && r.json.account.wallet.total === 55 + 55 && evTypes(r) === "啟程禮（第 2 份）:55" && r.json.account.gifts.claimed === 2, r.json);
+A.check("帳號第一次開第2段人生：錢包直接增加55點(第2份)", r.status === 200 && r.json.result.gift && r.json.result.gift.status === "granted" && r.json.account.wallet.total === 45 + 55 && evTypes(r) === "啟程禮（第 2 份）:55" && r.json.account.gifts.claimed === 2, r.json);
 await post("/account/lives", { op: "remove", lid: "lifetwo02" }, auth(tTwo));
 r = await post("/account/lives", { op: "add", lid: "lifetwo03" }, auth(tTwo));
-A.check("每個信箱最多2份：之後再開第2段人生不再發", r.status === 200 && !r.json.result.gift && r.json.account.wallet.total === 110 && r.json.account.gifts.claimed === 2, r.json);
+A.check("每個信箱最多2份：之後再開第2段人生不再發", r.status === 200 && !r.json.result.gift && r.json.account.wallet.total === 100 && r.json.account.gifts.claimed === 2, r.json);
 r = await post("/account/lives", { op: "add", lid: "lifetwo03" }, auth(tTwo));
-A.check("同一段人生重複登記不會重複發／重複占格子(冪等)", r.status === 200 && r.json.account.lives.length === 2 && r.json.account.wallet.total === 110, r.json);
+A.check("同一段人生重複登記不會重複發／重複占格子(冪等)", r.status === 200 && r.json.account.lives.length === 2 && r.json.account.wallet.total === 100, r.json);
 
 // ================= 每日補點：補到 5點×人生數，不回溯、不設上限 =================
 setNow(DAY);
 r = await me(tTwo);
-A.check("每日補點：餘額110已超過上限10→不補、不扣減", r.json.account.wallet.total === 110 && !r.json.events.length, r.json);
+A.check("每日補點：餘額100已超過上限10→不補、不扣減", r.json.account.wallet.total === 100 && !r.json.events.length, r.json);
 let spentAll = 0;
-for (let i = 0; i < 108; i++) { const x = await aiTurn(tTwo); if (x.status === 200) spentAll++; }
-A.check("(先扣到剩2點：連續108回合)", spentAll === 108 && (await me(tTwo)).json.account.wallet.total === 2, spentAll);
+for (let i = 0; i < 98; i++) { const x = await aiTurn(tTwo); if (x.status === 200) spentAll++; }
+A.check("(先扣到剩2點：連續98回合)", spentAll === 98 && (await me(tTwo)).json.account.wallet.total === 2, spentAll);
 setNow(2 * DAY);
 r = await me(tTwo);
 A.check("每日補點：2段人生→補到10點(補8點)、明細「每日補點 +8」、當天再開不重複補", r.json.account.wallet.total === 10 && evTypes(r) === "每日補點:8" && (await me(tTwo)).json.account.wallet.total === 10, r.json);
@@ -114,7 +114,7 @@ A.check("(補點後扣1點仍是同一天，不會再補)", (await me(tTwo)).jso
 // ================= 錢包扣點(AI代理) =================
 setNow(6 * DAY);
 r = await bind("pay@example.com", "KEY-PAY", [L("lifepay01", 0, 2)]); const tPay = r.json.token;
-await post("/account/wallet", { op: "spend", n: 50 }, auth(tPay)); await post("/account/wallet", { op: "spend", n: 5 }, auth(tPay));
+await post("/account/wallet", { op: "spend", n: 30 }, auth(tPay)); await post("/account/wallet", { op: "spend", n: 2 }, auth(tPay)); // 綁定時2點＋30點＝32點，扣光
 r = await me(tPay); A.check("(準備：錢包剩0點)", r.json.account.wallet.total === 0, r.json.account.wallet);
 setNow(7 * DAY); r = await me(tPay);
 A.check("(隔天補到5點)", r.json.account.wallet.total === 5);
@@ -162,7 +162,8 @@ r = await post("/account/wallet", { op: "refund", nonce: "mockcharge02", life_id
 A.check("mock端點refund：回合失敗→退回這回合扣的1點", r.json.wallet.total === w2 + 1, r.json.wallet);
 r = await post("/account/wallet", { op: "spend", n: 5 }, auth(tPay));
 A.check("mock端點spend：扣5點", r.json.wallet.total === w2 + 1 - 5, r.json.wallet);
-r = await post("/account/wallet", { op: "spend", n: 9999 }, auth(tPay));
+await post("/account/wallet", { op: "spend", n: 50 }, auth(tPay));
+r = await post("/account/wallet", { op: "spend", n: 50 }, auth(tPay));
 A.check("餘額不足的spend→402、不扣", r.status === 402, r.status);
 
 // ================= 換綁信箱：必須先通過驗證碼 =================
@@ -190,7 +191,7 @@ const g1 = await bind("g1@example.com", "KEY-G1", [L("lifeg1001", 0, 0)]);
 const g2 = await bind("g2@example.com", "KEY-G2", [L("lifeg2001", 0, 10)]);
 const g3 = await bind("g3@example.com", "KEY-G3", [L("lifeg3001", 0, 7)]);
 const g4 = await bind("g4@example.com", "KEY-G4", [L("lifeg4001", 0, 3)]);
-A.check("每日上限2份：前2位綁定領到啟程禮(補到55)", g1.json.result.gift.status === "granted" && g1.json.account.wallet.total === 55 && g2.json.result.gift.status === "granted" && g2.json.account.wallet.total === 55);
+A.check("每日上限2份：前2位綁定領到啟程禮(各+30)", g1.json.result.gift.status === "granted" && g1.json.account.wallet.total === 30 && g2.json.result.gift.status === "granted" && g2.json.account.wallet.total === 40);
 A.check("發滿時：第3、4位綁定照常成功，啟程禮排隊(status queued)、錢包沒有增加", g3.status === 200 && g3.json.result.gift.status === "queued" && g3.json.account.wallet.total === 7 && g4.json.result.gift.status === "queued" && g4.json.account.wallet.total === 3 && g3.json.account.gifts.queued === 1 && g3.json.account.gifts.claimed === 0, [g3.json.result, g4.json.result]);
 A.check("排隊的人綁定後仍是已綁狀態(有token、有帳號)", !!g3.json.token && !!g3.json.account.aid);
 const gnow = (await get("/usage-today", { Authorization: "Bearer admin-secret" })).json;
@@ -200,25 +201,25 @@ A.check("同一天內排隊的人不會被補發(要等隔天午夜後)", r.json
 setNow(21 * DAY + 5 * MIN); // 隔天台灣時間午夜過後
 const g5 = await bind("g5@example.com", "KEY-G5", [L("lifeg5001", 0, 0)]); // 隔天有人新綁定：要排在補發的後面
 r = await me(g4.json.token);
-A.check("隔天午夜後：排隊者依綁定順序補發，第1份依補發當下錢包餘額補到55點", r.json.account.wallet.total === 55 && evTypes(r).startsWith("啟程禮補發:") && r.json.account.gifts.claimed === 1 && r.json.account.gifts.queued === 0, r.json);
+A.check("隔天午夜後：排隊者依綁定順序補發，補發一樣+30點", r.json.account.wallet.total === 33 && evTypes(r) === "啟程禮補發:30" && r.json.account.gifts.claimed === 1 && r.json.account.gifts.queued === 0, r.json);
 r = await me(g3.json.token);
-A.check("隔天：先綁的g3也已補發到55點(記為「啟程禮補發」，補的是55−7=48點)", r.json.account.wallet.total === 55 && evTypes(r) === "啟程禮補發:48", r.json);
+A.check("隔天：先綁的g3也已補發30點(記為「啟程禮補發」)", r.json.account.wallet.total === 37 && evTypes(r) === "啟程禮補發:30", r.json);
 A.check("隔天：排在補發後面的新綁定者g5，當天2份上限已被補發用完→排隊", g5.json.result.gift.status === "queued" && g5.json.account.wallet.total === 0, g5.json.result);
 setNow(22 * DAY + 5 * MIN);
 r = await me(g5.json.token);
-A.check("再隔天：g5也補到55點", r.json.account.wallet.total === 55 && evTypes(r).startsWith("啟程禮補發:"), r.json);
+A.check("再隔天：g5也補發30點", r.json.account.wallet.total === 30 && evTypes(r).startsWith("啟程禮補發:"), r.json);
 // 第2份也排隊，補發記為「啟程禮補發」
 setNow(30 * DAY);
 env.DAILY_GIFT_CAP = "1";
 const h1 = await bind("h1@example.com", "KEY-H1", [L("lifeh1001", 0, 0)]);
 const h2 = await bind("h2@example.com", "KEY-H2", [L("lifeh2001", 0, 0)]);
 r = await post("/account/lives", { op: "add", lid: "lifeh1002" }, auth(h1.json.token));
-A.check("第2份啟程禮遇到當天發滿→開第2段人生照常成功、啟程禮排隊", r.status === 200 && r.json.result.gift.status === "queued" && r.json.account.lives.length === 2 && r.json.account.wallet.total === 55, r.json);
+A.check("第2份啟程禮遇到當天發滿→開第2段人生照常成功、啟程禮排隊", r.status === 200 && r.json.result.gift.status === "queued" && r.json.account.lives.length === 2 && r.json.account.wallet.total === 30, r.json);
 setNow(31 * DAY + 5 * MIN);
 r = await me(h2.json.token);
-A.check("(隔天先補發最早排隊的h2的第1份)", evTypes(r).startsWith("啟程禮補發:") && r.json.account.wallet.total === 55, r.json);
+A.check("(隔天先補發最早排隊的h2的第1份)", evTypes(r).startsWith("啟程禮補發:") && r.json.account.wallet.total === 30, r.json);
 setNow(32 * DAY + 5 * MIN);
 r = await me(h1.json.token);
-A.check("(再隔天補發h1的第2份：直接+55，記為「啟程禮補發」)", evTypes(r) === "啟程禮補發:55" && r.json.account.wallet.total === 110 && r.json.account.gifts.claimed === 2, r.json);
+A.check("(再隔天補發h1的第2份：直接+55，記為「啟程禮補發」)", evTypes(r) === "啟程禮補發:55" && r.json.account.wallet.total === 85 && r.json.account.gifts.claimed === 2, r.json);
 delete env.DAILY_GIFT_CAP;
 process.exit(A.report() ? 0 : 1);

@@ -20,16 +20,15 @@ const setRec = async (key, slot, patch, e = env) => { const r = JSON.parse(await
 let r = await H.callWorker(env, { path: "/claim-gift", body: { key: "k1" } });
 A.check("claim-gift沒帶slot：400", r.status === 400);
 r = await H.callWorker(env, { path: "/claim-gift", body: { key: "k1", slot: 0 } });
-A.check("新人生領禮包：伺服器端餘額＝每日5＋禮包55", r.json.granted && r.json.ap.daily === 5 && r.json.ap.gift === 55 && r.json.ap.total === 60, r.json);
-await H.callWorker(env, { path: "/claim-gift", body: { key: "k1", slot: 1 } });
-await H.callWorker(env, { path: "/claim-gift", body: { key: "k1", slot: 2 } });
-r = await H.callWorker(env, { path: "/claim-gift", body: { key: "k1", slot: 2 } });
-A.check("同一金鑰第4次領禮包：不發", r.json.granted === false && r.json.claimed === 3);
+A.check("新人生領禮包：伺服器端餘額＝每日5＋禮包25", r.json.granted && r.json.ap.daily === 5 && r.json.ap.gift === 25 && r.json.ap.total === 30, r.json);
+r = await H.callWorker(env, { path: "/claim-gift", body: { key: "k1", slot: 1 } });
+A.check("同一金鑰第2次領禮包：不發(2026-09-30第三批：每把金鑰只領1次25點)", r.json.granted === false && r.json.claimed === 1);
+await H.callWorker(env, { path: "/claim-gift", body: { key: "k1", slot: 2 } }); // 沒發禮包，但會建立這格的點數紀錄(後面的測試要用)
 // --- 扣點順序 ---
 await setRec("k1", 0, { purchased: 3 });
 for (let i = 0; i < 6; i++) await turn("k1", 0);
 let ap = await getAP("k1", 0);
-A.check("扣點順序：每日池5點用完才扣禮包點，購買點不動", ap.daily === 0 && ap.gift === 54 && ap.purchased === 3, ap);
+A.check("扣點順序：每日池5點用完才扣禮包點，購買點不動", ap.daily === 0 && ap.gift === 24 && ap.purchased === 3, ap);
 await setRec("k1", 0, { daily: 0, gift: 1 });
 await turn("k1", 0);
 ap = await getAP("k1", 0);
@@ -91,13 +90,13 @@ await H.callWorker(env, { path: "/claim-gift", body: { key: "k2", slot: 0 } });
 const pro = payload({ turn: 1, time_context: { is_prologue: true } });
 await turn("k2", 0, { content: pro, lifeId: "lifepro1" });
 ap = await getAP("k2", 0);
-A.check("開場回合(新life_id)不扣點", ap.total === 60, ap);
+A.check("開場回合(新life_id)不扣點", ap.total === 30, ap);
 await turn("k2", 0, { content: pro, lifeId: "lifepro1" });
 ap = await getAP("k2", 0);
-A.check("同一life_id第二次開場：照常扣點", ap.total === 59, ap);
+A.check("同一life_id第二次開場：照常扣點", ap.total === 29, ap);
 await turn("k2", 0, { content: pro, lifeId: "lifepro2" }); await turn("k2", 0, { content: pro, lifeId: "lifepro3" }); await turn("k2", 0, { content: pro, lifeId: "lifepro4" });
 ap = await getAP("k2", 0);
-A.check("同一slot同一天免費開場最多3次(第4個新life_id照扣)", ap.total === 58, ap);
+A.check("同一slot同一天免費開場最多3次(第4個新life_id照扣)", ap.total === 28, ap);
 // --- 舊存檔轉移 ---
 r = await turn("k3", 0, { hint: { daily: 5, gift: 999, purchased: 999, lastRefillDate: "2026-09-27" } });
 ap = await getAP("k3", 0);
@@ -108,7 +107,7 @@ r = await H.callWorker(env, { path: "/archive", body: { key: "k3", slot: 0, id: 
 const walletRes = await H.callWorker(env, { method: "GET", path: "/slots?key=k3" });
 A.check("人生結束：點數紀錄刪除、購買點進金鑰錢包", r.status === 200 && (await env.SAVES.get("ap:k3:0")) === null && walletRes.json.wallet === 7);
 r = await H.callWorker(env, { path: "/claim-gift", body: { key: "k3", slot: 0 } });
-A.check("同一格子開新人生：重新建立(每日5＋禮包55，舊禮包點不殘留)", r.json.ap.daily === 5 && r.json.ap.gift === 55, r.json.ap);
+A.check("同一格子開新人生：重新建立(每日5＋禮包25，舊禮包點不殘留)", r.json.ap.daily === 5 && r.json.ap.gift === 25, r.json.ap);
 
 // ================= 前端真實路徑 =================
 // 前端用的是瀏覽器真實時間，Worker這邊也用真實時間，兩邊的台灣日期才會一致
@@ -116,20 +115,20 @@ const envF = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env: envF, key: "frontkey1", slot: 0 });
 await H.startNewLife(g);
 const sAP = async () => (await H.callWorker(envF, { method: "GET", path: "/ap?key=frontkey1&slot=0" })).json.ap;
-A.check("前端開新人生：開場回合不扣點，畫面＝伺服器端60點", g.ev("totalAP(state)") === 60 && (await sAP()).total === 60, g.ev("JSON.stringify(state.ap)"));
+A.check("前端開新人生：開場回合不扣點，畫面＝伺服器端30點", g.ev("totalAP(state)") === 30 && (await sAP()).total === 30, g.ev("JSON.stringify(state.ap)"));
 for (let i = 0; i < 3; i++) await H.playTurn(g);
-A.check("玩3回合：伺服器端57、畫面57", (await sAP()).total === 57 && g.ev("totalAP(state)") === 57);
+A.check("玩3回合：伺服器端27、畫面27", (await sAP()).total === 27 && g.ev("totalAP(state)") === 27);
 g.ev("state.ap.gift = 9999");
 await H.playTurn(g);
-A.check("前端竄改本機點數：下一回合後畫面改回伺服器端數字", g.ev("totalAP(state)") === 56 && (await sAP()).total === 56, g.ev("totalAP(state)"));
+A.check("前端竄改本機點數：下一回合後畫面改回伺服器端數字", g.ev("totalAP(state)") === 26 && (await sAP()).total === 26, g.ev("totalAP(state)"));
 const turnsBefore = g.ev("state.turnCount");
 g.ev("restoreUndo()");
-A.check("悔棋：伺服器端不退點", (await sAP()).total === 56);
+A.check("悔棋：伺服器端不退點", (await sAP()).total === 26);
 upstreamFail = () => true;
 const logLen = g.ev("state.log.length");
 await H.playTurn(g);
 upstreamFail = null;
-A.check("AI連續失敗(含重試)：伺服器端不扣點、畫面點數不變", (await sAP()).total === 56 && g.ev("totalAP(state)") === 56);
+A.check("AI連續失敗(含重試)：伺服器端不扣點、畫面點數不變", (await sAP()).total === 26 && g.ev("totalAP(state)") === 26);
 A.check("AI失敗時玩家看到的是容錯文字", /撰稿人一時沒接上線，這一回合還沒扣點/.test(g.ev("state.log[state.log.length-1].text")));
 await setRec("frontkey1", 0, { daily: 0, gift: 0, purchased: 0 }, envF);
 g.ev("state.ap.daily = 5");
@@ -160,6 +159,6 @@ const gm = await H.loadGame({ useMock: true, env: H.makeEnv(), key: "mockkey1" }
 gm.ev("mockCallAI = async (a,f,t)=>mockGenerateTurn(a,f,t)");
 await H.startNewLife(gm);
 for (let i = 0; i < 5; i++) await H.playTurn(gm);
-A.check("mock模式回歸：本機照常扣點(60→55)", gm.ev("totalAP(state)") === 55, gm.ev("totalAP(state)"));
+A.check("mock模式回歸：本機照常扣點(30→25)", gm.ev("totalAP(state)") === 25, gm.ev("totalAP(state)"));
 const ok = A.report();
 process.exit(ok ? 0 : 1);

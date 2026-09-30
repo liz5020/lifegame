@@ -1,6 +1,6 @@
 // 2026-09-30（十、10.2、10.9.2、10.9.3，第二批）帳號相關的HTTP路由
 //   POST /account/send-code   {email}                          寄6位數驗證碼(上限見account.js)
-//   POST /account/bind        {email, code, key, lives}        綁定信箱：建立帳號、未綁人生帶過去、錢包補到55點
+//   POST /account/bind        {email, code, key, lives}        綁定信箱：建立帳號、未綁人生帶過去、錢包再+30點
 //   POST /account/login       {email, code, key, lives}        用信箱登入既有帳號：裝置上的未綁人生併入、點數併入錢包
 //   POST /account/logout      (Authorization: Bearer <token>)  只登出這台裝置
 //   GET  /account/me          (Authorization)                  帳號狀態(每日補點、排隊中的啟程禮補發都在這裡順便處理)

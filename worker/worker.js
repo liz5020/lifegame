@@ -79,7 +79,7 @@
 import { convertAnthropicResponse } from "./s2t.js";
 import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL, CHAPTER_SYSTEM_PROMPT, CHAPTER_TOOL, IDLE_SUMMARY_SYSTEM_PROMPT, IDLE_SUMMARY_TOOL, LIFE_REVIEW_SYSTEM_PROMPT, LIFE_REVIEW_TOOL } from "./prompt.js";
 import {
-  AP_NEW_LIFE_GIFT, loadRecord, saveRecord, apKvKey, preCharge, postCharge, publicAP,
+  AP_UNBOUND_GIFT, loadRecord, saveRecord, apKvKey, preCharge, postCharge, publicAP,
   isValidNonce, isValidLifeId, isUsableTurnResponse, taipeiDateString, nowMs,
   addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse,
   claimIdle, preIdleSummary, isUsableIdleSummaryResponse, chargeIdleRollback,
@@ -118,7 +118,7 @@ const REQUIRED_TURN_PAYLOAD_FIELDS = { player_name: "string", gender: "string", 
 // 2026-09-23：30→200。每回合要打2次(AI＋存檔)，30次只夠玩約15回合/小時，新手禮包55點很快就會撞牆；
 // 共用Wi-Fi的多位玩家也共享同一個IP額度。200仍足以擋惡意狂打，開放付費前改以伺服器端行動點餘額擋AI呼叫
 const RATE_LIMIT_PER_HOUR = 200;
-const GIFT_CLAIMS_PER_KEY = 3;
+const GIFT_CLAIMS_PER_KEY = 1; // 2026-09-30第三批：未綁信箱每把金鑰只領1次25點
 const MAX_ARCHIVE_ID_LENGTH = 40;
 
 // 十、10.8（2026-09-29）：雲端存檔(KV)開關，只有明確設成"true"才打開
@@ -235,7 +235,7 @@ async function handleClaimGift(request, env, origin) {
   if (granted) await env.SAVES.put(countKey, String(claimed + 1));
   // 有舊紀錄(例如同一格子殘留)就沿用每日池與購買點，不會因為重複呼叫把每日池重新補滿
   const { rec } = await loadRecord(env, key, slot, null);
-  if (granted) rec.gift += AP_NEW_LIFE_GIFT;
+  if (granted) rec.gift += AP_UNBOUND_GIFT;
   await saveRecord(env, key, slot, rec);
   return jsonResponse(origin, { success: true, granted, claimed: granted ? claimed + 1 : claimed, ap: publicAP(rec) });
 }
@@ -898,7 +898,7 @@ async function handleUsageSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.09.30-g";
+const WORKER_VERSION = "2026.09.30-h";
 
 export default {
   async fetch(request, env, ctx) {

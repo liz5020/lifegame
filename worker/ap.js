@@ -4,14 +4,19 @@
 //   - 每回合1點，扣點順序：每日池→禮包點→購買點
 //   - 每日池在台灣00:00(UTC+8)後第一次使用時補到5點，不累加；日期由伺服器判斷，不看玩家裝置時間(10.3.5)
 //   - API失敗/斷線/AI回傳格式壞掉：不扣點；重新生成(同一回合的turn_nonce)：不扣點(10.3.1)
-//   - 新手禮包55點，每把金鑰一輩子3次(10.3.4)
+//   - 啟程禮：未綁信箱新人生25點，每把金鑰一輩子1次(10.3.4，2026-09-30第三批由55點／3次改)
 //   - 人生結束(封存)：這條人生的點數紀錄刪除(禮包點消失)，購買點照舊由/archive移到金鑰錢包(10.3.6)
 //   - 世代傳承/restart_item：沿用同一個slot，點數紀錄不動＝全部繼承(10.3.6)
 // ⚠️購買點目前仍信任前端(/archive送來的purchased)；封測尚未開放購買，永遠是0。開放付費前要改成以伺服器端付款紀錄為準
 
 export const AP_DAILY_REFILL = 5;
-export const AP_NEW_LIFE_GIFT = 55;
-export const AP_GIFT_CLAIMS_PER_KEY = 3;
+// 2026-09-30(第三批)：啟程禮拆成三種——未綁信箱的新人生25點(每把金鑰／裝置只領1次，同時只能1段)、綁定信箱再+30點(25＋30＝55)、帳號開第2段人生再+55點。
+// AP_LEGACY_GIFT_MAX：封測留下、改版前已領55點的舊人生，本機點數可以到55，併入帳號時的上限照這個算
+export const AP_UNBOUND_GIFT = 25;
+export const AP_BIND_BONUS = 30;
+export const AP_SECOND_LIFE_GIFT = 55;
+export const AP_LEGACY_GIFT_MAX = 55;
+export const AP_GIFT_CLAIMS_PER_KEY = 1;
 export const AP_COST_PER_TURN = 1;
 // 同一個turn_nonce最多呼叫幾次AI：第一次＋失敗重試1次＋場景日期違規重新生成1次＋輸出品質不合格重新生成最多2次(一、1.2.9.18，2026-09-29，見index.html takeTurn)
 export const MAX_CALLS_PER_TURN_NONCE = 5;
@@ -75,7 +80,7 @@ export async function loadRecord(env, key, slot, apHint) {
     rec = freshRecord(today);
     if (apHint && typeof apHint === "object") {
       rec.daily = toInt(apHint.daily, AP_DAILY_REFILL);
-      rec.gift = toInt(apHint.gift, AP_NEW_LIFE_GIFT);
+      rec.gift = toInt(apHint.gift, AP_LEGACY_GIFT_MAX);
       rec.lastRefillDate = typeof apHint.lastRefillDate === "string" ? apHint.lastRefillDate.slice(0, 10) : today;
     }
     migrated = true;

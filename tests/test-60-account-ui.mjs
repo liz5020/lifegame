@@ -42,11 +42,11 @@ const d1 = g1.win.document;
 g1.ev("state.ap.daily = 2; state.ap.gift = 10;"); // 未綁人生剩下12點
 g1.ev("renderWalletModal()");
 const tip = d1.getElementById("wallet-bind-tip");
-A.check("第3則：未綁信箱的錢包常駐「撰稿人提醒你：綁定信箱可領啟程禮，把行動點補到 55 點，並保存你的進度。」", !!tip && tip.textContent.trim() === "撰稿人提醒你：綁定信箱可領啟程禮，把行動點補到 55 點，並保存你的進度。", tip && tip.textContent);
+A.check("第3則：未綁信箱的錢包常駐「撰稿人提醒你：綁定信箱可再領 30 點啟程禮，並保存你的進度。」", !!tip && tip.textContent.trim() === "撰稿人提醒你：綁定信箱可再領 30 點啟程禮，並保存你的進度。", tip && tip.textContent);
 A.check("第3則：放在點數下方(點數區塊之後、其他區塊之前)", tip.previousElementSibling && /點/.test(d1.getElementById("wallet-modal").textContent));
 A.check("未綁：錢包有「用信箱登入」入口", !!d1.getElementById("btn-wallet-login"));
 tip.click();
-A.check("點第3則→進綁定說明頁(信箱只用來保存進度和找回帳號／成為帳號的第1段／會收到啟程禮)", !d1.getElementById("wallet-modal") && /信箱只用來保存進度和找回帳號/.test(text(g1, "#account-modal")) && /成為帳號的第1段/.test(text(g1, "#account-modal")) && /綁定後會收到啟程禮/.test(text(g1, "#account-modal")));
+A.check("點第3則→進綁定說明頁(信箱只用來保存進度和找回帳號／成為帳號的第1段／會收到啟程禮)", !d1.getElementById("wallet-modal") && /信箱只用來保存進度和找回帳號/.test(text(g1, "#account-modal")) && /成為帳號的第1段/.test(text(g1, "#account-modal")) && /綁定後會再領30點啟程禮/.test(text(g1, "#account-modal")));
 d1.getElementById("btn-acct-start").click();
 d1.getElementById("acct-email").value = "  Player.One@Example.com ";
 d1.getElementById("btn-acct-send").click();
@@ -68,13 +68,13 @@ d1.getElementById("acct-code").value = resend.lastCode("player.one@example.com")
 d1.getElementById("btn-acct-verify").click();
 await until(g1, () => d1.getElementById("bind-result-modal"));
 const bt = text(g1, "#bind-result-modal");
-A.check("第7則(正常)：撰稿人幫你把這段人生收好了。啟程禮已經放進錢包，行動點補到 55 點了，接下來的故事都會跟著你的信箱保存。", bt.includes("撰稿人幫你把這段人生收好了。") && bt.includes("啟程禮已經放進錢包，行動點補到55點了，接下來的故事都會跟著你的信箱保存。"), bt);
+A.check("第7則(正常)：撰稿人幫你把這段人生收好了。啟程禮已經放進錢包，多了 30 點，接下來的故事都會跟著你的信箱保存。", bt.includes("撰稿人幫你把這段人生收好了。") && bt.includes("啟程禮已經放進錢包，多了30點，接下來的故事都會跟著你的信箱保存。"), bt);
 A.check("第7則：按鈕〔繼續寫〕", d1.getElementById("btn-bind-result-ok").textContent === "繼續寫");
 d1.getElementById("btn-bind-result-ok").click();
 A.check("綁定後：這台裝置登入、accountEmailBound()＝true", g1.ev("accountEmailBound()") === true && !!g1.ev("acctToken()"));
-A.check("綁定後：這段人生成為帳號第1段(state.acct)、錢包補到55點", !!g1.ev("state.acct && state.acct.lid") && g1.ev("walletActive(state)") === true && g1.ev("totalAP(state)") === 55 && g1.ev("acct.lives.length") === 1, [g1.ev("totalAP(state)"), g1.ev("state.acct")]);
+A.check("綁定後：這段人生成為帳號第1段(state.acct)、錢包＝剩下12點＋30點", !!g1.ev("state.acct && state.acct.lid") && g1.ev("walletActive(state)") === true && g1.ev("totalAP(state)") === 42 && g1.ev("acct.lives.length") === 1, [g1.ev("totalAP(state)"), g1.ev("state.acct")]);
 A.check("綁定後：本機的點數池歸零(點數已併進錢包，不能留一份在本機)", g1.ev("state.ap.daily + state.ap.gift + state.ap.purchased") === 0);
-A.check("點數明細有「啟程禮 +43」(12點補到55點)", g1.ev("state.apLog.some(e=>e.type==='啟程禮' && e.n===43)"), g1.ev("state.apLog.slice(-3)"));
+A.check("點數明細有「啟程禮 +30」", g1.ev("state.apLog.some(e=>e.type==='啟程禮' && e.n===30 && e.t>Date.now()-60000)"), g1.ev("state.apLog.slice(-3)"));
 g1.ev("renderWalletModal()");
 const wt = text(g1, "#wallet-modal");
 A.check("綁定後錢包：不再出現第3則、顯示已綁信箱(遮住部分)與啟程禮已領1／2份、有登出與換綁", !d1.getElementById("wallet-bind-tip") && /已綁信箱：pl\*\*\*@example\.com/.test(wt) && /已領1／2份/.test(wt) && !!d1.getElementById("btn-acct-logout") && !!d1.getElementById("btn-acct-change"), wt);
@@ -93,7 +93,7 @@ await until(g1, () => !g1.ev("acctToken()"));
 A.check("登出：這台裝置沒有登入狀態、回到未綁樣貌(第2則語境)、本機點數池從0開始(不複製錢包)", g1.ev("accountEmailBound()") === false && g1.ev("walletActive(state)") === false && g1.ev("totalAP(state)") === 0);
 A.check("登出：伺服器上的帳號與錢包不受影響、這台裝置的token作廢", (() => { const a = rawAcct("player.one@example.com"); return a && a.wallet.gift + a.wallet.purchased === w0 - 1 && a.sessions.length === 0; })());
 g1.ev("renderAPExhaustedModal()");
-A.check("登出後點數用完→看第2則(未綁信箱版本)", /綁定信箱可以再領55點啟程禮/.test(text(g1, "#ap-exhausted-modal")));
+A.check("登出後點數用完→看第2則(未綁信箱版本)", /綁定信箱可以再領30點啟程禮/.test(text(g1, "#ap-exhausted-modal")));
 g1.ev("document.getElementById('ap-exhausted-modal').remove()");
 
 // ================= 情境2：綁到已有帳號的信箱→拒絕 =================
@@ -103,7 +103,7 @@ env.TEST_NOW_MS = String(Date.now() + 3 * 60 * 1000); // 同一信箱60秒內不
 await flow(g2, "bind", "PLAYER.one@example.com");
 const errText = d2.getElementById("acct-error")?.textContent || "";
 A.check("綁到已有帳號的信箱：驗證碼通過後拒絕，表單提示「這個信箱已有帳號，請直接用信箱登入」", errText === "這個信箱已有帳號，請直接用信箱登入", errText);
-A.check("被拒絕時：沒有登入、這段人生沒變成帳號人生、本機點數不動", g2.ev("accountEmailBound()") === false && !g2.ev("state.acct") && g2.ev("totalAP(state)") > 50);
+A.check("被拒絕時：沒有登入、這段人生沒變成帳號人生、本機點數不動", g2.ev("accountEmailBound()") === false && !g2.ev("state.acct") && g2.ev("totalAP(state)") > 20);
 A.check("被拒絕時：提供〔改用這個信箱登入〕", !!d2.getElementById("btn-acct-to-login"));
 A.check("被拒絕時：原帳號沒被動到(啟程禮仍是1／2份、人生1段)", (() => { const a = rawAcct("player.one@example.com"); return a.gifts.g1 === "done" && a.gifts.g2 === "none" && a.lives.length === 1; })());
 g2.ev("closeAccountFlow()");
@@ -151,7 +151,7 @@ await flow(g5, "bind", "third@example.com");
 const acc5 = await walletOf(g5.ev("acctToken()"));
 A.check("封測留下3段人生首次綁定：帳號收2段(目前這段優先)、第3段留在原金鑰、有超額提示", acc5.lives.length === 2 && !!g5.win.document.getElementById("bind-overflow-note") && g5.ev("state.name") === "丙" && g5.ev("walletActive(state)") === true, acc5);
 g5.win.document.getElementById("btn-bind-result-ok")?.click();
-A.check("超額那段人生保留原本本機點數(59點)，沒有被併進錢包", (() => { let left = 0; for (let i = 0; i < 3; i++) { const st = JSON.parse(g5.ev(`localStorage.getItem('life_sim_save_v1:${i}')`)); if (st && !st.acct) left = st.ap.daily + st.ap.gift; } return left >= 55; })());
+A.check("超額那段人生保留原本本機點數(這台裝置的啟程禮只領1次，所以剩每日5點)，沒有被併進錢包", (() => { let left = 0; for (let i = 0; i < 3; i++) { const st = JSON.parse(g5.ev(`localStorage.getItem('life_sim_save_v1:${i}')`)); if (st && !st.acct) left = st.ap.daily + st.ap.gift; } return left >= 5; })());
 // 空出格子後手動轉入
 g5.ev("localStorage.setItem('life_sim_active_slot','1')"); // 超額留在原金鑰的是第2格「乙」
 await g5.ev("tryLoadSlot(localStorage.getItem('life_sim_recovery_key'), 1, true)");
@@ -190,8 +190,9 @@ A.check("mock模式：帳號人生玩一回合，伺服器上的錢包扣1點，
 
 // ================= 全站每日花費上限：暫停、第4則、小字 =================
 const gc = await newDevice("uikey0000008", { name: "上限" });
-env.TEST_NOW_MS = undefined;
-env.DAILY_SPEND_CAP = "1";
+// 上限設成「目前花費＋1」：下一次成功的呼叫剛好碰到上限(不靠系統時鐘，避免跨台灣午夜時計數天數不同)
+const spentNow = (await H.callWorker(env, { method: "GET", path: "/usage-today", origin: null, headers: { Authorization: "Bearer admin-secret" } })).json.est_cost_twd;
+env.DAILY_SPEND_CAP = String(spentNow + 1);
 await H.playTurn(gc, "先玩一回合讓花費到達上限");
 const cd = gc.win.document;
 const totalBefore = gc.ev("totalAP(state)"), turnBefore = gc.ev("state.turnCount"), logBefore = gc.ev("state.log.length");

@@ -11,7 +11,7 @@
 // 所有操作都由Worker以 POST {op, ...args, now, date, gift_cap} 呼叫；時間(now、台灣日期date)一律由呼叫端傳進來，
 // 這裡不讀系統時鐘，測試才能控制時間(TEST_NOW_MS)。驗證碼本身不會回傳給玩家，只回給Worker寄信。
 
-import { AP_NEW_LIFE_GIFT, AP_DAILY_REFILL, freshRecord, preCharge, postCharge, spend, refund } from "./ap.js";
+import { AP_BIND_BONUS, AP_SECOND_LIFE_GIFT, AP_LEGACY_GIFT_MAX, AP_DAILY_REFILL, freshRecord, preCharge, postCharge, spend, refund } from "./ap.js";
 
 export const CODE_TTL_MS = 10 * 60 * 1000;        // 10.2：驗證碼10分鐘內有效
 export const CODE_MAX_TRIES = 5;                  // 10.2：同一組輸錯5次作廢
@@ -23,9 +23,9 @@ export const SESSION_TTL_MS = 90 * 24 * 3600 * 1000; // 10.2：登入保持90天
 export const MAX_SESSIONS_PER_ACCOUNT = 20;
 export const ACCOUNT_LIFE_MAX = 2;                // 10.9.2：綁定信箱可有2段人生
 export const GIFTS_PER_ACCOUNT = 2;               // 10.9.3：每個信箱最多2份啟程禮
-export const GIFT_POINTS = AP_NEW_LIFE_GIFT;      // 每份55點
+export const GIFT_POINTS = { 1: AP_BIND_BONUS, 2: AP_SECOND_LIFE_GIFT }; // 第1份(綁定)+30點、第2份(開第2段人生)+55點；2026-09-30第三批：第1份由「補到55點」改固定+30
 export const CARRY_MAX_TOTAL = 120;               // 綁定／併入時，未綁人生帶過來的點數累計上限(封測期間本機點數玩家改得動，這裡只擋離譜的數字)
-const POOL_DAILY_MAX = AP_DAILY_REFILL, POOL_GIFT_MAX = AP_NEW_LIFE_GIFT;
+const POOL_DAILY_MAX = AP_DAILY_REFILL, POOL_GIFT_MAX = AP_LEGACY_GIFT_MAX;
 const EVENTS_MAX = 30;
 
 export function normalizeEmail(raw) {
@@ -190,9 +190,8 @@ export class AccountStore {
   }
   _applyGift(a, kind, fromQueue, day, ctx) {
     const w = a.wallet;
-    let added;
-    if (kind === 1) { added = Math.max(0, GIFT_POINTS - walletTotal(w)); a.gifts.g1 = "done"; } // 第1份：補到55點
-    else { added = GIFT_POINTS; a.gifts.g2 = "done"; }                                            // 第2份：直接加55點
+    const added = GIFT_POINTS[kind]; // 第1份：綁定+30點；第2份：開第2段人生+55點。一定發出、一定占用當天份數
+    a.gifts[kind === 1 ? "g1" : "g2"] = "done";
     if (added > 0) { w.gift += added; day.gifts += 1; pushEvent(a, ctx.now, fromQueue ? "啟程禮補發" : (kind === 1 ? "啟程禮" : "啟程禮（第 2 份）"), added); }
     return added;
   }
@@ -304,7 +303,7 @@ export class AccountStore {
     return { ok: true };
   }
 
-  // 綁定信箱：驗證碼通過後，這個信箱沒有帳號＝建立帳號、這把復原金鑰綁上去、未綁人生帶過來、錢包補到55點(第1份啟程禮)。
+  // 綁定信箱：驗證碼通過後，這個信箱沒有帳號＝建立帳號、這把復原金鑰綁上去、未綁人生帶過來、錢包再+30點(第1份啟程禮)。
   // 這個信箱已經有帳號＝拒絕(驗證碼通過後才告知，避免被拿來探測信箱有沒有玩過)；驗證碼照樣作廢
   async opBind(b) {
     const email = normalizeEmail(b.email);

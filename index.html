@@ -658,8 +658,12 @@ function clampStatDeltas(d){
 // ---------- 十、10.3 行動點經濟（2026-09-23新增）----------
 // 每條人生各自一個ap物件：daily=每日池、gift=禮包點、purchased=購買點(封測未開放購買，欄位先預留)、lastRefillDate=上次補點的台灣日期
 const AP_DAILY_REFILL = 5;        // 【定案,10.3.5】每天補到5點，不累加
-const AP_NEW_LIFE_GIFT = 55;      // 【定案,10.3.4】新手禮包55點（使用者2026-09-23確認由50改55）
-const AP_GIFT_CLAIMS_PER_KEY = 3; // 【定案,10.3.4】每把金鑰一輩子最多領3次
+// 2026-09-30(第三批，使用者決定)：未綁信箱新人生的啟程禮25點、每台裝置只領1次(同時只能1段人生)；綁定信箱再+30點(25＋30＝55)；帳號開第2段人生再+55點。
+// 25點：上學期27回合裡寒假從第20回合開始，25點用到寒假倒數第2回合，「意猶未盡」才有動機綁定；55點約一學年
+const AP_UNBOUND_GIFT = 25;       // 【定案,10.3.4】未綁信箱新人生的啟程禮
+const AP_BIND_BONUS = 30;         // 【定案,10.9.2】綁定信箱再領(說明文字用；實際發放在Worker)
+const AP_SECOND_LIFE_GIFT = 55;   // 【定案,10.9.3】帳號第一次開第2段人生
+const AP_GIFT_CLAIMS_PER_KEY = 1; // 【定案,10.3.4】每把金鑰(未綁時＝每台裝置)一輩子最多領1次
 const AP_COST_PER_TURN = 1;       // 【定案,10.3.1】每回合固定扣1點，選項/自由輸入相同
 const GIFT_CLAIMS_LOCAL_PREFIX = "life_sim_gift_claims:"; // Worker連不上時的本機後備計數
 const ARCHIVE_LOCAL_PREFIX = "life_sim_archive:";         // 人生回顧的本機後備副本
@@ -7973,10 +7977,14 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-g";
+const APP_VERSION = "2026.09.30-h";
 const RELEASE_NOTES = [
+  { version:"2026.09.30-h", date:"2026-09-30", title:"啟程禮與綁定信箱", items:[
+    "新的人生會先附上 25 點啟程禮，大約夠走到高一的寒假；還沒綁定信箱時，同時只能過一段人生。",
+    "綁定信箱後再領 30 點啟程禮，大約能走到高一結束。"
+  ]},
   { version:"2026.09.30-g", date:"2026-09-30", title:"綁定信箱與共用錢包", items:[
-    "新增「綁定信箱」：用信箱收一組驗證碼就能登入，換手機也找得回進度；綁定後會收到啟程禮，點數補到 55 點。",
+    "新增「綁定信箱」：用信箱收一組驗證碼就能登入，換手機也找得回進度；綁定後可以領啟程禮。",
     "綁定後，點數變成整個帳號共用的一個錢包，最多同時進行 2 段人生；第一次開第 2 段人生會再收到一份啟程禮。",
     "已經有帳號的話，在首頁或錢包按「用信箱登入」，這台裝置上寫到一半的人生會一起併進帳號。",
     "如果哪天故事額度用完了，撰稿人會直接說明並在台灣時間午夜後恢復，你的進度和輸入的字都會留著。"
@@ -8174,10 +8182,26 @@ const DEV_TOOLS_KEY = "lifegame_dev_tools";
     if(dev==="0"){ localStorage.removeItem(DEV_TOOLS_KEY); localStorage.removeItem(FORCE_REAL_API_KEY); }
   }catch(e){}
 })();
+// 2026-09-30(第三批，使用者同意)：正式網址(玩家用的lifegame-6an.pages.dev)預設用真AI，讓封測玩家直接玩；其他網址(本機、預覽、測試)仍預設示範模式。
+// 旗標優先：lifegame_force_real_api＝"yes"強制真AI、"no"強制示範；沒有旗標才看網址。費用提醒：正式網址每個玩家的回合都是真AI呼叫，靠10.9.3.1每日花費上限與Anthropic後台每月上限控管
+const OFFICIAL_HOSTS = ["lifegame-6an.pages.dev"];
+function isOfficialHost(){ try{ return OFFICIAL_HOSTS.includes(location.hostname); }catch(e){ return false; } }
 const USE_MOCK = (function(){
-  try { return localStorage.getItem(FORCE_REAL_API_KEY) !== "yes"; }
+  try {
+    const f = localStorage.getItem(FORCE_REAL_API_KEY);
+    if(f==="yes") return false;
+    if(f==="no") return true;
+    return !isOfficialHost();
+  }
   catch(e){ return true; } // localStorage不可用時安全預設mock
 })();
+// 開發者切換：切到示範時，正式網址要明確寫"no"(否則又回到預設的真AI)，其他網址移除旗標即可
+function setApiMode(mock){
+  try{
+    if(mock){ if(isOfficialHost()) localStorage.setItem(FORCE_REAL_API_KEY, "no"); else localStorage.removeItem(FORCE_REAL_API_KEY); }
+    else localStorage.setItem(FORCE_REAL_API_KEY, "yes");
+  }catch(e){}
+}
 // 十、10.3.11／10.8（2026-09-29）：行動點以伺服器端為準的條件＝真實API＋雲端存檔打開；其他情況(mock、雲端暫停)行動點全在本機計算
 const SERVER_AP = !USE_MOCK && CLOUD_SAVE_ENABLED;
 // 2026-09-22變更：USE_MOCK不再是寫死的常數，改成讀瀏覽器localStorage。
@@ -10041,8 +10065,8 @@ async function startLife(){
       const claim = await claimNewLifeGift(key, slotRaw!==null ? Number(slotRaw) : 0);
       // 10.3.11（2026-09-25）：真實模式以Worker回傳的伺服器端餘額為準；mock模式或Worker連不上時維持本機計算
       if(SERVER_AP && claim.ap) syncServerAP(state, claim.ap);
-      else if(claim.granted) ap.gift = AP_NEW_LIFE_GIFT;
-      if(claim.granted){ state.giftGranted = true; apLogAdd(state, "啟程禮", AP_NEW_LIFE_GIFT); } // 10.10.3；giftGranted：這條人生領過啟程禮(10.11.4複製內容用，欄位名稱沿用內部命名)
+      else if(claim.granted) ap.gift = AP_UNBOUND_GIFT;
+      if(claim.granted){ state.giftGranted = true; apLogAdd(state, "啟程禮", AP_UNBOUND_GIFT); } // 10.10.3；giftGranted：這條人生領過啟程禮(10.11.4複製內容用，欄位名稱沿用內部命名)
     }
   }
   state.phase = "playing";
@@ -10743,7 +10767,7 @@ function render(loadingTurn){
 // ========== 十、10.1 封測階段純金鑰模式（9/19新增，四個新畫面）==========
 // ========== 十六、16.10 首頁（2026-09-28）==========
 // 文案為使用者定稿原文(含同日開局年齡修正)，改字請先改設計文件16.10再同步這裡。
-// 寫死在文案裡的數字：新人生禮包AP_NEW_LIFE_GIFT、每日補到AP_DAILY_REFILL、每回合1點、同時三段人生(16.10.9)
+// 寫死在文案裡的數字：新人生啟程禮AP_UNBOUND_GIFT、綁定再領AP_BIND_BONUS、每日補到AP_DAILY_REFILL、每回合1點、未綁1段／綁定2段人生(2026-09-30第三批)
 let ageGateDeclined = false;
 function ageConfirmed(){ try{ return localStorage.getItem(AGE_CONFIRMED_STORAGE_NAME)==="yes"; }catch(e){ return false; } }
 function writeHomeMeta(slot){
@@ -10794,10 +10818,10 @@ function relativeTimeText(ts){
   return mon < 12 ? `${mon} 個月前` : `${Math.floor(mon/12)} 年前`;
 }
 const HOME_FAQ = [
-  ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_NEW_LIFE_GIFT} 點啟程禮，大約夠你走到高一結束；之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
+  ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_UNBOUND_GIFT} 點啟程禮，大約夠你走到高一的寒假；綁定信箱可以再領 ${AP_BIND_BONUS} 點，大約走到高一結束。之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
   ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", ()=>CLOUD_SAVE_ENABLED ? "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。" : "封測期間，進度只存在這台裝置的瀏覽器裡。換了手機、換了瀏覽器，或清除瀏覽器資料，就接不回來了。"]],
   ["一段人生要玩多久？", ["看你想過多快。可以一個晚上走完整個高中，也可以一個月只過一個寒假。", "隨時關掉都沒關係，它會停在你離開的那一頁。"]],
-  ["可以同時過好幾段人生嗎？", [()=>CLOUD_SAVE_ENABLED ? "可以。一把金鑰，最多能同時握著三段人生。" : "可以。一台裝置，最多能同時握著三段人生。"]],
+  ["可以同時過好幾段人生嗎？", ["還沒綁定信箱時，同時只能過一段人生；綁定信箱後，可以同時過兩段。"]],
   ["什麼路都能走嗎？", ["幾乎都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "唯一走不通的是超能力。這裡的世界，跟外面那個一樣講道理。"]],
   ["一生走完之後呢？", ["這一生會留下一頁回顧：走過的路、陪過你的人，最後蓋上一枚印章。", "然後，你可以轉世重來，或者把故事交給下一代。"]],
   ["可以反悔嗎？", ["可以，但次數有限。畢竟是草稿，也不是每一筆都擦得掉。"]],
@@ -10930,9 +10954,17 @@ function acctMissingLives(){
   for(let i=0;i<MAX_LIFE_SLOTS;i++){ try{ const st = JSON.parse(localStorage.getItem(STORAGE_KEY+":"+i) || "null"); if(st && st.acct && st.acct.aid===acct.aid) have.add(st.acct.lid); }catch(e){} }
   return acct.lives.filter(l=>!have.has(l.lid)).length;
 }
+// 十、10.9.2(2026-09-30第三批)：還沒綁信箱時同時只能1段人生(封測留下的多段人生保留，只是不能再開新的)；綁定信箱後可以2段
+function unboundFullNotice(){
+  if(acct) return null;
+  let used = 0;
+  for(let i=0;i<MAX_LIFE_SLOTS;i++){ try{ if(localStorage.getItem(HOME_META_PREFIX+i) || localStorage.getItem(STORAGE_KEY+":"+i)) used++; }catch(e){} }
+  return used>=1 ? "未綁定信箱時只能同時進行 1 段人生。綁定信箱後可以同時進行 2 段。" : null;
+}
+function newLifeBlockedNotice(){ return acctFullNotice() || unboundFullNotice(); }
 async function startNewLifeFromHome(){
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
-  if(acctFullNotice() && key){ await showSlotPicker(key, undefined, acctFullNotice()); return; }
+  if(newLifeBlockedNotice() && key){ await showSlotPicker(key, undefined, newLifeBlockedNotice()); return; }
   if(!key){
     localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, "0");
     state = { phase:"identity", name:"", gender:"男" };
@@ -11049,8 +11081,8 @@ function bindSlotPicker(){
       if(btn.dataset.action==="load"){
         const ok = await tryLoadSlot(key, slot, true);
         if(!ok){ state = { phase:"identity", name:"", gender:"男" }; render(); } // 讀取失敗防呆：至少讓玩家能重新開始，不要卡死
-      } else if(acctFullNotice()){
-        state.notice = acctFullNotice(); render(); // 十、10.9.2：帳號已滿2段，不能開新的
+      } else if(newLifeBlockedNotice()){
+        state.notice = newLifeBlockedNotice(); render(); // 十、10.9.2：帳號已滿2段、或未綁信箱已有1段，不能開新的
       } else {
         cloudSyncStatus = null; // 十、10.1補充：開新的一段人生，上一段的同步狀態顯示沒有意義了
         state = { phase:"identity", name:"", gender:"男" };
@@ -11766,7 +11798,7 @@ function otherLivesForWallet(){
 // 10.11.4：帳務回報要複製的純文字。只讀點數與紀錄——絕對不讀、不拼入復原金鑰(金鑰＝存檔密碼)、信箱本身、故事正文
 function accountEmailBound(){ return !!acct; } // 十、10.2（2026-09-30第二批）：依帳號實際綁定狀態(這台裝置有沒有登入帳號)回傳
 // 十、10.10.3.1：「啟程禮」欄看整個帳號有沒有領過，不看單一條人生；沒有帳號系統前帳號＝這台裝置(金鑰的本機領取計數)。
-// 帳號系統上線後改成「已領 N／2 份」(15點試玩禮與55點啟程禮分開算)，這裡只回答「有沒有領過」，不要把份數寫死。
+// 帳號系統上線後改成「已領 N／2 份」(未綁的25點與綁定後的啟程禮分開算)，這裡只回答「有沒有領過」，不要把份數寫死。
 function giftClaimedFor(s){
   if(s && (s.giftGranted || (s.apLog||[]).some(e=>apLogTypeName(e.type)==="啟程禮"))) return true;
   try{
@@ -11853,7 +11885,7 @@ function renderWalletModal(){
         ${acct ? `<div class="ic-sub" style="margin-top:6px;">這段人生還在原本的復原金鑰上，行動點自己算；帳號空出格子後可以轉進帳號。</div>${canTransfer ? `<button class="ghost-btn" id="btn-acct-transfer" style="margin-top:6px;">轉進帳號</button>` : ``}` : ``}`;
   // 10.12.5第3則：未綁信箱玩家的錢包常駐一行，點下去進綁定說明頁；綁定後不再出現
   const bindTip = !acct ? `
-        <div class="ic-sub glass" id="wallet-bind-tip" role="button" tabindex="0" style="margin:10px 0 4px;padding:8px 10px;cursor:pointer;">撰稿人提醒你：綁定信箱可領啟程禮，把行動點補到 55 點，並保存你的進度。</div>
+        <div class="ic-sub glass" id="wallet-bind-tip" role="button" tabindex="0" style="margin:10px 0 4px;padding:8px 10px;cursor:pointer;">撰稿人提醒你：綁定信箱可再領 30 點啟程禮，並保存你的進度。</div>
         <div class="ic-sub" style="margin:2px 0 6px;"><a id="btn-wallet-login" style="cursor:pointer;text-decoration:underline;">已經有帳號？用信箱登入</a></div>` : ``;
   div.innerHTML = `
     <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
@@ -12706,7 +12738,7 @@ function renderAPExhaustedModal(){
     <div class="modal">
       <p>撰稿人提醒你，今天的行動點用完了。</p>
       <p>明天打開遊戲會再領到 ${AP_DAILY_REFILL} 點。</p>
-      <p>綁定信箱可以再領 55 點啟程禮，還能多開一段人生，換手機也找得回進度。</p>
+      <p>綁定信箱可以再領 30 點啟程禮，還能多開一段人生，換手機也找得回進度。</p>
       <p>信箱只用來保存進度和找回帳號。</p>
       <button class="primary-btn" id="btn-ap-exhausted-bind">綁定信箱</button>
       <button class="ghost-btn" id="btn-ap-exhausted-ok">明天再來</button>
@@ -12767,7 +12799,7 @@ function renderAccountFlow(){
     body = `
       <p>信箱只用來保存進度和找回帳號。</p>
       <p>綁定後，這段人生會成為帳號的第 1 段。</p>
-      <p>綁定後會收到啟程禮，把行動點補到 55 點。</p>
+      <p>綁定後會再領 30 點啟程禮。</p>
       <button class="primary-btn" id="btn-acct-start">開始綁定</button>
       <button class="ghost-btn" id="btn-acct-cancel">取消</button>`;
   } else if(f.step==="email"){
@@ -12923,7 +12955,7 @@ const BIND_OVERFLOW_TEXT = "帳號已滿 2 條，這條人生暫時留在原本�
 // 10.12.5第7則：綁定成功／登入併入的撰稿人訊息，按鈕都是〔繼續寫〕。variant：normal／gift_full／merged；null只顯示超額說明
 function renderBindResultModal(variant, overflow){
   document.getElementById("bind-result-modal")?.remove();
-  const line2 = { normal: "啟程禮已經放進錢包，行動點補到 55 點了，接下來的故事都會跟著你的信箱保存。",
+  const line2 = { normal: "啟程禮已經放進錢包，多了 30 點，接下來的故事都會跟著你的信箱保存。",
     gift_full: "今天的啟程禮已經發完，明天會自動放進你的錢包。",
     merged: "這個信箱的啟程禮之前已經領過，進度和點數都合併進同一個錢包了。" }[variant];
   const div = document.createElement("div");
@@ -14379,7 +14411,7 @@ function renderTestMenuModal(){
 function bindTestMenu(root){
   if(!root) return;
   const q = id=>root.querySelector("#"+id);
-  if(q("dev-toggle-api")) q("dev-toggle-api").onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ try{ localStorage.removeItem(FORCE_REAL_API_KEY); }catch(e){} location.reload(); };
+  if(q("dev-toggle-api")) q("dev-toggle-api").onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ setApiMode(true); location.reload(); };
   if(q("dev-download-calllog")) q("dev-download-calllog").onclick = downloadCallLogCSV;
   if(q("dev-download-story")) q("dev-download-story").onclick = async ()=>{ await ensureArchivedContent(state); downloadStoryExport(state); };
   if(q("dev-toggle-ap-free")) q("dev-toggle-ap-free").onclick = ()=>{
@@ -14460,7 +14492,7 @@ function renderConfirmRealApi(){
       <button class="ghost-btn" id="btn-cancel-real-api">取消</button>
     </div>`;
   document.body.appendChild(div);
-  document.getElementById("btn-confirm-real-api").onclick = ()=>{ try{ localStorage.setItem(FORCE_REAL_API_KEY, "yes"); }catch(e){} location.reload(); };
+  document.getElementById("btn-confirm-real-api").onclick = ()=>{ setApiMode(false); location.reload(); };
   document.getElementById("btn-cancel-real-api").onclick = ()=>div.remove();
 }
 

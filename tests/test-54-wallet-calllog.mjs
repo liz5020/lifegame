@@ -44,7 +44,7 @@ A.check("10.10.2 小字說明補點規則", txt.includes("00:00 補到 5 點") &
 A.check("10.10.2 資料截至(台灣時間)", /資料截至 \d{4}\/\d{2}\/\d{2} \d{2}:\d{2}/.test(txt));
 A.check("10.10.2 開放付費前不放購買按鈕與共用購買點(2026-09-30第二批起，未綁信箱玩家的錢包多一行綁定說明，見test-60)", !/購買點數|共用購買點/.test(txt));
 A.check("10.11.3 錢包裡有「回報帳務問題」按鈕(表單網址已設定，不再依網址有無隱藏)", !!doc.getElementById("btn-wallet-report"));
-A.check("10.10.3 啟程禮 +55 有記錄(改名，不再叫新手禮包)", /啟程禮/.test(txt) && txt.includes("+55") && !/新手禮包|禮包點/.test(txt), txt);
+A.check("10.10.3 啟程禮 +25 有記錄(改名，不再叫新手禮包)", /啟程禮/.test(txt) && txt.includes("+25") && !/新手禮包|禮包點/.test(txt), txt);
 A.check("10.10.3(第二版) 每回合扣點與開場都記：開場0成功、回合-1成功", JSON.stringify(js("state.apLog").filter(e => e.type === "開場" || e.type === "回合").map(e => [e.type, e.n, e.ok])) === '[["開場",0,true],["回合",-1,true],["回合",-1,true],["回合",-1,true]]', js("state.apLog"));
 A.check("10.10.3 錢包每筆呈現日期時間、變動、原因、結果", /\d+\/\d+ \d{2}:\d{2}　回合-1　成功|\d+\/\d+ \d{2}:\d{2}　回合.{0,4}-1　成功/.test(txt.replace(/\s+/g, "")) || (txt.includes("-1") && txt.includes("成功") && txt.includes("開場")), txt.slice(-300));
 A.check("10.9.7-4 開啟錢包不呼叫AI", fake.calls.length === before);

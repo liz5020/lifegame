@@ -162,7 +162,7 @@ export async function callWorker(env, { method = "POST", path: p = "/", body, or
 }
 
 // 載入遊戲頁面。useMock=false時前端走真實路徑(callAI→Worker→假上游)
-export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, storage = null } = {}) {
+export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, storage = null, host = "lifegamepage.smile80275.workers.dev" } = {}) {
   // 二、2.7（2026-09-29）：index.html用<script src="lunar.min.js">載入農曆套件，jsdom不抓外部檔，這裡直接內嵌
   const lunarSrc = fs.readFileSync(path.join(ROOT, "lunar.min.js"), "utf8");
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8")
@@ -173,7 +173,7 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
   vc.on("error", (...a) => errors.push(a.join(" ")));
   const worker = await loadWorker();
   const dom = new JSDOM(html, {
-    url: "https://lifegamepage.smile80275.workers.dev/" + (query || (dev ? "?dev=1" : "")),
+    url: "https://" + host + "/" + (query || (dev ? "?dev=1" : "")),
     runScripts: "dangerously", pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
       // storage：模擬「重新整理頁面」時帶入上一個頁面的localStorage；key為null＝全新瀏覽器(還沒有金鑰)

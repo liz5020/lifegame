@@ -51,7 +51,7 @@ await H.playTurn(g, "嗯");
 ev("renderAPExhaustedModal()");
 const m = doc.getElementById("ap-exhausted-modal");
 const mt = m.textContent.replace(/\s+/g, "");
-A.check("第2則：未綁信箱→文字＝點數用完／明天再領5點／綁定信箱可再領55點啟程禮、多開一段人生、換手機找得回進度／信箱只用來保存進度和找回帳號", mt.includes("撰稿人提醒你，今天的行動點用完了。") && mt.includes("明天打開遊戲會再領到5點。") && mt.includes("綁定信箱可以再領55點啟程禮，還能多開一段人生，換手機也找得回進度。") && mt.includes("信箱只用來保存進度和找回帳號。"), mt);
+A.check("第2則：未綁信箱→文字＝點數用完／明天再領5點／綁定信箱可再領30點啟程禮、多開一段人生、換手機找得回進度／信箱只用來保存進度和找回帳號", mt.includes("撰稿人提醒你，今天的行動點用完了。") && mt.includes("明天打開遊戲會再領到5點。") && mt.includes("綁定信箱可以再領30點啟程禮，還能多開一段人生，換手機也找得回進度。") && mt.includes("信箱只用來保存進度和找回帳號。"), mt);
 A.check("第2則：按鈕〔綁定信箱〕〔明天再來〕", m.querySelector("#btn-ap-exhausted-bind")?.textContent === "綁定信箱" && m.querySelector("#btn-ap-exhausted-ok")?.textContent === "明天再來");
 m.querySelector("#btn-ap-exhausted-bind").click();
 A.check("第2則：按〔綁定信箱〕→關掉提示、進綁定說明頁", !doc.getElementById("ap-exhausted-modal") && /綁定信箱/.test(doc.getElementById("account-modal")?.textContent || "") && /信箱只用來保存進度和找回帳號/.test(doc.getElementById("account-modal")?.textContent || ""));
