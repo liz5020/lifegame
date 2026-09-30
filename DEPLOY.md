@@ -30,6 +30,7 @@
 - `index.html`的分享連結（`og:url`、`og:image`、`SHARE_URL`）已換成新網址（2026.09.30-b）。
 - 非`master`分支的預覽建置用Settings→Builds的Preview command＝`npx wrangler versions upload`（2026-09-30由原本已淘汰的`npx wrangler preview`改過來）。
 - **推上去後確認線上版本**：`GET https://life-game.smile80275.workers.dev/version`回傳的`version`要等於這次的`WORKER_VERSION`；網頁看`https://lifegame-6an.pages.dev/`的`APP_VERSION`。
+- **推上去後用`gh`查建置狀態(2026-09-30起，本機已裝`gh`並登入)**：`gh api repos/liz5020/lifegame/commits/<commit>/check-runs --jq '.check_runs[] | {name, status, conclusion, title: .output.title}'`，會列出「Workers Builds: life-game」(Worker)與「Cloudflare Pages」(網頁)各自的狀態(`in_progress`＝還在建、`success`／`failure`)，失敗時`.output.summary`有原因與後台日誌連結。Worker建置比網頁慢，推完等到兩邊都`success`再查`/version`，別看到舊版就以為失敗。`gh`裝在`~/.local/bin/gh`(沒有Homebrew，直接下載官方執行檔)，登入用`gh auth login`(網頁授權)。
 - **建置卡在「Initializing build environment」、5分鐘後「Build failed to initialize and was timed out」**：Cloudflare建置環境沒開起來，跟程式無關（2026-09-30的2026.09.30-d碰過一次）。到後台life-game的建置紀錄按Retry build重跑即可；重跑仍失敗再改用本機`cd worker && npx wrangler deploy`（要先問使用者）。
 
 ## 紀錄（最新在上）
@@ -48,4 +49,5 @@
 - 第一次自動部署含Durable Object migrations(`[[migrations]] tag="v1"`)；部署後到後台life-game的Bindings確認有`USAGE_COUNTER`。
 - 兩個設定值只放Cloudflare後台：life-game→Settings→Variables and Secrets→新增純文字變數`DAILY_SPEND_CAP_TWD`(全站每日花費上限，沒設預設500)、`DAILY_GIFT_CAP`(啟程禮每日發放上限，沒設預設20)；改完存檔就生效，**不要寫進`wrangler.toml`**(`keep_vars=true`才不會被部署蓋掉)。第一批只顯示、還沒拿來擋人。
 - 查當天累計：`GET https://life-game.smile80275.workers.dev/usage-today`，帶`Authorization: Bearer <USAGE_ADMIN_TOKEN>`(或`?token=`)，回傳日期、呼叫次數、估計花費(每次成功呼叫估1元)、上限與比例。台灣時間午夜歸零。
+- 2026-09-30查到：`GET /usage-today`回「尚未設定USAGE_ADMIN_TOKEN」＝Worker上還沒設管理密碼(`/usage-summary`同樣用這個)。要查用量前先在`worker/`資料夾跑`npx wrangler secret put USAGE_ADMIN_TOKEN`設一組密碼(由使用者自己輸入，我不經手)。
 
