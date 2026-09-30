@@ -690,6 +690,7 @@ function apLogAdd(s, type, n, opts){
 }
 // 一般回合／開場的點數紀錄：一次送出(takeTurn)只寫一筆，記實際最終變動(＝結束後餘額－扣點前餘額，扣了又退＝0；
 // 送出期間伺服器端剛好跨日補點的量另外記成每日補點、不算進這一筆)，成功與否看有沒有拿到內容
+// 注意(10.10.3.1)：同一帳號兩台裝置同時遊玩、或剛好碰到每日補點時，差值可能混入其他變動，查帳時要留意
 function apLogTurn(s, isPrologue, totalBefore, startedAt, ok){
   if(!s || apTestFreeActive()) return;
   const refilled = (s.apLog||[]).filter(e=>e.t>=startedAt && e.type==="每日補點").reduce((a,e)=>a+e.n, 0);
@@ -7736,8 +7737,11 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-d";
+const APP_VERSION = "2026.09.30-e";
 const RELEASE_NOTES = [
+  { version:"2026.09.30-e", date:"2026-09-30", title:"錢包的啟程禮欄位", items:[
+    "點數錢包的「啟程禮」現在看這台裝置有沒有領過，不再只看目前這條人生；換一條新人生也不會誤寫成「未領」。"
+  ]},
   { version:"2026.09.30-d", date:"2026-09-30", title:"人物的職業", items:[
     "點開人物，現在會看到對方的職業或在讀哪個階段；還沒聊過、不清楚的人會寫「未知」。",
     "兄弟姊妹長大後會有自己的出路：讀大學，或是出社會工作。"
@@ -11451,7 +11455,16 @@ function otherLivesForWallet(){
 }
 // 10.11.4：帳務回報要複製的純文字。只讀點數與紀錄——絕對不讀、不拼入復原金鑰(金鑰＝存檔密碼)、信箱本身、故事正文
 function accountEmailBound(){ return false; } // 封測期間沒有信箱綁定功能；帳號系統(10.2)上線後改由帳號狀態決定，並改寫「已領 N／2 份」
-function giftClaimedFor(s){ return !!s.giftGranted || (s.apLog||[]).some(e=>apLogTypeName(e.type)==="啟程禮"); }
+// 十、10.10.3.1：「啟程禮」欄看整個帳號有沒有領過，不看單一條人生；沒有帳號系統前帳號＝這台裝置(金鑰的本機領取計數)。
+// 帳號系統上線後改成「已領 N／2 份」(15點試玩禮與55點啟程禮分開算)，這裡只回答「有沒有領過」，不要把份數寫死。
+function giftClaimedFor(s){
+  if(s && (s.giftGranted || (s.apLog||[]).some(e=>apLogTypeName(e.type)==="啟程禮"))) return true;
+  try{
+    const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+    if(key && Number(localStorage.getItem(GIFT_CLAIMS_LOCAL_PREFIX + key)) > 0) return true;
+  }catch(e){}
+  return false;
+}
 function walletReportText(s){
   const log = (s.apLog||[]).slice(-5).reverse();
   const lastRefill = (s.apLog||[]).slice().reverse().find(e=>e.type==="每日補點");

@@ -103,7 +103,14 @@ A.check("10.11.4 沒有每日補點紀錄的玩家，整行「最近補點」不
 A.check("10.11.4 紀錄不滿5筆時有幾筆列幾筆", t2.split("【最近 5 筆】\n")[1].split("\n").length === 1);
 A.check("10.11.4 沒領過啟程禮：寫「未領」", /啟程禮：未領/.test(t2) || ev("giftClaimedFor(state)") === true, t2);
 // 沒有紀錄
+// 10.10.3.1：「啟程禮」看整個帳號(沒帳號系統前＝這台裝置)，不看這條人生：這條人生沒領、但這台裝置這把金鑰領過＝已領
 ev(`state.apLog = []; state.giftGranted = false`);
+const giftLocalName = ev("GIFT_CLAIMS_LOCAL_PREFIX + localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)");
+const savedCount = ev(`localStorage.getItem(${JSON.stringify(giftLocalName)})`);
+ev(`localStorage.setItem(${JSON.stringify(giftLocalName)}, "1")`);
+A.check("10.10.3.1 這條人生沒領、但這台裝置領過＝已領", /啟程禮：已領/.test(ev("walletReportText(state)")) && ev("giftClaimedFor(state)") === true);
+ev(`localStorage.removeItem(${JSON.stringify(giftLocalName)})`);
+A.check("10.10.3.1 這條人生沒領、裝置也沒領過＝未領", /啟程禮：未領/.test(ev("walletReportText(state)")) && ev("giftClaimedFor(state)") === false);
 const t3 = ev("walletReportText(state)");
 A.check("10.11.4 完全沒有紀錄：「最近 5 筆」底下寫「目前沒有紀錄」", t3.endsWith("【最近 5 筆】\n目前沒有紀錄"), t3);
 A.check("10.11.4 沒領過啟程禮寫「未領」", /啟程禮：未領/.test(t3), t3);
