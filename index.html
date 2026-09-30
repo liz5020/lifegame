@@ -7979,15 +7979,16 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
 const APP_VERSION = "2026.09.30-h";
 const RELEASE_NOTES = [
-  { version:"2026.09.30-h", date:"2026-09-30", title:"啟程禮與綁定信箱", items:[
+  { version:"2026.09.30-h", date:"2026-09-30", title:"綁定信箱與啟程禮", items:[
     "新的人生會先附上 25 點啟程禮，大約夠走到高一的寒假；還沒綁定信箱時，同時只能過一段人生。",
-    "綁定信箱後再領 30 點啟程禮，大約能走到高一結束。"
-  ]},
-  { version:"2026.09.30-g", date:"2026-09-30", title:"綁定信箱與共用錢包", items:[
-    "新增「綁定信箱」：用信箱收一組驗證碼就能登入，換手機也找得回進度；綁定後可以領啟程禮。",
+    "綁定信箱後再領 30 點啟程禮，大約能走到高一結束。",
+    "新增「綁定信箱」：用信箱收一組驗證碼就能登入，換手機也找得回進度；綁定後再領 30 點啟程禮。",
     "綁定後，點數變成整個帳號共用的一個錢包，最多同時進行 2 段人生；第一次開第 2 段人生會再收到一份啟程禮。",
     "已經有帳號的話，在首頁或錢包按「用信箱登入」，這台裝置上寫到一半的人生會一起併進帳號。",
     "如果哪天故事額度用完了，撰稿人會直接說明並在台灣時間午夜後恢復，你的進度和輸入的字都會留著。"
+  ]},
+  { version:"2026.09.30-g", date:"2026-09-30", title:"修正拿回雲端進度的畫面", items:[
+    "修正換裝置（或三個格子都滿時）用金鑰拿回雲端進度的畫面，「回首頁」按鈕按了沒反應的問題。"
   ]},
   { version:"2026.09.30-f", date:"2026-09-30", title:"撰稿人來說明", items:[
     "遊戲裡的系統提醒（點數用完、存檔沒成功、連線失敗、每天補點）改由「撰稿人」用溫和的口吻說明，並附上下一步。",
@@ -11071,8 +11072,8 @@ function bindSlotPicker(){
   if(archiveBtn) archiveBtn.onclick = ()=>showArchiveList(localStorage.getItem(RECOVERY_KEY_STORAGE_NAME));
   const restoreBtn = document.getElementById("btn-cloud-restore"); // 十、10.8.1
   if(restoreBtn) restoreBtn.onclick = ()=>{ state = { phase:"keyInput" }; render(); };
-  if(state.fromCloud){ bindCloudPicker(); return; }
   document.getElementById("btn-slot-home").onclick = ()=>{ state = { phase:"home" }; render(); };
+  if(state.fromCloud){ bindCloudPicker(); return; }
   document.querySelectorAll(".slot-btn").forEach(btn=>{
     btn.onclick = async ()=>{
       const slot = Number(btn.dataset.slot);

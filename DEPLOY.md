@@ -30,6 +30,7 @@
 - `index.html`的分享連結（`og:url`、`og:image`、`SHARE_URL`）已換成新網址（2026.09.30-b）。
 - 非`master`分支的預覽建置用Settings→Builds的Preview command＝`npx wrangler versions upload`（2026-09-30由原本已淘汰的`npx wrangler preview`改過來）。
 - **推上去後確認線上版本**：`GET https://life-game.smile80275.workers.dev/version`回傳的`version`要等於這次的`WORKER_VERSION`；網頁看`https://lifegame-6an.pages.dev/`的`APP_VERSION`。
+- **推上去後用`gh`查建置狀態(2026-09-30起，本機已裝`gh`並登入)**：`gh api repos/liz5020/lifegame/commits/<commit>/check-runs --jq '.check_runs[] | {name, status, conclusion, title: .output.title}'`，會列出「Workers Builds: life-game」(Worker)與「Cloudflare Pages」(網頁)各自的狀態(`in_progress`＝還在建、`success`／`failure`)，失敗時`.output.summary`有原因與後台日誌連結。Worker建置比網頁慢，推完等到兩邊都`success`再查`/version`，別看到舊版就以為失敗。`gh`裝在`~/.local/bin/gh`(沒有Homebrew，直接下載官方執行檔)，登入用`gh auth login`(網頁授權)。
 - **建置卡在「Initializing build environment」、5分鐘後「Build failed to initialize and was timed out」**：Cloudflare建置環境沒開起來，跟程式無關（2026-09-30的2026.09.30-d碰過一次）。到後台life-game的建置紀錄按Retry build重跑即可；重跑仍失敗再改用本機`cd worker && npx wrangler deploy`（要先問使用者）。
 
 ## 紀錄（最新在上）
@@ -37,8 +38,9 @@
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
 | 2026-09-30 | 2026.09.30-h（隨`master`自動部署） | 2026.09.30-h（隨`master`自動部署） | 見git log | index.html、worker | 第三批：未綁信箱啟程禮改25點(只領1次、同時1段)、綁定再+30(取代補到55)、正式網址(lifegame-6an.pages.dev)預設真AI、其他網址仍預設示範；封測直接開放 |
-| 2026-09-30 | 2026.09.30-g（隨`master`自動部署） | 2026.09.30-g（隨`master`自動部署） | 見git log | index.html、worker | 帳號系統第二批(10.2／10.9.2／10.9.3)：信箱驗證碼登入、綁定／併入／換綁、共用錢包、啟程禮每日上限與排隊、全站每日花費上限擋人＋管理通知信、撰稿人第2/3/4/7則；Worker新增Durable Object `ACCOUNTS`(migration v2)、寄信(Resend)；**上線前要先照「設定說明_帳號與寄信.md」設好Resend與後台變數** |
+| 2026-09-30 | 2026.09.30-h（第二批，與上一行一起上線） | 2026.09.30-h（同左） | 見git log | index.html、worker | 帳號系統第二批(10.2／10.9.2／10.9.3)：信箱驗證碼登入、綁定／併入／換綁、共用錢包、啟程禮每日上限與排隊、全站每日花費上限擋人＋管理通知信、撰稿人第2/3/4/7則；Worker新增Durable Object `ACCOUNTS`(migration v2)、寄信(Resend)；**上線前要先照「設定說明_帳號與寄信.md」設好Resend與後台變數** |
 | 2026-09-30 | 2026.09.30-f（隨`master`自動部署） | 2026.09.30-f（隨`master`自動部署） | 見git log | index.html、worker | 撰稿人系統訊息第一批(10.12)；Worker新增全站當天用量計數(Durable Object `USAGE_COUNTER`，`/usage-today`)，wrangler.toml多了DO綁定與migrations |
+| 2026-09-30 | 2026.09.30-g（隨`master`自動部署） | 2026.09.30-g（隨`master`自動部署） | 見git log | index.html、worker(只換版本號) | 修正「拿回雲端進度」畫面的「回首頁」按鈕沒反應 |
 | 2026-09-30 | 2026.09.30-e（隨`master`自動部署） | 2026.09.30-e（隨`master`自動部署，只換版本號） | 見git log | index.html、worker | 錢包「啟程禮」欄改看這台裝置有沒有領過(10.10.3.1)；Worker只換版本號 |
 | 2026-09-30 | 2026.09.30-d（隨`master`自動部署） | 2026.09.30-d（隨`master`自動部署） | 見git log | index.html、worker | 人物詳細頁顯示職業／就學(四、4.9)；Worker只更新單價查詢日期(`PRICE_CHECKED_ON`，單價不變) |
 | 2026-09-30 | 2026.09.30-c（隨`master`自動部署） | 2026.09.30-c（隨`master`自動部署，只換版本號） | 見git log | index.html、worker | 點數錢包（含啟程禮改名）與玩家回報機制(10.10.3／10.11)；Worker只換版本號、邏輯沒動（版本檢查要求頁面與Worker一致） |
@@ -50,12 +52,13 @@
 - 第一次自動部署含Durable Object migrations(`[[migrations]] tag="v1"`)；部署後到後台life-game的Bindings確認有`USAGE_COUNTER`。
 - 兩個設定值只放Cloudflare後台：life-game→Settings→Variables and Secrets→新增純文字變數`DAILY_SPEND_CAP_TWD`(全站每日花費上限，沒設預設500)、`DAILY_GIFT_CAP`(啟程禮每日發放上限，沒設預設20)；改完存檔就生效，**不要寫進`wrangler.toml`**(`keep_vars=true`才不會被部署蓋掉)。第一批只顯示、還沒拿來擋人。
 - 查當天累計：`GET https://life-game.smile80275.workers.dev/usage-today`，帶`Authorization: Bearer <USAGE_ADMIN_TOKEN>`(或`?token=`)，回傳日期、呼叫次數、估計花費(每次成功呼叫估1元)、上限與比例。台灣時間午夜歸零。
+- 2026-09-30查到：`GET /usage-today`回「尚未設定USAGE_ADMIN_TOKEN」＝Worker上還沒設管理密碼(`/usage-summary`同樣用這個)。要查用量前先在`worker/`資料夾跑`npx wrangler secret put USAGE_ADMIN_TOKEN`設一組密碼(由使用者自己輸入，我不經手)。
 
 ## 帳號系統與寄信設定（2026-09-30第二批，十、10.2）
 
 - 第二批新增帳號資料庫（Durable Object `ACCOUNTS`，`wrangler.toml`的migration `v2`），第一次自動部署時會自動建立；部署後到後台life-game的Bindings確認有`ACCOUNTS`與`USAGE_COUNTER`。
 - **上線前要先設定寄信與後台變數**：照根目錄`設定說明_帳號與寄信.md`做（Resend帳號與網域、DNS記錄貼進Cloudflare、只能寄信的金鑰存成secret `RESEND_API_KEY`、後台變數`ADMIN_NOTIFY_EMAIL`／`DAILY_SPEND_CAP`／`DAILY_GIFT_CAP`／`DAILY_VERIFY_EMAIL_CAP`／`AI_CALL_COST_ESTIMATE`）。沒設好之前，遊戲裡按「寄送驗證碼」會顯示「現在寄不出驗證碼」，其他功能不受影響。
-- 確認方式：`GET /version`要是`2026.09.30-g`；`GET /usage-today?token=管理密碼`看`mail.resend_key_set`與`mail.admin_email_set`都是`true`，並看得到今天估計花費、啟程禮份數、通知狀態、今日驗證信數。
+- 確認方式：`GET /version`要是`2026.09.30-h`；`GET /usage-today?token=管理密碼`看`mail.resend_key_set`與`mail.admin_email_set`都是`true`，並看得到今天估計花費、啟程禮份數、通知狀態、今日驗證信數。
 - 這些設定值只放Cloudflare後台，**不要寫進`wrangler.toml`**（`keep_vars=true`才不會被部署蓋掉）；改花費上限或啟程禮上限不用重新部署，存檔就生效。
 
 ## 開放封測前檢查清單（2026-09-30第三批）
