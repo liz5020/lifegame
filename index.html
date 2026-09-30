@@ -881,7 +881,7 @@ async function refreshAccount(){
   acctRefreshing = true; acctRefreshAskedDate = taipeiDateString();
   try{
     const r = await acctFetch("account/me");
-    if(r.ok){ acctSetAccount(r.data.account); acctApplyEvents(r.data.events); await acctFlushPendingRemovals(); return true; }
+    if(r.ok){ acctSetAccount(r.data.account); acctApplyEvents(r.data.events); await acctFlushPendingRemovals(); syncConsentToAccount(); return true; }
   } finally { acctRefreshing = false; }
   return false;
 }
@@ -3359,12 +3359,85 @@ setInterval(()=>{
   checkDailyCapGate(); // 十、10.9.3.1：「撰稿人休息中」的小字還在時，每分鐘問一次伺服器恢復了沒
 }, 60*1000);
 
+// ========== 十、10.13.2 開場同意頁與隱私說明（2026-10-01）==========
+// 玩家進站時，裝置上沒有同意紀錄、或說明版本號低於CONSENT_VERSION，就先擋一頁〔同意並開始〕／〔不同意〕；同意一次後不再出現。
+// 新增資料用途或新增資料接收對象時CONSENT_VERSION加一(所有玩家重新同意)，字句修飾不加版本。
+// 紀錄{v,at}存在裝置(localStorage)、隨存檔上傳(state.consent)、已綁信箱者另記在帳號資料(account/consent)。
+const CONSENT_VERSION = 1;
+const CONSENT_STORAGE_NAME = "lifegame_consent";
+const CONSENT_SYNCED_NAME = "lifegame_consent_synced";
+const CONSENT_ITEMS = [
+  "遊戲進行中會定期自動存檔到我們的伺服器，存檔用於改善遊戲體驗及維護。",
+  "遊戲劇情由 AI 生成，你的選擇與輸入的文字會傳給 AI 服務商，用來產生下一段劇情。",
+  "請不要在遊戲裡輸入真實姓名、電話、住址、公司等個人資訊。",
+  "有任何問題與建議，可以透過回報表單告訴我們。",
+];
+function getConsent(){
+  try{ const c = JSON.parse(localStorage.getItem(CONSENT_STORAGE_NAME) || "null"); if(c && Number.isInteger(c.v) && Number.isFinite(c.at)) return c; }catch(e){}
+  return null;
+}
+function hasValidConsent(){ const c = getConsent(); return !!c && c.v>=CONSENT_VERSION; }
+function recordConsent(){
+  const c = { v:CONSENT_VERSION, at:Date.now() };
+  try{ localStorage.setItem(CONSENT_STORAGE_NAME, JSON.stringify(c)); }catch(e){}
+  if(state && state.phase && state.phase!=="home") state.consent = c;
+  syncConsentToAccount();
+  return c;
+}
+// 已綁信箱者同時記在帳號資料上：同一份紀錄(版本＋時間)在這個帳號上只送一次
+function syncConsentToAccount(){
+  if(!acct || !acctToken()) return;
+  const c = getConsent(); if(!c) return;
+  const mark = acct.aid+":"+c.v+":"+c.at;
+  let done = null; try{ done = localStorage.getItem(CONSENT_SYNCED_NAME); }catch(e){}
+  if(done===mark) return;
+  acctFetch("account/consent", { v:c.v, at:c.at }).then(r=>{ if(r.ok){ try{ localStorage.setItem(CONSENT_SYNCED_NAME, mark); }catch(e){} } });
+}
+function consentItemsHTML(){ return `<ol style="padding-left:1.3em;margin:10px 0;text-align:left;">${CONSENT_ITEMS.map(t=>`<li style="margin:6px 0;">${escapeHtml(t)}</li>`).join("")}</ol>`; }
+// 開場同意頁：不能關掉，按〔不同意〕留在本頁
+function showConsentGate(onAgree){
+  if(document.getElementById("consent-gate")) return;
+  const div = document.createElement("div");
+  div.id = "consent-gate";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <h3>開始之前，先跟你說明</h3>
+      ${consentItemsHTML()}
+      <p id="consent-hint" style="display:none;color:var(--stamp);font-size:12.5px;margin:6px 0;">需要同意才能開始遊戲</p>
+      <button class="primary-btn" id="btn-consent-agree">同意並開始</button>
+      <button class="ghost-btn" id="btn-consent-decline">不同意</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-consent-agree").onclick = ()=>{ recordConsent(); div.remove(); if(onAgree) onAgree(); };
+  document.getElementById("btn-consent-decline").onclick = ()=>{ document.getElementById("consent-hint").style.display = "block"; };
+}
+// 選單／綁定頁的「隱私說明」：內容同開場同意頁的文字(完整版隱私說明上線後改連完整版)
+function renderPrivacyModal(){
+  if(document.getElementById("privacy-modal")) return;
+  const div = document.createElement("div");
+  div.id = "privacy-modal";
+  div.className = "modal-backdrop";
+  div.style.zIndex = 3000;
+  div.innerHTML = `
+    <div class="modal">
+      <h3>隱私說明</h3>
+      ${consentItemsHTML()}
+      <button class="ghost-btn" id="btn-privacy-close" style="margin-top:10px;">關閉</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-privacy-close").onclick = ()=>div.remove();
+}
+function privacyLinkHTML(){ return `<p style="font-size:12px;margin:8px 0;"><a class="privacy-link" style="cursor:pointer;text-decoration:underline;">隱私說明</a></p>`; }
+document.addEventListener("click", e=>{ const t = e.target && e.target.closest && e.target.closest(".privacy-link"); if(t){ e.preventDefault(); renderPrivacyModal(); } });
+
 // 十、10.1（9/19新增）：封測階段純金鑰模式的啟動流程。
 // 十六、16.10.9（2026-09-28使用者同意Claude建議）：取消「有金鑰就自動接續上次那段人生」，進站一律先顯示首頁，
 // 從「還沒寫完的人生」卡片接回；開始新人生/切換其他人生都從首頁的按鈕進去
 async function initApp(){
   state = { phase:"home" };
   render();
+  if(!hasValidConsent()) showConsentGate(); // 十、10.13.2：第一次進站、換裝置、清除瀏覽器資料或說明版本提高時，先看同意頁
   if(acctToken()) refreshAccount().then(ok=>{ if(ok && state && (state.phase==="home" || state.phase==="playing")) render(); }); // 十、10.9.2：當天第一次打開時補點在伺服器
 }
 // 讀檔時的舊存檔遷移：4.1.3性別；二、2.7／B1（2026-09-29）舊行事曆換算到真實日曆、年齡依生日重算
@@ -3698,6 +3771,7 @@ async function ensureArchivedContent(s){
 function saveLocalOnly(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
+  if(state && state.phase && state.phase!=="home"){ const c = getConsent(); if(c) state.consent = c; } // 十、10.13.2：同意紀錄隨存檔一起上傳
   if(state && (state.phase==="playing" || state.phase==="ending")) state.savedAt = Date.now();
   try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); }catch(e){ console.warn("save failed", e); }
 }
@@ -3748,6 +3822,7 @@ function syncTagHTML(){
 async function saveGame(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
+  if(state && state.phase && state.phase!=="home"){ const c = getConsent(); if(c) state.consent = c; } // 十、10.13.2：同意紀錄隨存檔一起上傳
   if(state && (state.phase==="playing" || state.phase==="ending")) state.savedAt = Date.now(); // 十、10.2：同一段人生在兩台裝置玩時，以「最後一次存檔」為準——每次存檔記下時間
   try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); localSaveFailNotified = false; }
   catch(e){ console.warn("save failed", e); notifyLocalSaveFailed(); }
@@ -7977,8 +8052,12 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-i";
+const APP_VERSION = "2026.10.01-a";
 const RELEASE_NOTES = [
+  { version:"2026.10.01-a", date:"2026-10-01", title:"開始之前的說明", items:[
+    "第一次進遊戲（或換手機、清除瀏覽器資料後）會先看到一頁說明：存檔會定期存到我們的伺服器、劇情由 AI 生成、請不要輸入真實的個人資料。按「同意並開始」就能開始玩，同意過之後不會再跳出來。",
+    "選單新增「隱私說明」，綁定信箱、用信箱登入的畫面也有連結，隨時可以再看一次。",
+  ]},
   { version:"2026.09.30-i", date:"2026-09-30", title:"綁定信箱更好找", items:[
     "點數錢包裡的「綁定信箱」改成獨立按鈕，說明文字放在旁邊；「已經有帳號？用信箱登入」也改成按鈕。",
     "上方的點數數字加了虛線底線，看得出來可以點開錢包。",
@@ -11968,6 +12047,7 @@ function renderMenuPanel(s){
     ${acct ? `<a class="menu-item" id="link-account">${icon("key")} 帳號：${escapeHtml(acct.email_masked||"")}</a>`
            : `<a class="menu-item" id="link-account">${icon("key")} 綁定信箱　<span style="font-size:12px;opacity:.7;">再領 30 點、換手機找得回</span></a>`}
     <a class="menu-item" id="link-report-game">${icon("alert")} 回報遊戲問題</a>
+    <a class="menu-item privacy-link" id="link-privacy">${icon("help")} 隱私說明</a>
     ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">${icon("cloud")} 存到雲端</a>`}
     ${lastKnownWallet>0 ? `<div class="menu-note">${icon("wallet")} 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
     <a class="menu-item" id="link-switch-life">${icon("refresh")} 切換其他人生</a>
@@ -12810,9 +12890,8 @@ function renderAccountFlow(){
   let body = "";
   if(f.step==="intro"){
     body = `
-      <p>信箱只用來保存進度和找回帳號。</p>
-      <p>綁定後，這段人生會成為帳號的第 1 段。</p>
-      <p>綁定後會再領 30 點啟程禮。</p>
+      <p>信箱只用來保存進度和找回帳號，綁定後會收到啟程禮。</p>
+      ${privacyLinkHTML()}
       <button class="primary-btn" id="btn-acct-start">開始綁定</button>
       <button class="ghost-btn" id="btn-acct-cancel">取消</button>`;
   } else if(f.step==="email"){
@@ -12820,6 +12899,7 @@ function renderAccountFlow(){
       <p style="font-size:13.5px;">${f.mode==="login" ? "輸入你綁定過的信箱，會寄一組驗證碼給你。" : f.mode==="change" ? "輸入新的信箱，會寄一組驗證碼給你。" : "輸入要綁定的信箱，會寄一組驗證碼給你。"}</p>
       <div class="roll-item"><input id="acct-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com" value="${escapeHtml(f.email)}"
         style="width:100%;border:none;background:transparent;font-size:15px;padding:4px 0;border-bottom:1px solid var(--ink-soft);"></div>
+      ${f.mode!=="bind" ? privacyLinkHTML() : ""}
       ${err}
       <button class="primary-btn" id="btn-acct-send" ${f.busy?"disabled":""}>寄送驗證碼</button>
       <button class="ghost-btn" id="btn-acct-cancel">取消</button>`;

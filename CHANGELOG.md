@@ -10,6 +10,9 @@
 
 ---
 
+## 2026-10-01
+**〔續30：十、10.13.2開場同意頁（版本2026.10.01-a）〕**`index.html`：新增`CONSENT_VERSION`(1)／`getConsent()`／`hasValidConsent()`／`recordConsent()`／`showConsentGate()`／`renderPrivacyModal()`；`initApp()`進站時沒有有效同意紀錄(不存在、壞掉、版本低於目前)就擋一頁，按〔不同意〕留在本頁提示，〔同意並開始〕記`{v,at}`到localStorage(`lifegame_consent`)並在`saveGame()`／`saveLocalOnly()`寫進`state.consent`隨存檔上傳；選單新增「隱私說明」、綁定說明頁縮成一句話＋連結、用信箱登入／換綁只放一行連結。Worker：新增`POST /account/consent`(`account.js`的`opConsent`，`account.me`回`consent`)，已綁信箱者同意紀錄另記在帳號資料；前端在同意後與`refreshAccount()`成功後自動補送一次(同一份紀錄只送一次)。`tests/harness.mjs`新增`consent`選項(預設視為已同意，`consent:false`＝全新玩家)，新增`tests/test-63-consent.mjs`。**Worker有改，要部署**；遊戲狀態多一個`state.consent`欄位，舊存檔不受影響(沒有就當沒同意，下次開啟會先看到同意頁)。自動存檔(10.13.3)與管理端(10.13.6)尚未實作。
+
 ## 2026-09-30
 **〔續29：綁定信箱入口更直覺（版本2026.09.30-i，十、10.12.5）〕** 錢包「綁定信箱」改獨立按鈕、說明在旁邊、「用信箱登入」也改按鈕；上方「行動點」加虛線底線；「存檔・設定」新增帳號一列（未綁→綁定說明頁／已綁→錢包含登出、換綁）。改動：`index.html`、`tests/test-60`（通過）、設計文件10.2.3附近、`DEPLOY.md`；`worker.js`只換版本號。
 

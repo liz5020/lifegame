@@ -6,6 +6,7 @@
 //   GET  /account/me          (Authorization)                  帳號狀態(每日補點、排隊中的啟程禮補發都在這裡順便處理)
 //   POST /account/change-email {email, code} (Authorization)   換綁信箱：要先通過新信箱的驗證碼
 //   POST /account/lives       {op:"add"|"remove"|"attach", …}  帳號的人生登記(最多2段)、第2份啟程禮
+//   POST /account/consent     {v, at} (Authorization)          開場同意頁的同意紀錄(說明版本＋時間)記在帳號資料上(10.13.2)
 //   POST /account/wallet      {op:"charge"|"refund"|"spend"…}  只給mock模式與非回合的扣點用(真實模式的回合扣點在AI代理裡做)
 //   GET  /gate                                                 現在AI呼叫是不是被全站花費上限暫停(給前端顯示小字用)
 // 全部不碰KV(帳號資料在Durable Object)，所以雲端存檔關閉時照樣能用。驗證碼本身只會出現在寄出的信裡，不會回傳給前端。
@@ -86,6 +87,9 @@ export async function handleAccountRoute(request, env, origin, ctx, url) {
   }
   if (path === "/account/change-email") {
     return reply(origin, await accountsCall(env, { op: "change_email", token, email: body.email, code: body.code }), ctx, env);
+  }
+  if (path === "/account/consent") {
+    return reply(origin, await accountsCall(env, { op: "consent", token, v: body.v, at: body.at }), ctx, env);
   }
   if (path === "/account/lives") {
     if (body.op === "add") return reply(origin, await accountsCall(env, { op: "life_add", token, lid: body.lid }), ctx, env);

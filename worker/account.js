@@ -246,7 +246,8 @@ export class AccountStore {
     return {
       aid: a.aid, email_masked: maskEmail(a.email), recovery_key: a.key, wallet: publicWallet(a),
       lives: a.lives.map(l => ({ lid: l.lid, slot: l.slot })),
-      gifts: { claimed: done, queued, max: GIFTS_PER_ACCOUNT }
+      gifts: { claimed: done, queued, max: GIFTS_PER_ACCOUNT },
+      consent: a.consent || null // 十、10.13.2：開場同意紀錄{v,at}
     };
   }
   // 把裝置上的未綁人生放進帳號：最多ACCOUNT_LIFE_MAX段(依傳進來的順序)，超過的不收、不刪，留在原本的復原金鑰上。
@@ -389,6 +390,16 @@ export class AccountStore {
     await this._putAcct(a);
     return this._out(a, { result: { kind: "attach", accepted: attach.accepted, overflow: attach.overflow, carried: attach.carried } }, flags, null);
   }
+  // 十、10.13.2：開場同意頁的同意紀錄(說明版本號＋同意時間)記在帳號資料上
+  async opConsent(b) {
+    const a = await this._auth(b.token, b.now);
+    if (!a) return { ok: false, error: "unauthorized" };
+    if (!Number.isInteger(b.v) || b.v < 1 || b.v > 9999 || !Number.isFinite(b.at) || b.at <= 0) return { ok: false, error: "bad_request" };
+    a.consent = { v: b.v, at: Math.floor(b.at) };
+    await this._putAcct(a);
+    return { ok: true };
+  }
+
   // 開新人生：帳號最多同時2段；帳號第一次開到第2段人生時發第2份啟程禮(發滿就排隊)
   async opLifeAdd(b) {
     const a = await this._auth(b.token, b.now);
@@ -483,6 +494,7 @@ const OPS = {
   me: AccountStore.prototype.opMe,
   change_email: AccountStore.prototype.opChangeEmail,
   attach_lives: AccountStore.prototype.opAttachLives,
+  consent: AccountStore.prototype.opConsent,
   life_add: AccountStore.prototype.opLifeAdd,
   life_remove: AccountStore.prototype.opLifeRemove,
   wallet_pre: AccountStore.prototype.opWalletPre,

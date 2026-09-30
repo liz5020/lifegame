@@ -898,7 +898,7 @@ async function handleUsageSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.09.30-i";
+const WORKER_VERSION = "2026.10.01-a";
 
 export default {
   async fetch(request, env, ctx) {
