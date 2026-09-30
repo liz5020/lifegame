@@ -26,7 +26,7 @@ ev("renderWalletModal()");
 const wtxt = doc.getElementById("wallet-modal").textContent;
 A.check("改名：錢包顯示「啟程點」「啟程禮」，沒有「禮包」字樣", /啟程點/.test(wtxt) && !/禮包/.test(wtxt), wtxt.slice(0, 300));
 doc.getElementById("wallet-modal").remove();
-A.check("改名：程式內部欄位名稱不變(ap.gift、AP_NEW_LIFE_GIFT)", ev("typeof ensureAP(state).gift") === "number" && ev("AP_NEW_LIFE_GIFT") === 55);
+A.check("改名：程式內部欄位名稱不變(ap.gift、AP_UNBOUND_GIFT＝25)", ev("typeof ensureAP(state).gift") === "number" && ev("AP_UNBOUND_GIFT") === 25);
 
 // ---------- 10.10.3 第二版：結果欄、失敗回合 ----------
 const rowsOf = () => js("state.apLog").filter(e => e.type === "回合" || e.type === "開場").map(e => [e.type, e.n, e.ok]);

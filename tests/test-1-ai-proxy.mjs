@@ -10,6 +10,7 @@ const fake = H.makeFakeAnthropic(); H.installUpstream(fake);
   const g = await H.loadGame({ useMock: true, env });
   g.ev("mockCallAI = async (a,f,t)=>mockGenerateTurn(a,f,t)");
   await H.startNewLife(g);
+  g.ev("state.ap.gift = 100"); // 未綁的啟程禮只有25點(2026-09-30第三批)，這裡要連續玩40回合，先補足點數
   for (let i = 0; i < 40; i++) await H.playTurn(g);
   A.check("mock模式連續40回合正常(無例外、回合數正確)", g.ev("state.turnCount") === 41 && g.errors.length === 0, { t: g.ev("state.turnCount"), e: String(g.errors[0]) });
   A.check("mock模式沒有打到Anthropic", fake.calls.length === 0);

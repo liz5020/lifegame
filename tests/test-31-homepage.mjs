@@ -39,7 +39,7 @@ A.check("16.10.1 已移除舊文案「從出生那天起」「求學、工作、
 A.check("16.10.1 兩顆按鈕與下方說明", /開始一段人生/.test(homeText) && /切換其他人生/.test(homeText) && /免註冊，進度自動存在這台裝置。換了手機，用「復原金鑰」接回你的人生。/.test(homeText));
 A.check("16.10.3 介紹第一段(從高一開學前開始)", /故事從高一開學前、暑假的最後一天開始。之後一路升學、畢業、出社會，直到老去。/.test(homeText) && !/你從出生開始/.test(homeText));
 A.check("16.10.5 落筆內文改版", /在第一頁的角落寫上你的名字。寫歪了也沒關係，這本草稿從這裡開始，都由你自己選。/.test(homeText) && !/命運會先替你寫好第一頁/.test(homeText));
-A.check("16.10.6 常見問題數字：每回合1點、啟程禮55點、每日補到5點", /每過一回合會用掉 1 個行動點。新的人生會先附上 55 點啟程禮，大約夠你走到高一結束；之後每天午夜，再替你補滿 5 點。/.test(homeText) && !/50 點/.test(homeText));
+A.check("16.10.6 常見問題數字：每回合1點、啟程禮25點(綁定再領30點)、每日補到5點", /每過一回合會用掉 1 個行動點。新的人生會先附上 25 點啟程禮，大約夠你走到高一的寒假；綁定信箱可以再領 30 點，大約走到高一結束。之後每天午夜，再替你補滿 5 點。/.test(homeText) && !/50 點/.test(homeText));
 A.check("16.10.6 常見問題八題", doc.querySelectorAll(".faq").length === 8);
 A.check("16.10.6 反悔不寫具體次數", /可以，但次數有限。畢竟是草稿，也不是每一筆都擦得掉。/.test(homeText));
 A.check("16.10.7 頁尾：讀完了、翻回第一頁、字樣、版權", /這一頁讀完了，下一頁還空著。/.test(homeText) && !!doc.getElementById("btn-home-top") && /© 2026 人生草稿/.test(homeText));
@@ -112,7 +112,7 @@ A.check("已有金鑰：選完生活方式直接開始，不再顯示金鑰", g.
 for (let i = 0; i < 3; i++) g.win.localStorage.setItem("life_sim_home:" + i, JSON.stringify({ key: "homekey01", name: "佔位" + i, age: 20, timeLabel: "x", lastPlayedAt: now }));
 g.ev("state = {phase:'home'}; render()");
 await g.ev("startNewLifeFromHome()"); await sleep(30);
-A.check("16.10.9 三格都滿：導到切換畫面並說明已經滿三段", g.ev("state.phase") === "slotPicker" && /三段人生/.test(doc.getElementById("app").textContent) && /人生回顧/.test(doc.getElementById("app").textContent));
+A.check("16.10.9 三格都滿(未綁信箱，2026-09-30第三批起同時只能1段)：導到切換畫面並說明只能1段", g.ev("state.phase") === "slotPicker" && /未綁定信箱時只能同時進行 1 段人生/.test(doc.getElementById("app").textContent) && /人生回顧/.test(doc.getElementById("app").textContent));
 A.check("人生選擇畫面有「回首頁」", !!doc.getElementById("btn-slot-home"));
 doc.getElementById("btn-slot-home").click();
 A.check("回首頁", g.ev("state.phase") === "home");

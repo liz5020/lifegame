@@ -658,8 +658,12 @@ function clampStatDeltas(d){
 // ---------- 十、10.3 行動點經濟（2026-09-23新增）----------
 // 每條人生各自一個ap物件：daily=每日池、gift=禮包點、purchased=購買點(封測未開放購買，欄位先預留)、lastRefillDate=上次補點的台灣日期
 const AP_DAILY_REFILL = 5;        // 【定案,10.3.5】每天補到5點，不累加
-const AP_NEW_LIFE_GIFT = 55;      // 【定案,10.3.4】新手禮包55點（使用者2026-09-23確認由50改55）
-const AP_GIFT_CLAIMS_PER_KEY = 3; // 【定案,10.3.4】每把金鑰一輩子最多領3次
+// 2026-09-30(第三批，使用者決定)：未綁信箱新人生的啟程禮25點、每台裝置只領1次(同時只能1段人生)；綁定信箱再+30點(25＋30＝55)；帳號開第2段人生再+55點。
+// 25點：上學期27回合裡寒假從第20回合開始，25點用到寒假倒數第2回合，「意猶未盡」才有動機綁定；55點約一學年
+const AP_UNBOUND_GIFT = 25;       // 【定案,10.3.4】未綁信箱新人生的啟程禮
+const AP_BIND_BONUS = 30;         // 【定案,10.9.2】綁定信箱再領(說明文字用；實際發放在Worker)
+const AP_SECOND_LIFE_GIFT = 55;   // 【定案,10.9.3】帳號第一次開第2段人生
+const AP_GIFT_CLAIMS_PER_KEY = 1; // 【定案,10.3.4】每把金鑰(未綁時＝每台裝置)一輩子最多領1次
 const AP_COST_PER_TURN = 1;       // 【定案,10.3.1】每回合固定扣1點，選項/自由輸入相同
 const GIFT_CLAIMS_LOCAL_PREFIX = "life_sim_gift_claims:"; // Worker連不上時的本機後備計數
 const ARCHIVE_LOCAL_PREFIX = "life_sim_archive:";         // 人生回顧的本機後備副本
@@ -676,7 +680,10 @@ function ensureAP(s){
   if(!s.ap) s.ap = { daily:AP_DAILY_REFILL, gift:0, purchased:0, lastRefillDate:taipeiDateString() };
   return s.ap;
 }
-function totalAP(s){ const ap = ensureAP(s); return ap.daily + ap.gift + ap.purchased; }
+function totalAP(s){
+  if(walletActive(s)) return (acct.wallet && acct.wallet.total) || 0; // 十、10.9.2：帳號人生的行動點＝整個帳號共用的錢包
+  const ap = ensureAP(s); return ap.daily + ap.gift + ap.purchased;
+}
 // 十、10.10.3（2026-09-30第二版）：最近點數紀錄，記錄這條人生所有點數異動(含每回合扣點、開場)，每筆＝時間、實際最終變動、原因、結果(成功／失敗)，只留最近30筆；
 // 存在存檔的state.apLog(封測期間跟著本機存檔)；測試「不扣行動點」開著時不寫入(10.3.12)。
 // opts.ok===false＝失敗；opts.zero===true＝變動為0也要記(開場、失敗的回合)。舊存檔的紀錄沒有ok欄、原因可能是「新手禮包」，顯示時當成功／改稱「啟程禮」
@@ -716,6 +723,7 @@ function apLogTurn(s, isPrologue, totalBefore, startedAt, ok){
 function apLogTypeName(type){ return type==="新手禮包" ? "啟程禮" : type; } // 2026-09-30改名，舊存檔紀錄照新名稱顯示
 // 不用排程：進入遊戲或行動時發現台灣日期不同才補。只看每日池，永久池多少不影響。回傳是否有補
 function refillDailyIfNeeded(s){
+  if(walletActive(s)){ acctDayCheck(); return false; } // 帳號錢包的每日補點由伺服器做(當天第一次打開時)，這裡只負責「跨日了就去問一次」
   const ap = ensureAP(s);
   const today = taipeiDateString();
   if(ap.lastRefillDate === today) return false;
@@ -727,6 +735,13 @@ function refillDailyIfNeeded(s){
 }
 // 扣點順序：每日池 → 禮包點 → 購買點（先用免費的，保護付費的）；回傳各池實際扣了多少，API失敗時照原樣退回
 function spendAP(s, n){
+  if(walletActive(s)){ // 帳號錢包：本機先照扣(畫面即時)，真正的扣點在伺服器，回應回來後以伺服器端數字為準
+    const w = acct.wallet, used = { daily:0, gift:0, purchased:0, wallet:true };
+    used.gift = Math.min(n, w.free); w.free -= used.gift; n -= used.gift;
+    used.purchased = Math.min(n, w.purchased); w.purchased -= used.purchased;
+    w.total = w.free + w.purchased; acctSaveCache();
+    return used;
+  }
   const ap = ensureAP(s);
   const used = { daily:0, gift:0, purchased:0 };
   for(const pool of ["daily","gift","purchased"]){
@@ -736,6 +751,10 @@ function spendAP(s, n){
   return used;
 }
 function refundAP(s, used){
+  if(used && used.wallet){ // 扣的是帳號錢包：只退回錢包；登入已經失效(walletActive為false)就不能退進本機的點數池
+    if(walletActive(s)){ const w = acct.wallet; w.free += used.daily + used.gift; w.purchased += used.purchased; w.total = w.free + w.purchased; acctSaveCache(); }
+    return;
+  }
   const ap = ensureAP(s);
   ap.daily += used.daily; ap.gift += used.gift; ap.purchased += used.purchased;
 }
@@ -768,7 +787,7 @@ function syncServerAP(s, ap){
 }
 let apRefreshAskedFor = null;
 async function refreshServerAP(){
-  if(!SERVER_AP || !state || state.phase!=="playing") return;
+  if(!SERVER_AP || !state || state.phase!=="playing" || walletActive(state)) return;
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   if(!key || slotRaw===null) return;
@@ -778,6 +797,194 @@ async function refreshServerAP(){
     if(res.ok && data && data.success && data.ap){ syncServerAP(state, data.ap); render(); }
   }catch(e){ console.warn("讀取伺服器端行動點失敗，暫時顯示本機數字", e); }
 }
+// ---------- 十、10.2／10.9.2／10.9.3 帳號系統（2026-09-30，第二批）----------
+// 登入＝信箱＋6位數驗證碼；登入狀態(token)存在這台裝置，90天沒用才失效，每次使用往後延。帳號的共用錢包、人生登記(最多2段)、啟程禮份數都在Worker的Durable Object裡。
+// 「帳號人生」＝這段人生的存檔裡有 s.acct={aid,lid}(帳號代號、這段人生在帳號裡的代號；轉世／世代傳承沿用同一個lid)，而且這台裝置正登入同一個帳號 →
+// 行動點用帳號錢包(walletActive)。其他人生(還沒綁、或超過2段留在原復原金鑰上的)照封測規則，用各自本機的行動點。
+const ACCT_TOKEN_KEY = "life_sim_account_token";
+const ACCT_CACHE_KEY = "life_sim_account_cache";                 // 最近一次拿到的帳號公開資料，開頁面時先用它顯示，不用等網路
+const ACCT_PENDING_REMOVE_KEY = "life_sim_acct_pending_remove";  // 沒登入時收掉的帳號人生，下次登入再通知伺服器空出格子
+let acct = null; // {aid, email_masked, recovery_key, wallet:{free,purchased,total,refill_cap}, lives:[{lid,slot}], gifts:{claimed,queued,max}}
+(function loadAcctCache(){
+  try{ if(localStorage.getItem(ACCT_TOKEN_KEY)){ const c = JSON.parse(localStorage.getItem(ACCT_CACHE_KEY) || "null"); if(c && c.aid && c.wallet) acct = c; } }catch(e){}
+})();
+function acctToken(){ try{ return localStorage.getItem(ACCT_TOKEN_KEY) || ""; }catch(e){ return ""; } }
+function acctHeaders(){ const h = { "Content-Type":"application/json" }; const t = acctToken(); if(t) h.Authorization = "Bearer "+t; return h; }
+function acctSaveCache(){ try{ if(acct && acctToken()) localStorage.setItem(ACCT_CACHE_KEY, JSON.stringify(acct)); else localStorage.removeItem(ACCT_CACHE_KEY); }catch(e){} }
+function acctSetAccount(account){ if(account && account.aid){ acct = account; acctSaveCache(); } }
+function syncWallet(w){ if(acct && w){ acct.wallet = Object.assign({}, w); acctSaveCache(); } } // 複製一份：spendAP／refundAP會就地改acct.wallet，不能改到呼叫端手上那份伺服器回報
+function walletActive(s){ return !!(acct && s && s.acct && s.acct.aid===acct.aid); }
+function newAcctLid(){ return "l" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); } // 小寫英數，跟Worker的格式檢查對得上
+// 每次呼叫Worker的帳號網址：自動帶登入token；401＝登入已失效
+async function acctFetch(path, body){
+  let res, data = null;
+  try{ res = await fetch(WORKER_URL+path, { method: body!==undefined ? "POST" : "GET", headers: acctHeaders(), body: body!==undefined ? JSON.stringify(body) : undefined }); }
+  catch(e){ return { ok:false, status:0, data:null, network:true }; }
+  try{ data = await res.json(); }catch(e){}
+  if(res.status===401 && acctToken()) acctSessionLost();
+  return { ok: !!(res.ok && data && data.success!==false), status: res.status, data };
+}
+// 這台裝置上所有「帳號人生」的行動點歸零(登出／登入失效時)：錢包留在帳號裡，這台裝置變回「沒登入」，這幾段人生退回本機點數池(從0開始，明天起照舊每天補5點)，
+// 不會把錢包裡的點數複製一份留在本機
+function acctZeroLocalPools(){
+  const zero = ()=>({ daily:0, gift:0, purchased:0, lastRefillDate: taipeiDateString() });
+  const activeRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  if(state && state.acct){ state.ap = zero(); }
+  for(let i=0;i<MAX_LIFE_SLOTS;i++){
+    if(state && state.acct && activeRaw!==null && Number(activeRaw)===i) continue; // 目前這段在記憶體裡，等一下存檔
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY+":"+i); if(!raw) continue;
+      const st = JSON.parse(raw);
+      if(st && st.acct){ st.ap = zero(); localStorage.setItem(STORAGE_KEY+":"+i, JSON.stringify(st)); }
+    }catch(e){}
+  }
+  if(state && state.acct) try{ saveLocalOnly(); }catch(e){}
+}
+function acctClearSession(){
+  acctZeroLocalPools();
+  try{ localStorage.removeItem(ACCT_TOKEN_KEY); localStorage.removeItem(ACCT_CACHE_KEY); }catch(e){}
+  acct = null; acctEventQueue = [];
+}
+function acctSessionLost(){
+  if(!acctToken()) return;
+  acctClearSession();
+  showWriterToast("撰稿人提醒你：登入已經過期，請重新用信箱登入。");
+  if(state && state.phase!=="home") render();
+}
+async function acctLogout(){ // 登出只影響這台裝置
+  const tok = acctToken();
+  if(tok) try{ await fetch(WORKER_URL+"account/logout", { method:"POST", headers:acctHeaders(), body:"{}" }); }catch(e){}
+  acctClearSession();
+  render();
+}
+// 伺服器端送來的帳號事件(每日補點、啟程禮、補發、併入)：記進目前這段人生的點數紀錄；沒有可記的人生就先排隊，等進到遊戲畫面再記
+let acctEventQueue = [];
+function acctApplyEvents(events){
+  if(!events || !events.length) return;
+  events.forEach(e=>{ if(e && e.type && e.n) acctEventQueue.push({ type:e.type, n:e.n }); });
+  acctFlushEvents();
+}
+function acctFlushEvents(){
+  if(!acctEventQueue.length || !state || state.phase!=="playing" || !walletActive(state)) return;
+  const list = acctEventQueue.splice(0);
+  list.forEach(e=>apLogAdd(state, e.type, e.n)); // 「每日補點」在apLogAdd裡會跳第8則短提示
+  try{ saveLocalOnly(); }catch(e){}
+}
+// 跨日後(台灣時間)向伺服器要一次最新的錢包(伺服器在當天第一次使用時補點)；每個日期只問一次，避免時鐘不一致時一直重問
+let acctRefreshing = false, acctRefreshAskedDate = null;
+function acctDayCheck(){
+  if(!acctToken() || acctRefreshing || acctRefreshAskedDate===taipeiDateString()) return;
+  refreshAccount().then(ok=>{ if(ok && state && state.phase==="playing"){ document.getElementById("ap-exhausted-modal")?.remove(); render(); } });
+}
+async function refreshAccount(){
+  if(!acctToken() || acctRefreshing) return false;
+  acctRefreshing = true; acctRefreshAskedDate = taipeiDateString();
+  try{
+    const r = await acctFetch("account/me");
+    if(r.ok){ acctSetAccount(r.data.account); acctApplyEvents(r.data.events); await acctFlushPendingRemovals(); return true; }
+  } finally { acctRefreshing = false; }
+  return false;
+}
+function acctQueueRemoval(lid){
+  try{ const a = JSON.parse(localStorage.getItem(ACCT_PENDING_REMOVE_KEY) || "[]"); if(!a.includes(lid)) a.push(lid); localStorage.setItem(ACCT_PENDING_REMOVE_KEY, JSON.stringify(a)); }catch(e){}
+}
+async function acctFlushPendingRemovals(){
+  let list = []; try{ list = JSON.parse(localStorage.getItem(ACCT_PENDING_REMOVE_KEY) || "[]"); }catch(e){}
+  if(!list.length) return;
+  const left = [];
+  for(const lid of list){
+    const r = await acctFetch("account/lives", { op:"remove", lid });
+    if(r.ok) acctSetAccount(r.data.account); else if(r.status!==401) left.push(lid);
+  }
+  try{ localStorage.setItem(ACCT_PENDING_REMOVE_KEY, JSON.stringify(left)); }catch(e){}
+}
+// 這段人生結束／刪除：帳號的人生格子空出來(沒登入就先記著，下次登入再通知)
+async function acctLifeRemoved(s){
+  if(!s || !s.acct || !s.acct.lid) return;
+  if(acct && s.acct.aid===acct.aid){
+    const r = await acctFetch("account/lives", { op:"remove", lid:s.acct.lid });
+    if(r.ok){ acctSetAccount(r.data.account); return; }
+  }
+  acctQueueRemoval(s.acct.lid);
+}
+// 開新人生(帳號登入中)：登記進帳號，最多2段；帳號第一次開到第2段時伺服器發第2份啟程禮(發滿就排隊)
+async function acctLifeAdd(s){
+  const lid = (s.acct && s.acct.lid) || newAcctLid();
+  const r = await acctFetch("account/lives", { op:"add", lid });
+  if(r.ok){ s.acct = { aid: r.data.account.aid, lid }; acctSetAccount(r.data.account); acctApplyEvents(r.data.events); return { ok:true }; }
+  return { ok:false, status:r.status, error:r.data && r.data.error };
+}
+// mock模式沒有AI呼叫，回合的扣點改由這兩個網址做(真實模式在AI代理裡扣，同一套規則)
+async function walletMockCharge(nonce, lifeId){
+  const r = await acctFetch("account/wallet", { op:"charge", nonce, life_id:lifeId });
+  if(r.ok){ syncWallet(r.data.wallet); acctApplyEvents(r.data.events); return; }
+  if(r.data && r.data.wallet) syncWallet(r.data.wallet);
+  const err = new Error(r.status===402 ? "行動點不足（帳號錢包）" : "帳號錢包扣點失敗");
+  err.noRetry = true; err.apInsufficient = r.status===402;
+  throw err;
+}
+async function walletMockRefund(nonce, lifeId){
+  const r = await acctFetch("account/wallet", { op:"refund", nonce, life_id:lifeId });
+  if(r.ok) syncWallet(r.data.wallet);
+}
+// 一次性扣點(放置回溯、mock模式的回顧這一生)：伺服器不夠就回402
+async function walletSpendOnce(n){
+  const r = await acctFetch("account/wallet", { op:"spend", n });
+  if(r.ok){ syncWallet(r.data.wallet); acctApplyEvents(r.data.events); return { ok:true }; }
+  if(r.data && r.data.wallet) syncWallet(r.data.wallet);
+  return { ok:false, insufficient: r.status===402 };
+}
+
+// 十、10.9.3.1／10.12.5第4則：全站每日花費上限，暫停AI呼叫。同一天只跳窗一次，之後在輸入列上方顯示一行小字，恢復後小字消失
+const CAP_MODAL_DATE_KEY = "life_sim_cap_modal_date";
+let dailyCapDate = null; // 這個台灣日期碰過暫停
+function dailyCapNoteActive(){ return dailyCapDate===taipeiDateString(); }
+function isDailyCapResponse(res, data){ return !!(res && res.status===503 && data && data.error && data.error.type==="daily_cap_reached"); }
+function noteDailyCapBlocked(){
+  const today = taipeiDateString();
+  dailyCapDate = today;
+  let seen = null; try{ seen = localStorage.getItem(CAP_MODAL_DATE_KEY); }catch(e){}
+  if(seen!==today){ try{ localStorage.setItem(CAP_MODAL_DATE_KEY, today); }catch(e){} renderDailyCapModal(); }
+  if(state && state.phase==="playing" && !aiWritingNow) keepDraftAndRender(); // 重畫時輸入框裡還沒送出的字要留著
+}
+function clearDailyCapNote(){
+  if(!dailyCapDate) return;
+  dailyCapDate = null;
+  if(state && state.phase==="playing" && !aiWritingNow) keepDraftAndRender();
+}
+async function checkDailyCapGate(){ // 小字還在時，每分鐘問一次伺服器恢復了沒
+  if(!dailyCapNoteActive()) return;
+  const r = await acctFetch("gate");
+  if(r.ok && r.data && r.data.paused===false) clearDailyCapNote();
+}
+function renderDailyCapModal(){
+  if(document.getElementById("daily-cap-modal")) return;
+  const div = document.createElement("div");
+  div.id = "daily-cap-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      <p>撰稿人今天寫得太多，需要休息一下。</p>
+      <p>故事會在台灣時間午夜後恢復，你的進度都已經保存好了。</p>
+      <button class="primary-btn" id="btn-daily-cap-ok">好的</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-daily-cap-ok").onclick = ()=>div.remove();
+}
+// 短提示(撰稿人口吻的一般說明)：幾秒後自動收起
+function showWriterToast(text){
+  try{
+    if(typeof document==="undefined" || !document.body) return;
+    document.getElementById("writer-toast")?.remove();
+    const div = document.createElement("div");
+    div.id = "writer-toast"; div.className = "book-toast"; div.setAttribute("role","status");
+    div.textContent = text;
+    div.onclick = ()=>div.remove();
+    document.body.appendChild(div);
+    setTimeout(()=>div.remove(), 5000);
+  }catch(e){}
+}
+
 // 每條人生一個id（遙測與免費開場回合判定用），newRoll/世代傳承時換新
 function newLifeId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 function ensureLifeId(s){ if(!s.lifeId) s.lifeId = newLifeId(); return s.lifeId; }
@@ -3149,6 +3356,7 @@ setInterval(()=>{
     document.getElementById("ap-exhausted-modal")?.remove();
     saveGame(); render();
   }
+  checkDailyCapGate(); // 十、10.9.3.1：「撰稿人休息中」的小字還在時，每分鐘問一次伺服器恢復了沒
 }, 60*1000);
 
 // 十、10.1（9/19新增）：封測階段純金鑰模式的啟動流程。
@@ -3157,6 +3365,7 @@ setInterval(()=>{
 async function initApp(){
   state = { phase:"home" };
   render();
+  if(acctToken()) refreshAccount().then(ok=>{ if(ok && state && (state.phase==="home" || state.phase==="playing")) render(); }); // 十、10.9.2：當天第一次打開時補點在伺服器
 }
 // 讀檔時的舊存檔遷移：4.1.3性別；二、2.7／B1（2026-09-29）舊行事曆換算到真實日曆、年齡依生日重算
 function migrateLoadedState(st){
@@ -3221,23 +3430,32 @@ async function manualCloudSave(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   let deviceKey = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
   if(!deviceKey){ deviceKey = generateRecoveryKey(); localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, deviceKey); }
-  if(!state.cloudHome || !state.cloudHome.key) state.cloudHome = { key: deviceKey, slot: slotRaw!==null ? Number(slotRaw) : 0 };
-  const home = state.cloudHome;
   manualCloudSaveBusy = true;
+  // 十、10.2／10.9.2：帳號人生一律存在帳號的復原金鑰底下(格子從這把金鑰的3格裡挑，不蓋掉別的人生)，換裝置登入後才拿得回來
+  if(walletActive(state) && (!state.cloudHome || state.cloudHome.key!==acct.recovery_key)){
+    const pick = await acctPickCloudSlot(acct.recovery_key, state.acct.lid);
+    if(pick<0){ manualCloudSaveBusy = false; renderManualCloudSaveModal(false, acct.recovery_key, "雲端存檔的位置不夠了（這把金鑰的 3 個位置都用了），"); return; }
+    state.cloudHome = { key: acct.recovery_key, slot: pick };
+  } else if(!state.cloudHome || !state.cloudHome.key) state.cloudHome = { key: deviceKey, slot: slotRaw!==null ? Number(slotRaw) : 0 };
+  const home = state.cloudHome;
   let ok = false, errText = "";
   try{
     saveGame(); // 先存本機
-    const packed = await packForCloud(buildCloudState(state));
-    const res = await fetch(WORKER_URL+"save", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(Object.assign({ key: home.key, slot: home.slot,
-        meta: { name:state.name, age:state.age, stage:stageLabel(state.age), updatedAt:Date.now() } }, packed)) });
-    let data = null; try{ data = await res.json(); }catch(e){}
-    ok = res.ok && data && data.success===true;
-    if(!ok) errText = res.status===429 ? "按得太快了，稍等一下再試。" : "沒有存成功，請稍後再試。";
+    const up = await cloudUploadState(state, home, { name:state.name, age:state.age, stage:stageLabel(state.age), updatedAt:Date.now(), lid: state.acct ? state.acct.lid : undefined });
+    ok = up.ok;
+    if(!ok) errText = up.status===429 ? "按得太快了，稍等一下再試。" : "沒有存成功，請稍後再試。";
   }catch(e){ console.warn("手動存到雲端失敗", e); errText = "沒有存成功，請稍後再試。"; }
   finally{ manualCloudSaveBusy = false; }
   if(ok){ state.lastManualCloudSaveAt = Date.now(); saveGame(); }
   renderManualCloudSaveModal(ok, home.key, errText);
+}
+// 把一段人生(壓縮、不含反悔快照)上傳到指定的雲端位置一次；回傳{ok,status}
+async function cloudUploadState(st, home, meta){
+  const packed = await packForCloud(buildCloudState(st));
+  const res = await fetch(WORKER_URL+"save", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(Object.assign({ key: home.key, slot: home.slot, meta }, packed)) });
+  let data = null; try{ data = await res.json(); }catch(e){}
+  return { ok: !!(res.ok && data && data.success===true), status: res.status };
 }
 function renderManualCloudSaveModal(ok, key, errText){
   document.getElementById("manual-save-modal")?.remove();
@@ -3292,9 +3510,14 @@ async function restoreFromCloud(cloudKey, cloudSlot){
     if(data && data.success) cloud = data.z ? await unpackFromCloud(data.enc, data.z) : data.state;
   }catch(e){ console.warn("從雲端拿回進度失敗", e); }
   if(!cloud) return { ok:false, message:"沒有拿到雲端的進度，請稍後再試。" };
-  let target = -1;
+  let target = -1, localSame = null;
   for(let i=0;i<MAX_LIFE_SLOTS;i++){
-    try{ const st = JSON.parse(localStorage.getItem(STORAGE_KEY+":"+i) || "null"); if(st && st.lifeId && st.lifeId===cloud.lifeId){ target = i; break; } }catch(e){}
+    try{ const st = JSON.parse(localStorage.getItem(STORAGE_KEY+":"+i) || "null"); if(st && st.lifeId && st.lifeId===cloud.lifeId){ target = i; localSame = st; break; } }catch(e){}
+  }
+  // 十、10.2：這台裝置上同一段人生的存檔比雲端的更新(最後一次存檔在這台)時，先問過再覆蓋，不默默蓋掉比較新的進度
+  if(localSame && localSame.savedAt && cloud.savedAt && localSame.savedAt > cloud.savedAt){
+    let keepLocal = false; try{ keepLocal = !confirm("這台裝置上這段人生的進度比雲端的新（最後存檔在這台裝置）。要用雲端的舊進度覆蓋嗎？"); }catch(e){}
+    if(keepLocal) return { ok:false, message:"已保留這台裝置上比較新的進度，沒有覆蓋。" };
   }
   if(target<0){
     const used = localSlotsMeta();
@@ -3475,6 +3698,7 @@ async function ensureArchivedContent(s){
 function saveLocalOnly(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
+  if(state && (state.phase==="playing" || state.phase==="ending")) state.savedAt = Date.now();
   try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); }catch(e){ console.warn("save failed", e); }
 }
 // 讀檔：雲端與本機是同一段人生時，本機一樣新或比較新就用本機(有反悔快照與完整日記)；雲端比較新(換了裝置玩過)就用雲端，
@@ -3485,7 +3709,8 @@ function mergeCloudWithLocal(cloud, local){
     if(!cloud.snapshot) cloud.undoUnavailableHere = true;
     return cloud;
   }
-  if((local.turnCount||0) >= (cloud.turnCount||0)) return local;
+  // 十、10.2（2026-09-30）：以「最後一次存檔」為準——兩邊都有存檔時間就比時間(兩台裝置玩同一段人生，回合數不一定誰比較大)，舊存檔沒有時間才退回比回合數
+  if((local.savedAt && cloud.savedAt) ? local.savedAt >= cloud.savedAt : (local.turnCount||0) >= (cloud.turnCount||0)) return local;
   const off = cloud.logOffset||0;
   if(off>0 && !(local.logOffset>0) && (local.log||[]).length >= off){ cloud.log = local.log.slice(0, off).concat(cloud.log||[]); cloud.logOffset = 0; }
   if(cloud.book && local.book) cloud.book.chapters = cloud.book.chapters.map(c=>{ if(!c.packed) return c; const lc = local.book.chapters.find(x=>x.id===c.id && !x.packed); return lc || c; });
@@ -3523,6 +3748,7 @@ function syncTagHTML(){
 async function saveGame(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
+  if(state && (state.phase==="playing" || state.phase==="ending")) state.savedAt = Date.now(); // 十、10.2：同一段人生在兩台裝置玩時，以「最後一次存檔」為準——每次存檔記下時間
   try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); localSaveFailNotified = false; }
   catch(e){ console.warn("save failed", e); notifyLocalSaveFailed(); }
   writeHomeMeta(slot);
@@ -4114,6 +4340,7 @@ function newRoll(carry, identity){
     ap: carry?.ap ? { ...carry.ap, giftPending:false } : newLifeAP(),
     apLog: carry?.apLog ? carry.apLog.slice() : [],
     giftGranted: !!(carry && carry.giftGranted),
+    acct: (carry && carry.acct) ? carry.acct : undefined, // 十、10.9.2：轉世沿用同一個帳號人生格子(lid不變)
     lifeId: newLifeId(), // 2026-09-25：每一世都換新id(轉世丹也是新的一世)
     turnCount,
     characters, // 4.1.3：每張家人卡建卡時已寫入gender
@@ -7750,8 +7977,16 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-g";
+const APP_VERSION = "2026.09.30-h";
 const RELEASE_NOTES = [
+  { version:"2026.09.30-h", date:"2026-09-30", title:"綁定信箱與啟程禮", items:[
+    "新的人生會先附上 25 點啟程禮，大約夠走到高一的寒假；還沒綁定信箱時，同時只能過一段人生。",
+    "綁定信箱後再領 30 點啟程禮，大約能走到高一結束。",
+    "新增「綁定信箱」：用信箱收一組驗證碼就能登入，換手機也找得回進度；綁定後再領 30 點啟程禮。",
+    "綁定後，點數變成整個帳號共用的一個錢包，最多同時進行 2 段人生；第一次開第 2 段人生會再收到一份啟程禮。",
+    "已經有帳號的話，在首頁或錢包按「用信箱登入」，這台裝置上寫到一半的人生會一起併進帳號。",
+    "如果哪天故事額度用完了，撰稿人會直接說明並在台灣時間午夜後恢復，你的進度和輸入的字都會留著。"
+  ]},
   { version:"2026.09.30-g", date:"2026-09-30", title:"修正拿回雲端進度的畫面", items:[
     "修正換裝置（或三個格子都滿時）用金鑰拿回雲端進度的畫面，「回首頁」按鈕按了沒反應的問題。"
   ]},
@@ -7832,18 +8067,17 @@ function renderUpdatesModal(){
 }
 let lastTurnServerInfo = null; // Worker回傳的lifegame欄位(行動點、遙測)，開發者面板顯示用
 let lastCallServerAP = null;    // 這一次callAI收到的伺服器端行動點(失敗時takeTurn用它校正本機退點)
+let lastCallWallet = null;      // 十、10.9.2：這一次callAI收到的帳號錢包最新狀態
 
 async function callAI(actionText, forceEnding, timeCtx){
-  lastCallServerAP = null;
+  lastCallServerAP = null; lastCallWallet = null;
   let res;
   const userMsgStr = buildUserMessage(actionText, forceEnding, timeCtx);
   const callMeta = { kind: callKindFor(state, "turn", timeCtx && timeCtx.turnNonce, forceEnding), inChars: payloadBlockChars(userMsgStr) };
   try{
     res = await fetch(WORKER_URL, {
       method:"POST",
-      headers:{
-        "Content-Type":"application/json"
-      },
+      headers: acctHeaders(), // 十、10.2：登入中就帶token(有購買紀錄的帳號不受花費上限暫停；帳號錢包扣點也靠它)
       // 2026-09-25（十、10.4）：只送messages。model/max_tokens/output_config/tools/tool_choice/system全部改由Worker決定
       // (見worker/prompt.js與worker.js的buildTurnRequest)，前端就算送了也會被忽略
       // 十、10.3.11（2026-09-25）：附帶金鑰/slot/這回合的turn_nonce，Worker以伺服器端行動點餘額決定能不能呼叫AI；
@@ -7855,6 +8089,7 @@ async function callAI(actionText, forceEnding, timeCtx){
         life_id: ensureLifeId(state),
         ap_hint: timeCtx && timeCtx.apBefore,
         ap_test_free: apTestFreeOn() || undefined, // 10.3.12：只是請求，Worker只認登記過的測試鑰匙
+        wallet: walletActive(state) || undefined,  // 十、10.9.2：這段人生用帳號共用錢包，由Worker在呼叫AI前預扣、失敗退點
         messages: [{ role:"user", content: userMsgStr }]
       })
     });
@@ -7877,6 +8112,13 @@ async function callAI(actionText, forceEnding, timeCtx){
 
   // 十、10.3.11：Worker回傳的伺服器端餘額(成功或失敗都有)，一律以它為準
   if(data && data.lifegame && data.lifegame.ap){ syncServerAP(state, data.lifegame.ap); lastCallServerAP = data.lifegame.ap; }
+  // 十、10.9.2：帳號錢包的最新餘額(成功、失敗都有)與伺服器端事件(跨日補點、排隊的啟程禮補發)
+  if(data && data.lifegame && data.lifegame.wallet){ syncWallet(data.lifegame.wallet); lastCallWallet = data.lifegame.wallet; }
+  if(data && data.lifegame && data.lifegame.wallet_events) acctApplyEvents(data.lifegame.wallet_events);
+  // 十、10.9.3.1：全站每日花費上限暫停(還沒扣點、也沒呼叫AI)——不重試，由takeTurn照10.12.5第4則處理
+  if(isDailyCapResponse(res, data)){ const err = new Error("今天的故事額度已用完"); err.noRetry = true; err.dailyCap = true; throw err; }
+  if(res.status===401 && walletActive(state)){ const err = new Error("登入已失效"); err.noRetry = true; err.unauthorized = true; acctSessionLost(); throw err; }
+  if(res.ok) clearDailyCapNote(); // 呼叫成功＝額度恢復了
   if(data && data.lifegame) lastTurnServerInfo = data.lifegame;
   if(data && data.lifegame && apTestFreeOn()) apTestFreeRefused = data.lifegame.ap_test_free !== true; // 10.3.12：不是測試鑰匙→開關無效
   if(data && data.lifegame && data.lifegame.usage){
@@ -7941,10 +8183,26 @@ const DEV_TOOLS_KEY = "lifegame_dev_tools";
     if(dev==="0"){ localStorage.removeItem(DEV_TOOLS_KEY); localStorage.removeItem(FORCE_REAL_API_KEY); }
   }catch(e){}
 })();
+// 2026-09-30(第三批，使用者同意)：正式網址(玩家用的lifegame-6an.pages.dev)預設用真AI，讓封測玩家直接玩；其他網址(本機、預覽、測試)仍預設示範模式。
+// 旗標優先：lifegame_force_real_api＝"yes"強制真AI、"no"強制示範；沒有旗標才看網址。費用提醒：正式網址每個玩家的回合都是真AI呼叫，靠10.9.3.1每日花費上限與Anthropic後台每月上限控管
+const OFFICIAL_HOSTS = ["lifegame-6an.pages.dev"];
+function isOfficialHost(){ try{ return OFFICIAL_HOSTS.includes(location.hostname); }catch(e){ return false; } }
 const USE_MOCK = (function(){
-  try { return localStorage.getItem(FORCE_REAL_API_KEY) !== "yes"; }
+  try {
+    const f = localStorage.getItem(FORCE_REAL_API_KEY);
+    if(f==="yes") return false;
+    if(f==="no") return true;
+    return !isOfficialHost();
+  }
   catch(e){ return true; } // localStorage不可用時安全預設mock
 })();
+// 開發者切換：切到示範時，正式網址要明確寫"no"(否則又回到預設的真AI)，其他網址移除旗標即可
+function setApiMode(mock){
+  try{
+    if(mock){ if(isOfficialHost()) localStorage.setItem(FORCE_REAL_API_KEY, "no"); else localStorage.removeItem(FORCE_REAL_API_KEY); }
+    else localStorage.setItem(FORCE_REAL_API_KEY, "yes");
+  }catch(e){}
+}
 // 十、10.3.11／10.8（2026-09-29）：行動點以伺服器端為準的條件＝真實API＋雲端存檔打開；其他情況(mock、雲端暫停)行動點全在本機計算
 const SERVER_AP = !USE_MOCK && CLOUD_SAVE_ENABLED;
 // 2026-09-22變更：USE_MOCK不再是寫死的常數，改成讀瀏覽器localStorage。
@@ -8408,7 +8666,11 @@ async function takeTurn(actionText, cost){
   // 失敗先重試一次，重試仍失敗才顯示中性容錯敘事，不附帶任何e.message或原始內容
   try{
     // 一、1.2.9.16／十六、16.3.8.1（2026-09-28）：AI交回的段落清單先清理，再接成以空行分段的字串，下游沿用原本的字串處理
-    const callOnce = async ()=> normalizeTurnResultText(await (USE_MOCK ? mockCallAI(actionText, forceEnding, timeCtx) : callAI(actionText, forceEnding, timeCtx)));
+    const callOnce = async ()=>{
+      // 十、10.9.2：mock模式沒有AI呼叫，帳號錢包的回合扣點在這裡向伺服器扣(同一turn_nonce只扣一次)；真實模式由AI代理在呼叫前預扣
+      if(USE_MOCK && apUsed.wallet && apCost>0) await walletMockCharge(timeCtx.turnNonce, ensureLifeId(state));
+      return normalizeTurnResultText(await (USE_MOCK ? mockCallAI(actionText, forceEnding, timeCtx) : callAI(actionText, forceEnding, timeCtx)));
+    };
     let result;
     const genStartedAt = Date.now(); // 十六、16.3.1（2026-09-29）：測試模式顯示這回合AI實際生成秒數(含重試、重新生成)
     try{
@@ -8466,8 +8728,19 @@ async function takeTurn(actionText, cost){
     console.error("重試後仍失敗：", e);
     applySnapshot();
     refundAP(state, apUsed); // 十、10.3.1：API呼叫失敗/斷線不扣點
+    if(USE_MOCK && apUsed.wallet && apCost>0) await walletMockRefund(timeCtx.turnNonce, ensureLifeId(state)); // 十、10.9.2：mock模式向伺服器退回這回合扣的1點
     // 10.3.11：真實模式下callAI已經把Worker回傳的伺服器端餘額寫回state.ap，本機退點後再以伺服器端為準
     if(SERVER_AP && lastCallServerAP) syncServerAP(state, lastCallServerAP);
+    if(lastCallWallet && walletActive(state)) syncWallet(lastCallWallet); // 帳號錢包同理：以伺服器端最後回報的餘額為準
+    if(e && e.dailyCap){
+      // 十、10.9.3.1／10.9.3.3／10.12.5第4則：全站每日花費上限暫停期間送出的行動——不扣點、不算回合(上面applySnapshot已還原)、
+      // 輸入框文字保留，恢復後可直接再送出。開場回合沒有輸入框，留一則「重新送出」的說明；不寫點數紀錄(沒有呼叫AI、也沒動到點數)
+      if(wasPrologue) state.log.push({age:state.age, timeLabel:null, text:"（撰稿人今天寫得太多，需要休息一下。故事會在台灣時間午夜後恢復。）", error:true, capBlocked:true, retryAction:actionText, retryCost:cost});
+      saveGame();
+      noteDailyCapBlocked();
+      if(!wasPrologue && !fromChoice) restoreCustomDraft(actionText);
+      return;
+    }
     apLogTurn(state, wasPrologue, apTotalBefore, apLogStartedAt, false); // 10.10.3：失敗＝0(扣了又退)；伺服器端若真的扣了卻沒內容，這裡會是-1(異常，對帳用)
     if(e && e.apInsufficient){
       saveGame(); render(); renderAPExhaustedModal();
@@ -8985,7 +9258,7 @@ function mockIdleOfflineDays(s){ // mock模式：本機依最後一次玩的日�
 }
 const IDLE_MAX_DAYS_CLIENT = 7;
 async function claimIdleRounds(s){
-  if(!SERVER_AP){ // 10.8：雲端暫停期間跟mock一樣由本機算離線天數
+  if(!SERVER_AP || walletActive(s)){ // 10.8：雲端暫停期間跟mock一樣由本機算離線天數；帳號人生的錢包在Durable Object，不走每條人生的KV紀錄
     const days = mockIdleOfflineDays(s);
     s.lastActiveDate = taipeiDateString();
     return { rounds: days*5, offlineDays: days };
@@ -9041,10 +9314,11 @@ async function writeIdleSummary(s){
   if(USE_MOCK) out = mockIdleSummary(payload);
   else{
     try{
-      const res = await fetch(WORKER_URL, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({
+      const res = await fetch(WORKER_URL, { method:"POST", headers:acctHeaders(), body: JSON.stringify({
         kind:"idle_summary", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
         life_id: ensureLifeId(s), messages:[{ role:"user", content: JSON.stringify(payload) }] }) });
       const data = await res.json();
+      if(isDailyCapResponse(res, data)) noteDailyCapBlocked(); // 十、10.9.3.1：放置摘要也是AI呼叫，碰到全站上限照樣暫停(這次就用模板短句代替摘要)
       if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"idle", inChars:{ stats:JSON.stringify(payload).length }, outChars:outputBlockChars(data) });
       const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_idle_summary");
       if(block && block.input) out = block.input;
@@ -9107,7 +9381,10 @@ async function rollbackIdleDecision(roundIndex, pointIndex){
   if(!point) return false;
   if(totalAP(s) < IDLE_ROLLBACK_COST){ alert("行動點不足，不能回溯"); return false; }
   let apAfter = null;
-  if(!SERVER_AP) spendAP(s, IDLE_ROLLBACK_COST);
+  if(walletActive(s)){ // 十、10.9.2：帳號錢包一次性扣5點(伺服器不夠就不能回溯)
+    const spent = await walletSpendOnce(IDLE_ROLLBACK_COST);
+    if(!spent.ok){ alert(spent.insufficient ? "行動點不足，不能回溯" : "回溯失敗，請稍後再試"); return false; }
+  } else if(!SERVER_AP) spendAP(s, IDLE_ROLLBACK_COST);
   else{
     try{
       const res = await fetch(WORKER_URL+"idle-rollback", { method:"POST", headers:{"Content-Type":"application/json"},
@@ -9773,7 +10050,15 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 async function startLife(){
   // 十、10.3.4：全新人生在正式開始這一刻才領新手禮包（開場建角7步不扣點，反覆重骰也不會重複領）
   const ap = ensureAP(state);
-  if(ap.giftPending){
+  if(ap.giftPending && acct && !state.acct){
+    // 十、10.9.2／10.9.3：登入帳號時開新人生＝帳號的人生(共用錢包)，不領本機的啟程禮；帳號第一次開到第2段人生時，由伺服器發第2份啟程禮(每日發放上限、發滿排隊)
+    ap.giftPending = false;
+    const r = await acctLifeAdd(state);
+    if(!r.ok){
+      // 帳號已滿(另一台裝置剛好開了新人生)或登入失效：這段人生照常開始，但不進帳號(沿用本機行動點，不發啟程禮)
+      showWriterToast(r.error==="account_full" ? "撰稿人提醒你：帳號已滿 2 段人生，這段人生暫時不算在帳號裡。" : "撰稿人提醒你：這次沒能把人生登記進帳號，先照本機的行動點玩。");
+    }
+  } else if(ap.giftPending){
     ap.giftPending = false;
     const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
     const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
@@ -9781,8 +10066,8 @@ async function startLife(){
       const claim = await claimNewLifeGift(key, slotRaw!==null ? Number(slotRaw) : 0);
       // 10.3.11（2026-09-25）：真實模式以Worker回傳的伺服器端餘額為準；mock模式或Worker連不上時維持本機計算
       if(SERVER_AP && claim.ap) syncServerAP(state, claim.ap);
-      else if(claim.granted) ap.gift = AP_NEW_LIFE_GIFT;
-      if(claim.granted){ state.giftGranted = true; apLogAdd(state, "啟程禮", AP_NEW_LIFE_GIFT); } // 10.10.3；giftGranted：這條人生領過啟程禮(10.11.4複製內容用，欄位名稱沿用內部命名)
+      else if(claim.granted) ap.gift = AP_UNBOUND_GIFT;
+      if(claim.granted){ state.giftGranted = true; apLogAdd(state, "啟程禮", AP_UNBOUND_GIFT); } // 10.10.3；giftGranted：這條人生領過啟程禮(10.11.4複製內容用，欄位名稱沿用內部命名)
     }
   }
   state.phase = "playing";
@@ -9800,7 +10085,7 @@ function reincarnate(){
     calStartYear: calNextOpeningYear(state.timeState && state.timeState.cal && state.timeState.cal.v===2 ? state.timeState.cal.lastRoundEnd : 0), // 二、2.7：轉世從上一世結束後的下一個開局日開始
     chronicleCarry: `（說不上來的熟悉感）偶爾會有似曾相識的片刻或夢境，只能隱約帶過，不說破來由。`,
     name: state.name, gender: state.gender,
-    ap: ensureAP(state), apLog: state.apLog, giftGranted: state.giftGranted }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
+    ap: ensureAP(state), apLog: state.apLog, giftGranted: state.giftGranted, acct: state.acct }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
   state = newRoll(carry, null);
   saveGame();
   render();
@@ -9976,6 +10261,7 @@ async function succeedAsChild(childName){
     // 十、10.3.6：世代傳承不算新人生，上一代的每日池/禮包點/購買點全部由下一代繼承，不另發禮包
     ap: { ...ensureAP(prev), giftPending:false }, turnCount:0,
     apLog: (()=>{ const a = ensureAP(prev), l = (prev.apLog||[]).slice(); if(a.gift+a.purchased>0 && !apTestFreeActive()) l.push({ t:Date.now(), d:taipeiDateString(), type:"傳承繼承", n:a.gift+a.purchased, ok:true }); return l.slice(-AP_LOG_MAX); })(), giftGranted: !!prev.giftGranted, // 10.10.3：永久池由下一代繼承
+    acct: prev.acct, // 十、10.9.2：世代傳承不算新人生，沿用同一個帳號人生格子(lid不變)
     lifeId: newLifeId(), // 2026-09-25：世代傳承是新的一世，換新id
     characters, // 4.1.3：每張家人卡建卡時已寫入gender
     chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`]
@@ -10034,6 +10320,7 @@ async function endLife(reason){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
   const ap = ensureAP(state);
+  await acctLifeRemoved(state); // 十、10.9.2：帳號人生結束／刪除→帳號空出一個格子(沒登入就先記著)
   const endedAt = Date.now();
   const id = endedAt.toString(36) + Math.random().toString(36).slice(2,8);
   const meta = { name:state.name, age:state.age, stage:stageLabel(state.age), reincarnations:state.reincarnations||0, reason, endedAt };
@@ -10167,7 +10454,7 @@ function buildChapterMaterial(s, ch){
 async function callChapterAI(s, ch){
   const chapterMsg = JSON.stringify(buildChapterMaterial(s, ch));
   const res = await fetch(WORKER_URL, {
-    method:"POST", headers:{ "Content-Type":"application/json" },
+    method:"POST", headers: acctHeaders(),
     body: JSON.stringify({
       kind:"chapter",
       key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME),
@@ -10178,6 +10465,7 @@ async function callChapterAI(s, ch){
   });
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("章節回應不是合法JSON（HTTP "+res.status+"）"); }
+  if(isDailyCapResponse(res, data)) noteDailyCapBlocked(); // 十、10.9.3.1：人生之書章節也是AI呼叫；這章之後會自動重試
   if(!res.ok) throw new Error("章節生成失敗 "+res.status+"："+(data?.error?.message||""));
   if(data && data.lifegame && data.lifegame.usage){ lastChapterUsage = data.lifegame.usage; addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"chapter", inChars:{ stats:chapterMsg.length }, outChars:outputBlockChars(data) }); }
   const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_chapter");
@@ -10463,7 +10751,8 @@ function render(loadingTurn){
   if(state.phase==="archiveView"){ app.innerHTML = renderArchiveView(); bindArchiveView(); ensureDebugUI(); return; }
   // 十、10.3.5：進入遊戲畫面時檢查台灣日期，跨日才補每日池（不用排程）
   // 10.3.11（2026-09-25）：真實模式由伺服器判斷日期與補點，本機跨日時向Worker重新讀一次餘額(每個日期只問一次，避免時鐘不一致時一直重問)
-  if(!SERVER_AP){ if(refillDailyIfNeeded(state)) saveGame(); }
+  if(walletActive(state)){ acctDayCheck(); acctFlushEvents(); } // 十、10.9.2：帳號錢包的補點在伺服器，跨日只問一次
+  else if(!SERVER_AP){ if(refillDailyIfNeeded(state)) saveGame(); }
   else if(ensureAP(state).lastRefillDate !== taipeiDateString() && apRefreshAskedFor !== taipeiDateString()){
     apRefreshAskedFor = taipeiDateString();
     refreshServerAP();
@@ -10479,7 +10768,7 @@ function render(loadingTurn){
 // ========== 十、10.1 封測階段純金鑰模式（9/19新增，四個新畫面）==========
 // ========== 十六、16.10 首頁（2026-09-28）==========
 // 文案為使用者定稿原文(含同日開局年齡修正)，改字請先改設計文件16.10再同步這裡。
-// 寫死在文案裡的數字：新人生禮包AP_NEW_LIFE_GIFT、每日補到AP_DAILY_REFILL、每回合1點、同時三段人生(16.10.9)
+// 寫死在文案裡的數字：新人生啟程禮AP_UNBOUND_GIFT、綁定再領AP_BIND_BONUS、每日補到AP_DAILY_REFILL、每回合1點、未綁1段／綁定2段人生(2026-09-30第三批)
 let ageGateDeclined = false;
 function ageConfirmed(){ try{ return localStorage.getItem(AGE_CONFIRMED_STORAGE_NAME)==="yes"; }catch(e){ return false; } }
 function writeHomeMeta(slot){
@@ -10530,10 +10819,10 @@ function relativeTimeText(ts){
   return mon < 12 ? `${mon} 個月前` : `${Math.floor(mon/12)} 年前`;
 }
 const HOME_FAQ = [
-  ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_NEW_LIFE_GIFT} 點啟程禮，大約夠你走到高一結束；之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
+  ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_UNBOUND_GIFT} 點啟程禮，大約夠你走到高一的寒假；綁定信箱可以再領 ${AP_BIND_BONUS} 點，大約走到高一結束。之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
   ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", ()=>CLOUD_SAVE_ENABLED ? "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。" : "封測期間，進度只存在這台裝置的瀏覽器裡。換了手機、換了瀏覽器，或清除瀏覽器資料，就接不回來了。"]],
   ["一段人生要玩多久？", ["看你想過多快。可以一個晚上走完整個高中，也可以一個月只過一個寒假。", "隨時關掉都沒關係，它會停在你離開的那一頁。"]],
-  ["可以同時過好幾段人生嗎？", [()=>CLOUD_SAVE_ENABLED ? "可以。一把金鑰，最多能同時握著三段人生。" : "可以。一台裝置，最多能同時握著三段人生。"]],
+  ["可以同時過好幾段人生嗎？", ["還沒綁定信箱時，同時只能過一段人生；綁定信箱後，可以同時過兩段。"]],
   ["什麼路都能走嗎？", ["幾乎都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "唯一走不通的是超能力。這裡的世界，跟外面那個一樣講道理。"]],
   ["一生走完之後呢？", ["這一生會留下一頁回顧：走過的路、陪過你的人，最後蓋上一枚印章。", "然後，你可以轉世重來，或者把故事交給下一代。"]],
   ["可以反悔嗎？", ["可以，但次數有限。畢竟是草稿，也不是每一筆都擦得掉。"]],
@@ -10563,6 +10852,9 @@ function renderHome(){
       <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，說書人陪你一路寫到老。</p>
       <button class="primary-btn" id="btn-home-new">開始一段人生</button>
       <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
+      ${acct ? `<p class="home-note" id="home-acct">已登入：${escapeHtml(acct.email_masked||"")}　<a id="link-home-logout" style="cursor:pointer;text-decoration:underline;">登出</a></p>`
+             : `<button class="ghost-btn" id="btn-home-login">已有帳號？用信箱登入</button>`}
+      ${acct && acctMissingLives()>0 ? `<button class="ghost-btn" id="btn-home-cloud-lives">${icon("cloud")} 帳號有 ${acctMissingLives()} 段人生存在雲端，拿回這台裝置</button>` : ``}
       <p class="home-note">免註冊，進度自動存在這台裝置。${CLOUD_SAVE_ENABLED ? "換了手機，用「復原金鑰」接回你的人生。" : ""}</p>
     </section>
     ${lives.length ? `
@@ -10621,6 +10913,9 @@ function bindHome(){
   if(no) no.onclick = ()=>{ ageGateDeclined = true; render(); };
   if(!ageConfirmed()) return; // 確認前首頁只在後方淡淡透出，按鈕都不能按
   document.getElementById("btn-home-new").onclick = startNewLifeFromHome;
+  const homeLogin = document.getElementById("btn-home-login"); if(homeLogin) homeLogin.onclick = ()=>openAccountFlow("login");
+  const homeLogout = document.getElementById("link-home-logout"); if(homeLogout) homeLogout.onclick = async ()=>{ await acctLogout(); showWriterToast("已登出這台裝置。帳號和錢包都還在，用信箱隨時可以再登入。"); };
+  const homeCloud = document.getElementById("btn-home-cloud-lives"); if(homeCloud) homeCloud.onclick = ()=>showCloudPicker(acct.recovery_key);
   document.getElementById("btn-home-switch").onclick = ()=>{
     const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
     if(key) showSlotPicker(key); else { state = { phase:"keyInput" }; render(); }
@@ -10649,8 +10944,28 @@ function smoothScrollTop(duration){
   requestAnimationFrame(step);
 }
 // 16.10.9「開始一段人生」：先取名、選生活方式，進入遊戲前才給金鑰；已有金鑰時找空的格子，三格都滿就導到切換畫面
+// 十、10.9.2：帳號最多同時進行2段人生；已滿時不能開新的(低於上限前不能再開新人生)，回傳提示文字，沒滿回傳null
+function acctFullNotice(){
+  return (acct && acct.lives.length>=ACCOUNT_LIFE_MAX) ? "帳號最多同時進行 2 段人生，目前已滿。想開始新的人生，可以先把其中一段收進「人生回顧」。" : null;
+}
+// 帳號登記著、但這台裝置的本機存檔裡沒有的人生(在別台裝置開的)：雲端有存的話可以拿回來
+function acctMissingLives(){
+  if(!acct) return 0;
+  const have = new Set();
+  for(let i=0;i<MAX_LIFE_SLOTS;i++){ try{ const st = JSON.parse(localStorage.getItem(STORAGE_KEY+":"+i) || "null"); if(st && st.acct && st.acct.aid===acct.aid) have.add(st.acct.lid); }catch(e){} }
+  return acct.lives.filter(l=>!have.has(l.lid)).length;
+}
+// 十、10.9.2(2026-09-30第三批)：還沒綁信箱時同時只能1段人生(封測留下的多段人生保留，只是不能再開新的)；綁定信箱後可以2段
+function unboundFullNotice(){
+  if(acct) return null;
+  let used = 0;
+  for(let i=0;i<MAX_LIFE_SLOTS;i++){ try{ if(localStorage.getItem(HOME_META_PREFIX+i) || localStorage.getItem(STORAGE_KEY+":"+i)) used++; }catch(e){} }
+  return used>=1 ? "未綁定信箱時只能同時進行 1 段人生。綁定信箱後可以同時進行 2 段。" : null;
+}
+function newLifeBlockedNotice(){ return acctFullNotice() || unboundFullNotice(); }
 async function startNewLifeFromHome(){
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(newLifeBlockedNotice() && key){ await showSlotPicker(key, undefined, newLifeBlockedNotice()); return; }
   if(!key){
     localStorage.setItem(ACTIVE_SLOT_STORAGE_NAME, "0");
     state = { phase:"identity", name:"", gender:"男" };
@@ -10767,6 +11082,8 @@ function bindSlotPicker(){
       if(btn.dataset.action==="load"){
         const ok = await tryLoadSlot(key, slot, true);
         if(!ok){ state = { phase:"identity", name:"", gender:"男" }; render(); } // 讀取失敗防呆：至少讓玩家能重新開始，不要卡死
+      } else if(newLifeBlockedNotice()){
+        state.notice = newLifeBlockedNotice(); render(); // 十、10.9.2：帳號已滿2段、或未綁信箱已有1段，不能開新的
       } else {
         cloudSyncStatus = null; // 十、10.1補充：開新的一段人生，上一段的同步狀態顯示沒有意義了
         state = { phase:"identity", name:"", gender:"男" };
@@ -11215,7 +11532,7 @@ function renderStory(s, loadingTurn){
   // 16.3.6 旁白錯誤(文字依10.12.5第6則)：旁邊加「重新送出」按鈕(只有最新一則、且記得當時的行動才能重試)
   if(last.error){
     return `${renderOldSummaries(log, okIdxs.slice(-OLD_ENTRY_SUMMARY_COUNT), false)}
-    <div class="narrator-error glass"><span>撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。</span>${last.retryAction!=null ? `<button class="ghost-btn" id="btn-retry-turn">重新送出</button>` : ``}</div>`;
+    <div class="narrator-error glass"><span>${last.capBlocked ? "撰稿人今天寫得太多，需要休息一下。故事會在台灣時間午夜後恢復。" : "撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。"}</span>${last.retryAction!=null ? `<button class="ghost-btn" id="btn-retry-turn">重新送出</button>` : ``}</div>`;
   }
   return `${renderOldSummaries(log, okIdxs.slice(0,-1).slice(-OLD_ENTRY_SUMMARY_COUNT), false)}
   <div class="entry card glass" id="latest-entry" data-log-len="${log.length}">${renderEntryBody(last, true)}</div>
@@ -11247,6 +11564,7 @@ function renderPlaying(loadingTurn){
   <main class="journal">${renderStory(s, loadingTurn)}</main>
   <footer class="actions glass">
     ${apOut && !busy ? `<div class="ap-out">撰稿人提醒你，今天的行動點用完了。明天打開遊戲會再領到 ${AP_DAILY_REFILL} 點，到時再接著寫。</div>` : ``}
+    ${dailyCapNoteActive() && !busy ? `<div class="ap-out cap-note" id="cap-note">撰稿人休息中，台灣時間午夜後恢復。</div>` : ``}
     ${renderFocusBar(s, apOut||busy)}
     ${s.seekTarget ? `<div class="seek-tag">${characterState((s.characters||[]).find(c=>c.name===s.seekTarget))==="deceased" ? "回憶" : "想找"}：${escapeHtml(s.seekTarget)}<button id="btn-seek-clear" aria-label="取消想找" ${busy?"disabled":""}>×</button></div>` : ``}
     <div class="custom-row" style="margin-top:0;">
@@ -11279,6 +11597,11 @@ function keepDraftAndRender(){
   saveGame(); render();
   const el2 = document.getElementById("custom-input");
   if(el2 && draft){ el2.value = draft; if(el2.oninput) el2.oninput(); }
+}
+// 十、10.9.3.3：被全站花費上限暫停的自由輸入，文字放回輸入框，恢復後可直接再送出
+function restoreCustomDraft(text){
+  const el = document.getElementById("custom-input");
+  if(el && text){ el.value = text; if(el.oninput) el.oninput(); }
 }
 function renderFocusBar(s, disabled){
   if(!focusModeActive(s)) return ``;
@@ -11468,15 +11791,15 @@ function otherLivesForWallet(){
       if(!raw) continue;
       const o = JSON.parse(raw);
       if(!o || o.phase!=="playing" || !o.ap) continue;
-      out.push({ name:o.name||"無名氏", total:(o.ap.daily||0)+(o.ap.gift||0)+(o.ap.purchased||0) });
+      out.push({ name:o.name||"無名氏", total:(o.ap.daily||0)+(o.ap.gift||0)+(o.ap.purchased||0), shared: !!(acct && o.acct && o.acct.aid===acct.aid) });
     }catch(e){}
   }
   return out;
 }
 // 10.11.4：帳務回報要複製的純文字。只讀點數與紀錄——絕對不讀、不拼入復原金鑰(金鑰＝存檔密碼)、信箱本身、故事正文
-function accountEmailBound(){ return false; } // 封測期間沒有信箱綁定功能；帳號系統(10.2)上線後改由帳號狀態決定，並改寫「已領 N／2 份」
+function accountEmailBound(){ return !!acct; } // 十、10.2（2026-09-30第二批）：依帳號實際綁定狀態(這台裝置有沒有登入帳號)回傳
 // 十、10.10.3.1：「啟程禮」欄看整個帳號有沒有領過，不看單一條人生；沒有帳號系統前帳號＝這台裝置(金鑰的本機領取計數)。
-// 帳號系統上線後改成「已領 N／2 份」(15點試玩禮與55點啟程禮分開算)，這裡只回答「有沒有領過」，不要把份數寫死。
+// 帳號系統上線後改成「已領 N／2 份」(未綁的25點與綁定後的啟程禮分開算)，這裡只回答「有沒有領過」，不要把份數寫死。
 function giftClaimedFor(s){
   if(s && (s.giftGranted || (s.apLog||[]).some(e=>apLogTypeName(e.type)==="啟程禮"))) return true;
   try{
@@ -11493,7 +11816,7 @@ function walletReportText(s){
     `複製時間：${taipeiMDHM()}（台灣時間）`,
     `目前餘額：${totalAP(s)} 點`,
     `信箱：${accountEmailBound() ? "已綁" : "未綁"}`,
-    `啟程禮：${giftClaimedFor(s) ? "已領" : "未領"}`
+    `啟程禮：${acct ? `已領 ${acct.gifts.claimed}／${acct.gifts.max} 份` : (giftClaimedFor(s) ? "已領" : "未領")}` // 10.11.4：已綁信箱寫「已領 N／2 份」，未綁只寫已領／未領
   ];
   if(lastRefill) lines.push(`最近補點：${taipeiMDHM(lastRefill.t)}，+${lastRefill.n} 點`);
   lines.push("", "【最近 5 筆】");
@@ -11537,21 +11860,42 @@ function renderWalletModal(){
   if(document.getElementById("wallet-modal")) return;
   const s = state; if(!s) return;
   const ap = ensureAP(s), free = apTestFreeActive();
+  const wa = walletActive(s); // 這段人生用的是帳號共用錢包
   const others = otherLivesForWallet();
   const log = (s.apLog||[]).slice().reverse();
+  const canTransfer = !!(acct && !wa && s.phase==="playing" && acct.lives.length < ACCOUNT_LIFE_MAX);
   const div = document.createElement("div");
   div.id = "wallet-modal";
   div.className = "modal-backdrop";
-  div.innerHTML = `
-    <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
-      <h3>行動點錢包</h3>
-      <div style="overflow-y:auto;flex:1;text-align:left;">
+  // 10.10.2第1項帳號狀態：已綁信箱顯示遮住一部分的信箱與〔登出〕〔換綁信箱〕(登出只影響這台裝置)
+  const accountBlock = acct ? `
+        <div class="menu-sec">帳號</div>
+        <div class="ic-sub" id="wallet-acct-email">已綁信箱：${escapeHtml(acct.email_masked||"")}</div>
+        <div class="ic-sub">啟程禮：已領 ${acct.gifts.claimed}／${acct.gifts.max} 份${acct.gifts.queued ? `（${acct.gifts.queued} 份排隊中，台灣時間午夜後自動補發）` : ""}</div>
+        <div style="display:flex;gap:8px;margin:6px 0 10px;"><button class="ghost-btn" id="btn-acct-logout">登出</button><button class="ghost-btn" id="btn-acct-change">換綁信箱</button></div>` : ``;
+  const pointsBlock = wa ? `
+        <div class="menu-sec">${escapeHtml(s.name)}・共用錢包</div>
+        <p style="font-size:22px;margin:4px 0;">${icon("zap")} <b>${free ? "∞ 測試中" : totalAP(s)}</b> 點</p>
+        <div class="ic-sub">整個帳號共用一個錢包，帳號裡的每一段人生都從這裡扣點。</div>
+        <div class="ic-sub" style="margin-top:6px;opacity:.8;">每天台灣時間 00:00 之後第一次打開遊戲，補到 ${AP_DAILY_REFILL} 點×進行中的人生數（目前 ${acct.lives.length} 段，補到 ${acct.wallet.refill_cap} 點）。已經超過就不補，也不會被扣減。</div>` : `
         <div class="menu-sec">${escapeHtml(s.name)}・這條人生</div>
         <p style="font-size:22px;margin:4px 0;">${icon("zap")} <b>${free ? "∞ 測試中" : totalAP(s)}</b> 點</p>
         <div class="ic-sub">每日池 ${ap.daily}／${AP_DAILY_REFILL}</div>
         <div class="ic-sub">永久池 ${ap.gift+ap.purchased}（啟程點 ${ap.gift}、購買點 ${ap.purchased}）</div>
         <div class="ic-sub" style="margin-top:6px;opacity:.8;">每天台灣時間 00:00 補到 ${AP_DAILY_REFILL} 點，不累加。啟程點與購買點不會過期。</div>
-        ${others.length ? `<div class="menu-sec" style="margin-top:14px;">其他進行中的人生</div>${others.map(o=>`<div class="ic-sub" style="display:flex;justify-content:space-between;margin:3px 0;"><span>${escapeHtml(o.name)}</span><b>${o.total} 點</b></div>`).join("")}` : ``}
+        ${acct ? `<div class="ic-sub" style="margin-top:6px;">這段人生還在原本的復原金鑰上，行動點自己算；帳號空出格子後可以轉進帳號。</div>${canTransfer ? `<button class="ghost-btn" id="btn-acct-transfer" style="margin-top:6px;">轉進帳號</button>` : ``}` : ``}`;
+  // 10.12.5第3則：未綁信箱玩家的錢包常駐一行，點下去進綁定說明頁；綁定後不再出現
+  const bindTip = !acct ? `
+        <div class="ic-sub glass" id="wallet-bind-tip" role="button" tabindex="0" style="margin:10px 0 4px;padding:8px 10px;cursor:pointer;">撰稿人提醒你：綁定信箱可再領 30 點啟程禮，並保存你的進度。</div>
+        <div class="ic-sub" style="margin:2px 0 6px;"><a id="btn-wallet-login" style="cursor:pointer;text-decoration:underline;">已經有帳號？用信箱登入</a></div>` : ``;
+  div.innerHTML = `
+    <div class="modal" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
+      <h3>行動點錢包</h3>
+      <div style="overflow-y:auto;flex:1;text-align:left;">
+        ${accountBlock}
+        ${pointsBlock}
+        ${bindTip}
+        ${others.length ? `<div class="menu-sec" style="margin-top:14px;">其他進行中的人生</div>${others.map(o=>`<div class="ic-sub" style="display:flex;justify-content:space-between;margin:3px 0;"><span>${escapeHtml(o.name)}</span><b>${o.shared ? "共用錢包" : o.total+" 點"}</b></div>`).join("")}` : ``}
         ${log.length ? `<div class="menu-sec" style="margin-top:14px;">最近點數紀錄</div>${apLogRowsHTML(log)}` : ``}
         <div class="ic-sub" style="margin-top:14px;opacity:.7;">資料截至 ${taipeiStampText()}（台灣時間）</div>
         <button class="ghost-btn" id="btn-wallet-report" style="margin-top:8px;">回報帳務問題</button>
@@ -11561,6 +11905,17 @@ function renderWalletModal(){
   document.body.appendChild(div);
   document.getElementById("btn-wallet-close").onclick = ()=>div.remove();
   div.onclick = e=>{ if(e.target===div) div.remove(); };
+  const openBind = ()=>{ div.remove(); openAccountFlow("bind"); };
+  const tip = document.getElementById("wallet-bind-tip");
+  if(tip){ tip.onclick = openBind; tip.onkeydown = e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); openBind(); } }; }
+  const loginLink = document.getElementById("btn-wallet-login");
+  if(loginLink) loginLink.onclick = ()=>{ div.remove(); openAccountFlow("login"); };
+  const logoutBtn = document.getElementById("btn-acct-logout");
+  if(logoutBtn) logoutBtn.onclick = async ()=>{ div.remove(); await acctLogout(); showWriterToast("已登出這台裝置。帳號和錢包都還在，用信箱隨時可以再登入。"); };
+  const changeBtn = document.getElementById("btn-acct-change");
+  if(changeBtn) changeBtn.onclick = ()=>{ div.remove(); openAccountFlow("change"); };
+  const transferBtn = document.getElementById("btn-acct-transfer");
+  if(transferBtn) transferBtn.onclick = async ()=>{ transferBtn.disabled = true; await acctTransferCurrentLife(); div.remove(); renderWalletModal(); };
   // 10.11.3：第一步＝點按當下把點數明細複製到剪貼簿(同步呼叫)，第二步由提示視窗的「前往表單」另外開新分頁，兩步不可合併
   document.getElementById("btn-wallet-report").onclick = ()=>{
     const text = walletReportText(s);
@@ -12034,7 +12389,7 @@ function bindPlaying(){
 // 純粹是「這台裝置本來就有存」的便利性——本機localStorage沒有金鑰快取的話這個連結本來就不會被點到，因為根本沒進到playing畫面）
 function renderKeyViewModal(){
   // 十、10.8.1：選單的金鑰保留；暫停期間顯示這段人生在雲端用的金鑰(從別台裝置拿回來的人生沿用原本的金鑰)
-  const key = (!CLOUD_SAVE_ENABLED && state && state.cloudHome && state.cloudHome.key) || localStorage.getItem(RECOVERY_KEY_STORAGE_NAME) || "（找不到，可能是這台裝置的快取被清掉了）";
+  const key = (walletActive(state) && acct.recovery_key) || (!CLOUD_SAVE_ENABLED && state && state.cloudHome && state.cloudHome.key) || localStorage.getItem(RECOVERY_KEY_STORAGE_NAME) || "（找不到，可能是這台裝置的快取被清掉了）"; // 十、10.9.2：帳號人生顯示帳號的復原金鑰(備用入口)
   const div = document.createElement("div");
   div.id = "key-view-modal";
   div.className = "modal-backdrop";
@@ -12365,22 +12720,299 @@ function renderConfirmReset(){
   document.getElementById("btn-cancel-reset").onclick = ()=>{ div.remove(); };
 }
 
-// 十、10.3.8：行動點用完的提示(文字依10.12.5第1則，第一批不分是否綁信箱；第2則綁定版等帳號系統上線)。開放付費後再在這裡加入購買選項
+// 十、10.3.8：行動點用完的提示。文字依10.12.5：已綁信箱看第1則、未綁信箱看第2則(多一段綁定說明，按鈕〔綁定信箱〕〔明天再來〕)。開放付費後再在這裡加入購買選項
 function renderAPExhaustedModal(){
   if(document.getElementById("ap-exhausted-modal")) return;
   const div = document.createElement("div");
   div.id = "ap-exhausted-modal";
   div.className = "modal-backdrop";
-  div.innerHTML = `
+  if(acct){
+    div.innerHTML = `
     <div class="modal">
       <p>撰稿人提醒你，今天的行動點用完了。</p>
       <p>明天打開遊戲會再領到 ${AP_DAILY_REFILL} 點，到時再接著寫。</p>
       <button class="primary-btn" id="btn-ap-exhausted-wallet">打開錢包</button>
       <button class="ghost-btn" id="btn-ap-exhausted-ok">好的</button>
     </div>`;
+  } else {
+    div.innerHTML = `
+    <div class="modal">
+      <p>撰稿人提醒你，今天的行動點用完了。</p>
+      <p>明天打開遊戲會再領到 ${AP_DAILY_REFILL} 點。</p>
+      <p>綁定信箱可以再領 30 點啟程禮，還能多開一段人生，換手機也找得回進度。</p>
+      <p>信箱只用來保存進度和找回帳號。</p>
+      <button class="primary-btn" id="btn-ap-exhausted-bind">綁定信箱</button>
+      <button class="ghost-btn" id="btn-ap-exhausted-ok">明天再來</button>
+    </div>`;
+  }
   document.body.appendChild(div);
   document.getElementById("btn-ap-exhausted-ok").onclick = ()=>div.remove();
-  document.getElementById("btn-ap-exhausted-wallet").onclick = ()=>{ div.remove(); renderWalletModal(); };
+  const w = document.getElementById("btn-ap-exhausted-wallet"); if(w) w.onclick = ()=>{ div.remove(); renderWalletModal(); };
+  const b = document.getElementById("btn-ap-exhausted-bind"); if(b) b.onclick = ()=>{ div.remove(); openAccountFlow("bind"); };
+}
+
+// ========== 十、10.2／10.9.2 綁定信箱、用信箱登入、換綁信箱（2026-09-30，第二批）==========
+// 流程視窗：〔說明頁(只有綁定)〕→輸入信箱→輸入6位數驗證碼→完成。驗證碼10分鐘內有效、輸錯5次作廢、重寄間隔60秒(按鈕顯示倒數)
+const ACCOUNT_LIFE_MAX = 2; // 【定案,10.9.2】綁定信箱可有2段人生
+const ACCT_ERR_TEXT = {
+  invalid_email: "這個信箱的格式好像不對，請再確認一次。",
+  rate_limited: "寄得有點頻繁，請 1 小時後再試",
+  daily_cap: "今天寄信的人比較多，請明天再試",
+  send_failed: "驗證碼沒有寄出去，請稍後再試一次。",
+  mail_not_configured: "現在寄不出驗證碼，請稍後再試。",
+  code_locked: "驗證碼輸錯太多次，已經作廢了，請重新寄送一組。",
+  code_expired: "驗證碼過期了，請重新寄送一組。",
+  no_code: "這組驗證碼已經失效，請重新寄送一組。",
+  email_exists: "這個信箱已有帳號，請直接用信箱登入",
+  no_account: "這個信箱還沒有帳號。要綁定信箱，請在想保存的那段人生裡，從行動點錢包按「綁定信箱」。",
+  key_linked: "這台裝置的復原金鑰已經綁定過信箱，請改用那個信箱登入。",
+  unauthorized: "登入已經失效，請重新登入。",
+  network: "連線失敗，請確認網路後再試一次。"
+};
+function acctErrText(data, status, network){
+  if(network) return ACCT_ERR_TEXT.network;
+  const e = data && data.error;
+  if(e==="wrong_code") return `驗證碼不對，請再確認一次。（還可以試 ${data.tries_left} 次）`;
+  return ACCT_ERR_TEXT[e] || "這次沒有成功，請稍後再試一次。";
+}
+let acctFlow = null; // {mode:"bind"|"login"|"change", step:"intro"|"email"|"code", email, error, cooldownUntil, busy, timer, offerLogin}
+function openAccountFlow(mode, presetEmail){
+  closeAccountFlow();
+  acctFlow = { mode, step: mode==="bind" ? "intro" : "email", email: presetEmail||"", error:"", cooldownUntil:0, busy:false, timer:null, offerLogin:false };
+  renderAccountFlow();
+}
+function closeAccountFlow(){
+  if(acctFlow && acctFlow.timer) clearInterval(acctFlow.timer);
+  acctFlow = null;
+  document.getElementById("account-modal")?.remove();
+}
+function acctFlowTitle(f){ return f.mode==="bind" ? "綁定信箱" : f.mode==="login" ? "用信箱登入" : "換綁信箱"; }
+function renderAccountFlow(){
+  const f = acctFlow; if(!f) return;
+  const old = document.getElementById("account-modal");
+  const keepEmail = old && old.querySelector("#acct-email") ? old.querySelector("#acct-email").value : null;
+  if(old) old.remove();
+  if(f.timer){ clearInterval(f.timer); f.timer = null; }
+  if(keepEmail!==null && f.step==="email") f.email = keepEmail;
+  const err = f.error ? `<p id="acct-error" style="color:var(--stamp);font-size:12.5px;margin:6px 0;">${escapeHtml(f.error)}</p>` : `<p id="acct-error" style="display:none;"></p>`;
+  let body = "";
+  if(f.step==="intro"){
+    body = `
+      <p>信箱只用來保存進度和找回帳號。</p>
+      <p>綁定後，這段人生會成為帳號的第 1 段。</p>
+      <p>綁定後會再領 30 點啟程禮。</p>
+      <button class="primary-btn" id="btn-acct-start">開始綁定</button>
+      <button class="ghost-btn" id="btn-acct-cancel">取消</button>`;
+  } else if(f.step==="email"){
+    body = `
+      <p style="font-size:13.5px;">${f.mode==="login" ? "輸入你綁定過的信箱，會寄一組驗證碼給你。" : f.mode==="change" ? "輸入新的信箱，會寄一組驗證碼給你。" : "輸入要綁定的信箱，會寄一組驗證碼給你。"}</p>
+      <div class="roll-item"><input id="acct-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com" value="${escapeHtml(f.email)}"
+        style="width:100%;border:none;background:transparent;font-size:15px;padding:4px 0;border-bottom:1px solid var(--ink-soft);"></div>
+      ${err}
+      <button class="primary-btn" id="btn-acct-send" ${f.busy?"disabled":""}>寄送驗證碼</button>
+      <button class="ghost-btn" id="btn-acct-cancel">取消</button>`;
+  } else {
+    body = `
+      <p style="font-size:13.5px;">驗證碼已寄出，通常一分鐘內會到。沒收到請看垃圾信匣，或確認信箱有沒有打錯。</p>
+      <p class="ic-sub">寄到：${escapeHtml(f.email)}</p>
+      <div class="roll-item"><input id="acct-code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="6 位數驗證碼"
+        style="width:100%;border:none;background:transparent;font-size:18px;letter-spacing:4px;padding:4px 0;border-bottom:1px solid var(--ink-soft);"></div>
+      ${err}
+      <button class="primary-btn" id="btn-acct-verify" ${f.busy?"disabled":""}>確認</button>
+      ${f.offerLogin ? `<button class="ghost-btn" id="btn-acct-to-login">改用這個信箱登入</button>` : ``}
+      <button class="ghost-btn" id="btn-acct-resend" disabled>重新寄送</button>
+      <button class="ghost-btn" id="btn-acct-back">信箱打錯了</button>`;
+  }
+  const div = document.createElement("div");
+  div.id = "account-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `<div class="modal" style="max-width:460px;width:92vw;text-align:left;"><h3>${acctFlowTitle(f)}</h3>${body}</div>`;
+  document.body.appendChild(div);
+  const $ = id=>document.getElementById(id);
+  if($("btn-acct-cancel")) $("btn-acct-cancel").onclick = closeAccountFlow;
+  if($("btn-acct-start")) $("btn-acct-start").onclick = ()=>{ f.step = "email"; renderAccountFlow(); };
+  if($("btn-acct-send")) $("btn-acct-send").onclick = ()=>acctFlowSend(false);
+  if($("acct-email")) $("acct-email").onkeydown = e=>{ if(e.key==="Enter"){ e.preventDefault(); acctFlowSend(false); } };
+  if($("btn-acct-verify")) $("btn-acct-verify").onclick = acctFlowVerify;
+  if($("acct-code")){ $("acct-code").onkeydown = e=>{ if(e.key==="Enter"){ e.preventDefault(); acctFlowVerify(); } }; try{ $("acct-code").focus(); }catch(e){} }
+  if($("btn-acct-back")) $("btn-acct-back").onclick = ()=>{ f.step = "email"; f.error = ""; f.offerLogin = false; renderAccountFlow(); }; // 回到輸入信箱那一步
+  if($("btn-acct-to-login")) $("btn-acct-to-login").onclick = ()=>openAccountFlow("login", f.email);
+  if($("btn-acct-resend")){
+    $("btn-acct-resend").onclick = ()=>acctFlowSend(true);
+    const tick = ()=>{
+      const b = $("btn-acct-resend"); if(!b){ clearInterval(f.timer); return; }
+      const left = Math.max(0, Math.ceil((f.cooldownUntil - Date.now())/1000));
+      b.textContent = left>0 ? `重新寄送（${left}）` : "重新寄送";
+      b.disabled = left>0;
+    };
+    tick(); f.timer = setInterval(tick, 1000);
+  }
+}
+async function acctFlowSend(isResend){
+  const f = acctFlow; if(!f || f.busy) return;
+  const emailEl = document.getElementById("acct-email");
+  if(emailEl) f.email = emailEl.value;
+  const email = String(f.email||"").trim();
+  if(!email){ f.error = ACCT_ERR_TEXT.invalid_email; renderAccountFlow(); return; }
+  f.busy = true; f.error = ""; f.offerLogin = false;
+  const r = await acctFetch("account/send-code", { email });
+  f.busy = false;
+  if(acctFlow!==f) return;
+  if(r.ok){ f.step = "code"; f.cooldownUntil = Date.now() + ((r.data.next_send_in||60)*1000); renderAccountFlow(); return; }
+  if(r.data && r.data.error==="too_soon"){ // 60秒內剛寄過：前一組還有效，直接進輸入驗證碼那一步，重寄鈕顯示剩餘秒數
+    f.step = "code"; f.cooldownUntil = Date.now() + ((r.data.retry_after||60)*1000); renderAccountFlow(); return;
+  }
+  f.error = acctErrText(r.data, r.status, r.network);
+  renderAccountFlow();
+}
+// 這台裝置上還沒寫完、還不是這個帳號的人生：目前這段排第一，其餘照格子順序(帳號最多收2段)。點數只帶「這段人生自己」的
+function collectDeviceLives(){
+  try{ if(state && state.phase==="playing") saveLocalOnly(); }catch(e){}
+  const activeRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  const activeIdx = activeRaw!==null ? Number(activeRaw) : -1;
+  const list = [];
+  for(let i=0;i<MAX_LIFE_SLOTS;i++){
+    let st = null;
+    if(i===activeIdx && state && state.phase==="playing") st = state;
+    else { try{ st = JSON.parse(localStorage.getItem(STORAGE_KEY+":"+i) || "null"); }catch(e){} }
+    if(!st || st.phase!=="playing") continue;
+    if(acct && st.acct && st.acct.aid===acct.aid) continue; // 已經是這個帳號的人生
+    const ap = st.ap || {};
+    list.push({ slot:i, st, lid: newAcctLid(), pool:{ daily:ap.daily||0, gift:ap.gift||0, purchased:ap.purchased||0 } });
+  }
+  list.sort((a,b)=>((b.slot===activeIdx)-(a.slot===activeIdx)) || (a.slot-b.slot));
+  return list;
+}
+// 伺服器收下的人生：存檔記上帳號代號與lid、本機點數池歸零(點數已經併進帳號錢包，不能再留一份在本機)；超過2段的不動，留在原本的復原金鑰上
+function acctApplyAttach(list, result){
+  const accepted = new Set(((result && result.accepted)||[]).map(x=>x.lid));
+  const applied = { accepted:[], overflow:[] };
+  const zero = ()=>({ daily:0, gift:0, purchased:0, lastRefillDate: taipeiDateString() });
+  list.forEach(it=>{
+    if(!accepted.has(it.lid)){ applied.overflow.push(it); return; }
+    it.st.acct = { aid: acct.aid, lid: it.lid };
+    it.st.ap = zero();
+    if(it.st!==state){ try{ localStorage.setItem(STORAGE_KEY+":"+it.slot, JSON.stringify(it.st)); }catch(e){} }
+    applied.accepted.push(it);
+  });
+  if(state && state.acct){ try{ saveLocalOnly(); }catch(e){} }
+  return applied;
+}
+async function acctFlowVerify(){
+  const f = acctFlow; if(!f || f.busy) return;
+  const code = String((document.getElementById("acct-code")||{}).value||"").replace(/\s+/g,"");
+  if(!/^\d{6}$/.test(code)){ f.error = "請輸入 6 位數的驗證碼。"; renderAccountFlow(); return; }
+  f.busy = true; f.error = "";
+  const lives = f.mode==="change" ? [] : collectDeviceLives();
+  const liveBody = lives.map(it=>({ lid:it.lid, pool:it.pool }));
+  let r;
+  if(f.mode==="bind"){
+    let key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+    if(!key){ key = generateRecoveryKey(); try{ localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, key); }catch(e){} }
+    r = await acctFetch("account/bind", { email:f.email, code, key, lives:liveBody });
+  } else if(f.mode==="login"){
+    r = await acctFetch("account/login", { email:f.email, code, lives:liveBody });
+  } else {
+    r = await acctFetch("account/change-email", { email:f.email, code });
+  }
+  f.busy = false;
+  if(acctFlow!==f) return;
+  if(!r.ok){
+    f.error = acctErrText(r.data, r.status, r.network);
+    const e = r.data && r.data.error;
+    if(e==="email_exists" && f.mode==="bind") f.offerLogin = true; // 綁到已有帳號的信箱：拒絕，並提供改用登入
+    if(["code_locked","code_expired","no_code"].includes(e)) f.cooldownUntil = Math.min(f.cooldownUntil, Date.now());
+    renderAccountFlow(); return;
+  }
+  if(f.mode==="change"){
+    acctSetAccount(r.data.account); closeAccountFlow();
+    showWriterToast("撰稿人提醒你：信箱已經換綁好了，之後請用新的信箱登入。");
+    return;
+  }
+  // 綁定／登入成功：記下登入狀態、把伺服器收下的人生記上帳號
+  try{ localStorage.setItem(ACCT_TOKEN_KEY, r.data.token); }catch(e){}
+  acctSetAccount(r.data.account);
+  if(f.mode==="login" && !localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)) try{ localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, acct.recovery_key); }catch(e){} // 全新裝置：沿用帳號的金鑰
+  acctRefreshAskedDate = taipeiDateString();
+  const applied = acctApplyAttach(lives, r.data.result);
+  acctApplyEvents(r.data.events);
+  await acctFlushPendingRemovals(); // 沒登入時收掉的帳號人生，這時通知伺服器空出格子
+  closeAccountFlow();
+  const overflow = applied.overflow.length>0;
+  if(f.mode==="bind"){
+    renderBindResultModal(r.data.result && r.data.result.gift && r.data.result.gift.status==="queued" ? "gift_full" : "normal", overflow);
+  } else if(applied.accepted.length){
+    renderBindResultModal("merged", overflow);
+  } else if(overflow){
+    renderBindResultModal(null, true);
+  } else {
+    showWriterToast("撰稿人提醒你：已經用信箱登入了。");
+  }
+  if(state && state.phase==="playing") render();
+  else if(state && state.phase==="home") render();
+  acctCloudSaveAccepted(applied.accepted); // 剛收進帳號的人生順手存一份到雲端(換裝置登入才拿得回來)
+}
+const BIND_OVERFLOW_TEXT = "帳號已滿 2 條，這條人生暫時留在原本的復原金鑰上。收掉一條後可以轉進來。";
+// 10.12.5第7則：綁定成功／登入併入的撰稿人訊息，按鈕都是〔繼續寫〕。variant：normal／gift_full／merged；null只顯示超額說明
+function renderBindResultModal(variant, overflow){
+  document.getElementById("bind-result-modal")?.remove();
+  const line2 = { normal: "啟程禮已經放進錢包，多了 30 點，接下來的故事都會跟著你的信箱保存。",
+    gift_full: "今天的啟程禮已經發完，明天會自動放進你的錢包。",
+    merged: "這個信箱的啟程禮之前已經領過，進度和點數都合併進同一個錢包了。" }[variant];
+  const div = document.createElement("div");
+  div.id = "bind-result-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal">
+      ${variant ? `<p>撰稿人幫你把這段人生收好了。</p><p>${line2}</p>` : ``}
+      ${overflow ? `<p id="bind-overflow-note" style="font-size:12.5px;color:var(--ink-soft);">${BIND_OVERFLOW_TEXT}</p>` : ``}
+      <button class="primary-btn" id="btn-bind-result-ok">${variant ? "繼續寫" : "好的"}</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-bind-result-ok").onclick = ()=>div.remove();
+}
+// 轉進帳號(帳號有空格時，玩家手動)：不發啟程禮，這段人生剩下的行動點併入錢包
+async function acctTransferCurrentLife(){
+  const s = state;
+  if(!acct || !s || s.phase!=="playing" || walletActive(s)) return false;
+  const lives = collectDeviceLives().filter(it=>it.st===s);
+  if(!lives.length) return false;
+  const r = await acctFetch("account/lives", { op:"attach", lives: lives.map(it=>({ lid:it.lid, pool:it.pool })) });
+  if(!r.ok){ showWriterToast(r.data && r.data.error==="account_full" ? "撰稿人提醒你：帳號已滿 2 段人生。" : "撰稿人提醒你：這次沒能轉進帳號，請稍後再試。"); return false; }
+  acctSetAccount(r.data.account);
+  const applied = acctApplyAttach(lives, r.data.result);
+  acctApplyEvents(r.data.events);
+  if(!applied.accepted.length){ showWriterToast("撰稿人提醒你：帳號已滿 2 段人生。"); return false; }
+  saveGame(); render();
+  acctCloudSaveAccepted(applied.accepted);
+  return true;
+}
+// 帳號人生的雲端位置：一律存在帳號的復原金鑰底下(換裝置登入後從「拿回存到雲端的進度」看得到)。格子從這把金鑰的雲端3格裡挑：
+// 已經存過這段人生(meta.lid相同)就沿用，否則挑第一個空格；不會蓋掉留在這把金鑰上的其他人生
+async function acctPickCloudSlot(key, lid){
+  try{
+    const res = await fetch(WORKER_URL+"slots?key="+encodeURIComponent(key));
+    const data = await res.json();
+    if(!(data && data.success && Array.isArray(data.slots))) return -1;
+    const same = data.slots.findIndex(x=>x && x.meta && x.meta.lid===lid);
+    if(same>=0) return same;
+    return data.slots.findIndex(x=>!x || !x.meta);
+  }catch(e){ return -1; }
+}
+async function acctCloudSaveAccepted(accepted){
+  // 綁定／併入是玩家主動做的事，等同按了一次「存到雲端」(10.8.1)：每段收進帳號的人生上傳一次；失敗不打擾(玩家隨時可以自己按)
+  for(const it of accepted){
+    try{
+      const st = it.st;
+      if(!st.cloudHome || st.cloudHome.key!==acct.recovery_key){
+        const slot = await acctPickCloudSlot(acct.recovery_key, st.acct.lid);
+        if(slot<0) continue;
+        st.cloudHome = { key: acct.recovery_key, slot };
+      }
+      const up = await cloudUploadState(st, st.cloudHome, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct.lid });
+      if(up.ok){ st.lastManualCloudSaveAt = Date.now(); if(st!==state){ try{ localStorage.setItem(STORAGE_KEY+":"+it.slot, JSON.stringify(st)); }catch(e){} } else saveLocalOnly(); }
+    }catch(e){ console.warn("綁定後存到雲端失敗", e); }
+  }
 }
 
 // 五、5.5.3（2026-09-28改版）：三餐解鎖時機不變，但視窗不再直接選，改成導去數值面板的生活方式小卡
@@ -13492,12 +14124,14 @@ function buildLifeReviewMaterial(s){
   };
 }
 async function callLifeReviewAI(s, m){
-  const res = await fetch(WORKER_URL, { method:"POST", headers:{"Content-Type":"application/json"},
+  const res = await fetch(WORKER_URL, { method:"POST", headers:acctHeaders(),
     body: JSON.stringify({ kind:"life_review", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
-      life_id: ensureLifeId(s), messages:[{ role:"user", content: JSON.stringify(m) }] }) });
+      life_id: ensureLifeId(s), wallet: walletActive(s) || undefined, messages:[{ role:"user", content: JSON.stringify(m) }] }) });
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）"); }
+  if(isDailyCapResponse(res, data)){ noteDailyCapBlocked(); const err = new Error("今天的故事額度已用完"); err.dailyCap = true; throw err; }
   if(data && data.lifegame && data.lifegame.ap) syncServerAP(s, data.lifegame.ap);
+  if(data && data.lifegame && data.lifegame.wallet) syncWallet(data.lifegame.wallet); // 十、10.9.2：伺服器成功後才扣5點，回傳最新錢包
   if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"review", inChars:{ stats:JSON.stringify(m).length }, outChars:outputBlockChars(data) });
   if(!res.ok){ const err = new Error(data?.error?.message || ("回顧生成失敗 "+res.status)); if(res.status===402) err.apInsufficient = true; throw err; }
   const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_life_review");
@@ -13522,7 +14156,9 @@ async function unlockLifeReview(){
     const out = USE_MOCK ? await mockLifeReview(s, m) : await callLifeReviewAI(s, m);
     if(state!==s) return;
     // 16.7.2.1：扣這條人生剩下的點數(扣點順序比照10.3.3)。真實模式由Worker成功後才扣、回傳餘額(API失敗不扣點)
-    if(!SERVER_AP) spendAP(s, LIFE_REVIEW_COST); // 10.8：雲端暫停期間也在本機扣
+    if(walletActive(s)){ // 十、10.9.2：帳號錢包——真實模式伺服器在AI成功後已經扣了5點(callLifeReviewAI已同步)；mock模式沒有AI呼叫，這裡向伺服器扣
+      if(USE_MOCK){ const spent = await walletSpendOnce(LIFE_REVIEW_COST); if(!spent.ok) throw Object.assign(new Error("行動點不足"), { apInsufficient:true }); }
+    } else if(!SERVER_AP) spendAP(s, LIFE_REVIEW_COST); // 10.8：雲端暫停期間也在本機扣
     apLogAdd(s, "回顧這一生", -LIFE_REVIEW_COST); // 10.10.3
     const labelOf = (stage)=>{ const g = m.stages.find(x=>x.stage===stage); return g ? g.stage_label : lifeStageLabel(stage); };
     const byStage = {}; (out.trajectory||[]).forEach(t=>{ if(t && t.stage) byStage[t.stage] = String(t.text||"").trim(); });
@@ -13537,7 +14173,7 @@ async function unlockLifeReview(){
     console.warn("回顧這一生生成失敗", err);
     lifeReviewBusy = false; render();
     const el = document.getElementById("review-msg");
-    if(el) el.textContent = err && err.apInsufficient ? "行動點不足。" : "撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。";
+    if(el) el.textContent = err && err.apInsufficient ? "行動點不足。" : err && err.dailyCap ? "撰稿人今天寫得太多，需要休息一下，台灣時間午夜後恢復。" : "撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。";
   }
 }
 // ---------- 16.7.0 分享這一生：圖片分享卡(沿用7.7分享卡的canvas產生方式) ----------
@@ -13624,7 +14260,7 @@ let apTestFreeRefused = false;
 function apTestFreeOn(){
   try{ return devToolsOn() && localStorage.getItem(AP_TEST_FREE_KEY)==="yes"; }catch(e){ return false; }
 }
-function apTestFreeActive(){ return apTestFreeOn() && (!SERVER_AP || !apTestFreeRefused); } // 10.8：點數在本機時，開關直接在本機生效
+function apTestFreeActive(){ return apTestFreeOn() && (!SERVER_AP || !apTestFreeRefused) && !(!USE_MOCK && walletActive(state)); } // 十、10.9.2：真實模式的帳號錢包由伺服器扣，開關無效 // 10.8：點數在本機時，開關直接在本機生效
 function setApTestFree(on){
   try{ if(on) localStorage.setItem(AP_TEST_FREE_KEY, "yes"); else localStorage.removeItem(AP_TEST_FREE_KEY); }catch(e){}
   apTestFreeRefused = false;
@@ -13776,7 +14412,7 @@ function renderTestMenuModal(){
 function bindTestMenu(root){
   if(!root) return;
   const q = id=>root.querySelector("#"+id);
-  if(q("dev-toggle-api")) q("dev-toggle-api").onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ try{ localStorage.removeItem(FORCE_REAL_API_KEY); }catch(e){} location.reload(); };
+  if(q("dev-toggle-api")) q("dev-toggle-api").onclick = USE_MOCK ? renderConfirmRealApi : ()=>{ setApiMode(true); location.reload(); };
   if(q("dev-download-calllog")) q("dev-download-calllog").onclick = downloadCallLogCSV;
   if(q("dev-download-story")) q("dev-download-story").onclick = async ()=>{ await ensureArchivedContent(state); downloadStoryExport(state); };
   if(q("dev-toggle-ap-free")) q("dev-toggle-ap-free").onclick = ()=>{
@@ -13857,7 +14493,7 @@ function renderConfirmRealApi(){
       <button class="ghost-btn" id="btn-cancel-real-api">取消</button>
     </div>`;
   document.body.appendChild(div);
-  document.getElementById("btn-confirm-real-api").onclick = ()=>{ try{ localStorage.setItem(FORCE_REAL_API_KEY, "yes"); }catch(e){} location.reload(); };
+  document.getElementById("btn-confirm-real-api").onclick = ()=>{ setApiMode(false); location.reload(); };
   document.getElementById("btn-cancel-real-api").onclick = ()=>div.remove();
 }
 

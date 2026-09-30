@@ -46,6 +46,9 @@ npm run test:s2t
 - `prompt.js`：**遊戲system prompt與submit_turn_result工具的唯一來源**，改完要重新部署
 - `ap.js`：伺服器端行動點（十、10.3.11）
 - `usage.js`：成本遙測與單價常數（十、10.5）
+- `account.js`（2026-09-30第二批）：帳號Durable Object `AccountStore`——信箱驗證碼登入、綁定／登入併入／換綁、共用錢包、啟程禮每日上限與排隊
+- `account-routes.js`：`/account/*`與`/gate`的HTTP路由；`gate.js`：全站每日花費計數、上限閘門、管理通知信(`UsageCounter` Durable Object)；`mail.js`：Resend寄信與信件內容；`http.js`：回應小工具
+- 帳號與寄信的設定（Resend、DNS、secret、後台變數）：見repo根目錄「設定說明_帳號與寄信.md」
 
 ## 查詢用量
 

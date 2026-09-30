@@ -51,7 +51,7 @@ ev(`document.getElementById("btn-lifestyle-confirm").click()`);
 await sleep(80); H.clickModals(g.win);
 A.check("4 恢復金鑰畫面隱藏：沒有經過金鑰畫面，直接開始", ev("state.phase") === "playing" && !g.win.document.getElementById("app").textContent.includes("這是你的復原金鑰"), ev("state.phase"));
 A.check("4 金鑰仍在背景產生(本機存檔的編號)", !!ev("localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)"));
-A.check("3 新人生禮包55點(本機計數第1次)＋每日5點", ev("totalAP(state)") === 60 && ev("state.ap.gift") === 55 && ev(`Number(localStorage.getItem(GIFT_CLAIMS_LOCAL_PREFIX+localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)))`) === 1, ev("JSON.stringify(state.ap)"));
+A.check("3 新人生啟程禮25點(本機計數第1次)＋每日5點", ev("totalAP(state)") === 30 && ev("state.ap.gift") === 25 && ev(`Number(localStorage.getItem(GIFT_CLAIMS_LOCAL_PREFIX+localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)))`) === 1, ev("JSON.stringify(state.ap)"));
 A.check("4 選單保留「我的復原金鑰」、多了「存到雲端」、沒有自動同步狀態(10.8.1)", ev(`renderMenuPanel(state)`).includes("我的復原金鑰") && ev(`renderMenuPanel(state)`).includes("存到雲端") && !ev(`renderMenuPanel(state)`).includes("cloud-sync-status-wrap"));
 ev(`state.phase="keyReveal"; state.newKey="X"; render();`);
 A.check("4 開新人生的金鑰畫面狀態會導回首頁", ev("state.phase") === "home");
@@ -100,10 +100,10 @@ A.check("1 切換人生畫面：第1格是這段人生(本機)，其他空白", 
 g2.win.document.querySelector('.slot-btn[data-slot="0"]').click();
 await sleep(60);
 A.check("1 從切換畫面讀回同一段人生", ev2("state.phase") === "playing" && ev2("state.name") === nameBefore);
-// 新人生禮包：同一台裝置第2、3次有、第4次沒有(本機計數)
+// 啟程禮：同一台裝置只領1次(2026-09-30第三批由3次改1次)，第1次已在開人生時領過，之後都不發
 const giftResults = [];
 for (let i = 0; i < 3; i++) giftResults.push(await ev2(`claimNewLifeGift(localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), 1).then(r=>r.granted)`));
-A.check("3 新人生禮包每台裝置最多3次(第4次不發)", JSON.stringify(giftResults) === "[true,true,false]", giftResults);
+A.check("3 啟程禮每台裝置只領1次(第2次起不發)", JSON.stringify(giftResults) === "[false,false,false]", giftResults);
 // 人生結束：存進本機人生回顧(壓縮)，可以翻閱
 ev2("state.ap.purchased=0");
 await ev2(`endLife("deleted")`);

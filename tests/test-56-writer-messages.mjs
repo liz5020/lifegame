@@ -1,4 +1,4 @@
-// 2026-09-30：十、10.12 撰稿人訊息(第一批：第1、5、6、8則)＋10.9.3.3全站用量計數(只記錄)＋10.12.6連線失敗不扣點（全程假上游，不打真實API）
+// 2026-09-30：十、10.12 撰稿人訊息(第一批：第1、5、6、8則；第二批起點數用完跳窗未綁信箱改第2則、已綁信箱第1則)＋10.9.3.3全站用量計數(只記錄)＋10.12.6連線失敗不扣點（全程假上游，不打真實API）
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("撰稿人訊息與用量計數");
 let failing = false;
@@ -47,18 +47,30 @@ const ev = g.ev, doc = g.win.document;
 await H.startNewLife(g);
 await H.playTurn(g, "嗯");
 
-// 第1則：點數用完
+// 第2則(未綁信箱，第二批起)：點數用完，多一段綁定說明；已綁信箱看第1則
 ev("renderAPExhaustedModal()");
 const m = doc.getElementById("ap-exhausted-modal");
 const mt = m.textContent.replace(/\s+/g, "");
-A.check("第1則：文字＝撰稿人提醒你，今天的行動點用完了／明天打開遊戲會再領到 5 點，到時再接著寫", mt.includes("撰稿人提醒你，今天的行動點用完了。") && mt.includes("明天打開遊戲會再領到5點，到時再接著寫。"), mt);
-A.check("第1則：按鈕〔打開錢包〕〔好的〕，沒有綁定信箱說明", m.querySelector("#btn-ap-exhausted-wallet")?.textContent === "打開錢包" && m.querySelector("#btn-ap-exhausted-ok")?.textContent === "好的" && !/綁定|啟程禮/.test(mt));
-m.querySelector("#btn-ap-exhausted-wallet").click();
+A.check("第2則：未綁信箱→文字＝點數用完／明天再領5點／綁定信箱可再領30點啟程禮、多開一段人生、換手機找得回進度／信箱只用來保存進度和找回帳號", mt.includes("撰稿人提醒你，今天的行動點用完了。") && mt.includes("明天打開遊戲會再領到5點。") && mt.includes("綁定信箱可以再領30點啟程禮，還能多開一段人生，換手機也找得回進度。") && mt.includes("信箱只用來保存進度和找回帳號。"), mt);
+A.check("第2則：按鈕〔綁定信箱〕〔明天再來〕", m.querySelector("#btn-ap-exhausted-bind")?.textContent === "綁定信箱" && m.querySelector("#btn-ap-exhausted-ok")?.textContent === "明天再來");
+m.querySelector("#btn-ap-exhausted-bind").click();
+A.check("第2則：按〔綁定信箱〕→關掉提示、進綁定說明頁", !doc.getElementById("ap-exhausted-modal") && /綁定信箱/.test(doc.getElementById("account-modal")?.textContent || "") && /信箱只用來保存進度和找回帳號/.test(doc.getElementById("account-modal")?.textContent || ""));
+ev("closeAccountFlow()");
+ev("renderAPExhaustedModal()"); doc.getElementById("btn-ap-exhausted-ok").click();
+A.check("第2則：按〔明天再來〕→關掉提示", !doc.getElementById("ap-exhausted-modal"));
+ev("acct = { aid:'aaaa', email_masked:'ab***@x.com', recovery_key:'K', wallet:{ free:0, purchased:0, total:0, refill_cap:5 }, lives:[], gifts:{ claimed:1, queued:0, max:2 } }");
+ev("renderAPExhaustedModal()");
+const m1 = doc.getElementById("ap-exhausted-modal");
+const m1t = m1.textContent.replace(/\s+/g, "");
+A.check("第1則：已綁信箱→文字＝撰稿人提醒你，今天的行動點用完了／明天打開遊戲會再領到 5 點，到時再接著寫", m1t.includes("撰稿人提醒你，今天的行動點用完了。") && m1t.includes("明天打開遊戲會再領到5點，到時再接著寫。"), m1t);
+A.check("第1則：按鈕〔打開錢包〕〔好的〕，沒有綁定信箱說明", m1.querySelector("#btn-ap-exhausted-wallet")?.textContent === "打開錢包" && m1.querySelector("#btn-ap-exhausted-ok")?.textContent === "好的" && !/綁定|啟程禮/.test(m1t));
+m1.querySelector("#btn-ap-exhausted-wallet").click();
 A.check("第1則：按〔打開錢包〕→關掉提示、打開錢包", !doc.getElementById("ap-exhausted-modal") && !!doc.getElementById("wallet-modal"));
 doc.getElementById("wallet-modal")?.remove();
+ev("acct = null");
 ev("state.ap.daily = 0; state.ap.gift = 0; state.ap.purchased = 0; render()");
 const out = doc.querySelector(".ap-out");
-A.check("第1則：畫面底部的用完提示也是撰稿人文字", !!out && /撰稿人提醒你，今天的行動點用完了。明天打開遊戲會再領到 5 點/.test(out.textContent), out && out.textContent);
+A.check("畫面底部的用完提示是撰稿人文字", !!out && /撰稿人提醒你，今天的行動點用完了。明天打開遊戲會再領到 5 點/.test(out.textContent), out && out.textContent);
 ev("state.ap.daily = AP_DAILY_REFILL; render()");
 
 // 第5則：存檔失敗
