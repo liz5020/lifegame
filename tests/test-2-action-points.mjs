@@ -130,7 +130,7 @@ const logLen = g.ev("state.log.length");
 await H.playTurn(g);
 upstreamFail = null;
 A.check("AI連續失敗(含重試)：伺服器端不扣點、畫面點數不變", (await sAP()).total === 56 && g.ev("totalAP(state)") === 56);
-A.check("AI失敗時玩家看到的是容錯文字", /恍神/.test(g.ev("state.log[state.log.length-1].text")));
+A.check("AI失敗時玩家看到的是容錯文字", /撰稿人一時沒接上線，這一回合還沒扣點/.test(g.ev("state.log[state.log.length-1].text")));
 await setRec("frontkey1", 0, { daily: 0, gift: 0, purchased: 0 }, envF);
 g.ev("state.ap.daily = 5");
 const callsBefore = fake.calls.length; const tc = g.ev("state.turnCount");

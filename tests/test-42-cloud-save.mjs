@@ -146,7 +146,7 @@ A.check("2 在新裝置玩了一回合後，就能反悔這一回合", !!g2.win.
   };
   await ev2("saveGame()");
   const toast1 = g2.win.document.getElementById("sync-toast");
-  A.check("8 同步失敗：跳出一次提示(進度還在)", toast1 && /雲端同步沒有成功，這台裝置上的進度都還在/.test(toast1.textContent));
+  A.check("8 同步失敗：跳出一次提示(進度還在)", toast1 && /撰稿人剛剛沒能把這一頁收好/.test(toast1.textContent) && !!toast1.querySelector("#btn-save-retry"));
   toast1.remove();
   ev2("render()");
   const tag = g2.win.document.getElementById("sync-tag");

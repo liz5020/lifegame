@@ -687,6 +687,22 @@ function apLogAdd(s, type, n, opts){
   const arr = s.apLog || (s.apLog = []);
   arr.push({ t:Date.now(), d:taipeiDateString(), type, n: n||0, ok: !(opts && opts.ok===false) });
   if(arr.length > AP_LOG_MAX) arr.splice(0, arr.length - AP_LOG_MAX);
+  if(type==="每日補點" && n>0) showDailyRefillToast(s);
+}
+// 十、10.12.5第8則：當天第一次打開遊戲、實際有補點時的短提示，幾秒後自動收起；沒補到點(餘額已達上限)時不會走到這裡
+function showDailyRefillToast(s){
+  try{
+    if(typeof document==="undefined" || !document.body || s!==state || !state || (state.phase!=="playing" && state.phase!=="ending")) return;
+    document.getElementById("refill-toast")?.remove();
+    const div = document.createElement("div");
+    div.id = "refill-toast";
+    div.className = "book-toast";
+    div.setAttribute("role","status");
+    div.textContent = "撰稿人已經幫你備好今天的行動點了。";
+    div.onclick = ()=>div.remove();
+    document.body.appendChild(div);
+    setTimeout(()=>div.remove(), 4000);
+  }catch(e){}
 }
 // 一般回合／開場的點數紀錄：一次送出(takeTurn)只寫一筆，記實際最終變動(＝結束後餘額－扣點前餘額，扣了又退＝0；
 // 送出期間伺服器端剛好跨日補點的量另外記成每日補點、不算進這一筆)，成功與否看有沒有拿到內容
@@ -3483,17 +3499,22 @@ function setSyncPending(slot, pending){
   try{ if(pending) localStorage.setItem(SYNC_PENDING_PREFIX+slot, "1"); else localStorage.removeItem(SYNC_PENDING_PREFIX+slot); }catch(e){}
 }
 function isSyncPending(slot){ try{ return localStorage.getItem(SYNC_PENDING_PREFIX+slot)==="1"; }catch(e){ return false; } }
-function showSyncFailToast(){
-  if(!state || (state.phase!=="playing" && state.phase!=="ending")) return;
+// 十、10.12.5第5則(撰稿人)：存檔失敗(本機空間不夠、雲端同步沒成功)共用同一段文字，附〔再試一次〕＝重新存一次(本機＋雲端同步)
+function showSaveFailToast(){
   document.getElementById("sync-toast")?.remove();
   const div = document.createElement("div");
   div.id = "sync-toast";
   div.className = "book-toast";
   div.setAttribute("role","status");
-  div.textContent = "雲端同步沒有成功，這台裝置上的進度都還在";
+  div.innerHTML = `<div>撰稿人剛剛沒能把這一頁收好。</div><div>請確認網路連線後再試一次，已經寫下的內容不會消失。</div><button class="ghost-btn" id="btn-save-retry" style="margin-top:6px;">再試一次</button>`;
   div.onclick = ()=>div.remove();
   document.body.appendChild(div);
-  setTimeout(()=>div.remove(), 6000);
+  document.getElementById("btn-save-retry").onclick = (ev)=>{ ev.stopPropagation(); div.remove(); syncFailNotified = false; localSaveFailNotified = false; saveGame(); };
+  setTimeout(()=>div.remove(), 10000);
+}
+function showSyncFailToast(){
+  if(!state || (state.phase!=="playing" && state.phase!=="ending")) return;
+  showSaveFailToast();
 }
 function syncTagHTML(){
   if(!cloudSyncStatus || cloudSyncStatus.success!==false) return ``;
@@ -3528,15 +3549,7 @@ function notifyLocalSaveFailed(){
   if(localSaveFailNotified || CLOUD_SAVE_ENABLED) return;
   localSaveFailNotified = true;
   if(!state || (state.phase!=="playing" && state.phase!=="ending")) return;
-  document.getElementById("sync-toast")?.remove();
-  const div = document.createElement("div");
-  div.id = "sync-toast";
-  div.className = "book-toast";
-  div.setAttribute("role","status");
-  div.textContent = "這台裝置的儲存空間不夠，剛剛的進度沒有存到";
-  div.onclick = ()=>div.remove();
-  document.body.appendChild(div);
-  setTimeout(()=>div.remove(), 6000);
+  showSaveFailToast(); // 十、10.12.5第5則
 }
 async function cloudSyncOnce(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
@@ -7737,8 +7750,12 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.09.30-e";
+const APP_VERSION = "2026.09.30-f";
 const RELEASE_NOTES = [
+  { version:"2026.09.30-f", date:"2026-09-30", title:"撰稿人來說明", items:[
+    "遊戲裡的系統提醒（點數用完、存檔沒成功、連線失敗、每天補點）改由「撰稿人」用溫和的口吻說明，並附上下一步。",
+    "連線失敗時這一回合不會扣點，畫面上會直接寫明。"
+  ]},
   { version:"2026.09.30-e", date:"2026-09-30", title:"錢包的啟程禮欄位", items:[
     "點數錢包的「啟程禮」現在看這台裝置有沒有領過，不再只看目前這條人生；換一條新人生也不會誤寫成「未領」。"
   ]},
@@ -8453,7 +8470,7 @@ async function takeTurn(actionText, cost){
       saveGame(); render(); renderAPExhaustedModal();
       return;
     }
-    state.log.push({age:state.age, timeLabel:null, text:"（旁白剛剛恍神了一下，這回合沒講清楚，稍後再試一次看看。）", error:true, retryAction:actionText, retryCost:cost});
+    state.log.push({age:state.age, timeLabel:null, text:"（撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。）", error:true, retryAction:actionText, retryCost:cost});
   }
   aiWritingNow = false;
   saveGame();
@@ -11192,10 +11209,10 @@ function renderStory(s, loadingTurn){
     return `${renderOldSummaries(log, okIdxs.slice(-OLD_ENTRY_SUMMARY_COUNT), true)}${renderTurnLoading()}`;
   }
   if(!last) return ``;
-  // 16.3.6 旁白錯誤：保留原文案，旁邊加「再試一次」按鈕(只有最新一則、且記得當時的行動才能重試)
+  // 16.3.6 旁白錯誤(文字依10.12.5第6則)：旁邊加「重新送出」按鈕(只有最新一則、且記得當時的行動才能重試)
   if(last.error){
     return `${renderOldSummaries(log, okIdxs.slice(-OLD_ENTRY_SUMMARY_COUNT), false)}
-    <div class="narrator-error glass"><span>旁白剛剛恍神了一下</span>${last.retryAction!=null ? `<button class="ghost-btn" id="btn-retry-turn">再試一次</button>` : ``}</div>`;
+    <div class="narrator-error glass"><span>撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。</span>${last.retryAction!=null ? `<button class="ghost-btn" id="btn-retry-turn">重新送出</button>` : ``}</div>`;
   }
   return `${renderOldSummaries(log, okIdxs.slice(0,-1).slice(-OLD_ENTRY_SUMMARY_COUNT), false)}
   <div class="entry card glass" id="latest-entry" data-log-len="${log.length}">${renderEntryBody(last, true)}</div>
@@ -11226,7 +11243,7 @@ function renderPlaying(loadingTurn){
   </header>
   <main class="journal">${renderStory(s, loadingTurn)}</main>
   <footer class="actions glass">
-    ${apOut && !busy ? `<div class="ap-out">行動點已用完，下次補點：台灣時間 00:00（每日池補到 ${AP_DAILY_REFILL} 點）</div>` : ``}
+    ${apOut && !busy ? `<div class="ap-out">撰稿人提醒你，今天的行動點用完了。明天打開遊戲會再領到 ${AP_DAILY_REFILL} 點，到時再接著寫。</div>` : ``}
     ${renderFocusBar(s, apOut||busy)}
     ${s.seekTarget ? `<div class="seek-tag">${characterState((s.characters||[]).find(c=>c.name===s.seekTarget))==="deceased" ? "回憶" : "想找"}：${escapeHtml(s.seekTarget)}<button id="btn-seek-clear" aria-label="取消想找" ${busy?"disabled":""}>×</button></div>` : ``}
     <div class="custom-row" style="margin-top:0;">
@@ -12345,7 +12362,7 @@ function renderConfirmReset(){
   document.getElementById("btn-cancel-reset").onclick = ()=>{ div.remove(); };
 }
 
-// 十、10.3.8：行動點用完的提示。開放付費後再在這裡加入購買選項
+// 十、10.3.8：行動點用完的提示(文字依10.12.5第1則，第一批不分是否綁信箱；第2則綁定版等帳號系統上線)。開放付費後再在這裡加入購買選項
 function renderAPExhaustedModal(){
   if(document.getElementById("ap-exhausted-modal")) return;
   const div = document.createElement("div");
@@ -12353,12 +12370,14 @@ function renderAPExhaustedModal(){
   div.className = "modal-backdrop";
   div.innerHTML = `
     <div class="modal">
-      <h3>行動點已用完</h3>
-      <p>這段人生今天先寫到這裡。下次補點時間：台灣時間 00:00，每日池會補到 ${AP_DAILY_REFILL} 點。</p>
-      <button class="primary-btn" id="btn-ap-exhausted-ok">知道了</button>
+      <p>撰稿人提醒你，今天的行動點用完了。</p>
+      <p>明天打開遊戲會再領到 ${AP_DAILY_REFILL} 點，到時再接著寫。</p>
+      <button class="primary-btn" id="btn-ap-exhausted-wallet">打開錢包</button>
+      <button class="ghost-btn" id="btn-ap-exhausted-ok">好的</button>
     </div>`;
   document.body.appendChild(div);
   document.getElementById("btn-ap-exhausted-ok").onclick = ()=>div.remove();
+  document.getElementById("btn-ap-exhausted-wallet").onclick = ()=>{ div.remove(); renderWalletModal(); };
 }
 
 // 五、5.5.3（2026-09-28改版）：三餐解鎖時機不變，但視窗不再直接選，改成導去數值面板的生活方式小卡
@@ -13515,7 +13534,7 @@ async function unlockLifeReview(){
     console.warn("回顧這一生生成失敗", err);
     lifeReviewBusy = false; render();
     const el = document.getElementById("review-msg");
-    if(el) el.textContent = err && err.apInsufficient ? "行動點不足。" : "旁白剛剛恍神了一下，沒有扣點，稍後再試一次。";
+    if(el) el.textContent = err && err.apInsufficient ? "行動點不足。" : "撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。";
   }
 }
 // ---------- 16.7.0 分享這一生：圖片分享卡(沿用7.7分享卡的canvas產生方式) ----------

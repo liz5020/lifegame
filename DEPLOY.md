@@ -36,8 +36,16 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-09-30 | 2026.09.30-f（隨`master`自動部署） | 2026.09.30-f（隨`master`自動部署） | 見git log | index.html、worker | 撰稿人系統訊息第一批(10.12)；Worker新增全站當天用量計數(Durable Object `USAGE_COUNTER`，`/usage-today`)，wrangler.toml多了DO綁定與migrations |
 | 2026-09-30 | 2026.09.30-e（隨`master`自動部署） | 2026.09.30-e（隨`master`自動部署，只換版本號） | 見git log | index.html、worker | 錢包「啟程禮」欄改看這台裝置有沒有領過(10.10.3.1)；Worker只換版本號 |
 | 2026-09-30 | 2026.09.30-d（隨`master`自動部署） | 2026.09.30-d（隨`master`自動部署） | 見git log | index.html、worker | 人物詳細頁顯示職業／就學(四、4.9)；Worker只更新單價查詢日期(`PRICE_CHECKED_ON`，單價不變) |
 | 2026-09-30 | 2026.09.30-c（隨`master`自動部署） | 2026.09.30-c（隨`master`自動部署，只換版本號） | 見git log | index.html、worker | 點數錢包（含啟程禮改名）與玩家回報機制(10.10.3／10.11)；Worker只換版本號、邏輯沒動（版本檢查要求頁面與Worker一致） |
 | 2026-09-30 | 2026.09.30-b（隨`master`自動部署） | 2026.09.30-b（隨`master`自動部署） | 見git log | index.html、worker | 分享連結與分享圖網址換成lifegame-6an.pages.dev；Worker只換版本號 |
 | 2026-09-30 | 2026.09.30-a（Pages已連GitHub自動部署；隨`master`上線） | 2026.09.30-a（已部署，Version ID 31a856fe） | 見git log | worker | Worker已部署（含版本標記、10.9.4成本量測、10.10行動點錢包、prompt層修正）；index.html待上傳；玩家網址改為`lifegame-6an.pages.dev`，Worker來源白名單已加入並由自動部署上線、實測新網址可呼叫AI（使用者確認） |
+
+## 全站用量計數與兩個可調設定值（2026-09-30，十、10.9.3.3）
+
+- 第一次自動部署含Durable Object migrations(`[[migrations]] tag="v1"`)；部署後到後台life-game的Bindings確認有`USAGE_COUNTER`。
+- 兩個設定值只放Cloudflare後台：life-game→Settings→Variables and Secrets→新增純文字變數`DAILY_SPEND_CAP_TWD`(全站每日花費上限，沒設預設500)、`DAILY_GIFT_CAP`(啟程禮每日發放上限，沒設預設20)；改完存檔就生效，**不要寫進`wrangler.toml`**(`keep_vars=true`才不會被部署蓋掉)。第一批只顯示、還沒拿來擋人。
+- 查當天累計：`GET https://life-game.smile80275.workers.dev/usage-today`，帶`Authorization: Bearer <USAGE_ADMIN_TOKEN>`(或`?token=`)，回傳日期、呼叫次數、估計花費(每次成功呼叫估1元)、上限與比例。台灣時間午夜歸零。
+

@@ -98,7 +98,7 @@ const apBefore = ev2("totalAP(state)");
 const callsBefore = fake.calls.length;
 failNext = true;
 await ev2("unlockLifeReview()"); await sleep(50);
-A.check("Worker：AI失敗不扣點、畫面說明沒有扣點", ev2("totalAP(state)") === apBefore && !ev2("state.ending.review") && /沒有扣點/.test(d2.getElementById("review-msg").textContent) && fake.calls.length === callsBefore + 1);
+A.check("Worker：AI失敗不扣點、畫面說明沒有扣點", ev2("totalAP(state)") === apBefore && !ev2("state.ending.review") && /還沒扣點/.test(d2.getElementById("review-msg").textContent) && fake.calls.length === callsBefore + 1);
 failNext = false;
 await ev2("unlockLifeReview()"); await sleep(50);
 const lastCall = fake.calls[fake.calls.length - 1];

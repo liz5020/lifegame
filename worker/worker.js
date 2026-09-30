@@ -642,6 +642,62 @@ export function buildTurnRequest(messages) {
   };
 }
 
+// ---- 十、10.9.3.3（2026-09-30，第一批）全站當天用量計數 ----
+// 只記錄、不擋人、不寄信、不跳窗。存在Durable Object(SQLite)的儲存，不是KV，所以不增加每回合KV寫入，
+// 雲端存檔關閉(不碰KV)時也照樣計數。每次成功的AI呼叫估計花費EST_COST_PER_CALL_TWD元(約1元，10.9.3.1)。
+// 兩個設定值只放Cloudflare後台環境變數(不寫進wrangler.toml，避免部署時蓋掉後台改過的值)：
+//   DAILY_SPEND_CAP_TWD(全站每日花費上限，預設500元)、DAILY_GIFT_CAP(啟程禮每日發放上限，預設20份)。第一批只顯示、還不使用
+export const EST_COST_PER_CALL_TWD = 1;
+export const DEFAULT_DAILY_SPEND_CAP_TWD = 500;
+export const DEFAULT_DAILY_GIFT_CAP = 20;
+export function readSetting(env, name, fallback) {
+  const n = Number(env && env[name]);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+// DO類別：一個全站實例，記「哪一天、幾次呼叫」，跨日(台灣日期不同)自動歸零。不繼承DurableObject基底類別，方便在node裡直接測試
+export class UsageCounter {
+  constructor(state) { this.state = state; }
+  async fetch(request) {
+    const url = new URL(request.url);
+    const date = url.searchParams.get("date") || "";
+    let cur = (await this.state.storage.get("day")) || { date, calls: 0 };
+    if (cur.date !== date) cur = { date, calls: 0 };
+    if (request.method === "POST") { cur.calls += 1; await this.state.storage.put("day", cur); }
+    return new Response(JSON.stringify(cur), { headers: { "Content-Type": "application/json" } });
+  }
+}
+function usageCounterStub(env) {
+  if (!env || !env.USAGE_COUNTER) return null;
+  return env.USAGE_COUNTER.get(env.USAGE_COUNTER.idFromName("global"));
+}
+async function countAICall(env) {
+  try {
+    const stub = usageCounterStub(env);
+    if (!stub) return;
+    await stub.fetch("https://usage.internal/add?date=" + taipeiDateString(nowMs(env)), { method: "POST" });
+  } catch (e) { /* 計數失敗絕不能影響回合 */ }
+}
+async function buildUsageToday(env) {
+  const date = taipeiDateString(nowMs(env));
+  const out = { date, calls: 0, est_cost_twd: 0, est_cost_per_call_twd: EST_COST_PER_CALL_TWD,
+    daily_spend_cap_twd: readSetting(env, "DAILY_SPEND_CAP_TWD", DEFAULT_DAILY_SPEND_CAP_TWD),
+    daily_gift_cap: readSetting(env, "DAILY_GIFT_CAP", DEFAULT_DAILY_GIFT_CAP), counter: !!usageCounterStub(env) };
+  const stub = usageCounterStub(env);
+  if (stub) {
+    const r = await stub.fetch("https://usage.internal/get?date=" + date);
+    const d = await r.json();
+    out.calls = d.calls || 0;
+    out.est_cost_twd = out.calls * EST_COST_PER_CALL_TWD;
+    out.pct_of_cap = Math.round(out.est_cost_twd / out.daily_spend_cap_twd * 1000) / 10;
+  }
+  return out;
+}
+async function handleUsageToday(request, env) {
+  const denied = adminDenied(request, env);
+  if (denied) return denied;
+  return new Response(JSON.stringify(await buildUsageToday(env), null, 2), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+}
+
 async function callAnthropic(env, upstreamBody) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -652,6 +708,7 @@ async function callAnthropic(env, upstreamBody) {
     },
     body: JSON.stringify(upstreamBody)
   });
+  if (res.ok) await countAICall(env); // 十、10.9.3.3：全站當天用量計數(只記錄)
   // 十、10.9.4（2026-09-30）：固定規則(system prompt＋工具定義)的字數，給前端逐筆成本紀錄當比例參考(不換算token)
   try {
     const sys = (upstreamBody.system || []).reduce((n, b) => n + String(b.text || "").length, 0);
@@ -792,25 +849,34 @@ async function handleAIProxy(request, env, origin, ctx) {
   return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
 }
 
-async function handleUsageSummary(request, env) {
+// 管理密碼檢查：通過回傳null，沒過回傳要送出的錯誤回應
+function adminDenied(request, env) {
   const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
   if (!env.USAGE_ADMIN_TOKEN) return new Response(JSON.stringify({ success: false, error: "尚未設定USAGE_ADMIN_TOKEN" }), { status: 503, headers });
   const url = new URL(request.url);
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : (url.searchParams.get("token") || "");
   if (!safeEqual(token, env.USAGE_ADMIN_TOKEN)) return new Response(JSON.stringify({ success: false, error: "密碼錯誤" }), { status: 401, headers });
+  return null;
+}
+async function handleUsageSummary(request, env) {
+  const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+  const denied = adminDenied(request, env);
+  if (denied) return denied;
   const summary = await buildUsageSummary(env, taipeiDateString(nowMs(env)));
   return new Response(JSON.stringify(summary, null, 2), { headers });
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.09.30-e";
+const WORKER_VERSION = "2026.09.30-f";
 
 export default {
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
     const reqUrl = new URL(request.url);
     // 10.5：管理用的用量摘要，靠管理密碼保護，不走來源白名單
+    // 10.9.3.3：全站當天用量(呼叫次數、估計花費)，同一組管理密碼；不依賴KV，雲端存檔關閉時也能查
+    if (reqUrl.pathname === "/usage-today" && request.method === "GET") return handleUsageToday(request, env);
     if (reqUrl.pathname === "/usage-summary" && request.method === "GET") {
       if (!cloudEnabled(env)) return new Response(JSON.stringify({ success: false, error: "封測期間暫停雲端存檔，成本遙測也暫停(十、10.8)", cloud_disabled: true }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
       return handleUsageSummary(request, env);
