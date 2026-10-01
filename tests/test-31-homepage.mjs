@@ -16,19 +16,7 @@ let doc = g.win.document;
 g.ev("MOCK_AI_DELAY_MS = 0"); // 模擬旁白不用等，避免回合在換掉state之後才回來
 await sleep(30);
 A.check("16.10.9 有金鑰也不自動接續，進站一律先到首頁", g.ev("state.phase") === "home" && !!doc.getElementById("home"));
-A.check("16.10.0 第一次進站就顯示年齡確認(不是按開始才出現)", !!doc.getElementById("age-gate"));
-const gateText = doc.getElementById("age-gate").textContent;
-A.check("16.10.0 卡片文案", /翻開之前/.test(gateText) && /《人生草稿》寫的是一段完整的人生，有些事並不輕鬆。/.test(gateText) && /本站僅供年滿十八歲的人瀏覽。/.test(gateText) && /我已滿十八歲/.test(gateText) && /還沒有/.test(gateText), gateText);
-A.check("16.10.0 首頁內容在後方淡淡透出(不能按)", doc.getElementById("home").classList.contains("gated") && !!doc.getElementById("btn-home-new"));
-doc.getElementById("btn-home-new").click(); await sleep(10);
-A.check("確認前按不到「開始一段人生」", g.ev("state.phase") === "home");
-doc.getElementById("btn-age-no").click();
-const noText = doc.getElementById("age-gate").textContent;
-A.check("16.10.0 按「還沒有」後卡片文字換掉", /那就再等等吧。/.test(noText) && /這本草稿，會在這裡等你長大。/.test(noText) && !doc.getElementById("btn-age-yes"), noText);
-A.check("按「還沒有」不會記住成已確認", g.win.localStorage.getItem("life_sim_age_confirmed") !== "yes");
-g.ev("ageGateDeclined=false; render()");
-doc.getElementById("btn-age-yes").click();
-A.check("16.10.0 確認後這台裝置記住、卡片消失", g.win.localStorage.getItem("life_sim_age_confirmed") === "yes" && !doc.getElementById("age-gate") && !doc.getElementById("home").classList.contains("gated"));
+A.check("16.10.0（2026-10-01取消）：進站不再有年齡確認視窗，首頁直接可按", !doc.getElementById("age-gate") && !doc.getElementById("home").classList.contains("gated") && !!doc.getElementById("btn-home-new"));
 
 // ---------- 2. 文案 ----------
 const homeText = doc.getElementById("home").textContent;

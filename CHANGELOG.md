@@ -11,6 +11,8 @@
 ---
 
 ## 2026-10-01
+**〔續31：十、10.13.3自動存檔＋取消進站年齡確認（版本2026.10.01-b）〕**`index.html`：新增`AUTO_SAVE_EVERY_TURNS`(10，【測試參數】)／`autoSaveDue()`／`autoCloudSave()`／`autoCloudSaveOnce()`／`ensureCloudHome()`(手動存與自動存共用的雲端位置)；`saveGame()`在雲端暫停時，若這段人生距上次自動存已滿10回合、或進入ending且還沒存過，就在背景存一次(同一格覆蓋；失敗不跳窗，`AUTO_SAVE_RETRY_MS`後的下一次存檔再試；示範模式、沒有同意紀錄、雲端全面打開時不走這條)；`cloudUploadState()`上傳前先補傳已結束階段的封存包(長壽人生才不會超過1MB，手動存也一起受惠)；`ensureArchivedContent()`在暫停期間改看這段人生的雲端位置，換裝置拿回後能補回封存包；手動存的提示文字改成「也會每10回合自動存」。取消進站年齡確認視窗(使用者指示)：移除`renderAgeGate()`、`ageConfirmed()`與相關CSS／綁定，`tests/test-31-homepage.mjs`對應改寫。Worker：暫停期間的開放網址表`MANUAL_SAVE_PATHS`改成每個網址可有多個方法，新增開放`/stage-pack`(POST、GET)。新增`tests/test-64-autosave.mjs`。**Worker有改，要部署**；沒有新增存檔欄位以外的結構變動(`lastAutoCloudTurn`、`autoSavedEnding`)，舊存檔照常可讀。管理端(10.13.6)尚未實作；首頁常見問題「存檔會不見嗎」「免註冊，進度自動存在這台裝置」文案尚未改(文案屬16.10，待使用者定案)。
+
 **〔續30：十、10.13.2開場同意頁（版本2026.10.01-a）〕**`index.html`：新增`CONSENT_VERSION`(1)／`getConsent()`／`hasValidConsent()`／`recordConsent()`／`showConsentGate()`／`renderPrivacyModal()`；`initApp()`進站時沒有有效同意紀錄(不存在、壞掉、版本低於目前)就擋一頁，按〔不同意〕留在本頁提示，〔同意並開始〕記`{v,at}`到localStorage(`lifegame_consent`)並在`saveGame()`／`saveLocalOnly()`寫進`state.consent`隨存檔上傳；選單新增「隱私說明」、綁定說明頁縮成一句話＋連結、用信箱登入／換綁只放一行連結。Worker：新增`POST /account/consent`(`account.js`的`opConsent`，`account.me`回`consent`)，已綁信箱者同意紀錄另記在帳號資料；前端在同意後與`refreshAccount()`成功後自動補送一次(同一份紀錄只送一次)。`tests/harness.mjs`新增`consent`選項(預設視為已同意，`consent:false`＝全新玩家)，新增`tests/test-63-consent.mjs`。**Worker有改，要部署**；遊戲狀態多一個`state.consent`欄位，舊存檔不受影響(沒有就當沒同意，下次開啟會先看到同意頁)。自動存檔(10.13.3)與管理端(10.13.6)尚未實作。
 
 ## 2026-09-30

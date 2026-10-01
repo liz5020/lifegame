@@ -416,7 +416,6 @@
 
   /* 十六、16.10 首頁 */
   .home{padding:0 20px 28px;}
-  .home.gated > *:not(.age-gate){opacity:.35;filter:blur(1.5px);pointer-events:none;user-select:none;}
   .home-hero{min-height:92vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 0 24px;}
   .home-hero.has-lives{min-height:0;padding-top:28px;} /* 有進行中的人生時，讓存檔卡片在第一個畫面就露出來 */
   .home-hero .stamp{margin-bottom:18px;}
@@ -454,11 +453,6 @@
   .foot-mark{font-family:var(--serif);font-size:22px;letter-spacing:8px;color:rgba(74,46,31,.22);margin-top:34px;}
   .foot-copy{font-size:11px;color:var(--ink-soft);margin-top:6px;}
   /* 16.10.0 進站年齡確認：毛玻璃卡片浮在暖陽背景上，首頁內容在後方淡淡透出 */
-  .age-gate{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:24px;animation:fade-in var(--t-std) var(--ease) both;}
-  .age-card{max-width:340px;width:100%;padding:28px 24px;text-align:center;background:rgba(255,255,255,.6);}
-  .age-card h3{font-family:var(--serif);font-size:20px;margin:0 0 12px;letter-spacing:2px;}
-  .age-card p{font-size:15px;line-height:1.9;margin:0 0 16px;}
-  .age-card .primary-btn,.age-card .ghost-btn{width:100%;}
 
   /* 十六、16.6 回憶錄時間軸 */
   .modal.memoir{padding:20px 16px;}
@@ -603,7 +597,6 @@ const CLOUD_SAVE_ENABLED = (function(){
 // 十、10.1（9/19新增）：封測階段純金鑰模式——復原金鑰對應「一個玩家」，終身不變，底下最多累積3段人生
 const RECOVERY_KEY_STORAGE_NAME = "life_sim_recovery_key"; // 復原金鑰快取在本機，方便同一台裝置不用每次重輸入
 const ACTIVE_SLOT_STORAGE_NAME = "life_sim_active_slot"; // 記住這台裝置上次玩的是第幾段人生(0~2)
-const AGE_CONFIRMED_STORAGE_NAME = "life_sim_age_confirmed"; // 十六、16.10.0：進站年齡確認過一次，這台裝置記住
 const HOME_META_PREFIX = "life_sim_home:"; // 十六、16.10.2：首頁「還沒寫完的人生」卡片用的摘要(每個slot一份，存檔時順手更新)
 const MAX_LIFE_SLOTS = 3; // 【定案,十、10.1】
 // 十、10.1補充（2026-09-22新增）：雲端同步狀態，純本次session的UI顯示用，不存進state/localStorage——
@@ -3500,17 +3493,10 @@ async function showSlotPicker(key, currentSlot, notice){
 let manualCloudSaveBusy = false;
 async function manualCloudSave(){
   if(manualCloudSaveBusy || !state || state.phase!=="playing") return;
-  const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
-  let deviceKey = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
-  if(!deviceKey){ deviceKey = generateRecoveryKey(); localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, deviceKey); }
   manualCloudSaveBusy = true;
-  // 十、10.2／10.9.2：帳號人生一律存在帳號的復原金鑰底下(格子從這把金鑰的3格裡挑，不蓋掉別的人生)，換裝置登入後才拿得回來
-  if(walletActive(state) && (!state.cloudHome || state.cloudHome.key!==acct.recovery_key)){
-    const pick = await acctPickCloudSlot(acct.recovery_key, state.acct.lid);
-    if(pick<0){ manualCloudSaveBusy = false; renderManualCloudSaveModal(false, acct.recovery_key, "雲端存檔的位置不夠了（這把金鑰的 3 個位置都用了），"); return; }
-    state.cloudHome = { key: acct.recovery_key, slot: pick };
-  } else if(!state.cloudHome || !state.cloudHome.key) state.cloudHome = { key: deviceKey, slot: slotRaw!==null ? Number(slotRaw) : 0 };
-  const home = state.cloudHome;
+  const placed = await ensureCloudHome(state);
+  if(!placed.home){ manualCloudSaveBusy = false; renderManualCloudSaveModal(false, acct.recovery_key, "雲端存檔的位置不夠了（這把金鑰的 3 個位置都用了），"); return; }
+  const home = placed.home;
   let ok = false, errText = "";
   try{
     saveGame(); // 先存本機
@@ -3519,11 +3505,67 @@ async function manualCloudSave(){
     if(!ok) errText = up.status===429 ? "按得太快了，稍等一下再試。" : "沒有存成功，請稍後再試。";
   }catch(e){ console.warn("手動存到雲端失敗", e); errText = "沒有存成功，請稍後再試。"; }
   finally{ manualCloudSaveBusy = false; }
-  if(ok){ state.lastManualCloudSaveAt = Date.now(); saveGame(); }
+  if(ok){ state.lastManualCloudSaveAt = Date.now(); state.lastAutoCloudTurn = state.turnCount||0; saveGame(); }
   renderManualCloudSaveModal(ok, home.key, errText);
+}
+// 這段人生在雲端的位置(10.8.1手動存、10.13.3自動存共用)：帳號人生存在帳號的復原金鑰底下(格子從這把金鑰的3格裡挑，不蓋掉別的人生)，
+// 其他人第一次用這台裝置的金鑰＋目前格子；從別台裝置拿回的人生沿用原本的位置。回傳{home}，帳號金鑰的格子滿了回傳{home:null}
+async function ensureCloudHome(st){
+  const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
+  let deviceKey = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(!deviceKey){ deviceKey = generateRecoveryKey(); localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, deviceKey); }
+  if(walletActive(st) && (!st.cloudHome || st.cloudHome.key!==acct.recovery_key)){
+    const pick = await acctPickCloudSlot(acct.recovery_key, st.acct.lid);
+    if(pick<0) return { home:null };
+    st.cloudHome = { key: acct.recovery_key, slot: pick };
+  } else if(!st.cloudHome || !st.cloudHome.key) st.cloudHome = { key: deviceKey, slot: slotRaw!==null ? Number(slotRaw) : 0 };
+  return { home: st.cloudHome };
+}
+// ===== 十、10.13.3 自動存檔（2026-10-01）=====
+// 所有玩家(不分有沒有綁信箱)每AUTO_SAVE_EVERY_TURNS回合自動存到雲端一次，人生結束(ending)時再存一次；每段人生一格、新存檔覆蓋舊存檔。
+// 內容＝完整的日記(玩家選擇、自由書寫原文、AI劇情，不截斷、不改存摘要；已結束的階段走封存包)。
+// 額度吃緊時只調大AUTO_SAVE_EVERY_TURNS(拉長間隔)，不刪減存檔內容；開場同意頁寫「定期」，調整不必改頁面文字。
+// 示範模式(USE_MOCK，內容不是AI寫的)不自動存。失敗不打擾玩家，間隔AUTO_SAVE_RETRY_MS後的下一次存檔再試。
+const AUTO_SAVE_EVERY_TURNS = 10; // 【測試參數】
+const AUTO_SAVE_RETRY_MS = 60*1000;
+let autoCloudSaveRunning = null, autoCloudSaveQueued = false, autoCloudFailAt = 0;
+function autoSaveDue(s){
+  if(USE_MOCK || CLOUD_SAVE_ENABLED || !s || !hasValidConsent()) return false; // 雲端存檔全面打開時，每次存檔本來就會同步(cloudSyncOnce)
+  if(s.phase==="ending") return s.autoSavedEnding!==true;
+  if(s.phase!=="playing") return false;
+  const t = s.turnCount||0;
+  return t>0 && t-(s.lastAutoCloudTurn||0) >= AUTO_SAVE_EVERY_TURNS;
+}
+function autoCloudSave(){
+  if(autoCloudSaveRunning){ autoCloudSaveQueued = true; return autoCloudSaveRunning; }
+  autoCloudSaveRunning = (async()=>{
+    try{ do{ autoCloudSaveQueued = false; await autoCloudSaveOnce(); } while(autoCloudSaveQueued && autoSaveDue(state)); }
+    finally{ autoCloudSaveRunning = null; }
+  })();
+  return autoCloudSaveRunning;
+}
+async function autoCloudSaveOnce(){
+  const st = state;
+  if(!autoSaveDue(st) || manualCloudSaveBusy || Date.now()-autoCloudFailAt < AUTO_SAVE_RETRY_MS) return;
+  let ok = false;
+  const turn = st.turnCount||0, ending = st.phase==="ending";
+  try{
+    const placed = await ensureCloudHome(st);
+    if(!placed.home) return; // 帳號金鑰的格子滿了：不打擾，玩家自己按「存到雲端」時才會提示
+    const up = await cloudUploadState(st, placed.home, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct ? st.acct.lid : undefined });
+    ok = up.ok;
+  }catch(e){ console.warn("自動存檔失敗", e); }
+  if(!ok){ autoCloudFailAt = Date.now(); return; }
+  st.lastAutoCloudTurn = turn; if(ending) st.autoSavedEnding = true;
+  if(st===state) saveLocalOnly();
 }
 // 把一段人生(壓縮、不含反悔快照)上傳到指定的雲端位置一次；回傳{ok,status}
 async function cloudUploadState(st, home, meta){
+  // 十、10.7.3／10.13.3：已結束的階段先打包上傳封存包，雲端主存檔才不會因為長壽人生超過大小上限(失敗就照舊整份上傳，下次再試)
+  if(st===state){
+    try{ await uploadReadyStagePacks(home.key, home.slot); }catch(pe){ console.warn("封存包上傳失敗，下次再試", pe); }
+    if(st===state) saveLocalOnly(); // 封存包上傳成功的標記也存回本機
+  }
   const packed = await packForCloud(buildCloudState(st));
   const res = await fetch(WORKER_URL+"save", { method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify(Object.assign({ key: home.key, slot: home.slot, meta }, packed)) });
@@ -3540,7 +3582,7 @@ function renderManualCloudSaveModal(ok, key, errText){
       <h3>已存到雲端</h3>
       <p style="font-size:13px;">請記下你的復原金鑰：</p>
       <div class="roll-item" style="text-align:center;margin:10px 0;"><div class="v" style="font-size:16px;letter-spacing:2px;">${escapeHtml(key)}</div></div>
-      <p style="font-size:12px;">換裝置時，在首頁「切換其他人生」輸入這組金鑰，就能拿回這次存的進度。之後再玩的回合，要再按一次才會存上去。</p>
+      <p style="font-size:12px;">換裝置時，在首頁「切換其他人生」輸入這組金鑰，就能拿回存到雲端的進度。遊戲也會每 10 回合自動存一次，想馬上存，可以再按一次。</p>
       <button class="ghost-btn" id="btn-manual-save-close" style="margin-top:14px;">關閉</button>
     </div>` : `
     <div class="modal">
@@ -3754,8 +3796,9 @@ async function fetchStagePack(key, id){
 function hasArchivedContentMissing(s){ return !!s && ((s.logOffset||0)>0 || !!(s.book && (s.book.chapters||[]).some(c=>c.packed))); }
 async function ensureArchivedContent(s){
   if(!hasArchivedContentMissing(s)) return true;
-  const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
-  if(!key || !CLOUD_SAVE_ENABLED) return false;
+  const home = !CLOUD_SAVE_ENABLED && s.cloudHome && s.cloudHome.key ? s.cloudHome : null; // 十、10.13.3：封存包存在這段人生的雲端位置
+  const key = home ? home.key : localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+  if(!key || (!CLOUD_SAVE_ENABLED && !home)) return false;
   const need = (s.stagePacks||[]).filter(p=>p.uploaded && (p.from < (s.logOffset||0) || (p.chapterIds||[]).some(id=>s.book && s.book.chapters.some(c=>c.id===id && c.packed))))
     .sort((a,b)=>a.from-b.from);
   const packs = [];
@@ -3827,7 +3870,7 @@ async function saveGame(){
   try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); localSaveFailNotified = false; }
   catch(e){ console.warn("save failed", e); notifyLocalSaveFailed(); }
   writeHomeMeta(slot);
-  if(!CLOUD_SAVE_ENABLED) return; // 十、10.8：封測期間暫停雲端存檔，只存本機
+  if(!CLOUD_SAVE_ENABLED){ if(autoSaveDue(state)) autoCloudSave(); return; } // 十、10.8：封測期間平常只存本機；十、10.13.3：每10回合與人生結束自動存一次
   // 十、10.1（9/19新增）：本機存完之後，同步存一份到Worker的KV，達成跨裝置存檔。
   // 只在真正進入遊戲(playing/ending)且有金鑰+slot時才同步，避免setup過程中還沒真的開始的角色也去打API；
   // 失敗只console.warn，不影響當下遊玩（本機那份已經存好了）
@@ -8052,8 +8095,12 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.01-a";
+const APP_VERSION = "2026.10.01-b";
 const RELEASE_NOTES = [
+  { version:"2026.10.01-b", date:"2026-10-01", title:"自動存檔", items:[
+    "遊戲現在會每 10 回合自動把進度存到雲端，人生結束時也會再存一次，換手機時輸入復原金鑰就能接回。",
+    "首頁不再跳出「我已滿十八歲」的確認視窗，直接就能開始。",
+  ]},
   { version:"2026.10.01-a", date:"2026-10-01", title:"開始之前的說明", items:[
     "第一次進遊戲（或換手機、清除瀏覽器資料後）會先看到一頁說明：存檔會定期存到我們的伺服器、劇情由 AI 生成、請不要輸入真實的個人資料。按「同意並開始」就能開始玩，同意過之後不會再跳出來。",
     "選單新增「隱私說明」，綁定信箱、用信箱登入的畫面也有連結，隨時可以再看一次。",
@@ -10853,8 +10900,7 @@ function render(loadingTurn){
 // ========== 十六、16.10 首頁（2026-09-28）==========
 // 文案為使用者定稿原文(含同日開局年齡修正)，改字請先改設計文件16.10再同步這裡。
 // 寫死在文案裡的數字：新人生啟程禮AP_UNBOUND_GIFT、綁定再領AP_BIND_BONUS、每日補到AP_DAILY_REFILL、每回合1點、未綁1段／綁定2段人生(2026-09-30第三批)
-let ageGateDeclined = false;
-function ageConfirmed(){ try{ return localStorage.getItem(AGE_CONFIRMED_STORAGE_NAME)==="yes"; }catch(e){ return false; } }
+// 十六、16.10.0（2026-10-01使用者指示取消）：進站年齡確認視窗已拿掉，首頁直接可用；「適合幾歲的人」的說明文字照舊
 function writeHomeMeta(slot){
   if(slot===null || slot===undefined || !state) return;
   try{
@@ -10912,23 +10958,10 @@ const HOME_FAQ = [
   ["可以反悔嗎？", ["可以，但次數有限。畢竟是草稿，也不是每一筆都擦得掉。"]],
   ["適合幾歲的人？", ["年滿十八歲。這裡的人生跟外面一樣，不會替你把難受的事藏起來：感情、失去、走偏的路，都會照實寫。所以第一次進站時，會先請你確認一次年齡。"]]
 ];
-function renderAgeGate(){
-  if(ageConfirmed()) return ``;
-  return `<div class="age-gate" id="age-gate" role="dialog" aria-modal="true" aria-labelledby="age-gate-title">
-    <div class="age-card glass">
-      ${ageGateDeclined ? `
-      <p class="serif">那就再等等吧。<br>這本草稿，會在這裡等你長大。</p>` : `
-      <h3 id="age-gate-title">翻開之前</h3>
-      <p class="serif">《人生草稿》寫的是一段完整的人生，有些事並不輕鬆。<br>本站僅供年滿十八歲的人瀏覽。</p>
-      <button class="primary-btn" id="btn-age-yes">我已滿十八歲</button>
-      <button class="ghost-btn" id="btn-age-no">還沒有</button>`}
-    </div>
-  </div>`;
-}
 function renderHome(){
   const lives = homeUnfinishedLives();
   return `
-  <div class="home${ageConfirmed()?"":" gated"}" id="home">
+  <div class="home" id="home">
     <section class="home-hero${lives.length?" has-lives":""}" id="home-top">
       <div class="stamp big restamp" id="home-stamp"><b>15</b>歲・起稿</div>
       <h1>人生草稿</h1>
@@ -10987,15 +11020,9 @@ function renderHome(){
       <div class="foot-mark">人生草稿</div>
       <div class="foot-copy">© 2026 人生草稿・版本 ${escapeHtml(APP_VERSION)}（${escapeHtml(currentRelease().date)}）</div>
     </footer>
-    ${renderAgeGate()}
   </div>`;
 }
 function bindHome(){
-  const yes = document.getElementById("btn-age-yes");
-  if(yes) yes.onclick = ()=>{ try{ localStorage.setItem(AGE_CONFIRMED_STORAGE_NAME, "yes"); }catch(e){} ageGateDeclined = false; render(); };
-  const no = document.getElementById("btn-age-no");
-  if(no) no.onclick = ()=>{ ageGateDeclined = true; render(); };
-  if(!ageConfirmed()) return; // 確認前首頁只在後方淡淡透出，按鈕都不能按
   document.getElementById("btn-home-new").onclick = startNewLifeFromHome;
   const homeLogin = document.getElementById("btn-home-login"); if(homeLogin) homeLogin.onclick = ()=>openAccountFlow("login");
   const homeLogout = document.getElementById("link-home-logout"); if(homeLogout) homeLogout.onclick = async ()=>{ await acctLogout(); showWriterToast("已登出這台裝置。帳號和錢包都還在，用信箱隨時可以再登入。"); };
