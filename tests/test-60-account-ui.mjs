@@ -46,7 +46,7 @@ A.check("第3則：未綁信箱的錢包常駐「撰稿人提醒你：綁定信�
 A.check("第3則：說明放在獨立的「綁定信箱」按鈕旁邊", !!d1.getElementById("btn-wallet-bind") && d1.getElementById("btn-wallet-bind").textContent.trim()==="綁定信箱" && tip.parentElement.contains(d1.getElementById("btn-wallet-bind")));
 A.check("未綁：錢包有「用信箱登入」入口", !!d1.getElementById("btn-wallet-login"));
 d1.getElementById("btn-wallet-bind").click();
-A.check("點綁定信箱按鈕→進綁定說明頁(信箱只用來保存進度和找回帳號／成為帳號的第1段／會收到啟程禮)", !d1.getElementById("wallet-modal") && /信箱只用來保存進度和找回帳號/.test(text(g1, "#account-modal")) && /成為帳號的第1段/.test(text(g1, "#account-modal")) && /綁定後會再領30點啟程禮/.test(text(g1, "#account-modal")));
+A.check("點綁定信箱按鈕→進綁定說明頁(2026-10-01 10.13.2：只留一句「信箱只用來保存進度和找回帳號，綁定後會收到啟程禮」＋隱私說明連結)", !d1.getElementById("wallet-modal") && /信箱只用來保存進度和找回帳號，綁定後會收到啟程禮/.test(text(g1, "#account-modal")) && !!d1.querySelector("#account-modal .privacy-link"));
 d1.getElementById("btn-acct-start").click();
 d1.getElementById("acct-email").value = "  Player.One@Example.com ";
 d1.getElementById("btn-acct-send").click();

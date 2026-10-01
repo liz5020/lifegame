@@ -128,7 +128,8 @@ export function makeFakeResend() {
 export function makeFakeDO(Cls) {
   const store = new Map();
   const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-  const st = { storage: { get: async k => clone(store.get(k)), put: async (k, v) => { store.set(k, clone(v)); }, delete: async k => { store.delete(k); } } };
+  const st = { storage: { get: async k => clone(store.get(k)), put: async (k, v) => { store.set(k, clone(v)); }, delete: async k => { store.delete(k); },
+    list: async (o = {}) => { const out = new Map(); [...store.keys()].sort().filter(k => (!o.prefix || k.startsWith(o.prefix)) && (o.end === undefined || k < o.end)).forEach(k => out.set(k, clone(store.get(k)))); return out; } } };
   const inst = new Cls(st);
   return { _store: store, idFromName: n => n, get: () => ({ fetch: (u, init) => inst.fetch(new Request(u, init)) }) };
 }
@@ -162,7 +163,7 @@ export async function callWorker(env, { method = "POST", path: p = "/", body, or
 }
 
 // 載入遊戲頁面。useMock=false時前端走真實路徑(callAI→Worker→假上游)
-export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, storage = null, host = "lifegamepage.smile80275.workers.dev" } = {}) {
+export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, consent = true, storage = null, host = "lifegamepage.smile80275.workers.dev" } = {}) {
   // 二、2.7（2026-09-29）：index.html用<script src="lunar.min.js">載入農曆套件，jsdom不抓外部檔，這裡直接內嵌
   const lunarSrc = fs.readFileSync(path.join(ROOT, "lunar.min.js"), "utf8");
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8")
@@ -183,6 +184,8 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
         win.localStorage.setItem("life_sim_active_slot", String(slot));
       }
       if (!useMock) win.localStorage.setItem("lifegame_force_real_api", "yes");
+      // 十、10.13.2：開場同意頁——既有測試預設視為已同意(consent:false＝全新玩家，測同意頁用)
+      if (consent && !win.localStorage.getItem("lifegame_consent")) win.localStorage.setItem("lifegame_consent", JSON.stringify({ v: 1, at: 1700000000000 }));
       win.localStorage.setItem("lifegame_cloud_save", cloud ? "on" : "off"); // 十、10.8：版本庫預設關閉，既有測試打開雲端
       win.alert = () => {}; win.confirm = () => true;
       // 十、10.7（2026-09-29）：雲端存檔用瀏覽器原生gzip，jsdom沒有，借Node內建的

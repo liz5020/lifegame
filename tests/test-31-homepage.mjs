@@ -2,6 +2,7 @@
 // 全程USE_MOCK＋假Worker(記憶體KV)，不打真實API
 import fs from "fs";
 import path from "path";
+const idle = async (g) => { for (let i = 0; i < 100 && g.ev("aiWritingNow"); i++) await new Promise(r => setTimeout(r, 20)); await new Promise(r => setTimeout(r, 30)); }; // 等回合真的寫完，避免換掉state之後才回來(偶發競態)
 import * as H from "./harness.mjs";
 import { fileURLToPath } from "url";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,19 +17,7 @@ let doc = g.win.document;
 g.ev("MOCK_AI_DELAY_MS = 0"); // 模擬旁白不用等，避免回合在換掉state之後才回來
 await sleep(30);
 A.check("16.10.9 有金鑰也不自動接續，進站一律先到首頁", g.ev("state.phase") === "home" && !!doc.getElementById("home"));
-A.check("16.10.0 第一次進站就顯示年齡確認(不是按開始才出現)", !!doc.getElementById("age-gate"));
-const gateText = doc.getElementById("age-gate").textContent;
-A.check("16.10.0 卡片文案", /翻開之前/.test(gateText) && /《人生草稿》寫的是一段完整的人生，有些事並不輕鬆。/.test(gateText) && /本站僅供年滿十八歲的人瀏覽。/.test(gateText) && /我已滿十八歲/.test(gateText) && /還沒有/.test(gateText), gateText);
-A.check("16.10.0 首頁內容在後方淡淡透出(不能按)", doc.getElementById("home").classList.contains("gated") && !!doc.getElementById("btn-home-new"));
-doc.getElementById("btn-home-new").click(); await sleep(10);
-A.check("確認前按不到「開始一段人生」", g.ev("state.phase") === "home");
-doc.getElementById("btn-age-no").click();
-const noText = doc.getElementById("age-gate").textContent;
-A.check("16.10.0 按「還沒有」後卡片文字換掉", /那就再等等吧。/.test(noText) && /這本草稿，會在這裡等你長大。/.test(noText) && !doc.getElementById("btn-age-yes"), noText);
-A.check("按「還沒有」不會記住成已確認", g.win.localStorage.getItem("life_sim_age_confirmed") !== "yes");
-g.ev("ageGateDeclined=false; render()");
-doc.getElementById("btn-age-yes").click();
-A.check("16.10.0 確認後這台裝置記住、卡片消失", g.win.localStorage.getItem("life_sim_age_confirmed") === "yes" && !doc.getElementById("age-gate") && !doc.getElementById("home").classList.contains("gated"));
+A.check("16.10.0（2026-10-01取消）：進站不再有年齡確認視窗，首頁直接可按", !doc.getElementById("age-gate") && !doc.getElementById("home").classList.contains("gated") && !!doc.getElementById("btn-home-new"));
 
 // ---------- 2. 文案 ----------
 const homeText = doc.getElementById("home").textContent;
@@ -77,26 +66,26 @@ g.win.localStorage.removeItem("life_sim_home:1");
 g.win.localStorage.removeItem("life_sim_home:0"); g.win.localStorage.removeItem("life_sim_home:2");
 g.win.localStorage.setItem("life_sim_active_slot", "1");
 await H.startNewLife(g, { name: "周語彤" });
-await H.playTurn(g); await sleep(20);
+await H.playTurn(g); await sleep(20); for (let i = 0; i < 100 && g.ev("aiWritingNow"); i++) await sleep(20); await sleep(30); // 等回合真的結束，避免下一步換掉state後才回來(偶發的競態)
 for (let i = 0; i < 100 && g.ev("aiWritingNow"); i++) await sleep(20); // 等回合寫完再換掉state
 const m1 = JSON.parse(g.win.localStorage.getItem("life_sim_home:1") || "null");
 A.check("存檔時寫首頁摘要(名字、年齡、世代、細階段、時間、金鑰)", m1 && m1.name === "周語彤" && m1.age === 15 && m1.reincarnations === 0 && /高一/.test(m1.timeLabel) && m1.key === "homekey01" && Math.abs(m1.lastPlayedAt - Date.now()) < 60000, m1);
 const turnBefore = g.ev("state.turnCount");
-g.ev("state = {phase:'home'}; render()");
+await idle(g); g.ev("state = {phase:'home'}; render()");
 cards = [...doc.querySelectorAll(".life-card")];
 A.check("回到首頁看得到這段人生", cards.length === 1 && /周語彤/.test(cards[0].textContent));
 cards[0].click(); await sleep(60);
 A.check("16.10.2 點卡片直接回到故事，不經過中間頁", g.ev("state.phase") === "playing" && g.ev("state.name") === "周語彤" && g.ev("state.turnCount") === turnBefore);
 // 首頁上線前的舊存檔(沒有摘要)也列得出來
 g.win.localStorage.removeItem("life_sim_home:1");
-g.ev("state = {phase:'home'}; render()");
+await idle(g); g.ev("state = {phase:'home'}; render()");
 A.check("舊存檔沒有摘要：讀本機存檔補(不顯示時間)", doc.querySelectorAll(".life-card").length === 1 && !doc.querySelector(".life-card .lc-time"));
 // 已結束的人生不列
 g.win.localStorage.setItem("life_sim_active_slot", "1");
 g.ev("state = JSON.parse(localStorage.getItem('life_sim_save_v1:1'))");
 await g.ev("endLife('ended')"); await sleep(60);
 for (let i = 0; i < 200 && g.ev("aiWritingNow"); i++) await sleep(20); // 結局那一回合寫完再換掉state
-g.ev("state = {phase:'home'}; render()");
+await idle(g); g.ev("state = {phase:'home'}; render()");
 A.check("16.10.2 已結束的人生不列在首頁", doc.querySelectorAll(".life-card").length === 0 && !g.win.localStorage.getItem("life_sim_home:1"));
 
 // ---------- 5. 按鈕流程 ----------
@@ -110,7 +99,7 @@ doc.getElementById("btn-lifestyle-confirm").click(); await sleep(60); H.clickMod
 A.check("已有金鑰：選完生活方式直接開始，不再顯示金鑰", g.ev("state.phase") === "playing");
 // 三格都滿
 for (let i = 0; i < 3; i++) g.win.localStorage.setItem("life_sim_home:" + i, JSON.stringify({ key: "homekey01", name: "佔位" + i, age: 20, timeLabel: "x", lastPlayedAt: now }));
-g.ev("state = {phase:'home'}; render()");
+await idle(g); g.ev("state = {phase:'home'}; render()");
 await g.ev("startNewLifeFromHome()"); await sleep(30);
 A.check("16.10.9 三格都滿(未綁信箱，2026-09-30第三批起同時只能1段)：導到切換畫面並說明只能1段", g.ev("state.phase") === "slotPicker" && /未綁定信箱時只能同時進行 1 段人生/.test(doc.getElementById("app").textContent) && /人生回顧/.test(doc.getElementById("app").textContent));
 A.check("人生選擇畫面有「回首頁」", !!doc.getElementById("btn-slot-home"));
@@ -144,6 +133,7 @@ await sleep(30);
 g2.ev("state = {phase:'home'}; render()");
 A.check("新金鑰的人生出現在首頁", /許念安/.test(d2.querySelector(".life-card")?.textContent || ""));
 
+await idle(g); await idle(g2);
 A.check("整段沒有jsdom錯誤", g.errors.length === 0 && g2.errors.length === 0, g.errors.concat(g2.errors).map(String).slice(0, 3));
 const ok = A.report();
 process.exit(ok ? 0 : 1);

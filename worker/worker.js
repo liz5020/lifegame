@@ -93,6 +93,7 @@ import {
 } from "./gate.js";
 import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
+import { handleSaveAdmin, isAdminPath, indexSaveRecord } from "./save-admin.js";
 
 // Durable Object類別一定要從Worker主檔匯出(wrangler.toml的binding用類別名稱找)
 export { UsageCounter, AccountStore };
@@ -127,7 +128,8 @@ export function cloudEnabled(env) {
 }
 const CLOUD_ONLY_PATHS = ["/save", "/slots", "/load", "/claim-gift", "/ap", "/idle-claim", "/idle-rollback", "/archive", "/archives", "/stage-pack", "/family-book"];
 // 十、10.8.1（2026-09-29）：暫停期間仍開放「手動存到雲端」用的三個網址——玩家按一次按鈕才呼叫一次(/save寫1次)，換裝置拿回時才讀(/slots、/load)
-const MANUAL_SAVE_PATHS = { "/save": "POST", "/slots": "GET", "/load": "GET" };
+// 十、10.13.3（2026-10-01）：自動存檔(每10回合與人生結束)也走這三個網址；已結束階段的封存包(/stage-pack，每個階段只寫1次)一併開放，長壽人生的存檔才不會超過大小上限
+const MANUAL_SAVE_PATHS = { "/save": ["POST"], "/slots": ["GET"], "/load": ["GET"], "/stage-pack": ["POST", "GET"] };
 // 關閉期間的頻率限制：Cloudflare Rate Limiting綁定(wrangler.toml)，不經KV；沒綁定(測試環境)就放行
 async function checkRateLimitNoKV(request, env) {
   if (!env || !env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") return true;
@@ -201,6 +203,7 @@ async function handleSave(request, env, origin) {
   if (p.size > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "存檔內容過大" }, 400);
   const record = JSON.stringify(Object.assign({ meta: meta || {} }, p.fields));
   await env.SAVES.put(kvKey(key, slot), record);
+  try { await indexSaveRecord(env, key, slot, meta, p.size); } catch (e) { console.warn("存檔索引更新失敗(不影響存檔)", e); } // 十、10.13.6：索引在存檔寫入時自動補建
   return jsonResponse(origin, { success: true, size: p.size });
 }
 
@@ -898,7 +901,7 @@ async function handleUsageSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.09.30-i";
+const WORKER_VERSION = "2026.10.01-b";
 
 export default {
   async fetch(request, env, ctx) {
@@ -907,6 +910,8 @@ export default {
     // 10.5：管理用的用量摘要，靠管理密碼保護，不走來源白名單
     // 10.9.3.3：全站當天用量(呼叫次數、估計花費)，同一組管理密碼；不依賴KV，雲端存檔關閉時也能查
     if (reqUrl.pathname === "/usage-today" && request.method === "GET") return handleUsageToday(request, env);
+    // 十、10.13.6：管理端(存檔查看、名冊、存取紀錄)，獨立密碼SAVE_ADMIN_TOKEN，不走來源白名單
+    if (isAdminPath(reqUrl.pathname)) return handleSaveAdmin(request, env, reqUrl, { kvKey, safeEqual });
     if (reqUrl.pathname === "/usage-summary" && request.method === "GET") {
       if (!cloudEnabled(env)) return new Response(JSON.stringify({ success: false, error: "封測期間暫停雲端存檔，成本遙測也暫停(十、10.8)", cloud_disabled: true }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
       return handleUsageSummary(request, env);
@@ -940,9 +945,10 @@ export default {
     // 十、10.8（2026-09-29）：雲端存檔關閉時完全不碰KV——存檔類路徑直接回503，頻率限制改用不經KV的綁定
     if (!cloudEnabled(env)) {
       if (!(await checkRateLimitNoKV(request, env))) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);
-      if (MANUAL_SAVE_PATHS[url.pathname] === request.method) { // 10.8.1手動存到雲端
+      if ((MANUAL_SAVE_PATHS[url.pathname] || []).includes(request.method)) { // 10.8.1手動存到雲端、10.13.3自動存檔
         if (url.pathname === "/save") return handleSave(request, env, origin);
         if (url.pathname === "/slots") return handleSlots(request, env, origin);
+        if (url.pathname === "/stage-pack") return request.method === "POST" ? handleStagePackSave(request, env, origin) : handleStagePackLoad(request, env, origin);
         return handleLoad(request, env, origin);
       }
       if (CLOUD_ONLY_PATHS.includes(url.pathname)) return jsonResponse(origin, { success: false, error: "封測期間暫停雲端存檔", cloud_disabled: true }, 503);
