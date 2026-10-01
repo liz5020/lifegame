@@ -93,6 +93,7 @@ import {
 } from "./gate.js";
 import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
+import { handleSaveAdmin, isAdminPath, indexSaveRecord } from "./save-admin.js";
 
 // Durable Object類別一定要從Worker主檔匯出(wrangler.toml的binding用類別名稱找)
 export { UsageCounter, AccountStore };
@@ -202,6 +203,7 @@ async function handleSave(request, env, origin) {
   if (p.size > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "存檔內容過大" }, 400);
   const record = JSON.stringify(Object.assign({ meta: meta || {} }, p.fields));
   await env.SAVES.put(kvKey(key, slot), record);
+  try { await indexSaveRecord(env, key, slot, meta, p.size); } catch (e) { console.warn("存檔索引更新失敗(不影響存檔)", e); } // 十、10.13.6：索引在存檔寫入時自動補建
   return jsonResponse(origin, { success: true, size: p.size });
 }
 
@@ -908,6 +910,8 @@ export default {
     // 10.5：管理用的用量摘要，靠管理密碼保護，不走來源白名單
     // 10.9.3.3：全站當天用量(呼叫次數、估計花費)，同一組管理密碼；不依賴KV，雲端存檔關閉時也能查
     if (reqUrl.pathname === "/usage-today" && request.method === "GET") return handleUsageToday(request, env);
+    // 十、10.13.6：管理端(存檔查看、名冊、存取紀錄)，獨立密碼SAVE_ADMIN_TOKEN，不走來源白名單
+    if (isAdminPath(reqUrl.pathname)) return handleSaveAdmin(request, env, reqUrl, { kvKey, safeEqual });
     if (reqUrl.pathname === "/usage-summary" && request.method === "GET") {
       if (!cloudEnabled(env)) return new Response(JSON.stringify({ success: false, error: "封測期間暫停雲端存檔，成本遙測也暫停(十、10.8)", cloud_disabled: true }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
       return handleUsageSummary(request, env);

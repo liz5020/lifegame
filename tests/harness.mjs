@@ -128,7 +128,8 @@ export function makeFakeResend() {
 export function makeFakeDO(Cls) {
   const store = new Map();
   const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-  const st = { storage: { get: async k => clone(store.get(k)), put: async (k, v) => { store.set(k, clone(v)); }, delete: async k => { store.delete(k); } } };
+  const st = { storage: { get: async k => clone(store.get(k)), put: async (k, v) => { store.set(k, clone(v)); }, delete: async k => { store.delete(k); },
+    list: async (o = {}) => { const out = new Map(); [...store.keys()].sort().filter(k => (!o.prefix || k.startsWith(o.prefix)) && (o.end === undefined || k < o.end)).forEach(k => out.set(k, clone(store.get(k)))); return out; } } };
   const inst = new Cls(st);
   return { _store: store, idFromName: n => n, get: () => ({ fetch: (u, init) => inst.fetch(new Request(u, init)) }) };
 }

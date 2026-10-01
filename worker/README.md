@@ -17,6 +17,8 @@ npx wrangler kv namespace list          # 找到目前這個 Worker 用的 KV（
 ```bash
 npx wrangler secret put ANTHROPIC_API_KEY   # 貼上 console.anthropic.com 的金鑰（Cloudflare 端加密保存，不進程式碼）
 npx wrangler secret put USAGE_ADMIN_TOKEN   # 2026-09-25新增：查 /usage-summary 用的管理密碼，自己設一組長一點的隨機字串
+npx wrangler secret put SAVE_ADMIN_TOKEN    # 2026-10-01新增(10.13.6管理端)：看存檔／名冊／存取紀錄的管理密碼，跟USAGE_ADMIN_TOKEN不同，另設一組長一點的隨機字串
+npx wrangler secret put SAVE_INDEX_SECRET   # 2026-10-01新增：存檔內部代號的伺服器密鑰，隨機長字串，設好後不要再換(換了舊索引就解不開，要等存檔下次寫入才補建)
 npx wrangler deploy
 ```
 

@@ -22,6 +22,7 @@ export const DEFAULT_DAILY_VERIFY_EMAIL_CAP = 80; // 10.2.1：全站每日最多
 export const SESSION_TTL_MS = 90 * 24 * 3600 * 1000; // 10.2：登入保持90天，每次使用往後延長
 export const MAX_SESSIONS_PER_ACCOUNT = 20;
 export const ACCOUNT_LIFE_MAX = 2;                // 10.9.2：綁定信箱可有2段人生
+export const ADMIN_LOG_KEEP_MS = 180 * 24 * 3600 * 1000; // 10.13.6：存取紀錄保留180天
 export const GIFTS_PER_ACCOUNT = 2;               // 10.9.3：每個信箱最多2份啟程禮
 export const GIFT_POINTS = { 1: AP_BIND_BONUS, 2: AP_SECOND_LIFE_GIFT }; // 第1份(綁定)+30點、第2份(開第2段人生)+55點；2026-09-30第三批：第1份由「補到55點」改固定+30
 export const CARRY_MAX_TOTAL = 120;               // 綁定／併入時，未綁人生帶過來的點數累計上限(封測期間本機點數玩家改得動，這裡只擋離譜的數字)
@@ -400,6 +401,51 @@ export class AccountStore {
     return { ok: true };
   }
 
+  // ---------- 十、10.13.6 管理端：存檔索引、名冊、存取紀錄(只放在Durable Object，不放KV；索引不含復原金鑰原文) ----------
+  async opSaveIndexPut(b) {
+    if (typeof b.code !== "string" || !/^[0-9a-f]{24}$/.test(b.code) || typeof b.ref !== "string" || b.ref.length > 400) return { ok: false, error: "bad_request" };
+    await this.storage.put("x:" + b.code, { ref: b.ref, info: b.info || {}, at: b.now });
+    return { ok: true };
+  }
+  async opSaveIndexList() {
+    const m = await this.storage.list({ prefix: "x:" });
+    const saves = [];
+    for (const [k, v] of m) saves.push({ code: k.slice(2), info: v.info, at: v.at });
+    saves.sort((a, b) => b.at - a.at);
+    return { ok: true, saves };
+  }
+  async opSaveIndexRef(b) {
+    const v = typeof b.code === "string" ? await this._get("x:" + b.code, null) : null;
+    return v ? { ok: true, ref: v.ref, info: v.info } : { ok: false, error: "not_found" };
+  }
+  async opSaveIndexDel(b) { await this.storage.delete("x:" + b.code); return { ok: true }; }
+  async opRoster() {
+    const m = await this.storage.list({ prefix: "a:" });
+    const accounts = [];
+    for (const [, a] of m) {
+      accounts.push({
+        aid: a.aid, email: a.email, created: a.created, lives: (a.lives || []).map(l => ({ lid: l.lid, slot: l.slot })),
+        gifts: { claimed: ["g1", "g2"].filter(k => a.gifts && a.gifts[k] === "done").length, queued: ["g1", "g2"].filter(k => a.gifts && a.gifts[k] === "queued").length, max: GIFTS_PER_ACCOUNT },
+        purchased: !!a.purchased, consent: a.consent || null
+      });
+    }
+    accounts.sort((x, y) => y.created - x.created);
+    return { ok: true, accounts };
+  }
+  // 存取紀錄：誰、何時、哪份存檔(內部代號＋人生代號)、原因；不記信箱與復原金鑰；保留180天，每次寫入順便清掉過期的
+  async opAdminLogAdd(b) {
+    const e = b.entry || {};
+    const entry = { at: b.now, who: String(e.who || "").slice(0, 40), reason: String(e.reason || "").slice(0, 200), code: String(e.code || ""), lid: e.lid || null, action: e.action === "delete" ? "delete" : "view" };
+    await this.storage.put("L:" + String(b.now).padStart(14, "0") + ":" + randomHex(3), entry);
+    const old = await this.storage.list({ prefix: "L:", end: "L:" + String(b.now - ADMIN_LOG_KEEP_MS).padStart(14, "0") });
+    for (const [k] of old) await this.storage.delete(k);
+    return { ok: true };
+  }
+  async opAdminLogList() {
+    const m = await this.storage.list({ prefix: "L:" });
+    return { ok: true, log: [...m.values()].reverse() };
+  }
+
   // 開新人生：帳號最多同時2段；帳號第一次開到第2段人生時發第2份啟程禮(發滿就排隊)
   async opLifeAdd(b) {
     const a = await this._auth(b.token, b.now);
@@ -495,6 +541,13 @@ const OPS = {
   change_email: AccountStore.prototype.opChangeEmail,
   attach_lives: AccountStore.prototype.opAttachLives,
   consent: AccountStore.prototype.opConsent,
+  save_index_put: AccountStore.prototype.opSaveIndexPut,
+  save_index_list: AccountStore.prototype.opSaveIndexList,
+  save_index_ref: AccountStore.prototype.opSaveIndexRef,
+  save_index_del: AccountStore.prototype.opSaveIndexDel,
+  roster: AccountStore.prototype.opRoster,
+  admin_log_add: AccountStore.prototype.opAdminLogAdd,
+  admin_log_list: AccountStore.prototype.opAdminLogList,
   life_add: AccountStore.prototype.opLifeAdd,
   life_remove: AccountStore.prototype.opLifeRemove,
   wallet_pre: AccountStore.prototype.opWalletPre,
