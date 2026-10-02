@@ -901,7 +901,7 @@ async function handleUsageSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.01-b";
+const WORKER_VERSION = "2026.10.01-c";
 
 export default {
   async fetch(request, env, ctx) {
@@ -916,6 +916,9 @@ export default {
       if (!cloudEnabled(env)) return new Response(JSON.stringify({ success: false, error: "封測期間暫停雲端存檔，成本遙測也暫停(十、10.8)", cloud_disabled: true }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
       return handleUsageSummary(request, env);
     }
+
+    // 版本查詢(2026-10-01)：直接用瀏覽器網址列打開時沒有Origin標頭，要查得到；只回版本號、不碰KV。有Origin但不在白名單的請求，仍照下面的來源檢查擋掉
+    if (reqUrl.pathname === "/version" && request.method === "GET" && !origin) return jsonResponse(null, { success: true, version: WORKER_VERSION });
 
     if (request.method === "OPTIONS") {
       if (!isAllowedOrigin(origin)) return new Response(null, { status: 403 });
