@@ -11,6 +11,8 @@
 ---
 
 ## 2026-10-01
+**〔續33：Worker /version直接用瀏覽器網址列查得到（版本2026.10.01-c）〕**原本`/version`排在來源白名單檢查之後，網址列直接打開沒有Origin標頭會回「來源不被允許」；改成沒有Origin標頭的GET /version放行(只回版本號、不碰KV)，有Origin但不在白名單的請求照舊回403。`tests/test-54-version.mjs`新增對應檢查；網頁只換版本號與一則更新說明(內部整理)。DEPLOY.md的查法同步改正。Worker有改，要部署。
+
 **〔續32：十、10.13.6管理端＋存檔索引（併入版本2026.10.01-b，尚未部署）〕**Worker新增`worker/save-admin.js`：存檔寫入KV後(`handleSave`)順便把索引寫進帳號Durable Object(內部代號＝HMAC-SHA256(`SAVE_INDEX_SECRET`, 金鑰|格子)前24碼；指回存檔的參照用AES-GCM加密，索引／回應／存取紀錄都沒有復原金鑰原文；沒設密鑰就不建索引、管理端503；舊存檔下次寫入時補建，不回填)；管理網址`/admin/roster`、`/admin/saves`、`/admin/save`(必填who與reason、先記錄再給看、內容遮蔽復原金鑰)、`/admin/save/delete`、`/admin/access-log`(DO儲存、保留180天)，獨立密碼`SAVE_ADMIN_TOKEN`；`account.js`新增對應DO操作。玩家端存讀檔路徑沒變。`tests/harness.mjs`的假DO補`list`；新增`tests/test-65-save-admin.mjs`；設定步驟寫進`設定說明_帳號與寄信.md`與`worker/README.md`。**Worker有改，要先設兩個secret再部署**。`/admin/usage`沒另做，用量沿用`/usage-today`、`/usage-summary`。管理端目前只有API，沒有網頁介面。
 
 **〔續31：十、10.13.3自動存檔＋取消進站年齡確認（版本2026.10.01-b）〕**`index.html`：新增`AUTO_SAVE_EVERY_TURNS`(10，【測試參數】)／`autoSaveDue()`／`autoCloudSave()`／`autoCloudSaveOnce()`／`ensureCloudHome()`(手動存與自動存共用的雲端位置)；`saveGame()`在雲端暫停時，若這段人生距上次自動存已滿10回合、或進入ending且還沒存過，就在背景存一次(同一格覆蓋；失敗不跳窗，`AUTO_SAVE_RETRY_MS`後的下一次存檔再試；示範模式、沒有同意紀錄、雲端全面打開時不走這條)；`cloudUploadState()`上傳前先補傳已結束階段的封存包(長壽人生才不會超過1MB，手動存也一起受惠)；`ensureArchivedContent()`在暫停期間改看這段人生的雲端位置，換裝置拿回後能補回封存包；手動存的提示文字改成「也會每10回合自動存」。取消進站年齡確認視窗(使用者指示)：移除`renderAgeGate()`、`ageConfirmed()`與相關CSS／綁定，`tests/test-31-homepage.mjs`對應改寫。Worker：暫停期間的開放網址表`MANUAL_SAVE_PATHS`改成每個網址可有多個方法，新增開放`/stage-pack`(POST、GET)。新增`tests/test-64-autosave.mjs`。**Worker有改，要部署**；沒有新增存檔欄位以外的結構變動(`lastAutoCloudTurn`、`autoSavedEnding`)，舊存檔照常可讀。管理端(10.13.6)尚未實作；首頁常見問題「存檔會不見嗎」「免註冊，進度自動存在這台裝置」文案尚未改(文案屬16.10，待使用者定案)。

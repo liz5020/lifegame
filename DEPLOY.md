@@ -29,7 +29,7 @@
 - Worker的來源白名單`ALLOWED_ORIGINS`（`worker/worker.js`）目前有：`lifegamepage.smile80275.workers.dev`（舊）、`lifegame-6an.pages.dev`（現行）。以後換網址或綁自訂網域，要先把新網址加進白名單。
 - `index.html`的分享連結（`og:url`、`og:image`、`SHARE_URL`）已換成新網址（2026.09.30-b）。
 - 非`master`分支的預覽建置用Settings→Builds的Preview command＝`npx wrangler versions upload`（2026-09-30由原本已淘汰的`npx wrangler preview`改過來）。
-- **推上去後確認線上版本**：`GET https://life-game.smile80275.workers.dev/version`回傳的`version`要等於這次的`WORKER_VERSION`；網頁看`https://lifegame-6an.pages.dev/`的`APP_VERSION`。
+- **推上去後確認線上版本**：用瀏覽器網址列直接打開`https://life-game.smile80275.workers.dev/version`(2026-10-01起可以，之前要帶Origin標頭才查得到)，回傳的`version`要等於這次的`WORKER_VERSION`；網頁看`https://lifegame-6an.pages.dev/`的`APP_VERSION`。
 - **推上去後用`gh`查建置狀態(2026-09-30起，本機已裝`gh`並登入)**：`gh api repos/liz5020/lifegame/commits/<commit>/check-runs --jq '.check_runs[] | {name, status, conclusion, title: .output.title}'`，會列出「Workers Builds: life-game」(Worker)與「Cloudflare Pages」(網頁)各自的狀態(`in_progress`＝還在建、`success`／`failure`)，失敗時`.output.summary`有原因與後台日誌連結。Worker建置比網頁慢，推完等到兩邊都`success`再查`/version`，別看到舊版就以為失敗。`gh`裝在`~/.local/bin/gh`(沒有Homebrew，直接下載官方執行檔)，登入用`gh auth login`(網頁授權)。
 - **建置卡在「Initializing build environment」、5分鐘後「Build failed to initialize and was timed out」**：Cloudflare建置環境沒開起來，跟程式無關（2026-09-30的2026.09.30-d碰過一次）。到後台life-game的建置紀錄按Retry build重跑即可；重跑仍失敗再改用本機`cd worker && npx wrangler deploy`（要先問使用者）。
 
@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-01 | 2026.10.01-c（尚未上傳，合併進`master`後自動部署） | 2026.10.01-c（尚未部署） | 待填 | index.html、worker | Worker `/version`改成直接用瀏覽器網址列也查得到(沒有Origin標頭時放行；有Origin但不在白名單仍擋)；網頁只換版本號與更新說明 |
 | 2026-10-01 | 2026.10.01-b（尚未上傳，合併進`master`後自動部署） | 2026.10.01-b（尚未部署） | 待填 | index.html、worker | 10.13.3自動存檔(每10回合＋人生結束)、取消進站年齡確認視窗；10.13.6管理端(`/admin/*`、存檔索引)；Worker有改(暫停期間開放`/stage-pack`、新增`save-admin.js`)要部署，並先設兩個secret：`SAVE_ADMIN_TOKEN`、`SAVE_INDEX_SECRET`(見設定說明) |
 | 2026-10-01 | 2026.10.01-a（尚未上傳，合併進`master`後自動部署） | 2026.10.01-a（尚未部署） | 待填 | index.html、worker | 10.13.2開場同意頁、隱私說明連結、同意紀錄隨存檔與帳號(`/account/consent`)；Worker有改(account.js／account-routes.js)要部署 |
 | 2026-09-30 | 2026.09.30-h（隨`master`自動部署） | 2026.09.30-h（隨`master`自動部署） | 見git log | index.html、worker | 第三批：未綁信箱啟程禮改25點(只領1次、同時1段)、綁定再+30(取代補到55)、正式網址(lifegame-6an.pages.dev)預設真AI、其他網址仍預設示範；封測直接開放 |

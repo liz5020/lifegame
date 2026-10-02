@@ -54,6 +54,8 @@ A.check("已讀的是舊版本：又出現紅點", !!doc.querySelector("#btn-dra
 // Worker /version
 const ok = await H.callWorker(env, { method: "GET", path: "/version" });
 A.check("Worker GET /version 回傳WORKER_VERSION", ok.status === 200 && ok.json && ok.json.version === workerVer, ok.text);
+const direct = await H.callWorker(env, { method: "GET", path: "/version", origin: null });
+A.check("Worker /version 直接用瀏覽器網址列(沒有Origin標頭)也查得到(2026-10-01)", direct.status === 200 && direct.json && direct.json.version === workerVer, direct.text);
 const bad = await H.callWorker(env, { method: "GET", path: "/version", origin: "https://evil.example.com" });
 A.check("Worker /version 不在來源白名單的請求仍被擋", bad.status === 403, bad.status);
 const paused = await H.callWorker(H.makeEnv({ CLOUD_SAVE_ENABLED: "false" }), { method: "GET", path: "/version" });
