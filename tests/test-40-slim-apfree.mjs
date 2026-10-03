@@ -2,7 +2,7 @@
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("回傳資料精簡＋不扣行動點開關");
 const js = (g, x) => JSON.parse(g.ev(`JSON.stringify(${x})`));
-const apRec = async (env, key) => JSON.parse(await env.SAVES.get(`ap:${key}:0`));
+const apRec = async (env, key) => JSON.parse(await env.SAVES.get(`ap:${H.loc(key)}:0`));
 const apSum = (r) => r.daily + r.gift + r.purchased;
 
 // ---------- 一、資料精簡：假上游只回必填欄位(真實路徑：callAI→Worker→假上游) ----------
@@ -30,7 +30,8 @@ H.installUpstream(H.makeFakeAnthropic({
   }
 }));
 const TEST_KEY = "apfree0001";
-const env = H.makeEnv({ AP_TEST_KEYS: "someoneelse, " + TEST_KEY });
+// 10.8.2：AP_TEST_KEYS名單存門牌
+const env = H.makeEnv({ AP_TEST_KEYS: H.loc("someoneelse") + ", " + H.loc(TEST_KEY) });
 {
   const g = await H.loadGame({ useMock: false, env, key: "slim000001" });
   await H.startNewLife(g);
@@ -102,14 +103,14 @@ variant = "minimal";
   const apText = g.win.document.getElementById("ap-total").textContent;
   A.check("開關(測試鑰匙)：頂部顯示「∞ 測試中」", apText.includes("∞ 測試中"), apText);
   // 行動點歸零時也照玩
-  await env.SAVES.put(`ap:${TEST_KEY}:0`, JSON.stringify(Object.assign(rec1, { daily: 0, gift: 0, purchased: 0 })));
+  await env.SAVES.put(`ap:${H.loc(TEST_KEY)}:0`, JSON.stringify(Object.assign(rec1, { daily: 0, gift: 0, purchased: 0 })));
   g.ev("state.ap.daily=0; state.ap.gift=0; state.ap.purchased=0; render()");
   A.check("開關(測試鑰匙)：點數0時選項不停用", !g.win.document.querySelector("#story-choices button[disabled]"));
   await H.playTurn(g);
   A.check("開關(測試鑰匙)：點數0時照樣能玩一回合", g.ev("state.turnCount") === turns0 + 4 && !js(g, "state.log[state.log.length-1]").error);
   // 關掉之後照常扣
   g.ev("setApTestFree(false)");
-  await env.SAVES.put(`ap:${TEST_KEY}:0`, JSON.stringify(Object.assign(await apRec(env, TEST_KEY), { daily: 5 })));
+  await env.SAVES.put(`ap:${H.loc(TEST_KEY)}:0`, JSON.stringify(Object.assign(await apRec(env, TEST_KEY), { daily: 5 })));
   g.ev("state.ap.daily=5");
   await H.playTurn(g);
   A.check("開關關閉後：照常扣1點", apSum(await apRec(env, TEST_KEY)) === 4, apSum(await apRec(env, TEST_KEY)));

@@ -141,7 +141,7 @@ A.check("5 AI呼叫照常(假上游)", fake.calls ? fake.calls.length >= 5 : tru
   A.check("M2 按一次＝雲端寫入1次(沒有其他KV操作)", cS.put === 1 && cS.get === 0 && cS.delete === 0 && cS.list === 0 && pA.filter(p => p === "/save").length === 1, cS);
   const modal = gA.win.document.getElementById("manual-save-modal");
   A.check("M3 顯示「已存到雲端」與復原金鑰", !!modal && modal.textContent.includes("已存到雲端") && modal.textContent.includes(keyA));
-  A.check("M4 存的內容不含反悔快照、壓縮過", (() => { const r = JSON.parse(envS.SAVES._m.get(`save:${keyA}:0`).v); return r.enc === "gzip-b64"; })());
+  A.check("M4 存的內容不含反悔快照、壓縮過", (() => { const r = JSON.parse(envS.SAVES._m.get(`save:${H.loc(keyA)}:0`).v); return r.enc === "gzip-b64"; })());
   const apA = gA.ev("totalAP(state)"), turnsA = gA.ev("state.turnCount"), lifeA = gA.ev("state.lifeId");
   // 存完之後再玩：雲端不再增加
   const putsAfterSave = cS.put;
@@ -182,7 +182,7 @@ A.check("5 AI呼叫照常(假上游)", fake.calls ? fake.calls.length >= 5 : tru
   gC.win.document.getElementById("key-view-modal").remove();
   await H.playTurn(gC); await sleep(20);
   await gC.ev("manualCloudSave()");
-  A.check("M14 再存：存回原本那把金鑰的同一格", JSON.parse(envS.SAVES._m.get(`save:${keyA}:0`).v).meta.name === "周雲端" && !envS.SAVES._m.has("save:devicec01:1") && gC.win.document.getElementById("manual-save-modal").textContent.includes(keyA));
+  A.check("M14 再存：存回原本那把金鑰的同一格", JSON.parse(envS.SAVES._m.get(`save:${H.loc(keyA)}:0`).v).meta.name === "周雲端" && !envS.SAVES._m.has(`save:${H.loc("devicec01")}:1`) && gC.win.document.getElementById("manual-save-modal").textContent.includes(keyA));
   // 打錯金鑰
   await gC.ev(`showCloudPicker("nosuchkey99")`);
   A.check("M15 打錯金鑰：提示雲端沒有存檔", gC.ev("state.notice||''").includes("沒有存檔"));
@@ -211,7 +211,7 @@ A.check("5 AI呼叫照常(假上游)", fake.calls ? fake.calls.length >= 5 : tru
   const gc = await H.loadGame({ useMock: true, env: envC, key: "cloudon01", cloud: true });
   await H.startNewLife(gc);
   await H.playTurn(gc); await gc.ev("saveGame()"); await sleep(30);
-  A.check("開關打開：照舊上傳雲端存檔", envC.SAVES._m.has("save:cloudon01:0") && gc.ev("CLOUD_SAVE_ENABLED") === true);
+  A.check("開關打開：照舊上傳雲端存檔", envC.SAVES._m.has(`save:${H.loc("cloudon01")}:0`) && gc.ev("CLOUD_SAVE_ENABLED") === true);
 }
 
 const ok = A.report();

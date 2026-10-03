@@ -2,6 +2,7 @@
 // Worker呼叫Anthropic的部分導向假的上游(fakeAnthropic)，全程不會打到真實API。
 // 需要jsdom：cd tests && npm i jsdom（或沿用已安裝的node_modules）
 import fs from "fs";
+import { createHmac } from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 import { JSDOM, VirtualConsole } from "jsdom";
@@ -9,6 +10,13 @@ import { JSDOM, VirtualConsole } from "jsdom";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..");
 export const ORIGIN = "https://lifegamepage.smile80275.workers.dev";
+
+// 十、10.8.2（2026-10-04）：存放位置改用金鑰的門牌。測試用的位置密鑰與同步版的門牌計算(跟worker/location.js同一個算法：統一格式→HMAC-SHA256→64碼十六進位)，
+// 測試要直接看／改KV時用 loc("金鑰") 取代金鑰原文，例如 `save:${loc(key)}:0`
+export const LOC_SECRET = "test-location-secret-0123456789abcdef0123456789abcdef";
+export function loc(key, secret = LOC_SECRET) {
+  return createHmac("sha256", secret).update(String(key).toUpperCase().replace(/[\s-]+/g, "")).digest("hex");
+}
 
 export function memoryKV() {
   const m = new Map();
@@ -145,7 +153,7 @@ export async function makeAccountEnv(extra) {
 
 export function makeEnv(extra) {
   // 十、10.8（2026-09-29）：既有測試驗證的是雲端打開時的行為，預設打開；測雲端暫停的測試傳{CLOUD_SAVE_ENABLED:"false"}
-  return Object.assign({ SAVES: memoryKV(), ANTHROPIC_API_KEY: "test-key", USAGE_ADMIN_TOKEN: "admin-secret", CLOUD_SAVE_ENABLED: "true" }, extra || {});
+  return Object.assign({ SAVES: memoryKV(), ANTHROPIC_API_KEY: "test-key", USAGE_ADMIN_TOKEN: "admin-secret", CLOUD_SAVE_ENABLED: "true", SAVE_LOCATION_SECRET: LOC_SECRET }, extra || {});
 }
 
 // 直接打Worker（模擬繞過前端的請求）

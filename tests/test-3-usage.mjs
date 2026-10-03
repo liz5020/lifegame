@@ -22,25 +22,25 @@ A.check("回應附帶本次用量與估計花費(快取寫入回合US$0.066)", r
 usageFn = () => ({ input_tokens: 3000, cache_creation_input_tokens: 0, cache_read_input_tokens: 20000, output_tokens: 1000 });
 const n = "regenxxxxx1";
 await turn("ua", "lifeaaa1", n); await turn("ua", "lifeaaa1", n); // 1回合＋1次重新生成
-const life = JSON.parse(await env.SAVES.get("usage:life:ua:0:lifeaaa1"));
+const life = JSON.parse(await env.SAVES.get(`usage:life:${H.loc("ua")}:0:lifeaaa1`));
 A.check("每把金鑰＋slot＋這一世累計：3次呼叫、2個回合(重新生成不算回合)", life.turn.calls === 3 && life.turn.turns === 2, life.turn);
 A.check("累計token正確", life.turn.input === 9000 && life.turn.cache_write === 20000 && life.turn.cache_read === 40000 && life.turn.output === 3000, life.turn);
 fail = true; await turn("ua", "lifeaaa1"); fail = false;
-A.check("Anthropic失敗(沒有usage)：不記錄", JSON.parse(await env.SAVES.get("usage:life:ua:0:lifeaaa1")).turn.calls === 3);
+A.check("Anthropic失敗(沒有usage)：不記錄", JSON.parse(await env.SAVES.get(`usage:life:${H.loc("ua")}:0:lifeaaa1`)).turn.calls === 3);
 bad = true; await turn("ua", "lifeaaa1"); bad = false;
-const life2 = JSON.parse(await env.SAVES.get("usage:life:ua:0:lifeaaa1"));
+const life2 = JSON.parse(await env.SAVES.get(`usage:life:${H.loc("ua")}:0:lifeaaa1`));
 A.check("AI回傳格式壞掉：有產生費用所以記為呼叫，但不算回合", life2.turn.calls === 4 && life2.turn.turns === 2, life2.turn);
 await turn("ub", "lifebbb1"); await turn("ub", "lifebbb1");
 const day = JSON.parse(await env.SAVES.get("usage:day:2026-09-25"));
 A.check("每日全站合計(台灣日期)：6次呼叫、4個回合", day.turn.calls === 6 && day.turn.turns === 4, day.turn);
 A.check("記錄最大請求字數", day.max_payload_chars === payload.length);
 // 章節類別另計
-await recordUsage(env, { key: "ua", slot: 0, lifeId: "lifeaaa1", category: "chapter", usage: { input_tokens: 4000, output_tokens: 3000 }, countsAsTurn: false, taipeiDate: "2026-09-25" });
+await recordUsage(env, { key: H.loc("ua"), slot: 0, lifeId: "lifeaaa1", category: "chapter", usage: { input_tokens: 4000, output_tokens: 3000 }, countsAsTurn: false, taipeiDate: "2026-09-25" });
 const day2 = JSON.parse(await env.SAVES.get("usage:day:2026-09-25"));
 A.check("chapter類別跟一般回合分開統計", day2.chapter.calls === 1 && day2.turn.calls === 6 && day2.chapter.output === 3000);
 // 昨天、8天前
-await recordUsage(env, { key: "uc", slot: 0, lifeId: "lifeccc1", category: "turn", usage: { input_tokens: 1000000 }, countsAsTurn: true, taipeiDate: "2026-09-24" });
-await recordUsage(env, { key: "uc", slot: 0, lifeId: "lifeccc1", category: "turn", usage: { input_tokens: 1000000 }, countsAsTurn: true, taipeiDate: "2026-09-17" });
+await recordUsage(env, { key: H.loc("uc"), slot: 0, lifeId: "lifeccc1", category: "turn", usage: { input_tokens: 1000000 }, countsAsTurn: true, taipeiDate: "2026-09-24" });
+await recordUsage(env, { key: H.loc("uc"), slot: 0, lifeId: "lifeccc1", category: "turn", usage: { input_tokens: 1000000 }, countsAsTurn: true, taipeiDate: "2026-09-17" });
 // 遙測失敗不影響回合
 const envBroken = H.makeEnv({ TEST_NOW_MS: env.TEST_NOW_MS });
 const origPut = envBroken.SAVES.put.bind(envBroken.SAVES);

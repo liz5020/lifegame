@@ -107,7 +107,7 @@ g.ev("state.book.chapters[state.book.chapters.length-1].status = 'pending'");
 g.ev("state.book.chapters.push({id:'extrafail1', index: state.book.chapters.length+1, key:'adult-old', label:'老年', part:9, ageFrom: state.age, ageTo: state.age, items:[{t:'老年',s:'最後的日子'}], events:[], status:'failed', attempts:3, createdTurn: state.turnCount})"); // 模擬有一章自動重試3次都失敗
 await g.ev("endLife('ended')");
 await sleep(50);
-const arch = [...envM.SAVES._m.keys()].find(k => k.startsWith("archive:bookmock1:"));
+const arch = [...envM.SAVES._m.keys()].find(k => k.startsWith(`archive:${H.loc("bookmock1")}:`));
 A.check("闔卷：封存到Worker成功", !!arch);
 if (!arch) { A.report(); process.exit(1); }
 // 十、10.7（2026-09-29）：人生封存改成壓縮上傳(gzip-b64)

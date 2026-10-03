@@ -320,8 +320,10 @@ export class AccountStore {
     if (!chk.ok) return chk;
     if (await this._get("e:" + email, null)) return { ok: false, error: "email_exists" };
     const key = typeof b.key === "string" && b.key.length > 0 && b.key.length <= 100 ? b.key : null;
-    if (!key) return { ok: false, error: "bad_key" };
-    if (await this._get("k:" + key, null)) return { ok: false, error: "key_linked" }; // 一個信箱只能綁一把金鑰，這把金鑰也不能綁兩個信箱
+    const loc = typeof b.loc === "string" && /^[0-9a-f]{64}$/.test(b.loc) ? b.loc : null; // 十、10.8.2：「金鑰→帳號」對照改以門牌為索引(Worker算好傳進來)，不再存金鑰原文
+    if (!key || !loc) return { ok: false, error: "bad_key" };
+    if (await this._get("kl:" + loc, null)) return { ok: false, error: "key_linked" }; // 一個信箱只能綁一把金鑰，這把金鑰也不能綁兩個信箱
+    if (!(await this._get("loc:off", false)) && await this._get("k:" + key, null)) return { ok: false, error: "key_linked" }; // 10.13.6門牌改版保險期：搬遷前的舊對照(以金鑰原文為名)也要擋；清理後移除
     const ctx = this._ctx(b);
     const a = { aid: randomHex(8), email, key, created: b.now, purchased: false, wallet: freshWallet(b.date), refillDate: b.date,
       lives: [], gifts: { g1: "none", g2: "none" }, events: [], sessions: [], carried: 0 };
@@ -332,7 +334,7 @@ export class AccountStore {
     const token = await this._newSession(a, b.now);
     await this._putAcct(a);
     await this.storage.put("e:" + email, a.aid);
-    await this.storage.put("k:" + key, a.aid);
+    await this.storage.put("kl:" + loc, a.aid);
     return this._out(a, { token, result: { kind: "bind", gift, accepted: attach.accepted, overflow: attach.overflow, carried: attach.carried } }, flags, await this._giftStats(ctx));
   }
   // 用信箱登入：有帳號＝新增這台裝置的登入狀態、裝置上的未綁人生併入(超過2段的留在原金鑰)、剩餘點數併入錢包、不發啟程禮；
@@ -408,21 +410,72 @@ export class AccountStore {
   }
 
   // ---------- 十、10.13.6 管理端：存檔索引、名冊、存取紀錄(只放在Durable Object，不放KV；索引不含復原金鑰原文) ----------
+  // 2026-10-04(10.13.6門牌改版)：索引改以「門牌＋格子」為名(y:門牌:格子)，只存資訊與時間，不存金鑰原文也不存加密參照；
+  // 舊的x:內部代號索引只留到搬遷清理(legacy_*)，搬遷時讀它的最後存檔時間
   async opSaveIndexPut(b) {
-    if (typeof b.code !== "string" || !/^[0-9a-f]{24}$/.test(b.code) || typeof b.ref !== "string" || b.ref.length > 400) return { ok: false, error: "bad_request" };
-    await this.storage.put("x:" + b.code, { ref: b.ref, info: b.info || {}, at: b.now });
+    if (typeof b.loc !== "string" || !/^[0-9a-f]{64}$/.test(b.loc) || !Number.isInteger(b.slot) || b.slot < 0 || b.slot > 2) return { ok: false, error: "bad_request" };
+    const k = "y:" + b.loc + ":" + b.slot;
+    if (b.only_if_missing && await this._get(k, null)) return { ok: true, existed: true };
+    await this.storage.put(k, { info: b.info || {}, at: b.at !== undefined ? b.at : b.now });
     return { ok: true };
   }
   async opSaveIndexList() {
-    const m = await this.storage.list({ prefix: "x:" });
+    const m = await this.storage.list({ prefix: "y:" });
     const saves = [];
-    for (const [k, v] of m) saves.push({ code: k.slice(2), info: v.info, at: v.at });
-    saves.sort((a, b) => b.at - a.at);
+    for (const [k, v] of m) saves.push({ loc: k.slice(2, 66), slot: Number(k.slice(67)), info: v.info, at: v.at });
+    saves.sort((a, b) => (b.at || 0) - (a.at || 0));
     return { ok: true, saves };
   }
-  async opSaveIndexRef(b) {
+  async opSaveIndexGet(b) {
+    const v = typeof b.loc === "string" ? await this._get("y:" + b.loc + ":" + b.slot, null) : null;
+    return v ? { ok: true, info: v.info, at: v.at } : { ok: false, error: "not_found" };
+  }
+  async opSaveIndexDel(b) { await this.storage.delete("y:" + b.loc + ":" + b.slot); return { ok: true }; }
+  // 搬遷用：舊索引(x:內部代號)只讀它的最後存檔時間
+  async opLegacyIndexAt(b) {
     const v = typeof b.code === "string" ? await this._get("x:" + b.code, null) : null;
-    return v ? { ok: true, ref: v.ref, info: v.info, at: v.at } : { ok: false, error: "not_found" };
+    return v ? { ok: true, at: v.at } : { ok: false, error: "not_found" };
+  }
+  // 搬遷用：已綁信箱帳號的金鑰(只給Worker算成門牌，不回給任何人)；「金鑰→帳號」對照補成以門牌為名(不覆蓋)
+  async opAcctKeys() {
+    const out = [];
+    for (const [, a] of await this.storage.list({ prefix: "a:" })) if (a && a.key) out.push({ aid: a.aid, key: a.key });
+    return { ok: true, accounts: out };
+  }
+  async opKlSync(b) {
+    let put = 0;
+    for (const e of Array.isArray(b.entries) ? b.entries : []) {
+      if (!e || !/^[0-9a-f]{64}$/.test(e.loc) || typeof e.aid !== "string") continue;
+      if (!(await this._get("kl:" + e.loc, null))) { await this.storage.put("kl:" + e.loc, e.aid); put++; }
+    }
+    return { ok: true, put };
+  }
+  async opKlHas(b) { return { ok: true, has: typeof b.loc === "string" && (await this._get("kl:" + b.loc, null)) !== null }; }
+  async opLocCounts() {
+    const c = async p => (await this.storage.list({ prefix: p })).size;
+    return { ok: true, legacy_k: await c("k:"), legacy_x: await c("x:"), kl: await c("kl:"), y: await c("y:"), accounts: await c("a:") };
+  }
+  // 搬遷與保險期狀態：dry_at(試算時間)、reconciled_at(對帳通過時間＝保險期起點，同時把改讀舊位置次數歸零)、off(保險功能已關)、cleaned(清理完成)、fb(改讀舊位置次數)
+  async opLocState() {
+    const g = async k => await this._get("loc:" + k, null);
+    return { ok: true, dry_at: await g("dry_at"), reconciled_at: await g("reconciled_at"), off: !!(await g("off")), cleaned: !!(await g("cleaned")), fb: Number(await g("fb")) || 0 };
+  }
+  async opLocSet(b) {
+    if (!["dry_at", "reconciled_at", "off", "cleaned"].includes(b.name)) return { ok: false, error: "bad_request" };
+    await this.storage.put("loc:" + b.name, b.name === "off" || b.name === "cleaned" ? true : b.now);
+    if (b.name === "reconciled_at") await this.storage.put("loc:fb", 0);
+    return { ok: true };
+  }
+  async opLocFbHit() {
+    await this.storage.put("loc:fb", (Number(await this._get("loc:fb", 0)) || 0) + 1);
+    return { ok: true };
+  }
+  // 清理步驟二：舊內部代號索引與以金鑰原文為名的舊對照全部刪掉
+  async opLocPurgeLegacy() {
+    let x = 0, k = 0;
+    for (const [n] of await this.storage.list({ prefix: "x:" })) { await this.storage.delete(n); x++; }
+    for (const [n] of await this.storage.list({ prefix: "k:" })) { await this.storage.delete(n); k++; }
+    return { ok: true, x, k };
   }
   // 10.13.3(2026-10-03補充二)：封存包寫入頻率限制——同一來源位址每小時最多N次(預設60)；計數放這個DO、不放KV(KV是「暫停期間不碰」的對象)；順便清掉過去小時的計數
   async opPackRate(b) {
@@ -435,7 +488,6 @@ export class AccountStore {
     for (const [old] of await this.storage.list({ prefix: "r:", end: "r:" + hour })) await this.storage.delete(old);
     return { ok: true, allowed: true };
   }
-  async opSaveIndexDel(b) { await this.storage.delete("x:" + b.code); return { ok: true }; }
   async opRoster() {
     const m = await this.storage.list({ prefix: "a:" });
     const accounts = [];
@@ -452,7 +504,7 @@ export class AccountStore {
   // 存取紀錄：誰、何時、哪份存檔(內部代號＋人生代號)、原因；不記信箱與復原金鑰；保留180天，每次寫入順便清掉過期的
   async opAdminLogAdd(b) {
     const e = b.entry || {};
-    const entry = { at: b.now, who: String(e.who || "").slice(0, 40), reason: String(e.reason || "").slice(0, 200), code: String(e.code || ""), lid: e.lid || null, action: ["delete", "roster"].includes(e.action) ? e.action : "view" };
+    const entry = { at: b.now, who: String(e.who || "").slice(0, 40), reason: String(e.reason || "").slice(0, 200), code: String(e.code || ""), lid: e.lid || null, action: ["delete", "roster", "location-migrate-dry", "location-migrate", "location-migrate-result", "location-cleanup", "location-cleanup-result", "location-status"].includes(e.action) ? e.action : "view" };
     await this.storage.put("L:" + String(b.now).padStart(14, "0") + ":" + randomHex(3), entry);
     const old = await this.storage.list({ prefix: "L:", end: "L:" + String(b.now - ADMIN_LOG_KEEP_MS).padStart(14, "0") });
     for (const [k] of old) await this.storage.delete(k);
@@ -619,7 +671,16 @@ const OPS = {
   consent: AccountStore.prototype.opConsent,
   save_index_put: AccountStore.prototype.opSaveIndexPut,
   save_index_list: AccountStore.prototype.opSaveIndexList,
-  save_index_ref: AccountStore.prototype.opSaveIndexRef,
+  save_index_get: AccountStore.prototype.opSaveIndexGet,
+  legacy_index_at: AccountStore.prototype.opLegacyIndexAt,
+  acct_keys: AccountStore.prototype.opAcctKeys,
+  kl_sync: AccountStore.prototype.opKlSync,
+  kl_has: AccountStore.prototype.opKlHas,
+  loc_counts: AccountStore.prototype.opLocCounts,
+  loc_state: AccountStore.prototype.opLocState,
+  loc_set: AccountStore.prototype.opLocSet,
+  loc_fb_hit: AccountStore.prototype.opLocFbHit,
+  loc_purge_legacy: AccountStore.prototype.opLocPurgeLegacy,
   save_index_del: AccountStore.prototype.opSaveIndexDel,
   pack_rate: AccountStore.prototype.opPackRate,
   roster: AccountStore.prototype.opRoster,

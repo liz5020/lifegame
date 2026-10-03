@@ -95,6 +95,7 @@ import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
 import { handleSaveAdmin, isAdminPath, indexSaveRecord } from "./save-admin.js";
+import { relocateRequest, locationId, locationSecretOk, isLoc } from "./location.js";
 
 // Durable Object類別一定要從Worker主檔匯出(wrangler.toml的binding用類別名稱找)
 export { UsageCounter, AccountStore };
@@ -146,9 +147,10 @@ function isValidKey(key) {
   return typeof key === "string" && key.length > 0 && key.length <= MAX_KEY_LENGTH;
 }
 // 十、10.3.12（2026-09-29）：測試鑰匙名單＝secret AP_TEST_KEYS(逗號分隔)；沒設定就沒有任何人有效
+// 十、10.8.2（2026-10-04定案）：名單改為只存門牌(64碼十六進位)；這裡收到的key已經是請求入口換好的門牌，直接比對
 function isApTestKey(env, key) {
-  if (!env || typeof env.AP_TEST_KEYS !== "string" || !isValidKey(key)) return false;
-  return env.AP_TEST_KEYS.split(",").map(k => k.trim()).filter(Boolean).includes(key);
+  if (!env || typeof env.AP_TEST_KEYS !== "string" || !isLoc(key)) return false;
+  return env.AP_TEST_KEYS.split(",").map(k => k.trim().toLowerCase()).filter(Boolean).includes(key);
 }
 function isValidSlot(slot) {
   return Number.isInteger(slot) && slot >= 0 && slot < MAX_SLOTS;
@@ -351,13 +353,19 @@ export async function cleanupOrphanStagePacks(env) {
       let rec; try { rec = JSON.parse(raw); } catch (e) { continue; }
       if (!Number.isFinite(rec.at)) { rec.at = now; await env.SAVES.put(k.name, JSON.stringify(rec)); continue; }
       if (now - rec.at < maxAge) continue;
-      const key = k.name.slice("stagepack:".length, k.name.lastIndexOf(":"));
-      if (!hasMain.has(key)) {
+      // 10.8.2：封存包名稱裡是門牌；搬遷前的舊名稱裡是金鑰原文(算出門牌，兩種位置的主存檔都看)
+      const who = k.name.slice("stagepack:".length, k.name.lastIndexOf(":"));
+      const legacyKey = isLoc(who) ? null : who;
+      const loc = legacyKey === null ? who : await locationId(env, legacyKey);
+      if (!loc) continue; // 位置密鑰沒設好：寧可不清，也不要誤刪
+      if (!hasMain.has(who)) {
         let any = false;
-        for (let slot = 0; slot < MAX_SLOTS && !any; slot++) any = (await env.SAVES.get(kvKey(key, slot))) !== null;
-        hasMain.set(key, any);
+        for (let slot = 0; slot < MAX_SLOTS && !any; slot++) {
+          any = (await env.SAVES.get(kvKey(loc, slot))) !== null || (legacyKey !== null && (await env.SAVES.get(kvKey(legacyKey, slot))) !== null);
+        }
+        hasMain.set(who, any);
       }
-      if (!hasMain.get(key)) { await env.SAVES.delete(k.name); deleted++; }
+      if (!hasMain.get(who)) { await env.SAVES.delete(k.name); deleted++; }
     }
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
@@ -1005,7 +1013,7 @@ async function handleStatsSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.04-c";
+const WORKER_VERSION = "2026.10.04-d";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
@@ -1056,6 +1064,21 @@ export default {
       try { if (usageCounterStub(env)) await usageCall(env, "pv"); } catch (e) { console.warn("瀏覽人次記錄失敗：" + (e && e.message || e)); }
       return jsonResponse(origin, { success: true });
     }
+    // 十、10.8.2（2026-10-04）：請求帶的金鑰在這裡換成門牌，後面的處理函式拿到的key都是門牌；搬遷保險期讀不到時改讀舊位置(withLocation)
+    // 帳號路由自己處理(綁定時帶原本的金鑰進來算門牌)，不經過這裡
+    let req = request, e = env;
+    if (!isAccountPath(url.pathname)) {
+      const rel = await relocateRequest(request, env, url, (status, msg) => jsonResponse(origin, { success: false, error: msg }, status));
+      if (rel.response) return rel.response;
+      req = rel.request; e = rel.env;
+    }
+    return routeRequest(req, e, ctx, origin, url);
+  }
+};
+
+// 路由本體(原fetch在來源檢查之後的部分)：此時request／env裡的金鑰已經是門牌
+async function routeRequest(request, env, ctx, origin, url) {
+  {
     // 十、10.2（2026-09-30，第二批）：帳號路由——資料在Durable Object，不碰KV；頻率限制一律用不經KV的Cloudflare Rate Limiting，雲端存檔開或關都一樣
     if (isAccountPath(url.pathname)) {
       if (!(await checkRateLimitNoKV(request, env))) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);
@@ -1097,4 +1120,4 @@ export default {
     if (request.method !== "POST") return new Response("Only POST is allowed", { status: 405 });
     return handleAIProxy(request, env, origin, ctx);
   }
-};
+}

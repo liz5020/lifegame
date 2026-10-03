@@ -15,6 +15,7 @@ import { jsonResponse } from "./http.js";
 import { accountsCall, accountStore, bearerToken, syncGiftStats, spendGate } from "./gate.js";
 import { sendMail, verifyMail } from "./mail.js";
 import { isValidNonce, isValidLifeId } from "./ap.js";
+import { locationId, locationSecretOk } from "./location.js";
 
 const CODE_ERRORS = ["no_code", "code_expired", "code_locked", "wrong_code"];
 function statusFor(error) {
@@ -76,7 +77,12 @@ export async function handleAccountRoute(request, env, origin, ctx, url) {
     return jsonResponse(origin, { success: true, next_send_in: r.next_send_in, expires_in: r.expires_in });
   }
   if (path === "/account/bind") {
-    return reply(origin, await accountsCall(env, { op: "bind", email: body.email, code: body.code, key: body.key, lives: body.lives }), ctx, env);
+    // 十、10.8.2：「金鑰→帳號」對照以門牌記錄，這裡把玩家的金鑰算成門牌傳進去；帳號紀錄本身仍保留金鑰(給新裝置登入時交還，不在本次範圍)
+    if (typeof body.key !== "string" || !body.key || body.key.length > 100) return jsonResponse(origin, { success: false, error: "bad_key" }, 400);
+    if (!locationSecretOk(env)) return jsonResponse(origin, { success: false, error: "位置密鑰尚未設定或格式不正確，暫時無法綁定" }, 503);
+    const loc = await locationId(env, body.key);
+    if (!loc) return jsonResponse(origin, { success: false, error: "bad_key" }, 400);
+    return reply(origin, await accountsCall(env, { op: "bind", email: body.email, code: body.code, key: body.key, loc, lives: body.lives }), ctx, env);
   }
   if (path === "/account/login") {
     return reply(origin, await accountsCall(env, { op: "login", email: body.email, code: body.code, lives: body.lives }), ctx, env);

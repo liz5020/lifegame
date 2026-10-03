@@ -7,7 +7,7 @@ const env = H.makeEnv();
 const KEY = "cloudkey01";
 const kvRecord = (k) => JSON.parse(env.SAVES._m.get(k).v);
 const decode = (rec) => rec.z ? JSON.parse(zlib.gunzipSync(Buffer.from(rec.z, "base64")).toString("utf8")) : rec.state;
-const cloudSave = () => decode(kvRecord(`save:${KEY}:0`));
+const cloudSave = () => decode(kvRecord(`save:${H.loc(KEY)}:0`));
 const waitFor = async (fn, ms = 4000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (fn()) return true; await sleep(20); } return false; };
 
 const g = await H.loadGame({ useMock: true, env, key: KEY, slot: 0 });
@@ -19,7 +19,7 @@ for (let i = 0; i < 6; i++) await H.playTurn(g);
 await ev("saveGame()");
 
 // ---------- 1. 雲端不含反悔快照 ----------
-const rec1 = kvRecord(`save:${KEY}:0`);
+const rec1 = kvRecord(`save:${H.loc(KEY)}:0`);
 const c1 = decode(rec1);
 A.check("1 雲端上傳內容不含反悔快照(本機有)", !c1.snapshot && !!ev("!!state.snapshot"));
 // ---------- 3. 壓縮、還原一致 ----------
@@ -35,13 +35,13 @@ for (let i = 0; i < 3; i++) { await H.playTurn(g); H.clickModals(g.win); }
 await waitFor(() => ev("state.book.chapters.filter(c=>c.key==='highschool').every(c=>c.status==='done')"));
 await ev("saveGame()");
 const packs = JSON.parse(ev("JSON.stringify(state.stagePacks)"));
-A.check("4 高中階段結束：產生封存包並上傳", packs.length === 1 && packs[0].key === "highschool" && packs[0].uploaded === true && packs[0].count === hsCount && env.SAVES._m.has(`stagepack:${KEY}:${packs[0].id}`), packs);
-const pk = decode(kvRecord(`stagepack:${KEY}:${packs[0].id}`));
+A.check("4 高中階段結束：產生封存包並上傳", packs.length === 1 && packs[0].key === "highschool" && packs[0].uploaded === true && packs[0].count === hsCount && env.SAVES._m.has(`stagepack:${H.loc(KEY)}:${packs[0].id}`), packs);
+const pk = decode(kvRecord(`stagepack:${H.loc(KEY)}:${packs[0].id}`));
 A.check("4 封存包有那一段的日記與人生之書(壓縮)", pk.log.length === hsCount && pk.chapters.length >= 1 && pk.chapters.every(c => c.key === "highschool" && c.status === "done"), { log: pk.log.length, ch: pk.chapters.length });
 const c2 = cloudSave();
 A.check("4 之後的日常同步不再包含該階段內容", c2.log.length === ev("state.log.length") - hsCount && c2.logOffset === hsCount && c2.book.chapters.filter(c => c.key === "highschool").every(c => c.packed && !c.text), { cloudLog: c2.log.length, local: ev("state.log.length") });
 A.check("4 同一台裝置：本機日記照樣完整", ev("state.log.length") === hsCount + 3 && !ev("state.logOffset"));
-A.check("4 封存包只上傳一次", await (async () => { const before = env.SAVES._m.get(`stagepack:${KEY}:${packs[0].id}`).v; env.SAVES._m.get(`stagepack:${KEY}:${packs[0].id}`).v = "SENTINEL"; await ev("saveGame()"); const same = env.SAVES._m.get(`stagepack:${KEY}:${packs[0].id}`).v === "SENTINEL"; env.SAVES._m.get(`stagepack:${KEY}:${packs[0].id}`).v = before; return same; })());
+A.check("4 封存包只上傳一次", await (async () => { const before = env.SAVES._m.get(`stagepack:${H.loc(KEY)}:${packs[0].id}`).v; env.SAVES._m.get(`stagepack:${H.loc(KEY)}:${packs[0].id}`).v = "SENTINEL"; await ev("saveGame()"); const same = env.SAVES._m.get(`stagepack:${H.loc(KEY)}:${packs[0].id}`).v === "SENTINEL"; env.SAVES._m.get(`stagepack:${H.loc(KEY)}:${packs[0].id}`).v = before; return same; })());
 
 // ---------- 2／5. 換裝置 ----------
 const fullLog = JSON.parse(ev("JSON.stringify(state.log)"));
@@ -79,13 +79,13 @@ A.check("2 在新裝置玩了一回合後，就能反悔這一回合", !!g2.win.
   for (let i = 0; i < 2; i++) { await H.playTurn(g3); H.clickModals(g3.win); }
   await waitFor(() => e3("state.book.chapters.filter(c=>c.key==='highschool').every(c=>c.status==='done')"));
   await e3("saveGame()");
-  const cl = decode(kvRecord("save:cloudkey02:0"));
+  const cl = decode(kvRecord(`save:${H.loc("cloudkey02")}:0`));
   A.check("6 封存包上傳失敗：該階段內容仍在雲端主存檔裡、沒有遺失", e3("state.stagePacks[0].uploaded") === false && cl.log.length === e3("state.log.length") && !cl.logOffset && cl.book.chapters.every(c => !c.packed));
   A.check("6 封存包失敗不算同步失敗", e3("cloudSyncStatus && cloudSyncStatus.success") === true);
   g3.win.fetch = realFetch;
   await H.playTurn(g3);
   await e3("saveGame()");
-  const cl2 = decode(kvRecord("save:cloudkey02:0"));
+  const cl2 = decode(kvRecord(`save:${H.loc("cloudkey02")}:0`));
   A.check("6 下次同步成功才從主存檔移出", e3("state.stagePacks[0].uploaded") === true && cl2.logOffset === n && cl2.log.length === e3("state.log.length") - n);
 }
 
@@ -115,18 +115,18 @@ A.check("2 在新裝置玩了一回合後，就能反悔這一回合", !!g2.win.
   })()`);
   const legacySize = e4("JSON.stringify(state).length");
   // 雲端現在放的是改版前的舊格式(含反悔快照)
-  env.SAVES._m.set("save:cloudkey03:0", { v: JSON.stringify({ meta: {}, state: JSON.parse(e4("JSON.stringify(state)")) }) });
+  env.SAVES._m.set(`save:${H.loc("cloudkey03")}:0`, { v: JSON.stringify({ meta: {}, state: JSON.parse(e4("JSON.stringify(state)")) }) });
   e4("saveLocalOnly()");
   await e4(`tryLoadSlot("cloudkey03", 0, true)`);
-  await waitFor(() => { const r = kvRecord("save:cloudkey03:0"); return !!r.z; }, 8000);
+  await waitFor(() => { const r = kvRecord(`save:${H.loc("cloudkey03")}:0`); return !!r.z; }, 8000);
   await e4("saveGame()");
-  const rec = kvRecord("save:cloudkey03:0");
+  const rec = kvRecord(`save:${H.loc("cloudkey03")}:0`);
   const cl = decode(rec);
   const packs3 = JSON.parse(e4("JSON.stringify(state.stagePacks)"));
   A.check("7 舊長存檔第一次同步：已結束的5個階段補做封存", packs3.length === 5 && packs3.every(p => p.uploaded) && packs3.map(p => p.key).join(",") === "highschool,college,adult-early,adult-career,adult-middle", packs3.map(p => [p.key, p.count, p.uploaded]));
   A.check("7 雲端舊快照移除、只剩目前階段", !cl.snapshot && cl.log.length === 180 && cl.logOffset === 1135);
   console.log("SIZE7", JSON.stringify({ compressed: rec.z.length, legacy: legacySize })); A.check("7 壓縮後大小遠低於1MB上限", rec.z.length < 100 * 1024 && legacySize > 1024 * 1024, { compressed: rec.z.length, legacy: legacySize });
-  const packSizes = packs3.map(p => kvRecord(`stagepack:cloudkey03:${p.id}`).z.length);
+  const packSizes = packs3.map(p => kvRecord(`stagepack:${H.loc("cloudkey03")}:${p.id}`).z.length);
   A.check("7 每個封存包也在上限內", packSizes.every(x => x < 1024 * 1024), packSizes);
   // 9. 日常同步大小不隨總回合數成長：比較「老年剛開始」與「玩到老年後段」的同步大小，以及跟高中階段的同步大小
   const sizeAt = async (keepOld) => { const r = JSON.parse(await e4(`(async()=>{ const bak = state.log; state.log = bak.slice(0, 1135 + ${keepOld}); const p = await packForCloud(buildCloudState(state)); state.log = bak; return JSON.stringify({ n: p.z.length }); })()`)); return r.n; };

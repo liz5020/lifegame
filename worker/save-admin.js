@@ -1,66 +1,49 @@
-// 十、10.13.6 管理端（2026-10-01）：存檔索引(內部代號)、註冊名冊、單一存檔查看與刪除、存取紀錄。
+// 十、10.13.6 管理端（2026-10-01；2026-10-04門牌改版）：存檔索引、註冊名冊、單一存檔查看與刪除、存取紀錄、位置搬遷與清理。
 //   所有路徑都要帶獨立密碼 Authorization: Bearer <SAVE_ADMIN_TOKEN>(Worker secret，不跟用量查詢的USAGE_ADMIN_TOKEN共用，因為名冊含信箱)：
 //   GET  /admin/roster?who=&reason=         註冊名冊(2026-10-03定案)：已綁信箱玩家的信箱、人生代號lid、綁定日期、最後存檔時間；不含故事與日記；必填who、reason，先寫存取紀錄
-//   GET  /admin/saves                       存檔列表(含未綁信箱)：只列人生代號lid與最後存檔時間，不含故事與日記(lid缺的舊存檔才多給內部代號code，當查看用的把手)
-//   GET  /admin/save?lid=(或code=)&who=&reason=  查看單一存檔(必填who、reason，會先寫存取紀錄；復原金鑰一律遮蔽)；回應的text是依人生階段整理好的可讀文字，加&raw=1才多附原始state
+//   GET  /admin/saves                       存檔列表(含未綁信箱)：只列人生代號lid與最後存檔時間，不含故事與日記(lid缺的舊存檔才多給code，當查看用的把手：門牌前8碼.格子)
+//   GET  /admin/save?lid=(或code=)&who=&reason=  查看單一存檔(必填who、reason，會先寫存取紀錄；金鑰一律遮蔽)；回應的text是依人生階段整理好的可讀文字，加&raw=1才多附原始state
 //   POST /admin/save/delete {lid(或code),who,reason}  刪除存檔(玩家透過回報表單提出，10.13.5)，同樣記錄
 //   GET  /admin/access-log                  存取紀錄(保留180天)
+//   POST /admin/location-migrate / location-cleanup、GET /admin/location-status   位置搬遷、清理與狀態(見location-migrate.js)
 //   用量：沿用既有的 /usage-today、/usage-summary(USAGE_ADMIN_TOKEN)
-// 內部代號＝HMAC-SHA256(SAVE_INDEX_SECRET, 金鑰|格子)前24碼：只有伺服器知道密鑰，無法從金鑰推算、也無法從代號反推金鑰。
-// 索引放在帳號Durable Object(不放KV)，指回存檔的參照用同一組密鑰加密(AES-GCM)，只有查看／刪除時在伺服器內解開，任何回應、索引、存取紀錄都不出現復原金鑰原文。
-// 索引在「該存檔下次寫入時」自動補建，不做一次性回填；沒設SAVE_INDEX_SECRET就不建索引、管理端回503，玩家端存讀檔完全不受影響。
+// 索引放在帳號Durable Object(不放KV)，以「門牌＋格子」記錄(門牌＝金鑰的單向雜湊，見location.js)；索引、回應、存取紀錄都不出現復原金鑰原文，
+// 管理端查看／刪除直接用門牌定位，伺服器內部不需要、也無法還原金鑰。索引在存檔寫入時自動補建；舊存檔由一次性搬遷補建。
 import { jsonResponse } from "./http.js";
 import { accountsCall, accountStore } from "./gate.js";
+import { runMigration, runCleanup, locationStatus, deleteLegacySave } from "./location-migrate.js";
 
-const enc = new TextEncoder();
-const hex = (buf) => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
-const b64 = (bytes) => { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); };
 const unb64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
-export function indexEnabled(env) { return !!(env && env.SAVE_INDEX_SECRET && accountStore(env)); }
+export function indexEnabled(env) { return !!(env && accountStore(env)); }
 
-export async function saveCode(env, key, slot) {
-  const k = await crypto.subtle.importKey("raw", enc.encode(String(env.SAVE_INDEX_SECRET)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return hex(await crypto.subtle.sign("HMAC", k, enc.encode("code|" + key + "|" + slot))).slice(0, 24);
-}
-async function aesKey(env) {
-  const raw = await crypto.subtle.digest("SHA-256", enc.encode("enc|" + env.SAVE_INDEX_SECRET));
-  return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-}
-async function encryptRef(env, ref) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(env), enc.encode(JSON.stringify(ref)));
-  return b64(iv) + "." + b64(new Uint8Array(ct));
-}
-async function decryptRef(env, s) {
-  const [iv, ct] = String(s).split(".");
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, await aesKey(env), unb64(ct));
-  return JSON.parse(new TextDecoder().decode(pt));
-}
-
-// 每次存檔寫入KV之後呼叫：補建／更新這份存檔的索引(失敗不影響存檔，呼叫端自己try-catch)
-export async function indexSaveRecord(env, key, slot, meta, size) {
+// 每次存檔寫入KV之後呼叫：補建／更新這份存檔的索引。key這時已經是門牌；失敗不影響存檔，呼叫端自己try-catch
+export async function indexSaveRecord(env, loc, slot, meta, size) {
   if (!indexEnabled(env)) return;
   const m = meta && typeof meta === "object" ? meta : {};
   const info = {
     name: String(m.name || "").slice(0, 40), age: Number.isFinite(Number(m.age)) ? Number(m.age) : null,
     stage: String(m.stage || "").slice(0, 40), lid: typeof m.lid === "string" ? m.lid.slice(0, 40) : null, size: Number(size) || 0
   };
-  await accountsCall(env, { op: "save_index_put", code: await saveCode(env, key, slot), ref: await encryptRef(env, { key, slot }), info });
+  await accountsCall(env, { op: "save_index_put", loc, slot, info });
 }
+// 存檔內容裡可能出現的金鑰(cloudHome、玩家自己寫進日記…)：長得像復原金鑰(20碼十六進位，可有連字號)的一律遮蔽，伺服器不再知道原文，所以改以格式辨認
+const KEY_LIKE = /(?<![0-9A-Za-z])[0-9A-Fa-f]{4}(?:-?[0-9A-Fa-f]{4}){4}(?![0-9A-Za-z])/g;
+const maskKeys = (t) => String(t).replace(KEY_LIKE, "[復原金鑰已遮蔽]");
+const codeOf = (loc, slot) => loc.slice(0, 8) + "." + slot;
 
 async function gunzipText(b64text) {
   const ds = new DecompressionStream("gzip");
   const w = ds.writable.getWriter(); w.write(unb64(b64text)); w.close();
   return await new Response(ds.readable).text();
 }
-// 把KV裡的存檔紀錄還原成state，並遮蔽復原金鑰
-async function decodeRecord(record, key) {
+// 把KV裡的存檔紀錄還原成state，並遮蔽金鑰
+async function decodeRecord(record) {
   let state = null;
   if (record.z !== undefined) state = JSON.parse(record.enc === "gzip-b64" ? await gunzipText(record.z) : record.z);
   else state = record.state;
   if (state && typeof state === "object") delete state.cloudHome;
-  return JSON.parse(JSON.stringify(state === undefined ? null : state).split(key).join("[復原金鑰已遮蔽]"));
+  return JSON.parse(maskKeys(JSON.stringify(state === undefined ? null : state)));
 }
 
 // 2026-10-03定案：查看結果整理成可讀文字——依人生階段順序，每個階段附上該階段的日記；已上傳的封存包從KV讀回來接在前面
@@ -112,7 +95,7 @@ export async function handleSaveAdmin(request, env, url, helpers) {
   const origin = null; // 管理用，不走來源白名單、不帶CORS
   const d = denied(origin, env, request, helpers.safeEqual);
   if (d) return d;
-  if (!indexEnabled(env)) return jsonResponse(origin, { success: false, error: "尚未設定SAVE_INDEX_SECRET或帳號資料庫" }, 503);
+  if (!indexEnabled(env)) return jsonResponse(origin, { success: false, error: "尚未設定帳號資料庫" }, 503);
   const path = url.pathname, method = request.method;
   const asked = (src) => {
     const who = String(src.who || "").trim().slice(0, 40), reason = String(src.reason || "").trim().slice(0, 200);
@@ -130,7 +113,7 @@ export async function handleSaveAdmin(request, env, url, helpers) {
   const savesByLid = async () => {
     const r = await accountsCall(env, { op: "save_index_list" });
     const m = new Map();
-    for (const x of r.saves || []) { const lid = x.info && x.info.lid; if (lid && (!m.has(lid) || m.get(lid).at < x.at)) m.set(lid, x); }
+    for (const x of r.saves || []) { const lid = x.info && x.info.lid; if (lid && (!m.has(lid) || (m.get(lid).at || 0) < (x.at || 0))) m.set(lid, x); }
     return { all: r.saves || [], byLid: m };
   };
 
@@ -147,53 +130,74 @@ export async function handleSaveAdmin(request, env, url, helpers) {
   }
   if (path === "/admin/saves" && method === "GET") {
     const { all } = await savesByLid();
-    const saves = all.map(x => x.info && x.info.lid ? { lid: x.info.lid, last_save: x.at } : { lid: null, code: x.code, last_save: x.at });
+    const saves = all.map(x => x.info && x.info.lid ? { lid: x.info.lid, last_save: x.at } : { lid: null, code: codeOf(x.loc, x.slot), last_save: x.at });
     return jsonResponse(origin, { success: true, saves });
   }
   if (path === "/admin/access-log" && method === "GET") {
     const r = await accountsCall(env, { op: "admin_log_list" });
     return jsonResponse(origin, { success: true, log: r.log || [] });
   }
+  // 10.13.6門牌改版：位置搬遷(試算／正式)、清理、狀態——都要who與reason，先寫存取紀錄，完成後再寫一筆結果紀錄
+  if (path === "/admin/location-status" && method === "GET") {
+    const bad = await logFirst(Object.fromEntries(url.searchParams), "location-status");
+    if (bad) return bad;
+    return jsonResponse(origin, Object.assign({ success: true }, await locationStatus(env)));
+  }
+  if ((path === "/admin/location-migrate" || path === "/admin/location-cleanup") && method === "POST") {
+    let src = {}; try { src = await request.json(); } catch (e) { src = {}; }
+    const isCleanup = path === "/admin/location-cleanup";
+    const dry = !isCleanup && (src.dry_run === true || src.dry_run === "true");
+    const bad = await logFirst(src, isCleanup ? "location-cleanup" : (dry ? "location-migrate-dry" : "location-migrate"));
+    if (bad) return bad;
+    let r;
+    try { r = isCleanup ? await runCleanup(env) : await runMigration(env, { dry }); }
+    catch (e) { r = { ok: false, status: 500, error: "執行失敗：" + (e && e.message || e) }; }
+    // 結果也記一筆(只放摘要數字，不放金鑰)
+    const w = asked(src);
+    try { await accountsCall(env, { op: "admin_log_add", entry: { who: w.who, reason: w.reason, action: isCleanup ? "location-cleanup-result" : "location-migrate-result", code: r.ok ? (r.reconciled ? "對帳通過" : (r.partial ? "未做完" : (dry ? "試算" : "完成"))) : String(r.error || "失敗").slice(0, 80) } }); } catch (e) { /* 結果紀錄失敗不影響已做的事 */ }
+    return jsonResponse(origin, Object.assign({ success: !!r.ok }, r), r.ok ? 200 : (r.status || 500));
+  }
   if ((path === "/admin/save" && method === "GET") || (path === "/admin/save/delete" && method === "POST")) {
     const isDelete = method === "POST";
     let src = Object.fromEntries(url.searchParams);
     if (isDelete) { try { src = await request.json(); } catch (e) { src = {}; } }
-    let code = String(src.code || "");
+    const code = String(src.code || "");
     const lidAsked = String(src.lid || "");
     const who = asked(src);
     if (!who) return jsonResponse(origin, { success: false, error: "請填寫who(誰)與reason(原因)，查看與刪除都會留下紀錄" }, 400);
+    let hit = null;
     if (lidAsked) {
-      const hit = (await savesByLid()).byLid.get(lidAsked);
+      hit = (await savesByLid()).byLid.get(lidAsked);
       if (!hit) return jsonResponse(origin, { success: false, error: "找不到這個人生代號" }, 404);
-      code = hit.code;
-    }
-    if (!/^[0-9a-f]{24}$/.test(code)) return jsonResponse(origin, { success: false, error: "請提供人生代號lid(或code)" }, 400);
-    const got = await accountsCall(env, { op: "save_index_ref", code });
-    if (!got.ok) return jsonResponse(origin, { success: false, error: "找不到這個代號" }, 404);
-    let ref;
-    try { ref = await decryptRef(env, got.ref); } catch (e) { return jsonResponse(origin, { success: false, error: "索引無法解開(密鑰是否更換過？)" }, 500); }
+    } else if (/^[0-9a-f]{8}\.[0-2]$/.test(code)) {
+      const found = (await savesByLid()).all.filter(x => codeOf(x.loc, x.slot) === code);
+      if (found.length > 1) return jsonResponse(origin, { success: false, error: "這個代號對到不只一份存檔，請改用人生代號lid" }, 409);
+      hit = found[0];
+      if (!hit) return jsonResponse(origin, { success: false, error: "找不到這個代號" }, 404);
+    } else return jsonResponse(origin, { success: false, error: "請提供人生代號lid(或code)" }, 400);
+    const loc = hit.loc, slot = hit.slot, c = codeOf(loc, slot);
     // 先記錄再動作：記錄寫不進去就不給看／不刪
-    const logged = await accountsCall(env, { op: "admin_log_add", entry: { who: who.who, reason: who.reason, code, lid: got.info && got.info.lid || null, action: isDelete ? "delete" : "view" } });
+    const logged = await accountsCall(env, { op: "admin_log_add", entry: { who: who.who, reason: who.reason, code: c, lid: hit.info && hit.info.lid || null, action: isDelete ? "delete" : "view" } });
     if (!logged.ok) return jsonResponse(origin, { success: false, error: "存取紀錄寫入失敗，未執行" }, 500);
-    const kv = helpers.kvKey(ref.key, ref.slot);
+    const kv = helpers.kvKey(loc, slot);
     if (isDelete) {
       await env.SAVES.delete(kv);
-      await accountsCall(env, { op: "save_index_del", code });
-      return jsonResponse(origin, { success: true, deleted: code });
+      await deleteLegacySave(env, loc, slot); // 保險期：搬遷前的舊名稱那份一起刪
+      await accountsCall(env, { op: "save_index_del", loc, slot });
+      return jsonResponse(origin, { success: true, deleted: c });
     }
     const raw = await env.SAVES.get(kv);
     if (!raw) return jsonResponse(origin, { success: false, error: "存檔已不存在" }, 404);
     let record; try { record = JSON.parse(raw); } catch (e) { return jsonResponse(origin, { success: false, error: "存檔內容無法解析" }, 500); }
     let state = null;
-    try { state = await decodeRecord(record, ref.key); } catch (e) { return jsonResponse(origin, { success: false, error: "存檔無法解壓" }, 500); }
-    const lid = got.info && got.info.lid || null;
-    const mask = (t) => String(t).split(ref.key).join("[復原金鑰已遮蔽]");
+    try { state = await decodeRecord(record); } catch (e) { return jsonResponse(origin, { success: false, error: "存檔無法解壓" }, 500); }
+    const lid = hit.info && hit.info.lid || null;
     const getPack = async (id) => {
-      const pr = await env.SAVES.get(helpers.stagePackKey(ref.key, id));
+      const pr = await env.SAVES.get(helpers.stagePackKey(loc, id));
       return pr ? await decodePack(JSON.parse(pr)) : null;
     };
-    const text = mask(await buildReadable(state, lid, got.at, getPack));
-    return jsonResponse(origin, Object.assign({ success: true, lid, last_save: got.at, text }, src.raw === "1" ? { state } : {}));
+    const text = maskKeys(await buildReadable(state, lid, hit.at, getPack));
+    return jsonResponse(origin, Object.assign({ success: true, lid, last_save: hit.at, text }, src.raw === "1" ? { state } : {}));
   }
   return jsonResponse(origin, { success: false, error: "找不到這個管理網址" }, 404);
 }

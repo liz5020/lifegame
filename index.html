@@ -8097,8 +8097,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-c";
+const APP_VERSION = "2026.10.04-d";
 const RELEASE_NOTES = [
+  { version:"2026.10.04-d", date:"2026-10-04", title:"小幅整理", items:[
+    "內部整理，玩起來沒有不同。",
+  ]},
   { version:"2026.10.04-c", date:"2026-10-04", title:"小幅整理", items:[
     "內部整理，玩起來沒有不同。",
   ]},

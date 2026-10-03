@@ -106,8 +106,8 @@ A.check("Worker：送出kind=life_review，用回顧專用的系統提示與工�
 A.check("Worker：成功後扣5點、前端以伺服器餘額為準", ev2("totalAP(state)") === apBefore - 5 && ev2("!!state.ending.review"), { before: apBefore, after: ev2("totalAP(state)") });
 // 餘額不足直接擋、不呼叫AI
 ev2("state.ending.review = null; render()");
-const apRec = JSON.parse(await env.SAVES.get("ap:reviewkey1:0"));
-await env.SAVES.put("ap:reviewkey1:0", JSON.stringify(Object.assign(apRec, { daily: 1, gift: 0, purchased: 0 })));
+const apRec = JSON.parse(await env.SAVES.get(`ap:${H.loc("reviewkey1")}:0`));
+await env.SAVES.put(`ap:${H.loc("reviewkey1")}:0`, JSON.stringify(Object.assign(apRec, { daily: 1, gift: 0, purchased: 0 })));
 const n0 = fake.calls.length;
 const r2 = await H.callWorker(env, { body: { kind: "life_review", key: "reviewkey1", slot: 0, messages: [{ role: "user", content: JSON.stringify({ stages: [{ stage: "student" }], tidbits: [] }) }] } });
 A.check("Worker：行動點不足回402、不呼叫AI", r2.status === 402 && fake.calls.length === n0 && r2.json.error.type === "insufficient_action_points");

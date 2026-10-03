@@ -12,7 +12,7 @@ const env = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env, key: "evt0000001" });
 await H.startNewLife(g);
 const ev = g.ev;
-{ const k = "ap:evt0000001:0"; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
+{ const k = `ap:${H.loc("evt0000001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 const doc = g.win.document;
 const js = (x) => { const r = ev(`JSON.stringify(${x})`); return r === undefined ? undefined : JSON.parse(r); };
 const segIdx = (key) => ev(`YEAR_SEGMENTS.findIndex(x=>x.key===${JSON.stringify(key)})`);

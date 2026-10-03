@@ -10,7 +10,7 @@ const env = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env, key: "dev0000001" });
 await H.startNewLife(g);
 const ev = g.ev;
-{ const k = "ap:dev0000001:0"; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
+{ const k = `ap:${H.loc("dev0000001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 const js = (x) => { const r = ev(`JSON.stringify(${x})`); return r === undefined ? undefined : JSON.parse(r); };
 const roll = (over) => ev(`(()=>{ const o = ${JSON.stringify(over)}; state.lastDeviated = !!o.last; state.pendingConfession = o.conf || null; return rollChoiceDeviation(state, { prologue:!!o.prologue, fromChoice:o.choice!==false, whitelist:!!o.wl }); })()`);
 

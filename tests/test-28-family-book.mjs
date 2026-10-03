@@ -27,7 +27,7 @@ const fc = ev("JSON.parse(JSON.stringify(state.familyChronicle))");
 A.check("傳承完成：新主角是小寶", ev("state.name") === "小寶" && fc.length === 1);
 A.check("失敗的章節傳承前再試一次並寫好：共3章", fc[0].book && fc[0].book.chapterCount === 3, fc[0].book);
 A.check("書另存在Worker，存檔只記id(不含正文)", fc[0].book.id && !fc[0].book.inline && !JSON.stringify(fc[0]).includes(longText.slice(0, 20)));
-const stored = JSON.parse(await env.SAVES.get("familybook:famkey001:" + fc[0].book.id));
+const stored = JSON.parse(await env.SAVES.get("familybook:" + H.loc("famkey001") + ":" + fc[0].book.id));
 A.check("Worker存了整本：3章、owner＝林小晴、只留閱讀用欄位", stored.owner === "林小晴" && stored.chapters.length === 3 && stored.chapters.every(c => c.status === "done" && c.title && c.text && !("items" in c) && !("attempts" in c)), stored.chapters.map(c => Object.keys(c)));
 A.check("新的一世從新的一本書開始", !ev("state.book") || ev("state.book.chapters.length") === 0);
 
@@ -120,14 +120,14 @@ for (const [k, s] of [["uk1", 0], ["uk1", 1], ["uk2", 0]]) await H.callWorker(en
 // uk1 slot0：第一世2回合 → 傳承換新life_id玩1回合；uk1 slot1：一世4回合後闔卷；uk2 slot0：還在玩，1回合
 await turn("uk1", 0, "lifegen1"); await turn("uk1", 0, "lifegen1");
 const meta = async (k) => { const l = await envU.SAVES.list({ prefix: k }); return l.keys[0] && l.keys[0].metadata; };
-A.check("還在玩：沒有已結束標記", (await meta("usage:life:uk1:0:lifegen1")).e === 0);
+A.check("還在玩：沒有已結束標記", (await meta(`usage:life:${H.loc("uk1")}:0:lifegen1`)).e === 0);
 await turn("uk1", 0, "lifegen2");
-A.check("同一個slot換了新life_id：上一世標成已結束", (await meta("usage:life:uk1:0:lifegen1")).e === 1 && (await meta("usage:life:uk1:0:lifegen2")).e === 0);
+A.check("同一個slot換了新life_id：上一世標成已結束", (await meta(`usage:life:${H.loc("uk1")}:0:lifegen1`)).e === 1 && (await meta(`usage:life:${H.loc("uk1")}:0:lifegen2`)).e === 0);
 for (let i = 0; i < 4; i++) await turn("uk1", 1, "lifeslot1");
 r = await H.callWorker(envU, { path: "/archive", body: { key: "uk1", slot: 1, id: "arc1", meta: { name: "a" }, purchased: 0, state: { lifeId: "lifeslot1" } } });
-A.check("/archive(闔卷)：這一世標成已結束", r.status === 200 && (await meta("usage:life:uk1:1:lifeslot1")).e === 1);
+A.check("/archive(闔卷)：這一世標成已結束", r.status === 200 && (await meta(`usage:life:${H.loc("uk1")}:1:lifeslot1`)).e === 1);
 await turn("uk2", 0, "lifeuk2a");
-A.check("新的一世在累計用量時不會洗掉已結束標記", (await meta("usage:life:uk1:0:lifegen1")).e === 1);
+A.check("新的一世在累計用量時不會洗掉已結束標記", (await meta(`usage:life:${H.loc("uk1")}:0:lifegen1`)).e === 1);
 r = await H.callWorker(envU, { method: "GET", path: "/usage-summary", origin: null, headers: { Authorization: "Bearer admin-secret" } });
 const P = r.json.per_life;
 A.check("全部人生：4世(含進行中)、平均回合(2+1+4+1)/4＝2", P.all.lives_counted === 4 && P.all.avg_turns_per_life === 2, P.all);

@@ -14,7 +14,7 @@ const payload = (extra = {}) => JSON.stringify(Object.assign({ player_name: "x",
 let seq = 0; const nonce = () => "n" + (++seq) + "zzzzzz";
 const turn = (key, slot, opts = {}) => H.callWorker(env, { body: { key, slot, turn_nonce: opts.nonce || nonce(), life_id: opts.lifeId || "lifeaaaa", ap_hint: opts.hint, messages: [{ role: "user", content: opts.content || payload() }] } });
 const getAP = async (key, slot) => (await H.callWorker(env, { method: "GET", path: `/ap?key=${key}&slot=${slot}` })).json.ap;
-const setRec = async (key, slot, patch, e = env) => { const r = JSON.parse(await e.SAVES.get(`ap:${key}:${slot}`)); Object.assign(r, patch); await e.SAVES.put(`ap:${key}:${slot}`, JSON.stringify(r)); };
+const setRec = async (key, slot, patch, e = env) => { const r = JSON.parse(await e.SAVES.get(`ap:${H.loc(key)}:${slot}`)); Object.assign(r, patch); await e.SAVES.put(`ap:${H.loc(key)}:${slot}`, JSON.stringify(r)); };
 
 // --- 禮包 ---
 let r = await H.callWorker(env, { path: "/claim-gift", body: { key: "k1" } });
@@ -105,7 +105,7 @@ A.check("舊存檔第一次打Worker：依存檔建立紀錄但有上限(每日�
 await setRec("k3", 0, { purchased: 7 });
 r = await H.callWorker(env, { path: "/archive", body: { key: "k3", slot: 0, id: "arch1", meta: {}, purchased: 7, state: { x: 1 } } });
 const walletRes = await H.callWorker(env, { method: "GET", path: "/slots?key=k3" });
-A.check("人生結束：點數紀錄刪除、購買點進金鑰錢包", r.status === 200 && (await env.SAVES.get("ap:k3:0")) === null && walletRes.json.wallet === 7);
+A.check("人生結束：點數紀錄刪除、購買點進金鑰錢包", r.status === 200 && (await env.SAVES.get(`ap:${H.loc("k3")}:0`)) === null && walletRes.json.wallet === 7);
 r = await H.callWorker(env, { path: "/claim-gift", body: { key: "k3", slot: 0 } });
 A.check("同一格子開新人生：重新建立(每日5＋禮包25，舊禮包點不殘留)", r.json.ap.daily === 5 && r.json.ap.gift === 25, r.json.ap);
 

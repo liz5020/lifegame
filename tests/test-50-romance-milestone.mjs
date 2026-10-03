@@ -11,7 +11,7 @@ const env = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env, key: "rom0000001" });
 await H.startNewLife(g);
 const ev = g.ev;
-{ const k = "ap:rom0000001:0"; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
+{ const k = `ap:${H.loc("rom0000001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 const js = (x) => { const r = ev(`JSON.stringify(${x})`); return r === undefined ? undefined : JSON.parse(r); };
 const flags = () => ev("JSON.stringify((state.reviewFlags||[]).map(f=>JSON.stringify(f)))");
 const npc = (name, extra = "") => ev(`state.characters = state.characters.filter(c=>c.name!==${JSON.stringify(name)}); state.characters.push({name:${JSON.stringify(name)},relation:'朋友',gender:'女',age:26,affinity:60,active:true,traits:'',summary:'',lastTurn:state.turnCount,isChild:false${extra}})`);

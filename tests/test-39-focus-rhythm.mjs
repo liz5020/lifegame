@@ -9,7 +9,7 @@ const g = await H.loadGame({ useMock: false, env, key: "focus00001" });
 await H.startNewLife(g);
 const ev = g.ev;
 // 這支測試回合數多，避免中途行動點用完(伺服器端紀錄與本機一起補)
-{ const k = "ap:focus00001:0"; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
+{ const k = `ap:${H.loc("focus00001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 const doc = g.win.document;
 const segIdx = (key) => ev(`YEAR_SEGMENTS.findIndex(x=>x.key===${JSON.stringify(key)})`);
 const setSeg = (key) => ev(`state.timeState.segmentIndex=${segIdx(key)}; state.timeState.turnsInSegment=1`);

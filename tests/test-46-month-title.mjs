@@ -11,7 +11,7 @@ const env = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env, key: "mon0000001" });
 await H.startNewLife(g);
 const ev = g.ev;
-{ const k = "ap:mon0000001:0"; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
+{ const k = `ap:${H.loc("mon0000001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 await H.playTurn(g, "嗯");
 const title = ev("computeMonthTitle(state)");
 A.check("大標題格式「年級・學期・月份」", /^高一・(上學期|下學期|寒假|暑假)・\d{1,2}月$/.test(title), title);

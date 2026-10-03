@@ -10,7 +10,7 @@ const env = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env, key: "rel0000001" });
 await H.startNewLife(g);
 const ev = g.ev;
-{ const k = "ap:rel0000001:0"; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
+{ const k = `ap:${H.loc("rel0000001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 const doc = g.win.document;
 const js = (x) => JSON.parse(ev(`JSON.stringify(${x})`));
 const W = await import(path.join(H.ROOT, "worker/worker.js"));
