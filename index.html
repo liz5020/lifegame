@@ -218,6 +218,8 @@
   .demo-tag{font-size:10.5px;color:var(--stamp);border:1px solid rgba(200,85,61,.45);border-radius:999px;padding:0 8px;white-space:nowrap;}
   .demo-tag.side-tag{color:var(--ink-soft);border-color:rgba(74,46,31,.3);margin-left:4px;}
   .demo-tag.sync-tag{cursor:pointer;opacity:.75;}
+  .demo-tag.cloud-save-tag{cursor:pointer;}
+  .demo-tag.cloud-save-tag.fail{color:var(--stamp);border-color:var(--stamp);font-weight:600;}
   .undo-note{font-size:11.5px;color:var(--ink-soft);margin-left:6px;}
 
   /* 16.3.2 故事區 */
@@ -3505,7 +3507,8 @@ async function manualCloudSave(){
     if(!ok) errText = up.status===429 ? "按得太快了，稍等一下再試。" : "沒有存成功，請稍後再試。";
   }catch(e){ console.warn("手動存到雲端失敗", e); errText = "沒有存成功，請稍後再試。"; }
   finally{ manualCloudSaveBusy = false; }
-  if(ok){ state.lastManualCloudSaveAt = Date.now(); state.lastAutoCloudTurn = state.turnCount||0; saveGame(); }
+  if(ok){ state.lastManualCloudSaveAt = Date.now(); state.lastAutoCloudTurn = state.turnCount||0; state.lastAutoCloudAt = Date.now(); cloudSaveFailed = false; saveGame(); updateCloudSaveTag(); }
+  else if(!USE_MOCK && !CLOUD_SAVE_ENABLED){ cloudSaveFailed = true; updateCloudSaveTag(); }
   renderManualCloudSaveModal(ok, home.key, errText);
 }
 // 這段人生在雲端的位置(10.8.1手動存、10.13.3自動存共用)：帳號人生存在帳號的復原金鑰底下(格子從這把金鑰的3格裡挑，不蓋掉別的人生)，
@@ -3522,19 +3525,35 @@ async function ensureCloudHome(st){
   return { home: st.cloudHome };
 }
 // ===== 十、10.13.3 自動存檔（2026-10-01）=====
-// 所有玩家(不分有沒有綁信箱)每AUTO_SAVE_EVERY_TURNS回合自動存到雲端一次，人生結束(ending)時再存一次；每段人生一格、新存檔覆蓋舊存檔。
+// 所有玩家(不分有沒有綁信箱)在每回合結束時檢查：距上次成功存到雲端滿AUTO_SAVE_EVERY_MS(10分鐘)、且這段期間回合有往前推進，才存到雲端一次；人生結束(ending)時再存一次；每段人生一格、新存檔覆蓋舊存檔。
+// （2026-10-04改為時間制，取代原每10回合；本機每回合照存，雲端只當換裝置／清除瀏覽器資料的備份。每段人生各自計時：state.lastAutoCloudAt＝上次成功存到雲端的時間）
 // 內容＝完整的日記(玩家選擇、自由書寫原文、AI劇情，不截斷、不改存摘要；已結束的階段走封存包)。
-// 額度吃緊時只調大AUTO_SAVE_EVERY_TURNS(拉長間隔)，不刪減存檔內容；開場同意頁寫「定期」，調整不必改頁面文字。
+// 額度吃緊時只調大AUTO_SAVE_EVERY_MS(拉長間隔)，不刪減存檔內容；開場同意頁寫「定期」，調整不必改頁面文字。
 // 示範模式(USE_MOCK，內容不是AI寫的)不自動存。失敗不打擾玩家，間隔AUTO_SAVE_RETRY_MS後的下一次存檔再試。
-const AUTO_SAVE_EVERY_TURNS = 10; // 【測試參數】
+const AUTO_SAVE_EVERY_MS = 10*60*1000; // 【測試參數】10分鐘
 const AUTO_SAVE_RETRY_MS = 60*1000;
-let autoCloudSaveRunning = null, autoCloudSaveQueued = false, autoCloudFailAt = 0;
+let autoCloudSaveRunning = null, autoCloudSaveQueued = false, autoCloudFailAt = 0, cloudSaveFailed = false;
+// 存檔狀態列(2026-10-04)：頂部一行「雲端存檔：X 分鐘前」，失敗時改醒目文字，點一下＝手動存到雲端；只在自動存檔模式(真實API、雲端暫停期間)出現
+function cloudSaveTagText(){
+  if(cloudSaveFailed) return "雲端存檔失敗，稍後重試";
+  const at = state && state.lastAutoCloudAt; if(!at) return "雲端存檔：尚未存檔";
+  const m = Math.floor(Math.max(0, Date.now()-at)/60000);
+  return "雲端存檔：" + (m<1 ? "剛剛" : m<60 ? m+" 分鐘前" : Math.floor(m/60)+" 小時前");
+}
+function cloudSaveTagHTML(){
+  if(USE_MOCK || CLOUD_SAVE_ENABLED) return ``;
+  return `<span class="demo-tag side-tag cloud-save-tag${cloudSaveFailed?" fail":""}" id="cloud-save-tag" title="點一下立刻存到雲端" tabindex="0" role="button">${icon("cloud")} ${escapeHtml(cloudSaveTagText())}</span>`;
+}
+function updateCloudSaveTag(){ const w = document.getElementById("cloud-save-tag-wrap"); if(w) w.innerHTML = cloudSaveTagHTML(); }
+setInterval(updateCloudSaveTag, 30*1000);
+document.addEventListener("click", e=>{ if(e.target.closest && e.target.closest("#cloud-save-tag")) manualCloudSave(); });
 function autoSaveDue(s){
   if(USE_MOCK || CLOUD_SAVE_ENABLED || !s || !hasValidConsent()) return false; // 雲端存檔全面打開時，每次存檔本來就會同步(cloudSyncOnce)
   if(s.phase==="ending") return s.autoSavedEnding!==true;
   if(s.phase!=="playing") return false;
   const t = s.turnCount||0;
-  return t>0 && t-(s.lastAutoCloudTurn||0) >= AUTO_SAVE_EVERY_TURNS;
+  if(!s.cloudClockStart) s.cloudClockStart = Date.now(); // 第一次檢查時才開始計時(新人生、沒有存過的舊存檔都從這裡起算10分鐘)
+  return t>0 && t>(s.lastAutoCloudTurn||0) && Date.now()-(s.lastAutoCloudAt||s.cloudClockStart) >= AUTO_SAVE_EVERY_MS;
 }
 function autoCloudSave(){
   if(autoCloudSaveRunning){ autoCloudSaveQueued = true; return autoCloudSaveRunning; }
@@ -3555,9 +3574,11 @@ async function autoCloudSaveOnce(){
     const up = await cloudUploadState(st, placed.home, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct ? st.acct.lid : undefined });
     ok = up.ok;
   }catch(e){ console.warn("自動存檔失敗", e); }
-  if(!ok){ autoCloudFailAt = Date.now(); return; }
-  st.lastAutoCloudTurn = turn; if(ending) st.autoSavedEnding = true;
+  if(!ok){ autoCloudFailAt = Date.now(); cloudSaveFailed = true; updateCloudSaveTag(); return; }
+  cloudSaveFailed = false;
+  st.lastAutoCloudTurn = turn; st.lastAutoCloudAt = Date.now(); if(ending) st.autoSavedEnding = true;
   if(st===state) saveLocalOnly();
+  updateCloudSaveTag();
 }
 // 把一段人生(壓縮、不含反悔快照)上傳到指定的雲端位置一次；回傳{ok,status}
 async function cloudUploadState(st, home, meta){
@@ -3870,7 +3891,7 @@ async function saveGame(){
   try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); localSaveFailNotified = false; }
   catch(e){ console.warn("save failed", e); notifyLocalSaveFailed(); }
   writeHomeMeta(slot);
-  if(!CLOUD_SAVE_ENABLED){ if(autoSaveDue(state)) autoCloudSave(); return; } // 十、10.8：封測期間平常只存本機；十、10.13.3：每10回合與人生結束自動存一次
+  if(!CLOUD_SAVE_ENABLED){ if(autoSaveDue(state)) autoCloudSave(); return; } // 十、10.8：封測期間平常只存本機；十、10.13.3：每10分鐘(回合有推進)與人生結束自動存一次
   // 十、10.1（9/19新增）：本機存完之後，同步存一份到Worker的KV，達成跨裝置存檔。
   // 只在真正進入遊戲(playing/ending)且有金鑰+slot時才同步，避免setup過程中還沒真的開始的角色也去打API；
   // 失敗只console.warn，不影響當下遊玩（本機那份已經存好了）
@@ -11683,6 +11704,7 @@ function renderPlaying(loadingTurn){
     <div class="tb-sub">
       ${USE_MOCK ? `<span class="demo-tag" title="目前用規則模擬旁白，不是真的AI生成">示範模式</span>` : ``}
       <span id="sync-tag-wrap">${syncTagHTML()}</span>
+      <span id="cloud-save-tag-wrap">${cloudSaveTagHTML()}</span>
       ${(()=>{ const cards = (s.interestCandidates||[]).filter(c=>(c.status==="active"||c.status==="dormant") && SIDE_BUSINESS_LABELS[c.sideBusinessStatus]); return cards.map(c=>`<span class="demo-tag side-tag">副業：${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}${cards.length>1||c.status==="dormant" ? "（"+escapeHtml(c.category)+(c.status==="dormant" ? "・久未投入" : "")+"）" : ""}</span>`).join(""); })()}
       <span class="right">${progress ? `${escapeHtml(progress.shortLabel||progress.label)} ${progress.current}/${progress.total}　` : ``}存款 <b id="tb-cash">${s.cash.toLocaleString()}</b></span>
     </div>
