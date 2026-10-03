@@ -93,6 +93,7 @@ import {
 } from "./gate.js";
 import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
+import { DASHBOARD_HTML } from "./dashboard.js";
 import { handleSaveAdmin, isAdminPath, indexSaveRecord } from "./save-admin.js";
 
 // Durable Object類別一定要從Worker主檔匯出(wrangler.toml的binding用類別名稱找)
@@ -827,6 +828,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
     return jsonResponse(origin, { error: { message: String(err) }, lifegame: { cloud_disabled: true, wallet: walletInfo, wallet_events: walletEvents } }, 502);
   }
   const usable = !!(upstream.ok && data && isUsable(data));
+  if (usable && isTurn && !(check.payload.time_context && check.payload.time_context.is_prologue === true)) recordLidSeen(env, ctx, safeLifeId); // 10.13.7.3
   if (wallet && isTurn) await acctCall({ op: "wallet_post", nonce: body.turn_nonce, life_id: safeLifeId, success: usable });
   else if (wallet && body.kind === "life_review" && usable) await acctCall({ op: "wallet_spend", n: 5 });
   const lifegame = { usable, cloud_disabled: true };
@@ -908,6 +910,7 @@ async function handleAIProxy(request, env, origin, ctx) {
     return jsonResponse(origin, { error: { message: String(err) }, lifegame: { ap: publicAP(rec), ap_test_free: apTestFree } }, 502);
   }
   const usable = !!(upstream.ok && data && isUsableTurnResponse(data));
+  if (usable && !isPrologue) recordLidSeen(env, ctx, safeLifeId); // 10.13.7.3
   if (apTestFree) { if (usable) markAction(rec, taipeiDateString(nowMs(env))); }
   else postCharge(rec, pre, usable, safeLifeId, taipeiDateString(nowMs(env)));
   if (usable && (pre.charge || pre.freePrologue || apTestFree)) addChapterUnit(rec); // 十五、每成功一個新回合累積章節額度
@@ -954,8 +957,41 @@ async function handleUsageSummary(request, env) {
   return new Response(JSON.stringify(summary, null, 2), { headers });
 }
 
+// 十、10.13.7.3：玩家送出回合且AI成功回應(開場不算)→更新該人生代號的最後出現日期。失敗只寫警告，不影響回合；有ctx就在回應送出後才寫
+function recordLidSeen(env, ctx, lid) {
+  if (!lid || !accountStore(env)) return;
+  const job = accountsCall(env, { op: "lid_seen", lid }).catch(e => console.warn("人生代號清單記錄失敗：" + (e && e.message || e)));
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job);
+}
+// 十、10.13.7.8：GET /stats-summary——玩家與瀏覽人次的加總數字。資料來自帳號資料庫與用量計數器，不碰KV
+async function handleStatsSummary(request, env) {
+  const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+  const denied = adminDenied(request, env);
+  if (denied) return denied;
+  const now = nowMs(env), today = taipeiDateString(now);
+  const dayAgo = n => taipeiDateString(now - n * 86400000);
+  const week_start = dayAgo(6);
+  const dates = []; for (let i = 29; i >= 0; i--) dates.push(dayAgo(i));
+  const ps = await accountsCall(env, { op: "player_stats", dates, week_start });
+  if (!ps || !ps.ok) return new Response(JSON.stringify({ success: false, error: "帳號資料庫暫時無法使用" }), { status: 503, headers });
+  const pv = usageCounterStub(env) ? await usageCall(env, "pvstats", {}, "GET") : { since: null, days: {} };
+  const days = pv.days || {};
+  let total = 0, last7 = 0;
+  for (const [d, n] of Object.entries(days)) { total += n; if (d >= week_start && d <= today) last7 += n; }
+  const since = pv.since || null;
+  const daily = dates.filter(d => since && d >= since).map(d => ({ date: d, pageviews: days[d] || 0, new_players: ps.new_by_date[d] || 0 }));
+  const out = {
+    generated_at: new Date(now).toISOString(),
+    players: { free: ps.free, paid: ps.paid },
+    active: ps.active,
+    pageviews: { today: days[today] || 0, last7, total, since },
+    daily
+  };
+  return new Response(JSON.stringify(out, null, 2), { headers });
+}
+
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.03-b";
+const WORKER_VERSION = "2026.10.04-a";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
@@ -966,6 +1002,11 @@ export default {
     // 10.5：管理用的用量摘要，靠管理密碼保護，不走來源白名單
     // 10.9.3.3：全站當天用量(呼叫次數、估計花費)，同一組管理密碼；不依賴KV，雲端存檔關閉時也能查
     if (reqUrl.pathname === "/usage-today" && request.method === "GET") return handleUsageToday(request, env);
+    // 十、10.13.7.8：數據總覽——/stats-summary(USAGE_ADMIN_TOKEN，不碰KV)與/dashboard(網頁，不被搜尋引擎收錄、不快取、不走來源白名單)
+    if (reqUrl.pathname === "/stats-summary" && request.method === "GET") return handleStatsSummary(request, env);
+    if (reqUrl.pathname === "/dashboard" && request.method === "GET") {
+      return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" } });
+    }
     // 十、10.13.6：管理端(存檔查看、名冊、存取紀錄)，獨立密碼SAVE_ADMIN_TOKEN，不走來源白名單
     if (isAdminPath(reqUrl.pathname)) return handleSaveAdmin(request, env, reqUrl, { kvKey, safeEqual, stagePackKey: stagePackKvKey });
     if (reqUrl.pathname === "/usage-summary" && request.method === "GET") {
@@ -995,6 +1036,12 @@ export default {
     const url = new URL(request.url);
     // 版本查詢（2026-09-30）：不碰KV，讓玩家與開發者確認線上跑的是哪一版
     if (url.pathname === "/version" && request.method === "GET") return jsonResponse(origin, { success: true, version: WORKER_VERSION });
+    // 十、10.13.7.5：瀏覽人次——遊戲頁面每載入一次送一次，不帶內容、不記任何訪客資料；套用不經KV的頻率限制；失敗不影響遊戲
+    if (url.pathname === "/pv" && request.method === "POST") {
+      if (!(await checkRateLimitNoKV(request, env))) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);
+      try { if (usageCounterStub(env)) await usageCall(env, "pv"); } catch (e) { console.warn("瀏覽人次記錄失敗：" + (e && e.message || e)); }
+      return jsonResponse(origin, { success: true });
+    }
     // 十、10.2（2026-09-30，第二批）：帳號路由——資料在Durable Object，不碰KV；頻率限制一律用不經KV的Cloudflare Rate Limiting，雲端存檔開或關都一樣
     if (isAccountPath(url.pathname)) {
       if (!(await checkRateLimitNoKV(request, env))) return jsonResponse(origin, { success: false, error: "請求太頻繁，請稍後再試" }, 429);

@@ -46,6 +46,18 @@ export class UsageCounter {
     const now = Number(p.get("now")) || 0;
     const cap = Number(p.get("cap")) > 0 ? Number(p.get("cap")) : DEFAULT_DAILY_SPEND_CAP;
     const gcap = Number(p.get("gift_cap")) > 0 ? Number(p.get("gift_cap")) : DEFAULT_DAILY_GIFT_CAP;
+    // 十、10.13.7.5：瀏覽人次——只記每日總數(永久保留)與開始計數日，不記任何個別訪客資料；跟花費計數分開存
+    if (op === "pv" && request.method === "POST") {
+      const k = "pv:" + date;
+      await this.state.storage.put(k, ((await this.state.storage.get(k)) || 0) + 1);
+      if (!(await this.state.storage.get("pv_since"))) await this.state.storage.put("pv_since", date);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
+    if (op === "pvstats" && request.method === "GET") {
+      const days = {};
+      for (const [k, v] of await this.state.storage.list({ prefix: "pv:" })) days[k.slice(3)] = v;
+      return new Response(JSON.stringify({ ok: true, since: (await this.state.storage.get("pv_since")) || null, days }), { headers: { "Content-Type": "application/json" } });
+    }
     let cur = (await this.state.storage.get("day")) || freshDay(date);
     if (cur.date !== date) cur = freshDay(date);
     if (cur.spent === undefined) { cur.spent = cur.calls || 0; cur.gifts = cur.gifts || 0; cur.queued = cur.queued || 0; cur.notices = cur.notices || {}; } // 批次1的舊資料(只有calls)

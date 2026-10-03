@@ -11,7 +11,7 @@
 // 所有操作都由Worker以 POST {op, ...args, now, date, gift_cap} 呼叫；時間(now、台灣日期date)一律由呼叫端傳進來，
 // 這裡不讀系統時鐘，測試才能控制時間(TEST_NOW_MS)。驗證碼本身不會回傳給玩家，只回給Worker寄信。
 
-import { AP_BIND_BONUS, AP_SECOND_LIFE_GIFT, AP_LEGACY_GIFT_MAX, AP_DAILY_REFILL, freshRecord, preCharge, postCharge, spend, refund } from "./ap.js";
+import { AP_BIND_BONUS, AP_SECOND_LIFE_GIFT, AP_LEGACY_GIFT_MAX, AP_DAILY_REFILL, freshRecord, preCharge, postCharge, spend, refund, taipeiDateString } from "./ap.js";
 
 export const CODE_TTL_MS = 10 * 60 * 1000;        // 10.2：驗證碼10分鐘內有效
 export const CODE_MAX_TRIES = 5;                  // 10.2：同一組輸錯5次作廢
@@ -85,6 +85,11 @@ function pushEvent(a, now, type, n) {
   a.events.push({ t: now, type, n });
   if (a.events.length > EVENTS_MAX) a.events.splice(0, a.events.length - EVENTS_MAX);
 }
+// 十、10.13.7.1：帳號「曾綁過的人生代號」清單，只增不減(人生結束被移出lives後仍算這個帳號的)；只放人生代號
+function noteEverLid(a, lid) {
+  if (!Array.isArray(a.everLids)) a.everLids = [];
+  if (!a.everLids.includes(lid)) a.everLids.push(lid);
+}
 function freeSlot(a) {
   for (let s = 0; s < ACCOUNT_LIFE_MAX; s++) if (!a.lives.some(l => l.slot === s)) return s;
   return -1;
@@ -101,7 +106,7 @@ export class AccountStore {
     try { body = await request.json(); } catch (e) { return this._json({ ok: false, error: "bad_request" }, 400); }
     const fn = body && OPS[body.op];
     if (!fn) return this._json({ ok: false, error: "unknown_op" }, 400);
-    const run = this._chain.then(() => fn.call(this, body));
+    const run = this._chain.then(async () => { await this._ensureLedgerStart(body.now); return fn.call(this, body); });
     this._chain = run.then(() => {}, () => {});
     try { return this._json(await run); }
     catch (e) { return this._json({ ok: false, error: "internal", message: String(e && e.message || e) }, 500); }
@@ -263,6 +268,7 @@ export class AccountStore {
       const slot = freeSlot(a);
       if (slot < 0) { overflow.push(lid); continue; }
       a.lives.push({ lid, slot });
+      noteEverLid(a, lid);
       accepted.push({ lid, slot });
       const room = Math.max(0, CARRY_MAX_TOTAL - (a.carried || 0));
       const pts = Math.min(clampPool(it.pool), room);
@@ -469,6 +475,7 @@ export class AccountStore {
     if (a.lives.length >= ACCOUNT_LIFE_MAX) { await this._putAcct(a); return { ok: false, error: "account_full" }; }
     const slot = freeSlot(a);
     a.lives.push({ lid: b.lid, slot });
+    noteEverLid(a, b.lid);
     let gift = null;
     if (a.lives.length === ACCOUNT_LIFE_MAX && a.gifts.g2 === "none") gift = await this._requestGift(a, 2, ctx, flags);
     await this._putAcct(a);
@@ -539,6 +546,59 @@ export class AccountStore {
     const q = await this._get("gq", []);
     return { ok: true, date: ctx.date, verify_emails: day.verify, gifts_issued: day.gifts, gifts_queued: q.length };
   }
+  // 十、10.13.7.3：人生代號清單——每個代號只記第一次／最後一次出現的台灣日期；同一天日期沒變就不寫入；永久保留
+  async opLidSeen(b) {
+    const lid = b.lid;
+    if (typeof lid !== "string" || !/^[a-z0-9]{4,40}$/.test(lid) || !b.date) return { ok: false, error: "bad_lid" };
+    await this._ensureLedgerStart(b.now);
+    const rec = await this._get("p:" + lid, null);
+    if (!rec) await this.storage.put("p:" + lid, { f: b.date, l: b.date });
+    else if (rec.l !== b.date) { rec.l = b.date; await this.storage.put("p:" + lid, rec); }
+    return { ok: true };
+  }
+  // 記下數據總覽功能開始運作的時間，用來分辨「上線前就有的帳號(沒有人生代號紀錄也計入)」與「上線後才建立、還沒玩過的帳號(不計)」
+  async _ensureLedgerStart(now) {
+    if (this._ledgerStart === undefined) this._ledgerStart = await this._get("ledger_start", null);
+    if (this._ledgerStart === null && now) { this._ledgerStart = now; await this.storage.put("ledger_start", now); }
+    return this._ledgerStart;
+  }
+  // 十、10.13.7.4／10.13.7.6：玩家人數。每次查詢直接從人生代號清單與帳號資料算出，不另外存加總。
+  // b.dates＝要統計「每日新增」的台灣日期清單(近30天)，b.date＝今天，b.week_start＝近7天的第一天
+  async opPlayerStats(b) {
+    const ledgerStart = await this._ensureLedgerStart(b.now);
+    const lids = new Map(); // 人生代號→{f,l}
+    for (const [k, v] of await this.storage.list({ prefix: "p:" })) lids.set(k.slice(2), v);
+    const owner = new Map(); // 人生代號→帳號
+    const players = []; // {start,last,paid}
+    for (const [, a] of await this.storage.list({ prefix: "a:" })) {
+      const mine = new Set([...(a.everLids || []), ...(a.lives || []).map(l => l.lid)]);
+      let start = null, last = null;
+      for (const lid of mine) {
+        owner.set(lid, a.aid);
+        const r = lids.get(lid);
+        if (!r) continue;
+        if (start === null || r.f < start) start = r.f;
+        if (last === null || r.l > last) last = r.l;
+      }
+      if (start === null) { // 還沒有任何人生代號紀錄：功能上線前就綁好的帳號才算(以帳號建立日期為開始日)，上線後才建立、還沒玩過的不算
+        if (ledgerStart !== null && a.created >= ledgerStart) continue;
+        start = taipeiDateString(a.created);
+      }
+      players.push({ start, last, paid: !!a.purchased });
+    }
+    for (const [lid, r] of lids) if (!owner.has(lid)) players.push({ start: r.f, last: r.l, paid: false }); // 未綁信箱：一個人生代號一位玩家
+    const tally = paid => {
+      const g = players.filter(p => p.paid === paid);
+      return { total: g.length, today: g.filter(p => p.start === b.date).length, last7: g.filter(p => p.start >= b.week_start && p.start <= b.date).length };
+    };
+    const newByDate = {};
+    for (const d of Array.isArray(b.dates) ? b.dates : []) newByDate[d] = players.filter(p => p.start === d).length;
+    return {
+      ok: true, free: tally(false), paid: tally(true),
+      active: { today: players.filter(p => p.last === b.date).length, last7: players.filter(p => p.last && p.last >= b.week_start && p.last <= b.date).length },
+      new_by_date: newByDate
+    };
+  }
   _ctx(b) { return { now: b.now, date: b.date, gift_cap: Number(b.gift_cap) > 0 ? Number(b.gift_cap) : 20 }; }
 }
 
@@ -567,5 +627,7 @@ const OPS = {
   wallet_spend: AccountStore.prototype.opWalletSpend,
   wallet_can_afford: AccountStore.prototype.opWalletCanAfford,
   is_purchased: AccountStore.prototype.opIsPurchased,
-  stats: AccountStore.prototype.opStats
+  stats: AccountStore.prototype.opStats,
+  lid_seen: AccountStore.prototype.opLidSeen,
+  player_stats: AccountStore.prototype.opPlayerStats
 };
