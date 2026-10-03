@@ -10,6 +10,9 @@
 
 ---
 
+### 2026-10-04 續（開發部）雲端存檔狀態列移到標題月份後面(2026.10.04-f)
+- `index.html`：`#cloud-save-tag-wrap`從`tb-sub`移進`tb-stage`標題後方，樣式微調；QA手冊新增34.18。版本與Worker版本同步換-f。畫面實機未測試。
+
 ### 2026-10-04（開發部）雲端自動存檔改為時間制＋存檔狀態列（十、10.13.3）
 - `index.html`：`AUTO_SAVE_EVERY_TURNS`(10回合)改為`AUTO_SAVE_EVERY_MS`(10分鐘)；`autoSaveDue()`改為「距上次成功存雲端滿10分鐘 且 回合有推進」，新增`state.lastAutoCloudAt`／`cloudClockStart`(第一次檢查才起算)；人生結束存一次、失敗隔60秒重試、手動存成功重新計時照舊；讀檔規則(10.2.3)不動。新增頂部存檔狀態列(`cloudSaveTagHTML()`：X分鐘前／剛剛／小時前／失敗醒目文字，點一下＝`manualCloudSave()`)，只在真實API且雲端暫停(自動存檔模式)時出現。
 - `tests/test-64-autosave.mjs`改為時間制(用把計時撥前10分鐘模擬)，新增「時間到但回合沒推進不存」「狀態列文字／失敗文字」。

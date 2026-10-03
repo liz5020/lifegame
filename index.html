@@ -218,7 +218,7 @@
   .demo-tag{font-size:10.5px;color:var(--stamp);border:1px solid rgba(200,85,61,.45);border-radius:999px;padding:0 8px;white-space:nowrap;}
   .demo-tag.side-tag{color:var(--ink-soft);border-color:rgba(74,46,31,.3);margin-left:4px;}
   .demo-tag.sync-tag{cursor:pointer;opacity:.75;}
-  .demo-tag.cloud-save-tag{cursor:pointer;}
+  .demo-tag.cloud-save-tag{cursor:pointer;margin-left:8px;font-weight:400;letter-spacing:0;vertical-align:1px;}
   .demo-tag.cloud-save-tag.fail{color:var(--stamp);border-color:var(--stamp);font-weight:600;}
   .undo-note{font-size:11.5px;color:var(--ink-soft);margin-left:6px;}
 
@@ -8118,8 +8118,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-e";
+const APP_VERSION = "2026.10.04-f";
 const RELEASE_NOTES = [
+  { version:"2026.10.04-f", date:"2026-10-04", title:"雲端存檔提示換位置", items:[
+    "「雲端存檔：X分鐘前」改放在標題月份後面，不佔用下一行。",
+  ]},
   { version:"2026.10.04-e", date:"2026-10-04", title:"雲端存檔改成按時間備份", items:[
     "雲端備份改成每隔約10分鐘存一次（需要有新的進度），不再數回合；存在這台裝置上的進度仍然每回合都會存。",
     "畫面上方多了一行「雲端存檔：X分鐘前」，點一下就能立刻存到雲端；存不成功時會改成醒目提示。",
@@ -11701,14 +11704,13 @@ function renderPlaying(loadingTurn){
     <div class="tb-main">
       ${renderAgeStamp(s.age, stageLabelForStamp(s), "tb-stamp")}
       <div class="tb-mid">
-        <div class="tb-stage">${escapeHtml(timeLabel)}</div>
+        <div class="tb-stage">${escapeHtml(timeLabel)}<span id="cloud-save-tag-wrap">${cloudSaveTagHTML()}</span></div>
         <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" role="button" tabindex="0" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）｜點一下開啟行動點錢包" : "點一下開啟行動點錢包"}">${icon("zap")} 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
       </div>
     </div>
     <div class="tb-sub">
       ${USE_MOCK ? `<span class="demo-tag" title="目前用規則模擬旁白，不是真的AI生成">示範模式</span>` : ``}
       <span id="sync-tag-wrap">${syncTagHTML()}</span>
-      <span id="cloud-save-tag-wrap">${cloudSaveTagHTML()}</span>
       ${(()=>{ const cards = (s.interestCandidates||[]).filter(c=>(c.status==="active"||c.status==="dormant") && SIDE_BUSINESS_LABELS[c.sideBusinessStatus]); return cards.map(c=>`<span class="demo-tag side-tag">副業：${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}${cards.length>1||c.status==="dormant" ? "（"+escapeHtml(c.category)+(c.status==="dormant" ? "・久未投入" : "")+"）" : ""}</span>`).join(""); })()}
       <span class="right">${progress ? `${escapeHtml(progress.shortLabel||progress.label)} ${progress.current}/${progress.total}　` : ``}存款 <b id="tb-cash">${s.cash.toLocaleString()}</b></span>
     </div>
