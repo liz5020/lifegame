@@ -416,7 +416,18 @@ export class AccountStore {
   }
   async opSaveIndexRef(b) {
     const v = typeof b.code === "string" ? await this._get("x:" + b.code, null) : null;
-    return v ? { ok: true, ref: v.ref, info: v.info } : { ok: false, error: "not_found" };
+    return v ? { ok: true, ref: v.ref, info: v.info, at: v.at } : { ok: false, error: "not_found" };
+  }
+  // 10.13.3(2026-10-03補充二)：封存包寫入頻率限制——同一來源位址每小時最多N次(預設60)；計數放這個DO、不放KV(KV是「暫停期間不碰」的對象)；順便清掉過去小時的計數
+  async opPackRate(b) {
+    const hour = String(b.hour || "").slice(0, 13), limit = Number(b.limit) || 60;
+    if (!/^[0-9a-f]{16}$/.test(String(b.ip || "")) || !hour) return { ok: false, error: "bad_request" };
+    const k = "r:" + hour + ":" + b.ip;
+    const n = Number(await this._get(k, 0)) || 0;
+    if (n >= limit) return { ok: true, allowed: false };
+    await this.storage.put(k, n + 1);
+    for (const [old] of await this.storage.list({ prefix: "r:", end: "r:" + hour })) await this.storage.delete(old);
+    return { ok: true, allowed: true };
   }
   async opSaveIndexDel(b) { await this.storage.delete("x:" + b.code); return { ok: true }; }
   async opRoster() {
@@ -435,7 +446,7 @@ export class AccountStore {
   // 存取紀錄：誰、何時、哪份存檔(內部代號＋人生代號)、原因；不記信箱與復原金鑰；保留180天，每次寫入順便清掉過期的
   async opAdminLogAdd(b) {
     const e = b.entry || {};
-    const entry = { at: b.now, who: String(e.who || "").slice(0, 40), reason: String(e.reason || "").slice(0, 200), code: String(e.code || ""), lid: e.lid || null, action: e.action === "delete" ? "delete" : "view" };
+    const entry = { at: b.now, who: String(e.who || "").slice(0, 40), reason: String(e.reason || "").slice(0, 200), code: String(e.code || ""), lid: e.lid || null, action: ["delete", "roster"].includes(e.action) ? e.action : "view" };
     await this.storage.put("L:" + String(b.now).padStart(14, "0") + ":" + randomHex(3), entry);
     const old = await this.storage.list({ prefix: "L:", end: "L:" + String(b.now - ADMIN_LOG_KEEP_MS).padStart(14, "0") });
     for (const [k] of old) await this.storage.delete(k);
@@ -545,6 +556,7 @@ const OPS = {
   save_index_list: AccountStore.prototype.opSaveIndexList,
   save_index_ref: AccountStore.prototype.opSaveIndexRef,
   save_index_del: AccountStore.prototype.opSaveIndexDel,
+  pack_rate: AccountStore.prototype.opPackRate,
   roster: AccountStore.prototype.opRoster,
   admin_log_add: AccountStore.prototype.opAdminLogAdd,
   admin_log_list: AccountStore.prototype.opAdminLogList,

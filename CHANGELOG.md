@@ -10,6 +10,23 @@
 
 ---
 
+## 2026-10-03 開發部（補充二）：封存包頻率限制與孤兒封存包每日清理（Worker／網頁版本2026.10.03-b；-a未上線，一併併入）
+
+- **設計文件**：10.13.3「封存包寫入限制」改為五項，取代原三道限制（金鑰格式合規不要求已有主存檔、單包大小、每階段1次、每來源每小時60次、孤兒封存包7天清理）；00-總覽日誌加一行。
+- **頻率限制**（`worker/worker.js` `stagePackRateOk`＋`worker/account.js` `opPackRate`）：同一來源（IP雜湊成16碼存放，不存原文）每小時最多寫入`STAGE_PACK_RATE_PER_HOUR`次（預設60），超過回429、不寫入；已存在的封存包重送不吃額度；計數放帳號Durable Object、不放KV，過去小時的計數順便清掉；沒有DO（測試）或計數服務出錯一律放行。
+- **孤兒清理**（`cleanupOrphanStagePacks`，`export default.scheduled`每日呼叫，`wrangler.toml`新增`[triggers] crons = ["0 19 * * *"]`＝台灣03:00）：封存包寫入時記`at`；超過`STAGE_PACK_ORPHAN_DAYS`天（預設7）且這把金鑰三個格子都沒有主存檔就刪；**舊封存包沒有`at`**：第一次看到時補記現在時間、不當場刪（從那天起算7天）；清理後該階段可再傳一次；結果寫進執行紀錄「孤兒封存包清理：檢查N個，刪除M個」。兩個設定值只放Cloudflare後台Variables。
+- **玩家端**：被429擋下時既有的失敗處理就夠用（自動存檔不跳窗、手動存到雲端會告知失敗），前端程式沒改，只換版本號。
+- **驗證**：`tests/test-65-save-admin.mjs` 43/43通過（新增：第61次被擋且沒寫入、換來源／重送不吃額度、過一小時重算、上限與保留天數是設定值、計數不在KV、清理的各種情況、`scheduled`入口寫紀錄）。**未測試**：真實Cloudflare上排程是否照時間觸發、真實KV `list`分頁（測試替身一次回完全部）。
+
+## 2026-10-03 開發部：10.13.3／10.13.6／10.12.5定案落實（Worker版本2026.10.03-a，只動`worker/`，網頁版不變）
+
+- **設計文件**：10.13.3自動存檔細節、10.13.6管理端、10.12.5第三批啟程禮文字轉為【定案】，取代三則【待確認】；10.13.2補「同意頁不加管理端告知」；00-總覽日誌加一行。
+- **封存包每階段只寫1次**（`worker/worker.js` `handleStagePackSave`）：已存在就不覆蓋、回`{success:true, existed:true}`，前端照常標成已上傳。暫停期間封存包與主存檔本來就開放寫入（`MANUAL_SAVE_PATHS`），沒有改；兩者都只寫KV、不呼叫AI。
+- **管理端**（`worker/save-admin.js`）：`GET /admin/roster`改為必填who／reason、先寫存取紀錄，只回信箱、人生代號、綁定日期、最後存檔時間（不再回啟程禮與同意狀態）；`GET /admin/saves`只回lid與最後存檔時間（缺lid的舊存檔才多給內部代號`code`當查看把手）；查看／刪除改成可用`lid`指定；查看結果多回`text`＝依人生階段整理的可讀文字（已上傳的封存包從KV讀回接在前面，每階段附日記），加`&raw=1`才附原始state，文字裡的復原金鑰一律遮蔽；存取紀錄新增`action:"roster"`。
+- **手動「存到雲端」成功／失敗告知**：原本就有（`manualCloudSave`的成功／失敗視窗），沒改。**啟程禮文字**：程式裡四段已是「再領30點」，全專案搜尋沒有殘留的「補到55點」；唯一保留的是10.13.2規定的綁定頁一句「綁定後會收到啟程禮」。
+- **密鑰**：`wrangler secret list`確認`SAVE_ADMIN_TOKEN`、`SAVE_INDEX_SECRET`都已在Cloudflare設定（只看名稱）；程式碼、`wrangler.toml`、README、設定說明裡只有名稱沒有值。
+- **驗證**：`tests/test-65-save-admin.mjs`改寫並新增封存包只寫一次、依階段的可讀文字、名冊必填who與reason並留紀錄等項目，33/33通過。**注意**：本機Node 18沒有全域`crypto`，跑這支測試要加`NODE_OPTIONS=--experimental-global-webcrypto`（改動前就是如此，與本次無關）。需要真實Cloudflare部署／真實KV驗證的項目：未測試。
+
 ## 2026-10-01
 **〔續33：Worker /version直接用瀏覽器網址列查得到（版本2026.10.01-c）〕**原本`/version`排在來源白名單檢查之後，網址列直接打開沒有Origin標頭會回「來源不被允許」；改成沒有Origin標頭的GET /version放行(只回版本號、不碰KV)，有Origin但不在白名單的請求照舊回403。`tests/test-54-version.mjs`新增對應檢查；網頁只換版本號與一則更新說明(內部整理)。DEPLOY.md的查法同步改正。Worker有改，要部署。
 

@@ -321,6 +321,48 @@ async function handleArchiveLoad(request, env, origin) {
 }
 
 // 十、10.7.3（2026-09-29）：人生階段封存包，Worker不解壓、原樣存取
+export const DEFAULT_STAGE_PACK_RATE_PER_HOUR = 60;
+export const DEFAULT_STAGE_PACK_ORPHAN_DAYS = 7;
+async function ipTag(request) {
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("packrate|" + ip));
+  return [...new Uint8Array(d)].slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function stagePackRateOk(request, env) {
+  if (!accountStore(env)) return true;
+  try {
+    const now = nowMs(env);
+    const r = await accountsCall(env, { op: "pack_rate", ip: await ipTag(request), hour: new Date(now).toISOString().slice(0, 13), limit: readSetting(env, "STAGE_PACK_RATE_PER_HOUR", DEFAULT_STAGE_PACK_RATE_PER_HOUR) });
+    return !(r && r.ok && r.allowed === false);
+  } catch (e) { return true; } // 計數服務出錯時不擋玩家
+}
+// 10.13.3(2026-10-03補充二)：孤兒封存包清理——封存包寫入後STAGE_PACK_ORPHAN_DAYS天(預設7)這把金鑰仍沒有主存檔就刪除；每日排程呼叫，回傳本次刪掉的數量並寫進執行紀錄。
+// 舊封存包沒有at：第一次看到時補記現在的時間(從這天起算7天)。刪除後該階段視為尚未寫入，玩家下次存檔可再傳1次
+export async function cleanupOrphanStagePacks(env) {
+  const now = nowMs(env), maxAge = readSetting(env, "STAGE_PACK_ORPHAN_DAYS", DEFAULT_STAGE_PACK_ORPHAN_DAYS) * 86400000;
+  const hasMain = new Map(); let deleted = 0, checked = 0, cursor;
+  do {
+    const page = await env.SAVES.list({ prefix: "stagepack:", cursor });
+    for (const k of page.keys || []) {
+      checked++;
+      const raw = await env.SAVES.get(k.name);
+      if (raw === null) continue;
+      let rec; try { rec = JSON.parse(raw); } catch (e) { continue; }
+      if (!Number.isFinite(rec.at)) { rec.at = now; await env.SAVES.put(k.name, JSON.stringify(rec)); continue; }
+      if (now - rec.at < maxAge) continue;
+      const key = k.name.slice("stagepack:".length, k.name.lastIndexOf(":"));
+      if (!hasMain.has(key)) {
+        let any = false;
+        for (let slot = 0; slot < MAX_SLOTS && !any; slot++) any = (await env.SAVES.get(kvKey(key, slot))) !== null;
+        hasMain.set(key, any);
+      }
+      if (!hasMain.get(key)) { await env.SAVES.delete(k.name); deleted++; }
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  console.log("孤兒封存包清理：檢查" + checked + "個，刪除" + deleted + "個");
+  return { checked, deleted };
+}
 async function handleStagePackSave(request, env, origin) {
   let body;
   try { body = await request.json(); }
@@ -330,7 +372,13 @@ async function handleStagePackSave(request, env, origin) {
   if (!isValidArchiveId(id)) return jsonResponse(origin, { success: false, error: "封存包id格式不正確" }, 400);
   if (typeof body.z !== "string" || !SAVE_ENCODINGS.includes(body.enc)) return jsonResponse(origin, { success: false, error: "缺少封存包內容" }, 400);
   if (body.z.length > MAX_STATE_BYTES) return jsonResponse(origin, { success: false, error: "封存包內容過大" }, 400);
-  await env.SAVES.put(stagePackKvKey(key, id), JSON.stringify({ enc: body.enc, z: body.z }));
+  // 10.13.3(2026-10-03定案＋補充二)：①每個階段只寫1次——已經有這個封存包就不再寫(回成功，讓前端把它標成已上傳)
+  const kv = stagePackKvKey(key, id);
+  if (await env.SAVES.get(kv) !== null) return jsonResponse(origin, { success: true, size: body.z.length, existed: true });
+  // ②同一個來源位址每小時最多STAGE_PACK_RATE_PER_HOUR次(預設60)；超過拒絕，玩家端視同存檔失敗。計數在帳號Durable Object，不放KV；沒有DO(測試)就放行
+  if (!(await stagePackRateOk(request, env))) return jsonResponse(origin, { success: false, error: "封存包寫入太頻繁，請稍後再試" }, 429);
+  // ③寫入時記時間(at)，每日清理孤兒封存包用
+  await env.SAVES.put(kv, JSON.stringify({ enc: body.enc, z: body.z, at: nowMs(env) }));
   return jsonResponse(origin, { success: true, size: body.z.length });
 }
 async function handleStagePackLoad(request, env, origin) {
@@ -907,9 +955,11 @@ async function handleUsageSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.02-a";
+const WORKER_VERSION = "2026.10.03-b";
 
 export default {
+  // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
+  async scheduled(event, env, ctx) { ctx.waitUntil(cleanupOrphanStagePacks(env)); },
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
     const reqUrl = new URL(request.url);
@@ -917,7 +967,7 @@ export default {
     // 10.9.3.3：全站當天用量(呼叫次數、估計花費)，同一組管理密碼；不依賴KV，雲端存檔關閉時也能查
     if (reqUrl.pathname === "/usage-today" && request.method === "GET") return handleUsageToday(request, env);
     // 十、10.13.6：管理端(存檔查看、名冊、存取紀錄)，獨立密碼SAVE_ADMIN_TOKEN，不走來源白名單
-    if (isAdminPath(reqUrl.pathname)) return handleSaveAdmin(request, env, reqUrl, { kvKey, safeEqual });
+    if (isAdminPath(reqUrl.pathname)) return handleSaveAdmin(request, env, reqUrl, { kvKey, safeEqual, stagePackKey: stagePackKvKey });
     if (reqUrl.pathname === "/usage-summary" && request.method === "GET") {
       if (!cloudEnabled(env)) return new Response(JSON.stringify({ success: false, error: "封測期間暫停雲端存檔，成本遙測也暫停(十、10.8)", cloud_disabled: true }), { status: 503, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
       return handleUsageSummary(request, env);

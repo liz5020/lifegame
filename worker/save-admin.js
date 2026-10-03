@@ -1,9 +1,9 @@
 // 十、10.13.6 管理端（2026-10-01）：存檔索引(內部代號)、註冊名冊、單一存檔查看與刪除、存取紀錄。
 //   所有路徑都要帶獨立密碼 Authorization: Bearer <SAVE_ADMIN_TOKEN>(Worker secret，不跟用量查詢的USAGE_ADMIN_TOKEN共用，因為名冊含信箱)：
-//   GET  /admin/roster                      註冊名冊：信箱、人生數、啟程禮領取狀態(不含復原金鑰)
-//   GET  /admin/saves                       存檔索引：內部代號、名字、年齡、階段、最後存檔時間、人生代號
-//   GET  /admin/save?code=&who=&reason=     查看單一存檔(必填who、reason，會先寫存取紀錄；內容裡的復原金鑰一律遮蔽)
-//   POST /admin/save/delete {code,who,reason}  刪除存檔(玩家透過回報表單提出，10.13.5)，同樣記錄
+//   GET  /admin/roster?who=&reason=         註冊名冊(2026-10-03定案)：已綁信箱玩家的信箱、人生代號lid、綁定日期、最後存檔時間；不含故事與日記；必填who、reason，先寫存取紀錄
+//   GET  /admin/saves                       存檔列表(含未綁信箱)：只列人生代號lid與最後存檔時間，不含故事與日記(lid缺的舊存檔才多給內部代號code，當查看用的把手)
+//   GET  /admin/save?lid=(或code=)&who=&reason=  查看單一存檔(必填who、reason，會先寫存取紀錄；復原金鑰一律遮蔽)；回應的text是依人生階段整理好的可讀文字，加&raw=1才多附原始state
+//   POST /admin/save/delete {lid(或code),who,reason}  刪除存檔(玩家透過回報表單提出，10.13.5)，同樣記錄
 //   GET  /admin/access-log                  存取紀錄(保留180天)
 //   用量：沿用既有的 /usage-today、/usage-summary(USAGE_ADMIN_TOKEN)
 // 內部代號＝HMAC-SHA256(SAVE_INDEX_SECRET, 金鑰|格子)前24碼：只有伺服器知道密鑰，無法從金鑰推算、也無法從代號反推金鑰。
@@ -63,6 +63,40 @@ async function decodeRecord(record, key) {
   return JSON.parse(JSON.stringify(state === undefined ? null : state).split(key).join("[復原金鑰已遮蔽]"));
 }
 
+// 2026-10-03定案：查看結果整理成可讀文字——依人生階段順序，每個階段附上該階段的日記；已上傳的封存包從KV讀回來接在前面
+async function decodePack(rec) {
+  if (rec && rec.z !== undefined) return JSON.parse(rec.enc === "gzip-b64" ? await gunzipText(rec.z) : rec.z);
+  return rec;
+}
+function entryText(e) {
+  if (!e || typeof e !== "object") return "";
+  const head = [e.age != null ? e.age + "歲" : "", e.timeLabel || "", e.subtitle || ""].filter(Boolean).join("｜");
+  const act = e.action ? "\n〔玩家的選擇〕" + e.action : "";
+  return "▍" + head + act + "\n" + String(e.text || "") + (e.error ? "\n（這一筆是系統訊息）" : "");
+}
+function ageRange(log) {
+  const ages = (log || []).map(e => e && e.age).filter(a => Number.isFinite(a));
+  return ages.length ? ages[0] + "～" + ages[ages.length - 1] + "歲" : "";
+}
+export async function buildReadable(state, lid, lastSave, getPack) {
+  const parts = [];
+  parts.push("人生代號：" + (lid || "（無）") + "　最後存檔：" + (lastSave ? new Date(lastSave).toISOString() : "未知") + "　目前年齡：" + (state && state.age != null ? state.age + "歲" : "未知"));
+  const packs = ((state && state.stagePacks) || []).filter(p => p && p.uploaded).slice().sort((a, b) => a.from - b.from);
+  let n = 0;
+  for (const p of packs) {
+    n++;
+    let c = null;
+    try { c = await getPack(p.id); } catch (e) { c = null; }
+    const log = c && Array.isArray(c.log) ? c.log : null;
+    parts.push("\n【第" + n + "階段：" + (p.key || "") + (log ? "（" + ageRange(log) + "，" + log.length + "則）" : "") + "】");
+    parts.push(log ? log.map(entryText).join("\n\n") : "（這個階段的封存包讀不到）");
+  }
+  const cur = (state && state.log) || [];
+  parts.push("\n【" + (packs.length ? "第" + (n + 1) + "階段（目前）" : "目前階段") + "（" + ageRange(cur) + "，" + cur.length + "則）】");
+  parts.push(cur.map(entryText).join("\n\n"));
+  return parts.join("\n");
+}
+
 function denied(origin, env, request, safeEqual) {
   if (!env.SAVE_ADMIN_TOKEN) return jsonResponse(origin, { success: false, error: "尚未設定SAVE_ADMIN_TOKEN" }, 503);
   const auth = request.headers.get("Authorization") || "";
@@ -85,13 +119,36 @@ export async function handleSaveAdmin(request, env, url, helpers) {
     return who && reason ? { who, reason } : null;
   };
 
+  // 先寫存取紀錄，寫不進去就不執行(名冊、查看、刪除共用)
+  const logFirst = async (src, action, extra) => {
+    const w = asked(src);
+    if (!w) return jsonResponse(origin, { success: false, error: "請填寫who(誰)與reason(原因)，每次使用都會留下紀錄" }, 400);
+    const logged = await accountsCall(env, { op: "admin_log_add", entry: Object.assign({ who: w.who, reason: w.reason, action }, extra || {}) });
+    if (!logged.ok) return jsonResponse(origin, { success: false, error: "存取紀錄寫入失敗，未執行" }, 500);
+    return null;
+  };
+  const savesByLid = async () => {
+    const r = await accountsCall(env, { op: "save_index_list" });
+    const m = new Map();
+    for (const x of r.saves || []) { const lid = x.info && x.info.lid; if (lid && (!m.has(lid) || m.get(lid).at < x.at)) m.set(lid, x); }
+    return { all: r.saves || [], byLid: m };
+  };
+
   if (path === "/admin/roster" && method === "GET") {
+    const bad = await logFirst(Object.fromEntries(url.searchParams), "roster");
+    if (bad) return bad;
     const r = await accountsCall(env, { op: "roster" });
-    return jsonResponse(origin, { success: true, accounts: r.accounts || [] });
+    const { byLid } = await savesByLid();
+    const accounts = (r.accounts || []).map(a => ({
+      email: a.email, bound_at: a.created,
+      lives: (a.lives || []).map(l => ({ lid: l.lid, last_save: byLid.has(l.lid) ? byLid.get(l.lid).at : null }))
+    }));
+    return jsonResponse(origin, { success: true, accounts });
   }
   if (path === "/admin/saves" && method === "GET") {
-    const r = await accountsCall(env, { op: "save_index_list" });
-    return jsonResponse(origin, { success: true, saves: r.saves || [] });
+    const { all } = await savesByLid();
+    const saves = all.map(x => x.info && x.info.lid ? { lid: x.info.lid, last_save: x.at } : { lid: null, code: x.code, last_save: x.at });
+    return jsonResponse(origin, { success: true, saves });
   }
   if (path === "/admin/access-log" && method === "GET") {
     const r = await accountsCall(env, { op: "admin_log_list" });
@@ -101,10 +158,16 @@ export async function handleSaveAdmin(request, env, url, helpers) {
     const isDelete = method === "POST";
     let src = Object.fromEntries(url.searchParams);
     if (isDelete) { try { src = await request.json(); } catch (e) { src = {}; } }
-    const code = String(src.code || "");
+    let code = String(src.code || "");
+    const lidAsked = String(src.lid || "");
     const who = asked(src);
-    if (!/^[0-9a-f]{24}$/.test(code)) return jsonResponse(origin, { success: false, error: "代號格式不正確" }, 400);
     if (!who) return jsonResponse(origin, { success: false, error: "請填寫who(誰)與reason(原因)，查看與刪除都會留下紀錄" }, 400);
+    if (lidAsked) {
+      const hit = (await savesByLid()).byLid.get(lidAsked);
+      if (!hit) return jsonResponse(origin, { success: false, error: "找不到這個人生代號" }, 404);
+      code = hit.code;
+    }
+    if (!/^[0-9a-f]{24}$/.test(code)) return jsonResponse(origin, { success: false, error: "請提供人生代號lid(或code)" }, 400);
     const got = await accountsCall(env, { op: "save_index_ref", code });
     if (!got.ok) return jsonResponse(origin, { success: false, error: "找不到這個代號" }, 404);
     let ref;
@@ -123,7 +186,14 @@ export async function handleSaveAdmin(request, env, url, helpers) {
     let record; try { record = JSON.parse(raw); } catch (e) { return jsonResponse(origin, { success: false, error: "存檔內容無法解析" }, 500); }
     let state = null;
     try { state = await decodeRecord(record, ref.key); } catch (e) { return jsonResponse(origin, { success: false, error: "存檔無法解壓" }, 500); }
-    return jsonResponse(origin, { success: true, code, info: got.info, state });
+    const lid = got.info && got.info.lid || null;
+    const mask = (t) => String(t).split(ref.key).join("[復原金鑰已遮蔽]");
+    const getPack = async (id) => {
+      const pr = await env.SAVES.get(helpers.stagePackKey(ref.key, id));
+      return pr ? await decodePack(JSON.parse(pr)) : null;
+    };
+    const text = mask(await buildReadable(state, lid, got.at, getPack));
+    return jsonResponse(origin, Object.assign({ success: true, lid, last_save: got.at, text }, src.raw === "1" ? { state } : {}));
   }
   return jsonResponse(origin, { success: false, error: "找不到這個管理網址" }, 404);
 }

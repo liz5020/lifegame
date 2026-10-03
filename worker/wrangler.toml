@@ -49,3 +49,9 @@ class_name = "AccountStore"
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["AccountStore"]
+
+# 十、10.13.3（2026-10-03補充二）：每日排程清理孤兒封存包(寫入超過STAGE_PACK_ORPHAN_DAYS天、這把金鑰仍沒有主存檔)。UTC 19:00＝台灣03:00。
+# 可調設定值只放Cloudflare後台Variables(不寫進這個檔案)：STAGE_PACK_RATE_PER_HOUR(預設60，同一來源位址每小時封存包寫入上限)、STAGE_PACK_ORPHAN_DAYS(預設7)。
+# 每次執行後，清理數量寫進Worker執行紀錄(「孤兒封存包清理：檢查N個，刪除M個」)
+[triggers]
+crons = ["0 19 * * *"]
