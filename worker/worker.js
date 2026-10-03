@@ -958,10 +958,12 @@ async function handleUsageSummary(request, env) {
 }
 
 // 十、10.13.7.3：玩家送出回合且AI成功回應(開場不算)→更新該人生代號的最後出現日期。失敗只寫警告，不影響回合；有ctx就在回應送出後才寫
+// 10.13.7.11：同時把全站當天回合數加1(不帶人生代號、不記個人)
 function recordLidSeen(env, ctx, lid) {
-  if (!lid || !accountStore(env)) return;
-  const job = accountsCall(env, { op: "lid_seen", lid }).catch(e => console.warn("人生代號清單記錄失敗：" + (e && e.message || e)));
-  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job);
+  const jobs = [];
+  if (lid && accountStore(env)) jobs.push(accountsCall(env, { op: "lid_seen", lid }).catch(e => console.warn("人生代號清單記錄失敗：" + (e && e.message || e))));
+  if (usageCounterStub(env)) jobs.push(usageCall(env, "turn").catch(e => console.warn("回合數記錄失敗：" + (e && e.message || e))));
+  if (jobs.length && ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(Promise.all(jobs));
 }
 // 十、10.13.7.8：GET /stats-summary——玩家與瀏覽人次的加總數字。資料來自帳號資料庫與用量計數器，不碰KV
 async function handleStatsSummary(request, env) {
@@ -979,19 +981,31 @@ async function handleStatsSummary(request, env) {
   let total = 0, last7 = 0;
   for (const [d, n] of Object.entries(days)) { total += n; if (d >= week_start && d <= today) last7 += n; }
   const since = pv.since || null;
-  const daily = dates.filter(d => since && d >= since).map(d => ({ date: d, pageviews: days[d] || 0, new_players: ps.new_by_date[d] || 0 }));
+  const r2 = x => Math.round(x * 100) / 100;
+  const sumRange = m => { let t = 0, w = 0; for (const [d, v] of Object.entries(m || {})) { t += v; if (d >= week_start && d <= today) w += v; } return { today: r2((m || {})[today] || 0), last7: r2(w), total: r2(t) }; };
+  const turns = sumRange(pv.turns), cost = sumRange(pv.cost);
+  const per = (num, den) => (den > 0 ? r2(num / den) : null); // 分母為0＝沒有平均可言(顯示「—」)
+  const allPlayers = ps.free.total + ps.paid.total;
+  const usage = {
+    since: pv.us_since || null, unit: "元(固定估價，AI_CALL_COST_ESTIMATE)", turns, cost,
+    avg_cost_per_player: { today: per(cost.today, ps.active.today), last7: per(cost.last7, ps.active.last7), total: per(cost.total, allPlayers) },
+    avg_turns_per_player: { today: per(turns.today, ps.active.today), last7: per(turns.last7, ps.active.last7), total: per(turns.total, allPlayers) },
+    avg_cost_per_turn: { today: per(cost.today, turns.today), last7: per(cost.last7, turns.last7), total: per(cost.total, turns.total) }
+  };
+  const daily = dates.filter(d => since && d >= since).map(d => ({ date: d, pageviews: days[d] || 0, new_players: ps.new_by_date[d] || 0, turns: (pv.turns || {})[d] || 0, cost: r2((pv.cost || {})[d] || 0) }));
   const out = {
     generated_at: new Date(now).toISOString(),
     players: { free: ps.free, paid: ps.paid },
     active: ps.active,
     pageviews: { today: days[today] || 0, last7, total, since },
+    usage, accounts_bound: ps.accounts_bound, lives_started: ps.lives_started,
     daily
   };
   return new Response(JSON.stringify(out, null, 2), { headers });
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.04-b";
+const WORKER_VERSION = "2026.10.04-c";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

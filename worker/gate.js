@@ -38,6 +38,9 @@ export class UsageCounter {
     this._chain = run.then(() => {}, () => {});
     return run;
   }
+  async _markUsageSince(date) {
+    if (!(await this.state.storage.get("us_since"))) await this.state.storage.put("us_since", date);
+  }
   async _handle(request) {
     const url = new URL(request.url);
     const p = url.searchParams;
@@ -53,10 +56,19 @@ export class UsageCounter {
       if (!(await this.state.storage.get("pv_since"))) await this.state.storage.put("pv_since", date);
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
+    // 十、10.13.7.11：全站每日回合數(tn:)與每日耗費估價(co:)，永久保留；起算日us_since＝第一筆紀錄的日期
+    if (op === "turn" && request.method === "POST") {
+      const k = "tn:" + date;
+      await this.state.storage.put(k, ((await this.state.storage.get(k)) || 0) + 1);
+      await this._markUsageSince(date);
+      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+    }
     if (op === "pvstats" && request.method === "GET") {
-      const days = {};
-      for (const [k, v] of await this.state.storage.list({ prefix: "pv:" })) days[k.slice(3)] = v;
-      return new Response(JSON.stringify({ ok: true, since: (await this.state.storage.get("pv_since")) || null, days }), { headers: { "Content-Type": "application/json" } });
+      const out = { ok: true, since: (await this.state.storage.get("pv_since")) || null, us_since: (await this.state.storage.get("us_since")) || null, days: {}, turns: {}, cost: {} };
+      for (const [k, v] of await this.state.storage.list({ prefix: "pv:" })) out.days[k.slice(3)] = v;
+      for (const [k, v] of await this.state.storage.list({ prefix: "tn:" })) out.turns[k.slice(3)] = v;
+      for (const [k, v] of await this.state.storage.list({ prefix: "co:" })) out.cost[k.slice(3)] = v;
+      return new Response(JSON.stringify(out), { headers: { "Content-Type": "application/json" } });
     }
     let cur = (await this.state.storage.get("day")) || freshDay(date);
     if (cur.date !== date) cur = freshDay(date);
@@ -65,8 +77,11 @@ export class UsageCounter {
     if (op === "add" && request.method === "POST") {
       cur.calls += 1;
       const cost = Number(p.get("cost"));
-      cur.spent += Number.isFinite(cost) && cost >= 0 ? cost : 1;
+      const c = Number.isFinite(cost) && cost >= 0 ? cost : 1;
+      cur.spent += c;
       dirty = true;
+      await this.state.storage.put("co:" + date, Math.round((((await this.state.storage.get("co:" + date)) || 0) + c) * 1e6) / 1e6); // 10.13.7.11：每日耗費累計(永久保留)
+      await this._markUsageSince(date);
     } else if (op === "gifts" && request.method === "POST") {
       cur.gifts = Math.max(0, Number(p.get("issued")) || 0);
       cur.queued = Math.max(0, Number(p.get("queued")) || 0);

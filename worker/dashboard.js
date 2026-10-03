@@ -20,6 +20,7 @@ input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 .card h2{font-size:14px;margin:0 0 6px;color:var(--soft);font-weight:600}
+.unit{font-size:14px;margin-left:4px;color:var(--soft)}
 .big{font-family:var(--serif);font-size:34px;line-height:1.1}
 .small{font-size:13px;color:var(--soft);margin-top:6px}
 .small b{color:var(--ink);font-weight:600}
@@ -43,6 +44,7 @@ input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(
   <h1>人生草稿 數據總覽</h1>
   <div class="bar"><span>最後更新：<span id="upd">—</span>（台灣時間）</span><button id="refresh">立即更新</button></div>
   <div class="cards" id="cards"></div>
+  <div class="cards" id="cards2" style="margin-top:12px"></div>
   <div class="panel"><h2>近 30 天每日趨勢</h2><div id="trend"></div></div>
   <div class="panel spend" id="spend"></div>
 </div>
@@ -61,6 +63,23 @@ function num(n){return Number(n||0).toLocaleString("zh-TW")}
 function card(title,big,bigLabel,s1,s2){
   return '<div class="card"><h2>'+title+'</h2><div class="big">'+num(big)+'</div><div class="small">'+bigLabel+'</div><div class="small">'+s1+'　'+s2+'</div></div>'}
 function sm(label,v){return label+' <b>'+num(v)+'</b>'}
+function n2(v){return v==null?"—":Number(v).toLocaleString("zh-TW",{maximumFractionDigits:2})}
+function sm2(label,v){return label+' <b>'+n2(v)+'</b>'}
+function card2(title,t,unit,note){
+  return '<div class="card"><h2>'+title+'</h2><div class="big">'+n2(t.total)+'<span class="unit">'+unit+'</span></div><div class="small">累計'+(note||'')+'</div><div class="small">'+sm2("今天",t.today)+'　'+sm2("近 7 天",t.last7)+'</div></div>'}
+function renderUsage(s){
+  var box=$("cards2");
+  if(!s||!s.usage){box.innerHTML='<div class="card"><h2>花費與回合</h2><div class="err">'+NA+'</div></div>';return}
+  var u=s.usage;
+  box.innerHTML=
+    card2("總耗費",u.cost,"元","（估計，自 "+(u.since||"—")+" 起）")+
+    card2("總回合數",u.turns,"","")+
+    card2("平均每位玩家花費",u.avg_cost_per_player,"元","（今天／近 7 天以活躍玩家計）")+
+    card2("平均每位玩家回合數",u.avg_turns_per_player,"","（今天／近 7 天以活躍玩家計）")+
+    card2("每回合平均花費",u.avg_cost_per_turn,"元","")+
+    card2("綁定信箱人數",s.accounts_bound,"","")+
+    card2("開啟人生段數",s.lives_started,"","（玩過至少一回合）");
+}
 function renderCards(s){
   if(!s){$("cards").innerHTML='<div class="card"><h2>玩家與瀏覽</h2><div class="err">'+NA+'</div></div>';return}
   var f=s.players.free,p=s.players.paid,a=s.active,v=s.pageviews;
@@ -114,7 +133,7 @@ function load(){
   if(busy)return;busy=true;
   return Promise.all([api("/stats-summary").catch(function(e){if(e.auth)throw e;return null}),api("/usage-today").catch(function(e){if(e.auth)throw e;return null})]).then(function(r){
     $("login").hidden=true;$("app").hidden=false;
-    renderCards(r[0]);renderTrend(r[0]);renderSpend(r[1]);
+    renderCards(r[0]);renderUsage(r[0]);renderTrend(r[0]);renderSpend(r[1]);
     $("upd").textContent=new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei",hour12:false});
   }).catch(function(e){
     if(e&&e.auth){try{sessionStorage.removeItem(KEY)}catch(x){} tok="";$("app").hidden=true;$("login").hidden=false;$("loginErr").textContent="密碼錯誤"}

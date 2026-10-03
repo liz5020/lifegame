@@ -105,6 +105,31 @@ for (const [k, v] of env.ACCOUNTS._store) if (v && v.email === "one@example.com"
 s = await stats();
 A.check("購買標記為true的帳號算付費玩家，免費玩家扣掉", s.players.paid.total === 1 && s.players.free.total === 2, s.players);
 
+// ---- 10.13.7.11 花費、回合、綁定與人生段數 ----
+// 到這裡：第1天(10/04)成功回合3(lifetrial1×2、lifeother1)，第2天(10/05)帳號回合2；AI呼叫共7次(含1次失敗、1次開場)，估價每次1元
+const callsTotal = fakeAI.calls.length;
+s = await stats();
+const u = s.usage;
+A.check("總回合數：只算成功且非開場的回合——累計5、今天2、近7天5", u.turns.total === 5 && u.turns.today === 2 && u.turns.last7 === 5, u.turns);
+A.check("總耗費：所有AI呼叫(含開場與失敗的)都按固定估價計——累計＝呼叫次數、今天2", u.cost.total === callsTotal && u.cost.today === 2 && u.cost.last7 === callsTotal, { cost: u.cost, callsTotal });
+A.check("花費與回合分開記：改估價設定值只影響花費(另立環境驗證見下)", u.turns.total !== u.cost.total);
+A.check("平均每位玩家花費：今天2÷活躍2＝1、累計7÷玩家3≈2.33", u.avg_cost_per_player.today === 1 && u.avg_cost_per_player.total === Math.round(callsTotal / 3 * 100) / 100, u.avg_cost_per_player);
+A.check("平均每位玩家回合數：今天2÷2＝1、近7天5÷活躍3≈1.67、累計5÷3≈1.67", u.avg_turns_per_player.today === 1 && u.avg_turns_per_player.last7 === 1.67 && u.avg_turns_per_player.total === 1.67, u.avg_turns_per_player);
+A.check("每回合平均花費：今天2÷2＝1、累計7÷5＝1.4", u.avg_cost_per_turn.today === 1 && u.avg_cost_per_turn.total === Math.round(callsTotal / 5 * 100) / 100, u.avg_cost_per_turn);
+A.check("起算日＝第一筆花費紀錄的日期", u.since === "2026-10-04", u.since);
+A.check("綁定信箱人數：累計2、今天2(綁定當天)、近7天2", s.accounts_bound.total === 2 && s.accounts_bound.today === 2 && s.accounts_bound.last7 === 2, s.accounts_bound);
+A.check("開啟人生段數：累計3(trial1、other1、new001)、今天1(new001)、近7天3；開場不算", s.lives_started.total === 3 && s.lives_started.today === 1 && s.lives_started.last7 === 3, s.lives_started);
+A.check("daily每筆有turns與cost：第1天3回合、第2天2回合", s.daily.find(d => d.date === "2026-10-04").turns === 3 && s.daily.find(d => d.date === "2026-10-05").turns === 2 && s.daily.find(d => d.date === "2026-10-05").cost === 2, s.daily);
+const envP = await H.makeAccountEnv({ TEST_NOW_MS: String(T0), CLOUD_SAVE_ENABLED: "false", AI_CALL_COST_ESTIMATE: "3" });
+await H.callWorker(envP, { path: "/", body: { life_id: "lifeprice1", turn_nonce: "pp1zzzzzzzzzz", messages: [{ role: "user", content: turnPayload() }] } });
+r = await H.callWorker(envP, { method: "GET", path: "/stats-summary", headers: ADMIN, origin: null });
+A.check("改估價(3元)：花費變3、回合仍是1；平均每回合3", r.json.usage.cost.total === 3 && r.json.usage.turns.total === 1 && r.json.usage.avg_cost_per_turn.total === 3, r.json.usage);
+const envZ = await H.makeAccountEnv({ TEST_NOW_MS: String(T0), CLOUD_SAVE_ENABLED: "false" });
+r = await H.callWorker(envZ, { method: "GET", path: "/stats-summary", headers: ADMIN, origin: null });
+A.check("沒有任何玩家與回合：平均全是null(畫面顯示「—」)，不是0", r.json.usage.avg_cost_per_player.total === null && r.json.usage.avg_turns_per_player.today === null && r.json.usage.avg_cost_per_turn.last7 === null && r.json.usage.since === null, r.json.usage);
+const keyDump = JSON.stringify([...env.ACCOUNTS._store.entries()].filter(([k]) => k.startsWith("p:")));
+A.check("人生代號清單仍只有兩個日期(10.13.7.3不變)，沒有累計花費或回合", /^\[(\["p:[a-z0-9]+",\{"f":"[\d-]+","l":"[\d-]+"\}\],?)+\]$/.test(keyDump), keyDump);
+
 // ---- 上線前就綁好、尚無人生代號紀錄的帳號：以建立日期計入 ----
 const oldAid = "oldacct0001";
 const env2 = await H.makeAccountEnv({ TEST_NOW_MS: String(T0), CLOUD_SAVE_ENABLED: "false" });
@@ -128,7 +153,7 @@ A.check("/dashboard：200、HTML、不被收錄、不快取", r.status === 200 &
 const raw = await (await import("../worker/worker.js")).default.fetch(new Request("https://life-game.smile80275.workers.dev/dashboard"), env, { waitUntil() {} });
 A.check("/dashboard標頭：X-Robots-Tag noindex、Cache-Control no-store、text/html", /noindex/.test(raw.headers.get("X-Robots-Tag") || "") && raw.headers.get("Cache-Control") === "no-store" && /text\/html/.test(raw.headers.get("Content-Type") || ""));
 A.check("/dashboard：不引用任何外部資源(沒有http(s)://的src／href)", !/(src|href)=["']https?:/i.test(r.text) && !/@import|<link/i.test(r.text));
-A.check("/dashboard：密碼只放sessionStorage、錯誤顯示「密碼錯誤」、有手動更新與每小時自動更新、暫時無法取得", /sessionStorage/.test(r.text) && !/localStorage/.test(r.text) && r.text.includes("密碼錯誤") && r.text.includes("3600000") && r.text.includes("秒後可再更新") && r.text.includes("暫時無法取得"));
+A.check("/dashboard：密碼只放sessionStorage、錯誤顯示「密碼錯誤」、有手動更新與每小時自動更新、暫時無法取得", /sessionStorage/.test(r.text) && !/localStorage/.test(r.text) && r.text.includes("密碼錯誤") && r.text.includes("3600000") && r.text.includes("秒後可再更新") && r.text.includes("暫時無法取得") && r.text.includes("總耗費") && r.text.includes("每回合平均花費") && r.text.includes("開啟人生段數"));
 A.check("/dashboard：頁面本身不含密碼或統計數字(資料靠輸入密碼後才抓)", !r.text.includes("admin-secret"));
 
 process.exit(A.report() ? 0 : 1);

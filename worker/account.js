@@ -591,12 +591,17 @@ export class AccountStore {
       const g = players.filter(p => p.paid === paid);
       return { total: g.length, today: g.filter(p => p.start === b.date).length, last7: g.filter(p => p.start >= b.week_start && p.start <= b.date).length };
     };
+    const inRange = d => ({ total: 0, today: 0, last7: 0, add(x) { this.total++; if (x === b.date) this.today++; if (x >= b.week_start && x <= b.date) this.last7++; } });
+    const bound = inRange(), started = inRange(); // 10.13.7.11：綁定信箱的帳號(以建立日期)、開啟的人生段數(以人生代號第一次出現日期)
+    for (const [, a] of await this.storage.list({ prefix: "a:" })) bound.add(taipeiDateString(a.created));
+    for (const [, r] of lids) started.add(r.f);
+    const pick = o => ({ total: o.total, today: o.today, last7: o.last7 });
     const newByDate = {};
     for (const d of Array.isArray(b.dates) ? b.dates : []) newByDate[d] = players.filter(p => p.start === d).length;
     return {
       ok: true, free: tally(false), paid: tally(true),
       active: { today: players.filter(p => p.last === b.date).length, last7: players.filter(p => p.last && p.last >= b.week_start && p.last <= b.date).length },
-      new_by_date: newByDate
+      new_by_date: newByDate, accounts_bound: pick(bound), lives_started: pick(started)
     };
   }
   _ctx(b) { return { now: b.now, date: b.date, gift_cap: Number(b.gift_cap) > 0 ? Number(b.gift_cap) : 20 }; }
