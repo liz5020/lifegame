@@ -94,6 +94,10 @@ A.check("登出：這台裝置沒有登入狀態、回到未綁樣貌(第2則語
 A.check("登出：伺服器上的帳號與錢包不受影響、這台裝置的token作廢", (() => { const a = rawAcct("player.one@example.com"); return a && a.wallet.gift + a.wallet.purchased === w0 - 1 && a.sessions.length === 0; })());
 g1.ev("renderAPExhaustedModal()");
 A.check("登出後點數用完→看第2則(未綁信箱版本)", /綁定信箱可以再領30點啟程禮/.test(text(g1, "#ap-exhausted-modal")));
+// 2026-10-02定案A2：登出後變回未綁的人生保留、可繼續玩，只是未綁狀態下不能再開新人生(即使這台裝置上已經有2段)
+g1.ev('localStorage.setItem(HOME_META_PREFIX+"2", JSON.stringify({name:"第二段"}))');
+A.check("A2 登出後：原本的帳號人生保留(仍在遊戲中)、未綁不能再開新人生(提示只能同時1段)", g1.ev("state && state.phase") === "playing" && /只能同時進行 1 段/.test(g1.ev("newLifeBlockedNotice()") || ""), g1.ev("newLifeBlockedNotice()"));
+g1.ev('localStorage.removeItem(HOME_META_PREFIX+"2")');
 g1.ev("document.getElementById('ap-exhausted-modal').remove()");
 
 // ================= 情境2：綁到已有帳號的信箱→拒絕 =================

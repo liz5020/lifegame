@@ -143,6 +143,14 @@ await flow(gI, "bind", "i61@example.com"); ok(gI);
 const lidI = gI.ev("state.acct.lid"), keyI = gI.ev("acct.recovery_key");
 A.check("綁定時順手把收進帳號的人生存到雲端(帳號的復原金鑰底下)", (await H.callWorker(env, { method: "GET", path: "/slots?key=" + encodeURIComponent(keyI) })).json.slots.some(x => x && x.meta && x.meta.lid === lidI), keyI);
 A.check("帳號人生的雲端位置記在帳號的金鑰底下", gI.ev("state.cloudHome && state.cloudHome.key") === keyI);
+// 2026-10-02定案B2：示範模式(USE_MOCK)綁定時不上傳存檔，示範內容不進伺服器；一樣能綁、錢包照扣
+const gMock = await H.loadGame({ useMock: true, env, key: "k61m0000010", cloud: false });
+await H.startNewLife(gMock, { name: "示範綁" });
+await H.playTurn(gMock, "嗯");
+await flow(gMock, "bind", "mock61@example.com"); ok(gMock);
+const keyM = gMock.ev("acct.recovery_key");
+A.check("示範模式綁定成功(帳號建立、人生收進帳號)", !!rawAcct("mock61@example.com") && !!gMock.ev("state.acct && state.acct.lid"));
+A.check("示範模式綁定時不上傳存檔(帳號金鑰底下沒有任何存檔、沒有雲端位置)", !(await H.callWorker(env, { method: "GET", path: "/slots?key=" + encodeURIComponent(keyM) })).json.slots.some(x => x && x.meta) && !gMock.ev("state.cloudHome"), keyM);
 const gJ = await H.loadGame({ useMock: false, env, key: null, cloud: false, storage: { life_sim_age_confirmed: "yes" } }); // 全新裝置：沒有金鑰、沒有人生(已過年齡確認)
 await flow(gJ, "login", "i61@example.com");
 A.check("全新裝置用信箱登入：登入成功、沿用帳號的復原金鑰、沒有人生要併入所以不跳第7則", gJ.ev("accountEmailBound()") === true && gJ.ev("localStorage.getItem('life_sim_recovery_key')") === keyI && !gJ.win.document.getElementById("bind-result-modal"));

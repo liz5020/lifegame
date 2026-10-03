@@ -92,14 +92,14 @@ t = await today();
 A.check("台灣時間午夜：花費計數歸零、暫停自動解除", t.date === "2026-10-01" && t.est_cost_twd === 0 && (await anonTurn()).status === 200);
 A.check("午夜歸零後通知標記也歸零：當天再碰到上限再寄一輪(各一封)", notice("已達上限的 80%").length === 2 && notice("已碰到上限").length === 2, resend.notices().map(x => x.subject));
 
-// ---- 失敗的呼叫不計；80%門檻依當下上限自動計算 ----
+// ---- 失敗的呼叫也計入(2026-10-02定案A3)；80%門檻依當下上限自動計算 ----
 setNow(2 * DAY);
 env.DAILY_SPEND_CAP = "10";
 upstreamFail = true; await anonTurn(); await anonTurn(); upstreamFail = false;
-A.check("Anthropic失敗的呼叫不計花費", (await today()).est_cost_twd === 0);
+A.check("Anthropic失敗的呼叫也計入花費(2次＝2元)", (await today()).est_cost_twd === 2);
 const base80 = notice("已達上限的 80%").length;
-for (let i = 0; i < 7; i++) await anonTurn();
-A.check("cap=10、花費7元：還沒到80%，不寄信", notice("已達上限的 80%").length === base80 && (await today()).pct_of_cap === 70);
+for (let i = 0; i < 5; i++) await anonTurn();
+A.check("cap=10、花費7元(失敗2＋成功5)：還沒到80%，不寄信", notice("已達上限的 80%").length === base80 && (await today()).pct_of_cap === 70);
 await anonTurn();
 A.check("花費8元＝上限10元的80%→寄80%通知(依當下設定的上限自動計算)", notice("已達上限的 80%").length === base80 + 1 && notice("已碰到上限").length === 2, resend.notices().map(x => x.subject));
 await anonTurn(); await anonTurn();
