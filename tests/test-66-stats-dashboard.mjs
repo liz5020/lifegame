@@ -128,7 +128,7 @@ A.check("/dashboard：200、HTML、不被收錄、不快取", r.status === 200 &
 const raw = await (await import("../worker/worker.js")).default.fetch(new Request("https://life-game.smile80275.workers.dev/dashboard"), env, { waitUntil() {} });
 A.check("/dashboard標頭：X-Robots-Tag noindex、Cache-Control no-store、text/html", /noindex/.test(raw.headers.get("X-Robots-Tag") || "") && raw.headers.get("Cache-Control") === "no-store" && /text\/html/.test(raw.headers.get("Content-Type") || ""));
 A.check("/dashboard：不引用任何外部資源(沒有http(s)://的src／href)", !/(src|href)=["']https?:/i.test(r.text) && !/@import|<link/i.test(r.text));
-A.check("/dashboard：密碼只放sessionStorage、錯誤顯示「密碼錯誤」、有手動更新與每小時自動更新、暫時無法取得", /sessionStorage/.test(r.text) && !/localStorage/.test(r.text) && r.text.includes("密碼錯誤") && r.text.includes("3600000") && r.text.includes("60000") && r.text.includes("暫時無法取得"));
+A.check("/dashboard：密碼只放sessionStorage、錯誤顯示「密碼錯誤」、有手動更新與每小時自動更新、暫時無法取得", /sessionStorage/.test(r.text) && !/localStorage/.test(r.text) && r.text.includes("密碼錯誤") && r.text.includes("3600000") && r.text.includes("秒後可再更新") && r.text.includes("暫時無法取得"));
 A.check("/dashboard：頁面本身不含密碼或統計數字(資料靠輸入密碼後才抓)", !r.text.includes("admin-secret"));
 
 process.exit(A.report() ? 0 : 1);

@@ -122,7 +122,10 @@ function load(){
 }
 $("f").addEventListener("submit",function(ev){ev.preventDefault();tok=$("pw").value;try{sessionStorage.setItem(KEY,tok)}catch(e){} $("loginErr").textContent="";load()});
 var cool=null;
-$("refresh").addEventListener("click",function(){var b=$("refresh");b.disabled=true;load();clearTimeout(cool);cool=setTimeout(function(){b.disabled=false},60000)});
+$("refresh").addEventListener("click",function(){
+  var b=$("refresh"),left=60;b.disabled=true;load();clearInterval(cool);
+  b.textContent=left+" 秒後可再更新";
+  cool=setInterval(function(){left--;if(left<=0){clearInterval(cool);b.disabled=false;b.textContent="立即更新"}else b.textContent=left+" 秒後可再更新"},1000)});
 setInterval(function(){if(tok&&!document.hidden)load()},3600000);
 if(tok)load();else $("login").hidden=false;
 })();
