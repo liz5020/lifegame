@@ -684,16 +684,22 @@ async function handleUsageToday(request, env) {
 }
 
 async function callAnthropic(env, upstreamBody, ctx) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify(upstreamBody)
-  });
-  if (res.ok) await countAICall(env, ctx); // 十、10.9.3.1／10.9.3.3：每次成功的AI呼叫記一筆估價，達80%／上限時寄管理通知信
+  let res;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify(upstreamBody)
+    });
+  } catch (e) {
+    await countAICall(env, ctx); // 連線失敗也算一次呼叫(2026-10-02定案A3：每日花費上限是內部成本帳，所有呼叫含失敗的都計入)；玩家端照舊不扣點、不算回合
+    throw e;
+  }
+  await countAICall(env, ctx); // 十、10.9.3.1／10.9.3.3：每次AI呼叫(含失敗)記一筆估價，達80%／上限時寄管理通知信
   // 十、10.9.4（2026-09-30）：固定規則(system prompt＋工具定義)的字數，給前端逐筆成本紀錄當比例參考(不換算token)
   try {
     const sys = (upstreamBody.system || []).reduce((n, b) => n + String(b.text || "").length, 0);
@@ -901,7 +907,7 @@ async function handleUsageSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.01-c";
+const WORKER_VERSION = "2026.10.02-a";
 
 export default {
   async fetch(request, env, ctx) {

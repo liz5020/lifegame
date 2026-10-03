@@ -8095,8 +8095,11 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.01-c";
+const APP_VERSION = "2026.10.02-a";
 const RELEASE_NOTES = [
+  { version:"2026.10.02-a", date:"2026-10-02", title:"小幅整理", items:[
+    "內部整理，玩起來沒有不同。",
+  ]},
   { version:"2026.10.01-c", date:"2026-10-01", title:"小幅整理", items:[
     "內部整理，玩起來沒有不同。",
   ]},
@@ -13123,6 +13126,8 @@ async function acctPickCloudSlot(key, lid){
 }
 async function acctCloudSaveAccepted(accepted){
   // 綁定／併入是玩家主動做的事，等同按了一次「存到雲端」(10.8.1)：每段收進帳號的人生上傳一次；失敗不打擾(玩家隨時可以自己按)
+  // 十、10.2.3.1 B2(2026-10-02定案)：示範模式的內容不是AI寫的，綁定／登入併入時不上傳，示範存檔不進伺服器與管理端名冊(比照10.13.3⑤)
+  if(USE_MOCK) return;
   for(const it of accepted){
     try{
       const st = it.st;

@@ -26,11 +26,11 @@ r = await today();
 A.check("用量：2次成功呼叫＝2次、估計2元", r.json.calls === 2 && r.json.est_cost_twd === 2 && r.json.date === "2026-09-30", r.json);
 failing = true; await turn("wa"); failing = false;
 r = await today();
-A.check("用量：Anthropic失敗的呼叫不計", r.json.calls === 2, r.json);
+A.check("用量：Anthropic失敗的呼叫也計入(2026-10-02定案A3，共3次、3元)", r.json.calls === 3 && r.json.est_cost_twd === 3, r.json);
 A.check("用量：沒帶管理密碼→401", (await H.callWorker(env, { method: "GET", path: "/usage-today", origin: null })).status === 401);
 env.DAILY_SPEND_CAP_TWD = "300"; env.DAILY_GIFT_CAP = "10";
 r = await today();
-A.check("設定值：後台環境變數蓋過預設，並顯示百分比", r.json.daily_spend_cap_twd === 300 && r.json.daily_gift_cap === 10 && r.json.pct_of_cap === 0.7, r.json);
+A.check("設定值：後台環境變數蓋過預設，並顯示百分比", r.json.daily_spend_cap_twd === 300 && r.json.daily_gift_cap === 10 && r.json.pct_of_cap === 1, r.json);
 env.TEST_NOW_MS = String(Date.parse("2026-09-30T16:30:00Z")); // 台灣10/1 00:30
 r = await today();
 A.check("用量：台灣時間午夜歸零", r.json.date === "2026-10-01" && r.json.calls === 0, r.json);

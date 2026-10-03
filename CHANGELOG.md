@@ -19,6 +19,9 @@
 
 **〔續30：十、10.13.2開場同意頁（版本2026.10.01-a）〕**`index.html`：新增`CONSENT_VERSION`(1)／`getConsent()`／`hasValidConsent()`／`recordConsent()`／`showConsentGate()`／`renderPrivacyModal()`；`initApp()`進站時沒有有效同意紀錄(不存在、壞掉、版本低於目前)就擋一頁，按〔不同意〕留在本頁提示，〔同意並開始〕記`{v,at}`到localStorage(`lifegame_consent`)並在`saveGame()`／`saveLocalOnly()`寫進`state.consent`隨存檔上傳；選單新增「隱私說明」、綁定說明頁縮成一句話＋連結、用信箱登入／換綁只放一行連結。Worker：新增`POST /account/consent`(`account.js`的`opConsent`，`account.me`回`consent`)，已綁信箱者同意紀錄另記在帳號資料；前端在同意後與`refreshAccount()`成功後自動補送一次(同一份紀錄只送一次)。`tests/harness.mjs`新增`consent`選項(預設視為已同意，`consent:false`＝全新玩家)，新增`tests/test-63-consent.mjs`。**Worker有改，要部署**；遊戲狀態多一個`state.consent`欄位，舊存檔不受影響(沒有就當沒同意，下次開啟會先看到同意頁)。自動存檔(10.13.3)與管理端(10.13.6)尚未實作。
 
+## 2026-10-02
+**〔10.2.3衝突整理定案落實（版本2026.10.02-a，十、10.2.3.1）〕**設計文件：claude.ai網頁版討論拍板，新增`10-存檔與帳號系統.md` 10.2.3.1(A1～A4、B1～B3、C)，10.2.3「待使用者確認」全部清除，10.9.2／10.9.3標題改「封測期間生效」、10.9.3.2未綁啟程禮15點改25點、10.9.2補第9點(A2)，`00-總覽.md`日誌一行。**程式**：①A3`worker/worker.js` `callAnthropic()`——Anthropic回傳失敗(非2xx)或連線失敗也計入每日花費(玩家端失敗照舊不扣點、不算回合，沒改)；②B2`index.html` `acctCloudSaveAccepted()`——示範模式(`USE_MOCK`)綁定／登入併入時不上傳存檔；③B1併入上限本來就是每段60點(每日池5＋一般點55)、累計120點，只改文件；④A2程式本來就成立(`unboundFullNotice()`數本機人生)，只補測試。**測試**：`test-59`失敗呼叫改為計入(2次＝2元、後續門檻數字跟著調)；`test-61`新增示範模式綁定不上傳2項(確認拿掉修正會失敗)；`test-60`新增A2登出後保留人生且不能開新人生1項。版本2026.10.02-a(頁面與Worker，內容為玩家看不出差異)。**未測試**：真實Cloudflare上失敗呼叫的計數、真實API。舊存檔不受影響、不需清空。
+
 ## 2026-09-30
 **〔續29：綁定信箱入口更直覺（版本2026.09.30-i，十、10.12.5）〕** 錢包「綁定信箱」改獨立按鈕、說明在旁邊、「用信箱登入」也改按鈕；上方「行動點」加虛線底線；「存檔・設定」新增帳號一列（未綁→綁定說明頁／已綁→錢包含登出、換綁）。改動：`index.html`、`tests/test-60`（通過）、設計文件10.2.3附近、`DEPLOY.md`；`worker.js`只換版本號。
 
