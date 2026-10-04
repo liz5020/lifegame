@@ -37,7 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| 2026-10-04 | 2026.10.04-j（尚未上線，合併進`master`後自動部署） | 2026.10.04-j（同左） | 待填 | index.html、worker | 正式網域draftmylife.com：Worker來源白名單加入、算正式網址(預設真AI)、分享連結與og圖改用新網域；舊網址lifegame-6an.pages.dev照常可玩 |
+| 2026-10-04 | 2026.10.04-j（隨`master`自動部署，已用`/version`、頁面與check-runs確認線上網頁與Worker都是此版；Worker對draftmylife.com回200） | 2026.10.04-j（同左） | `4154f63` | index.html、worker | 正式網域draftmylife.com：Worker來源白名單加入、算正式網址(預設真AI)、分享連結與og圖改用新網域；舊網址lifegame-6an.pages.dev照常可玩 |
 | 2026-10-04 | 2026.10.04-i（隨`master`自動部署，已用`/version`、頁面與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-i（同左，只換版本號） | `1f0c055` | index.html、worker(只換版本號) | 遊玩說明：玩法與圖例新增「一回合怎麼玩」、第一次開局說明跳窗、重心按鈕列小標題(十六、16.18.1／16.18.2、二、2.6.3) |
 | 2026-10-04 | 2026.10.04-h（隨`master`自動部署，已用`/version`、頁面與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-h（同左） | `771065b` | index.html(只改註解、版本號與更新說明)、worker(只換版本號) | 首頁年齡確認那段程式註解更新為現況(常見問題已無年齡題) |
 | 2026-10-04 | 2026.10.04-g（隨`master`自動部署，已用`/version`、頁面與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-g（同左） | `5a9abf6` | index.html、worker(只換版本號) | 首頁常見問題刪除「適合幾歲的人？」(十六、16.10.6，A15)；說明檔與設計文件一致性修正(純文件) |
