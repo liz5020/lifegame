@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-04 | 2026.10.04-m（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；部署後後台估價3元、上限300元仍保留） | 2026.10.04-m（同左） | `ad760f9` | index.html(只換版本號與更新說明)、worker(prompt.js、turnUserContent) | 快取區塊改為少變資料→名冊→本回合資料，人物卡不進快取(10.14.3補充) |
 | 2026-10-04 | 2026.10.04-l（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-l（同左） | `ae6ce79` | index.html、worker(prompt.js、turnUserContent) | AI費用控制目標一(10.14)：少變資料與人物卡移進快取、規則與工具定義去重複、開場offset省略不再重生成 |
 | 2026-10-04 | 2026.10.04-k（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-k（同左，只換版本號） | `81fdc88` | index.html、worker(只換版本號) | 回合進行中擋下切換／刪除人生、存到雲端、帳號綁定登入登出與轉入(test-43修正時發現的漏洞) |
 | 2026-10-04 | 2026.10.04-j（隨`master`自動部署，已用`/version`、頁面與check-runs確認線上網頁與Worker都是此版；Worker對draftmylife.com回200） | 2026.10.04-j（同左） | `4154f63` | index.html、worker | 正式網域draftmylife.com：Worker來源白名單加入、算正式網址(預設真AI)、分享連結與og圖改用新網域；舊網址lifegame-6an.pages.dev照常可玩 |
