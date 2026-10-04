@@ -87,10 +87,10 @@ doc.getElementById("btn-drawer").click();
 doc.getElementById("link-legend").click();
 const lg = doc.getElementById("legend-modal");
 const heads = [...lg.querySelectorAll("h4")].map(x => x.textContent);
-A.check("16.18 玩法與圖例：月份、地點、重心取捨、訂單、曖昧與關係成立、人物", ["月份怎麼看", "地點", "這段時間想做什麼", "訂單", "曖昧中與在一起", "人物"].every(h => heads.includes(h)), heads);
+A.check("16.18 玩法與圖例：月份、地點、重心取捨、訂單、曖昧與關係成立、人物", ["月份怎麼看", "地點", "興趣和副業怎麼選", "訂單", "曖昧中與在一起", "人物"].every(h => heads.includes(h)), heads);
 A.check("16.18 「興趣」練功與「工作：副業」趕單的取捨有寫", /選「興趣」/.test(lg.textContent) && /選「工作」/.test(lg.textContent) && /練功/.test(lg.textContent) && /趕手上的單/.test(lg.textContent));
 A.check("18.16.5 人物說明加一句「衝突背後，通常有一件沒說出口的在意。」", lg.textContent.includes("衝突背後，通常有一件沒說出口的在意。"));
-A.check("16.18 白話：不出現系統用語(好感度、投入度、重心)", !/好感度|投入度|重心/.test(lg.textContent));
+A.check("16.18 白話：不出現系統用語(好感度、投入度；16.18.1起「重心」改為直接使用)", !/好感度|投入度/.test(lg.textContent));
 lg.remove();
 
 

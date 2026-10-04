@@ -171,7 +171,7 @@ export async function callWorker(env, { method = "POST", path: p = "/", body, or
 }
 
 // 載入遊戲頁面。useMock=false時前端走真實路徑(callAI→Worker→假上游)
-export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, consent = true, storage = null, host = "lifegamepage.smile80275.workers.dev" } = {}) {
+export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, consent = true, intro = true, storage = null, host = "lifegamepage.smile80275.workers.dev" } = {}) {
   // 二、2.7（2026-09-29）：index.html用<script src="lunar.min.js">載入農曆套件，jsdom不抓外部檔，這裡直接內嵌
   const lunarSrc = fs.readFileSync(path.join(ROOT, "lunar.min.js"), "utf8");
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8")
@@ -194,6 +194,8 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
       if (!useMock) win.localStorage.setItem("lifegame_force_real_api", "yes");
       // 十、10.13.2：開場同意頁——既有測試預設視為已同意(consent:false＝全新玩家，測同意頁用)
       if (consent && !win.localStorage.getItem("lifegame_consent")) win.localStorage.setItem("lifegame_consent", JSON.stringify({ v: 1, at: 1700000000000 }));
+      // 十六、16.18.2：第一次開局說明——既有測試預設視為已看過(intro:false＝這台裝置第一次開局，測跳窗用)
+      if (intro && !win.localStorage.getItem("lifegame_intro_seen")) win.localStorage.setItem("lifegame_intro_seen", "1");
       win.localStorage.setItem("lifegame_cloud_save", cloud ? "on" : "off"); // 十、10.8：版本庫預設關閉，既有測試打開雲端
       win.alert = () => {}; win.confirm = () => true;
       // 十、10.7（2026-09-29）：雲端存檔用瀏覽器原生gzip，jsdom沒有，借Node內建的

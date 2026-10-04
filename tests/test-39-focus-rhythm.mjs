@@ -23,7 +23,7 @@ ev("render()");
 const btns = [...doc.querySelectorAll(".focus-btn[data-focus]")].map(b => b.textContent);
 A.check("學生時期出現重心按鈕(含家人)", btns.length === 6 && btns.includes("讀書") && btns.includes("家人"), btns);
 A.check("預設亮的是休息", doc.querySelector(".focus-btn.on") && doc.querySelector(".focus-btn.on").textContent === "休息");
-A.check("按鈕下方小字提示", (doc.querySelector(".focus-hint") || {}).textContent === "主要給健康，下個場景可能在家或出門散心");
+A.check("按鈕下方小字提示", (doc.querySelector(".focus-hint:not(.focus-title)") || {}).textContent === "主要給健康，下個場景可能在家或出門散心");
 const ta = doc.getElementById("custom-input");
 A.check("輸入框三行高、提示文字", ta && ta.tagName === "TEXTAREA" && ta.getAttribute("rows") === "3" && ta.getAttribute("placeholder") === "寫下你想說或想做的事，也可以寫這段時間想怎麼過");
 

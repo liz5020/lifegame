@@ -260,6 +260,7 @@
   .focus-btn.on{background:var(--focus-bg);border-color:var(--focus-fg);color:var(--focus-fg);font-weight:600;}
   .focus-btn:disabled{opacity:.45;cursor:default;}
   .focus-hint{font-size:11.5px;color:var(--ink-soft);margin:2px 2px 8px;}
+  .focus-hint.focus-title{margin:0 2px 4px;} /* 二、2.6.3（2026-10-04）：重心按鈕列上方的小標題 */
   .interest-pick{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px;padding:8px;border-radius:12px;background:rgba(255,255,255,.5);}
   .seek-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px;border-radius:999px;background:var(--resp-bg);color:var(--resp-fg);margin:0 0 6px;}
   .seek-tag button{border:none;background:none;color:inherit;font-size:14px;cursor:pointer;padding:0 0 0 2px;line-height:1;}
@@ -8118,8 +8119,13 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-h";
+const APP_VERSION = "2026.10.04-i";
 const RELEASE_NOTES = [
+  { version:"2026.10.04-i", date:"2026-10-04", title:"新手說明", items:[
+    "「玩法與圖例」最前面新增「一回合怎麼玩」：每一回合要做的兩件事，還有一個人生大約多長。",
+    "第一次開始新人生時，會先跳出一段簡短說明。",
+    "輸入框上方那排按鈕多了一行小標題，提醒它們是在選這段時間主要做什麼。",
+  ]},
   { version:"2026.10.04-h", date:"2026-10-04", title:"小幅整理", items:[
     "幕後的小整理，玩起來沒有變化。",
   ]},
@@ -10252,6 +10258,7 @@ async function startLife(){
   }
   state.phase = "playing";
   render(true);
+  maybeShowIntroModal(state); // 16.18.2：第一回合前跳出；開場回合照常在背後產生
   // 二、2.2（2026-09-23修正）：原本這句文字含「暑假」二字，會被detectTimeSkipIntent()誤判成跳過指令，
   // 導致第一回合就隨機跳2~4段；改用timeState.prologue旗標讓這一回合完全不經過跳過判定/段落推進
   // 2026-09-29：回傳開場回合的promise，呼叫端(測試)await時會等到開場回合寫完；畫面上的按鈕不await，行為不變
@@ -11785,7 +11792,7 @@ function renderFocusBar(s, disabled){
     </div>` : ``;
   const hint = key==="interest" && !chosenCard ? "主要給興趣投入，下個場景可能在嘗試新的事物"
     : (key==="work" && workGig) ? "主要推進手上的訂單（也算一半興趣投入），下個場景可能在處理訂單的地方" : FOCUS_HINTS[key];
-  return `<div class="focus-row" role="radiogroup" aria-label="這段時間的重心">${keys.map(btn).join("")}</div>${picker}${workPicker}<div class="focus-hint">${escapeHtml(hint)}</div>`;
+  return `<div class="focus-hint focus-title">這段時間的重心</div><div class="focus-row" role="radiogroup" aria-label="這段時間的重心">${keys.map(btn).join("")}</div>${picker}${workPicker}<div class="focus-hint">${escapeHtml(hint)}</div>`;
 }
 function sheetHead(title){
   return `<div class="sheet-grip"></div><div class="sheet-head"><h3>${title}</h3><button class="sheet-close" aria-label="關閉">×</button></div>`;
@@ -12084,7 +12091,7 @@ function renderWalletModal(){
     copyToClipboardNow(text).then(ok=>renderBillingReportModal(text, ok));
   };
 }
-// 十六、16.18 玩法與圖例：本次新增的機制，用白話說明
+// 十六、16.18 玩法與圖例：本次新增的機制，用白話說明；16.18.1（2026-10-04）最前面加「一回合怎麼玩」，原「這段時間想做什麼」改名「興趣和副業怎麼選」
 function renderLegendModal(){
   const div = document.createElement("div");
   div.id = "legend-modal";
@@ -12093,12 +12100,26 @@ function renderLegendModal(){
     <div class="modal legend" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
       <h3>玩法與圖例</h3>
       <div style="overflow-y:auto;flex:1;">
+        <h3 style="margin-top:4px;">一回合怎麼玩</h3>
+        <h4>回應：你對眼前這一刻的反應</h4>
+        <p>故事停下來的地方，就是在等你回應。你可以點下方的選項，也可以在輸入框寫下想說的話、想做的事。</p>
+        <p>每次回應都會得到一個評價：出色、不錯、平常或失言。評價越好，表達力、人脈和你們之間的關係加得越多；失言反而會減少。</p>
+        <p>點選項最高到「不錯」，自己寫才有機會拿到「出色」。寫長寫短都沒關係，用心最重要。</p>
+        <p>回應和重心會一起送出，一回合花 1 點行動點。</p>
+        <h4>重心：這段時間主要花在哪</h4>
+        <p>回應是處理眼前這一刻，重心是決定接下來一兩週主要在做什麼。選了哪一項，那方面就會成長，下一個場景也可能跟著換到那裡。</p>
+        <p>・讀書：才識變高，期中、期末考前讀得越多次，考得越好<br>・興趣：興趣越練越熟<br>・社交：人脈變廣，朋友也比較會帶來機會<br>・休息：身體變好<br>・工作：存款變多<br>・家人：跟家人更親近</p>
+        <p>沒有換的話，會沿用上一回合。想過得更具體，也可以在輸入框寫，例如選讀書，再寫「約她一起留校讀書」。你寫的內容會優先寫進故事，成長的部分還是看你選的重心。</p>
+        <h4>一個人生有多長</h4>
+        <p>一段人生從高中開始，一路寫到老年，能活多久每個人不一樣。</p>
+        <p>學生時期大約 380 回合，一回合約一到兩週。出社會以後，時間會越過越快，到了老年，一回合可能就是好幾個月。</p>
+        <p>玩到哪裡都可以先停下來，下次接著寫。</p>
+        <h4>興趣和副業怎麼選</h4>
+        <p>輸入框上方的按鈕是這段時間主要花在哪裡。選「興趣」是專心練那項興趣，投入全部算進去，不會推進訂單；選「工作」再挑「副業」是趕手上的單，訂單會往前一格，同一項興趣也會跟著練到一半的份量。想練功選興趣，想賺錢或怕逾期選工作。你寫的內容會優先寫進故事，成長的部分還是看你選的重心。</p>
         <h4>月份怎麼看</h4>
         <p>畫面最上面的大標題是「年級・學期・月份」，例如「高一・上學期・10月」。下面那行小字是這個學期階段走到哪了，例如「期中準備期 5/6」。每一回合大約是一到兩週，故事裡的時間、節日和季節會跟著月份走。</p>
         <h4>地點</h4>
         <p>去過的地方都會記在「地點」裡：那個地方有什麼特別、誰常在那裡、上次是哪個月去的。按「去這裡」只會幫你在輸入框寫好「去○○，」，可以再補上你想做什麼，送出才算一回合、才會花 1 點行動點。關掉的店會變灰、排在最後，不會消失。</p>
-        <h4>這段時間想做什麼</h4>
-        <p>輸入框上方的按鈕是這段時間主要花在哪裡。選「興趣」是專心練那項興趣，投入全部算進去，不會推進訂單；選「工作」再挑「副業」是趕手上的單，訂單會往前一格，同一項興趣也會跟著練到一半的份量。想練功選興趣，想賺錢或怕逾期選工作。你自己寫的話永遠優先。</p>
         <h4>訂單</h4>
         <p>副業的訂單會排在訂單簿裡：每一單有交期、進度格和報酬。每回合最多做一格，做滿就會自動交件、錢直接進存款。超過交期一點點還來得及，只是報酬打七折；拖太久客人會取消，介紹人也會覺得尷尬。手上的單有上限，接不下的時候客人只能排隊或婉拒。</p>
         <h4>曖昧中與在一起</h4>
@@ -12110,6 +12131,30 @@ function renderLegendModal(){
     </div>`;
   document.body.appendChild(div);
   document.getElementById("btn-legend-close").onclick = ()=>div.remove();
+}
+// 十六、16.18.2 第一次開局說明：每台裝置只跳一次(記在瀏覽器本機)，世代傳承換新主角時不跳
+const INTRO_SEEN_STORAGE_NAME = "lifegame_intro_seen";
+function introSeen(){ try{ return localStorage.getItem(INTRO_SEEN_STORAGE_NAME)==="1"; }catch(e){ return false; } }
+function maybeShowIntroModal(s){
+  if(introSeen() || (s.familyChronicle||[]).length>0 || document.getElementById("intro-modal")) return; // familyChronicle有內容＝世代傳承
+  const div = document.createElement("div");
+  div.id = "intro-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal legend" style="max-width:480px;width:92vw;max-height:86vh;display:flex;flex-direction:column;">
+      <h3>一回合怎麼玩</h3>
+      <div style="overflow-y:auto;flex:1;">
+        <p>每一回合做兩件事，按下送出時一起算：<br>・回應：故事停下來時，你對眼前這一刻說什麼、做什麼。可以點選項，也可以自己寫，自己寫才有機會拿到最高評價「出色」。<br>・重心：輸入框上方那排按鈕，決定接下來一兩週把時間主要花在哪，選了哪一項，那方面就會成長。沒有換的話，會沿用上一回合。</p>
+        <p>每一回合花 1 點行動點。人生很長，不用一次玩完，隨時可以停下，下次接著寫。</p>
+        <p>想再看一次，可以到選單的「玩法與圖例」。</p>
+      </div>
+      <button class="primary-btn" id="btn-intro-start" style="margin-top:14px;">開始</button>
+    </div>`;
+  document.body.appendChild(div);
+  document.getElementById("btn-intro-start").onclick = ()=>{
+    try{ localStorage.setItem(INTRO_SEEN_STORAGE_NAME, "1"); }catch(e){}
+    div.remove();
+  };
 }
 // 存檔・設定面板(取代原本的選單面板；其餘項目已搬到選單抽屜)
 function renderMenuPanel(s){
