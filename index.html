@@ -8118,8 +8118,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-g";
+const APP_VERSION = "2026.10.04-h";
 const RELEASE_NOTES = [
+  { version:"2026.10.04-h", date:"2026-10-04", title:"小幅整理", items:[
+    "幕後的小整理，玩起來沒有變化。",
+  ]},
   { version:"2026.10.04-g", date:"2026-10-04", title:"首頁常見問題整理", items:[
     "首頁「你可能想問」拿掉了年齡那一題。",
   ]},
@@ -10946,7 +10949,7 @@ function render(loadingTurn){
 // ========== 十六、16.10 首頁（2026-09-28）==========
 // 文案為使用者定稿原文(含同日開局年齡修正)，改字請先改設計文件16.10再同步這裡。
 // 寫死在文案裡的數字：新人生啟程禮AP_UNBOUND_GIFT、綁定再領AP_BIND_BONUS、每日補到AP_DAILY_REFILL、每回合1點、未綁1段／綁定2段人生(2026-09-30第三批)
-// 十六、16.10.0（2026-10-01使用者指示取消）：進站年齡確認視窗已拿掉，首頁直接可用；「適合幾歲的人」的說明文字照舊
+// 十六、16.10.0（2026-10-01使用者指示取消）：進站年齡確認視窗已拿掉，首頁直接可用；2026-10-04起常見問題也不再有年齡那一題(五、5.6、十六、16.10.6)，玩家端不顯示任何年齡相關文字
 function writeHomeMeta(slot){
   if(slot===null || slot===undefined || !state) return;
   try{
