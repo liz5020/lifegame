@@ -94,10 +94,10 @@ A.check("16.18 白話：不出現系統用語(好感度、投入度；16.18.1起
 lg.remove();
 
 
-// 人物大格人數：不算已故、失聯仍算
+// 人物大格人數：不算已故、失聯仍算(開局本來就可能有已故家人，例如單親家庭，所以以加人之前的人數為基準)
+const aliveBefore = ev("state.characters.filter(c=>!c.deceased).length");
 ev(`state.characters.push({name:'已故甲',relation:'朋友',gender:'男',age:60,affinity:50,active:false,traits:'',summary:'',lastTurn:0,isChild:false,deceased:true},{name:'失聯乙',relation:'朋友',gender:'女',age:30,affinity:50,active:false,traits:'',summary:'',lastTurn:0,isChild:false,lost:true}); render()`);
-const alive = ev("state.characters.filter(c=>!c.deceased).length");
-A.check("16.17 人物大格人數不算已故的人、失聯的仍算", tile("tile-roster").querySelector(".n").textContent === `${alive}人` && ev("state.characters.length") === alive + 1, tile("tile-roster").querySelector(".n").textContent);
+A.check("16.17 人物大格人數不算已故的人、失聯的仍算", tile("tile-roster").querySelector(".n").textContent === `${aliveBefore + 1}人`, tile("tile-roster").querySelector(".n").textContent);
 
 // ---------- 無emoji、無紫色 ----------
 ev("state.interestCandidates=[]; state.reviewFlags=[]; render()");
