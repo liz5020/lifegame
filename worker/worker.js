@@ -89,7 +89,7 @@ import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual, markL
 import { corsHeaders, jsonResponse } from "./http.js";
 import {
   UsageCounter, readSetting, spendCap, giftCap, callCostEstimate, usageCall, usageCounterStub, accountsCall, accountStore,
-  bearerToken, countAICall, spendGate, syncGiftStats, DEFAULT_DAILY_SPEND_CAP, DEFAULT_DAILY_GIFT_CAP
+  bearerToken, countAICall, recordAIUsage, spendGate, syncGiftStats, DEFAULT_DAILY_SPEND_CAP, DEFAULT_DAILY_GIFT_CAP
 } from "./gate.js";
 import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
@@ -563,7 +563,7 @@ async function handleIdleSummary(body, env, origin, ctx) {
       tools: [IDLE_SUMMARY_TOOL], tool_choice: { type: "tool", name: IDLE_SUMMARY_TOOL.name },
       system: [{ type: "text", text: IDLE_SUMMARY_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: body.messages[0].content }]
-    }, ctx);
+    }, ctx, { kind: "idle", lifeId: safeLifeId }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -619,7 +619,7 @@ async function handleLifeReview(body, env, origin, ctx) {
       tools: [LIFE_REVIEW_TOOL], tool_choice: { type: "tool", name: LIFE_REVIEW_TOOL.name },
       system: [{ type: "text", text: LIFE_REVIEW_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: body.messages[0].content }]
-    }, ctx);
+    }, ctx, { kind: "review", lifeId: safeLifeId }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -659,7 +659,7 @@ async function handleChapter(body, env, origin, ctx) {
   if (!pre.ok) return jsonResponse(origin, { error: pre.error }, pre.status);
   let upstream, text, data = null;
   try {
-    upstream = await callAnthropic(env, buildChapterRequest(body.messages), ctx);
+    upstream = await callAnthropic(env, buildChapterRequest(body.messages), ctx, { kind: "chapter", lifeId: safeLifeId }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -760,7 +760,8 @@ async function handleUsageToday(request, env) {
   return new Response(JSON.stringify(await buildUsageToday(env), null, 2), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
 
-async function callAnthropic(env, upstreamBody, ctx) {
+// 十、10.14.7（2026-10-04）：meta有值時，回應成功後在背景把Anthropic回報的實際用量記進用量計數器(不影響回應速度與內容)
+async function callAnthropic(env, upstreamBody, ctx, meta) {
   let res;
   try {
     res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -777,6 +778,14 @@ async function callAnthropic(env, upstreamBody, ctx) {
     throw e;
   }
   await countAICall(env, ctx); // 十、10.9.3.1／10.9.3.3：每次AI呼叫(含失敗)記一筆估價，達80%／上限時寄管理通知信
+  if (meta && res.ok) {
+    const job = res.clone().json().then(d => {
+      if (!d || !d.usage) return;
+      const t = extractUsage(d.usage);
+      return recordAIUsage(env, meta, t, costUSD(t));
+    }).catch(() => {});
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
+  }
   // 十、10.9.4（2026-09-30）：固定規則(system prompt＋工具定義)的字數，給前端逐筆成本紀錄當比例參考(不換算token)
   try {
     const sys = (upstreamBody.system || []).reduce((n, b) => n + String(b.text || "").length, 0);
@@ -848,7 +857,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
 
   let upstream, text, data = null;
   try {
-    upstream = await callAnthropic(env, upstreamBody, ctx);
+    upstream = await callAnthropic(env, upstreamBody, ctx, { kind: ({ chapter: "chapter", idle_summary: "idle", life_review: "review" })[body.kind] || "turn", lifeId: safeLifeId, nonce: isTurn ? body.turn_nonce : null, turn: isTurn ? check.payload.turn : null, prologue: isTurn && !!(check.payload.time_context && check.payload.time_context.is_prologue === true) }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -929,7 +938,7 @@ async function handleAIProxy(request, env, origin, ctx) {
 
   let upstream, text, data = null;
   try {
-    upstream = await callAnthropic(env, buildTurnRequest(body.messages), ctx);
+    upstream = await callAnthropic(env, buildTurnRequest(body.messages), ctx, { kind: "turn", lifeId: safeLifeId, nonce, turn: check.payload.turn, prologue: isPrologue }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -1027,13 +1036,60 @@ async function handleStatsSummary(request, env) {
     active: ps.active,
     pageviews: { today: days[today] || 0, last7, total, since },
     usage, accounts_bound: ps.accounts_bound, lives_started: ps.lives_started,
+    ai_usage: await buildAIUsageSummary(env, { today, week_start, turns: pv.turns || {} }),
     daily
   };
   return new Response(JSON.stringify(out, null, 2), { headers });
 }
 
+// 十、10.14.7（2026-10-04）：伺服器記的AI實際用量(Anthropic回報的token數，依單價算出的美元)
+export const AI_USAGE_KIND_LABELS = { turn: "一般回合", opening: "開場", retry: "失敗重試／重新生成", idle: "放置摘要", chapter: "人生之書章節", review: "回顧這一生" };
+async function buildAIUsageSummary(env, { today, week_start, turns }) {
+  if (!usageCounterStub(env)) return null;
+  const u = await usageCall(env, "udays", {}, "GET");
+  const empty = () => ({ calls: 0, input: 0, cache_write: 0, cache_read: 0, output: 0, usd: 0, by_kind: {} });
+  const range = { today: empty(), last7: empty(), total: empty() };
+  for (const [d, kinds] of Object.entries(u.days || {})) {
+    const targets = [range.total];
+    if (d >= week_start && d <= today) targets.push(range.last7);
+    if (d === today) targets.push(range.today);
+    for (const [k, b] of Object.entries(kinds || {})) for (const r of targets) {
+      r.calls += b.calls; r.input += b.in; r.cache_write += b.cw; r.cache_read += b.cr; r.output += b.out; r.usd += b.usd;
+      r.by_kind[k] = (r.by_kind[k] || 0) + b.calls;
+    }
+  }
+  const turnsIn = (from, to) => Object.entries(turns).reduce((t, [d, n]) => t + (d >= from && d <= to ? n : 0), 0);
+  const den = { today: turns[today] || 0, last7: turnsIn(week_start, today), total: turnsIn(u.since || "0000", today) };
+  for (const [key, r] of Object.entries(range)) {
+    r.usd = Math.round(r.usd * 1e4) / 1e4;
+    r.turns = den[key];
+    r.usd_per_turn = den[key] > 0 ? Math.round(r.usd / den[key] * 1e4) / 1e4 : null; // 所有呼叫(含開場、重試、章節)的花費攤進每一回合(10.9.5)
+    const inAll = r.input + r.cache_write + r.cache_read;
+    r.cache_read_pct = inAll > 0 ? Math.round(r.cache_read / inAll * 1000) / 10 : null;
+  }
+  return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS }, range);
+}
+// GET /usage-detail.csv：逐筆明細(最近7天、最多5,000筆)，欄位比照遊戲裡的逐筆呼叫紀錄，另加匿名人生代號與距同一段人生上一次呼叫的分鐘數
+async function handleUsageDetailCsv(request, env) {
+  const denied = adminDenied(request, env);
+  if (denied) return denied;
+  const rows = usageCounterStub(env) ? ((await usageCall(env, "urows", {}, "GET")).rows || []) : [];
+  rows.sort((a, b) => a.t - b.t);
+  const lastByLife = {};
+  const tw = (t) => new Date(t + 8 * 3600000).toISOString().replace("T", " ").slice(0, 19);
+  const lines = ["time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd"];
+  for (const r of rows) {
+    const gap = r.life && lastByLife[r.life] ? Math.round((r.t - lastByLife[r.life]) / 6000) / 10 : "";
+    if (r.life) lastByLife[r.life] = r.t;
+    lines.push([tw(r.t), r.turn == null ? "" : r.turn, AI_USAGE_KIND_LABELS[r.k] || r.k, r.life || "", gap, r.in, r.cw, r.cr, r.out, r.usd].join(","));
+  }
+  const name = "AI用量明細_" + tw(nowMs(env)).replace(/[- :]/g, "").slice(0, 12) + ".csv";
+  return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",
+    "Content-Disposition": "attachment; filename=\"usage-detail.csv\"; filename*=UTF-8''" + encodeURIComponent(name) } });
+}
+
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.04-m";
+const WORKER_VERSION = "2026.10.04-n";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
@@ -1046,6 +1102,7 @@ export default {
     if (reqUrl.pathname === "/usage-today" && request.method === "GET") return handleUsageToday(request, env);
     // 十、10.13.7.8：數據總覽——/stats-summary(USAGE_ADMIN_TOKEN，不碰KV)與/dashboard(網頁，不被搜尋引擎收錄、不快取、不走來源白名單)
     if (reqUrl.pathname === "/stats-summary" && request.method === "GET") return handleStatsSummary(request, env);
+    if (reqUrl.pathname === "/usage-detail.csv" && request.method === "GET") return handleUsageDetailCsv(request, env); // 10.14.7
     if (reqUrl.pathname === "/dashboard" && request.method === "GET") {
       return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" } });
     }

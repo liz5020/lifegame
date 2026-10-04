@@ -63,6 +63,18 @@ export class UsageCounter {
       await this._markUsageSince(date);
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
+    // 十、10.14.7（2026-10-04）：AI實際用量——每日依呼叫類型加總(ua:日期，永久保留)＋逐筆明細(ud:，最近7天、最多5,000筆)
+    if (op === "detail" && request.method === "POST") return this._json(await this._recordDetail(p, date, now));
+    if (op === "udays" && request.method === "GET") {
+      const out = { ok: true, since: (await this.state.storage.get("ua_since")) || null, days: {} };
+      for (const [k, v] of await this.state.storage.list({ prefix: "ua:" })) out.days[k.slice(3)] = v;
+      return this._json(out);
+    }
+    if (op === "urows" && request.method === "GET") {
+      const rows = [];
+      for (const [, v] of await this.state.storage.list({ prefix: "ud:" })) rows.push(v);
+      return this._json({ ok: true, rows });
+    }
     if (op === "pvstats" && request.method === "GET") {
       const out = { ok: true, since: (await this.state.storage.get("pv_since")) || null, us_since: (await this.state.storage.get("us_since")) || null, days: {}, turns: {}, cost: {} };
       for (const [k, v] of await this.state.storage.list({ prefix: "pv:" })) out.days[k.slice(3)] = v;
@@ -106,6 +118,55 @@ export class UsageCounter {
     if (dirty) await this.state.storage.put("day", cur);
     return new Response(JSON.stringify(out), { headers: { "Content-Type": "application/json" } });
   }
+}
+
+UsageCounter.prototype._json = function (o) { return new Response(JSON.stringify(o), { headers: { "Content-Type": "application/json" } }); };
+UsageCounter.prototype._recordDetail = async function (p, date, now) {
+  const st = this.state.storage;
+  const n = (k) => { const v = Number(p.get(k)); return Number.isFinite(v) && v >= 0 ? v : 0; };
+  const nonce = p.get("nonce") || "";
+  let kind = USAGE_KINDS.includes(p.get("kind")) ? p.get("kind") : "turn";
+  if (kind === "turn" || kind === "opening") {
+    // 同一個turn_nonce第二次以後＝失敗重試／重新生成(與玩家本機紀錄10.9.4同一個判斷)；只看最近的明細就夠，同一回合的重試都在幾十秒內
+    if (nonce) for (const [, v] of await st.list({ prefix: "ud:", reverse: true, limit: 50 })) if (v.n === nonce) { kind = "retry"; break; }
+  }
+  const row = { t: now, k: kind, turn: p.get("turn") ? n("turn") : null, life: p.get("life") || null, n: nonce || null,
+    in: n("in"), cw: n("cw"), cr: n("cr"), out: n("out"), usd: Math.round(n("usd") * 1e6) / 1e6 };
+  const agg = (await st.get("ua:" + date)) || {};
+  const b = agg[kind] || (agg[kind] = { calls: 0, in: 0, cw: 0, cr: 0, out: 0, usd: 0 });
+  b.calls += 1; b.in += row.in; b.cw += row.cw; b.cr += row.cr; b.out += row.out; b.usd = Math.round((b.usd + row.usd) * 1e6) / 1e6;
+  await st.put("ua:" + date, agg);
+  if (!(await st.get("ua_since"))) await st.put("ua_since", date);
+  this._seq = ((this._seq || 0) + 1) % 1e6; // 同一毫秒的多筆依寫入順序排(只在這個實例內遞增，重啟後從頭算也不影響排序)
+  await st.put("ud:" + String(now).padStart(15, "0") + ":" + String(this._seq).padStart(6, "0"), row);
+  // 清掉超過7天、或超過5,000筆的最舊明細(每次最多清50筆，平常每次只會清0～1筆)
+  let count = ((await st.get("ud_count")) || 0) + 1;
+  for (const [k, v] of await st.list({ prefix: "ud:", limit: 50 })) {
+    if (count <= USAGE_DETAIL_MAX_ROWS && v.t >= now - USAGE_DETAIL_KEEP_MS) break;
+    await st.delete(k); count -= 1;
+  }
+  await st.put("ud_count", count);
+  return { ok: true, kind };
+};
+export const USAGE_KINDS = ["turn", "opening", "retry", "idle", "chapter", "review"];
+export const USAGE_DETAIL_MAX_ROWS = 5000;
+export const USAGE_DETAIL_KEEP_MS = 7 * 86400000;
+async function shortHash(s) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("lifegame-usage:" + s));
+  return Array.from(new Uint8Array(d).slice(0, 4)).map(x => x.toString(16).padStart(2, "0")).join("");
+}
+// 每次AI回應後記實際用量(10.14.7)。meta：{kind, lifeId, nonce, turn, prologue}；usage：Anthropic回傳的usage與算好的美元。記錄失敗絕不能影響回合
+export async function recordAIUsage(env, meta, tokens, usd) {
+  try {
+    if (!usageCounterStub(env) || !tokens) return;
+    const m = meta || {};
+    const kind = m.kind === "turn" && m.prologue ? "opening" : (USAGE_KINDS.includes(m.kind) ? m.kind : "turn");
+    const params = { kind, in: String(tokens.input || 0), cw: String(tokens.cache_write || 0), cr: String(tokens.cache_read || 0), out: String(tokens.output || 0), usd: String(usd || 0) };
+    if (typeof m.turn === "number" && Number.isFinite(m.turn)) params.turn = String(Math.max(0, Math.floor(m.turn)));
+    if (m.lifeId) params.life = await shortHash("life:" + m.lifeId);
+    if (m.nonce) params.nonce = await shortHash("nonce:" + m.nonce);
+    await usageCall(env, "detail", params);
+  } catch (e) { /* 只是紀錄 */ }
 }
 
 export function usageCounterStub(env) {

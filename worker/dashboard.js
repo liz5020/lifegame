@@ -1,5 +1,5 @@
 // 十、10.13.7.8（2026-10-03）：數據網頁(GET /dashboard)。單一HTML，自己用SVG畫圖，不引用任何外部程式庫或外部網站資源。
-// 密碼只存sessionStorage；資料來自同網址的 /stats-summary 與 /usage-today(同一組USAGE_ADMIN_TOKEN)。所有日期時間以台灣時間呈現。
+// 密碼只存sessionStorage；資料來自同網址的 /stats-summary 與 /usage-today(同一組USAGE_ADMIN_TOKEN)；10.14.7起逐筆明細從 /usage-detail.csv 下載。所有日期時間以台灣時間呈現。
 export const DASHBOARD_HTML = `<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -45,6 +45,8 @@ input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(
   <div class="bar"><span>最後更新：<span id="upd">—</span>（台灣時間）</span><button id="refresh">立即更新</button></div>
   <div class="cards" id="cards"></div>
   <div class="cards" id="cards2" style="margin-top:12px"></div>
+  <div class="panel" id="ai"><h2>AI 實際用量（Anthropic 回報）</h2><div id="aiBody"></div>
+    <div class="bar" style="margin:10px 0 0"><button id="dl">下載逐筆明細 CSV</button><span id="dlMsg">最近 7 天、最多 5,000 筆</span></div></div>
   <div class="panel"><h2>近 30 天每日趨勢</h2><div id="trend"></div></div>
   <div class="panel spend" id="spend"></div>
 </div>
@@ -125,6 +127,30 @@ function renderTrend(s){
   hit.addEventListener("pointermove",move);hit.addEventListener("pointerdown",move);
   hit.addEventListener("pointerleave",function(){tip.style.display="none";cur.setAttribute("visibility","hidden")});
 }
+// 十、10.14.7（2026-10-04）：伺服器記的AI實際用量；美元換算台幣只是參考(1美元≈32元)
+function usd(v){return v==null?"—":"US$"+Number(v).toLocaleString("en-US",{maximumFractionDigits:4})}
+function twd(v){return v==null?"":"（約 NT$"+n2(v*32)+"）"}
+function renderAI(s){
+  var box=$("aiBody"),a=s&&s.ai_usage;
+  if(!a){box.innerHTML='<div class="err">'+NA+'</div>';return}
+  var col=function(label,r){
+    var kinds=Object.keys(r.by_kind).map(function(k){return esc(a.kind_labels[k]||k)+" "+num(r.by_kind[k])}).join("、")||"—";
+    return '<div class="card"><h2>'+label+'</h2><div class="big">'+usd(r.usd)+'</div><div class="small">'+twd(r.usd)+'</div>'+
+      '<div class="small">每回合平均 <b>'+usd(r.usd_per_turn)+'</b>'+twd(r.usd_per_turn)+'</div>'+
+      '<div class="small">呼叫 <b>'+num(r.calls)+'</b> 次：'+kinds+'</div>'+
+      '<div class="small">輸入 '+num(r.input)+'・快取寫入 '+num(r.cache_write)+'・快取讀取 '+num(r.cache_read)+'・輸出 '+num(r.output)+' token</div>'+
+      '<div class="small">快取讀取佔輸入 <b>'+(r.cache_read_pct==null?"—":r.cache_read_pct+"%")+'</b></div></div>'};
+  box.innerHTML='<div class="cards">'+col("今天",a.today)+col("近 7 天",a.last7)+col("累計（"+(a.since||"—")+" 起）",a.total)+'</div>'+
+    '<div class="small">每回合平均＝所有 AI 呼叫（含開場、重試、章節）的花費 ÷ 回合數。</div>';
+}
+$("dl").addEventListener("click",function(){
+  var b=$("dl");b.disabled=true;$("dlMsg").textContent="下載中…";
+  fetch("/usage-detail.csv",{headers:{Authorization:"Bearer "+tok},cache:"no-store"}).then(function(r){
+    if(!r.ok)throw new Error("http "+r.status);
+    var cd=r.headers.get("Content-Disposition")||"",m=/filename\\*=UTF-8''([^;]+)/.exec(cd);
+    return r.blob().then(function(bl){var u=URL.createObjectURL(bl),x=document.createElement("a");x.href=u;x.download=m?decodeURIComponent(m[1]):"usage-detail.csv";document.body.appendChild(x);x.click();x.remove();setTimeout(function(){URL.revokeObjectURL(u)},1000)})
+  }).then(function(){$("dlMsg").textContent="已下載（最近 7 天、最多 5,000 筆）"},function(){$("dlMsg").textContent="下載失敗，請稍後再試"}).then(function(){b.disabled=false});
+});
 function renderSpend(u){
   $("spend").innerHTML=u?('今日 AI 花費：<b>'+num(u.est_cost_twd)+'</b> ／ 每日上限 <b>'+num(u.daily_spend_cap_twd)+'</b>'):('今日 AI 花費：'+NA);
 }
@@ -133,7 +159,7 @@ function load(){
   if(busy)return;busy=true;
   return Promise.all([api("/stats-summary").catch(function(e){if(e.auth)throw e;return null}),api("/usage-today").catch(function(e){if(e.auth)throw e;return null})]).then(function(r){
     $("login").hidden=true;$("app").hidden=false;
-    renderCards(r[0]);renderUsage(r[0]);renderTrend(r[0]);renderSpend(r[1]);
+    renderCards(r[0]);renderUsage(r[0]);renderAI(r[0]);renderTrend(r[0]);renderSpend(r[1]);
     $("upd").textContent=new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei",hour12:false});
   }).catch(function(e){
     if(e&&e.auth){try{sessionStorage.removeItem(KEY)}catch(x){} tok="";$("app").hidden=true;$("login").hidden=false;$("loginErr").textContent="密碼錯誤"}

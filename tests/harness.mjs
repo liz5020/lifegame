@@ -141,7 +141,7 @@ export function makeFakeDO(Cls) {
   const store = new Map();
   const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   const st = { storage: { get: async k => clone(store.get(k)), put: async (k, v) => { store.set(k, clone(v)); }, delete: async k => { store.delete(k); },
-    list: async (o = {}) => { const out = new Map(); [...store.keys()].sort().filter(k => (!o.prefix || k.startsWith(o.prefix)) && (o.end === undefined || k < o.end)).forEach(k => out.set(k, clone(store.get(k)))); return out; } } };
+    list: async (o = {}) => { const out = new Map(); let ks = [...store.keys()].sort().filter(k => (!o.prefix || k.startsWith(o.prefix)) && (o.end === undefined || k < o.end)); if (o.reverse) ks.reverse(); if (o.limit) ks = ks.slice(0, o.limit); ks.forEach(k => out.set(k, clone(store.get(k)))); return out; } } }; // 10.14.7：補上reverse／limit(跟Cloudflare的storage.list一樣)
   const inst = new Cls(st);
   return { _store: store, idFromName: n => n, get: () => ({ fetch: (u, init) => inst.fetch(new Request(u, init)) }) };
 }
