@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-04 | 2026.10.04-n（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；`/usage-detail.csv`回200、`/dashboard`有新區塊） | 2026.10.04-n（同左） | `e1d44d3` | index.html(只換版本號與更新說明)、worker(gate.js、worker.js、dashboard.js) | 伺服器端AI實際用量紀錄(10.14.7)：每日加總、逐筆明細、CSV下載、數據總覽區塊 |
 | 2026-10-04 | 2026.10.04-m（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；部署後後台估價3元、上限300元仍保留） | 2026.10.04-m（同左） | `ad760f9` | index.html(只換版本號與更新說明)、worker(prompt.js、turnUserContent) | 快取區塊改為少變資料→名冊→本回合資料，人物卡不進快取(10.14.3補充) |
 | 2026-10-04 | 2026.10.04-l（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-l（同左） | `ae6ce79` | index.html、worker(prompt.js、turnUserContent) | AI費用控制目標一(10.14)：少變資料與人物卡移進快取、規則與工具定義去重複、開場offset省略不再重生成 |
 | 2026-10-04 | 2026.10.04-k（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-k（同左，只換版本號） | `81fdc88` | index.html、worker(只換版本號) | 回合進行中擋下切換／刪除人生、存到雲端、帳號綁定登入登出與轉入(test-43修正時發現的漏洞) |
