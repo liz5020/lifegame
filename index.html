@@ -402,6 +402,7 @@
   .menu-sec{font-size:11.5px;color:var(--ink-soft);letter-spacing:1px;margin:18px 2px 4px;}
   .menu-item{display:block;padding:11px 2px;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer;color:var(--ink);text-decoration:none;}
   .menu-item.danger{color:var(--danger);border-bottom:none;margin-top:14px;}
+  .menu-item.off{opacity:.45;cursor:default;} /* 回合進行中暫停的項目(切換／刪除人生) */
   .menu-note{font-size:11.5px;color:var(--ink-soft);padding:6px 2px 8px;border-bottom:1px solid var(--line);}
   .menu-note a{color:var(--stamp);cursor:pointer;text-decoration:underline;}
 
@@ -3496,6 +3497,7 @@ async function showSlotPicker(key, currentSlot, notice){
 let manualCloudSaveBusy = false;
 async function manualCloudSave(){
   if(manualCloudSaveBusy || !state || state.phase!=="playing") return;
+  if(blockIfTurnBusy("存到雲端")) return;
   manualCloudSaveBusy = true;
   const placed = await ensureCloudHome(state);
   if(!placed.home){ manualCloudSaveBusy = false; renderManualCloudSaveModal(false, acct.recovery_key, "雲端存檔的位置不夠了（這把金鑰的 3 個位置都用了），"); return; }
@@ -3685,6 +3687,7 @@ function localSlotsMeta(){
 // 十、10.1補充（2026-09-22新增）：同一瀏覽器內切換人生——只清除本機「目前使用中slot」記錄，不刪除任何存檔，
 // 回到三段人生選擇畫面(跟換裝置輸入金鑰後看到的畫面一樣)，並標示玩家剛剛離開的那一段是「進行中」
 async function switchLife(){
+  if(blockIfTurnBusy("切換其他人生")) return;
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
   const prevSlotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const prevSlot = prevSlotRaw!==null ? Number(prevSlotRaw) : null;
@@ -8119,8 +8122,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-j";
+const APP_VERSION = "2026.10.04-k";
 const RELEASE_NOTES = [
+  { version:"2026.10.04-k", date:"2026-10-04", title:"等待時的小防護", items:[
+    "撰稿人還在寫這一回合時，切換人生、刪除人生、存到雲端和綁定信箱會先暫停，寫完就能用，避免這一回合寫到別段人生裡。",
+  ]},
   { version:"2026.10.04-j", date:"2026-10-04", title:"新網址", items:[
     "遊戲有了正式網址 draftmylife.com，分享按鈕和分享圖上的連結都換成新的；舊網址 lifegame-6an.pages.dev 照樣可以玩。",
   ]},
@@ -8744,7 +8750,21 @@ function restoreUndo(){
   saveGame(); render();
 }
 
+// 回合進行中(從送出到結果寫回)會換掉或存下目前人生的操作一律先擋下：回合的await回來時寫的是全域state，
+// 中途切換／刪除人生會寫進別段人生或首頁畫面而出錯；存到雲端會存到扣了點、還沒有內容的半個回合
+let turnsInFlight = 0;
+function turnBusy(){ return turnsInFlight>0; }
+function blockIfTurnBusy(what){
+  if(!turnBusy()) return false;
+  showWriterToast(`撰稿人還在寫這一回合，寫完才能${what}。`);
+  return true;
+}
 async function takeTurn(actionText, cost){
+  turnsInFlight++;
+  try{ return await takeTurnInner(actionText, cost); }
+  finally{ turnsInFlight--; }
+}
+async function takeTurnInner(actionText, cost){
   if(state.phase!=="playing") return;
   refillDailyIfNeeded(state);
   // 十、10.3.12（2026-09-29）：測試用「不扣行動點」開著時本機不扣點(真實模式實際扣不扣由Worker依測試鑰匙名單決定)，回合數照常+1
@@ -12083,11 +12103,11 @@ function renderWalletModal(){
   const loginLink = document.getElementById("btn-wallet-login");
   if(loginLink) loginLink.onclick = ()=>{ div.remove(); openAccountFlow("login"); };
   const logoutBtn = document.getElementById("btn-acct-logout");
-  if(logoutBtn) logoutBtn.onclick = async ()=>{ div.remove(); await acctLogout(); showWriterToast("已登出這台裝置。帳號和錢包都還在，用信箱隨時可以再登入。"); };
+  if(logoutBtn) logoutBtn.onclick = async ()=>{ if(blockIfTurnBusy("登出")) return; div.remove(); await acctLogout(); showWriterToast("已登出這台裝置。帳號和錢包都還在，用信箱隨時可以再登入。"); };
   const changeBtn = document.getElementById("btn-acct-change");
   if(changeBtn) changeBtn.onclick = ()=>{ div.remove(); openAccountFlow("change"); };
   const transferBtn = document.getElementById("btn-acct-transfer");
-  if(transferBtn) transferBtn.onclick = async ()=>{ transferBtn.disabled = true; await acctTransferCurrentLife(); div.remove(); renderWalletModal(); };
+  if(transferBtn) transferBtn.onclick = async ()=>{ if(blockIfTurnBusy("把這段人生轉進帳號")) return; transferBtn.disabled = true; await acctTransferCurrentLife(); div.remove(); renderWalletModal(); };
   // 10.11.3：第一步＝點按當下把點數明細複製到剪貼簿(同步呼叫)，第二步由提示視窗的「前往表單」另外開新分頁，兩步不可合併
   document.getElementById("btn-wallet-report").onclick = ()=>{
     const text = walletReportText(s);
@@ -12173,8 +12193,9 @@ function renderMenuPanel(s){
     <a class="menu-item privacy-link" id="link-privacy">${icon("help")} 隱私說明</a>
     ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">${icon("cloud")} 存到雲端</a>`}
     ${lastKnownWallet>0 ? `<div class="menu-note">${icon("wallet")} 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
-    <a class="menu-item" id="link-switch-life">${icon("refresh")} 切換其他人生</a>
-    <a class="menu-item danger" id="link-reset">刪除這段人生</a>
+    <a class="menu-item${aiWritingNow?" off":""}" id="link-switch-life"${aiWritingNow?' aria-disabled="true"':""}>${icon("refresh")} 切換其他人生</a>
+    <a class="menu-item danger${aiWritingNow?" off":""}" id="link-reset"${aiWritingNow?' aria-disabled="true"':""}>刪除這段人生</a>
+    ${aiWritingNow ? `<div class="menu-note">撰稿人寫完這一回合後，才能切換或刪除人生。</div>` : ``}
   </section>`;
 }
 function setPanel(name){
@@ -12919,6 +12940,7 @@ function renderMemoirModal(){
   document.getElementById("btn-memoir-close").onclick = ()=>div.remove();
 }
 function renderConfirmReset(){
+  if(blockIfTurnBusy("刪除這段人生")) return;
   const div = document.createElement("div");
   div.id = "confirm-modal";
   div.className = "modal-backdrop";
@@ -12992,6 +13014,7 @@ function acctErrText(data, status, network){
 }
 let acctFlow = null; // {mode:"bind"|"login"|"change", step:"intro"|"email"|"code", email, error, cooldownUntil, busy, timer, offerLogin}
 function openAccountFlow(mode, presetEmail){
+  if(blockIfTurnBusy(mode==="change" ? "換綁信箱" : "綁定或登入")) return;
   closeAccountFlow();
   acctFlow = { mode, step: mode==="bind" ? "intro" : "email", email: presetEmail||"", error:"", cooldownUntil:0, busy:false, timer:null, offerLogin:false };
   renderAccountFlow();

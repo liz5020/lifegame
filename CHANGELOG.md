@@ -16,6 +16,12 @@
 - 測試：`test-54-version`新增兩個來源都放行的檢查；`test-62-unbound-rules`新增draftmylife.com預設真AI且分享連結為新網域；`test-31-homepage` og:image改新網域。
 - 驗證：`cd tests && node run-all.mjs`全套(Node 20)。
 
+### 2026-10-04 續（開發部）回合進行中的操作防護(2026.10.04-k)
+- 起因：test-43修正時發現，`takeTurn()`在等旁白回應(await)後寫回的是全域`state`；回合進行中玩家若從選單切換或刪除人生，結果會寫進別段人生，或在首頁畫面出錯(`state.log`不存在)。使用者同意照建議處理。
+- `index.html`：①`takeTurn()`改為外層計數(`turnsInFlight`／`turnBusy()`，try/finally，成功、失敗、點數不足都會解除)，原本內容移到`takeTurnInner()`，行為不變；②`blockIfTurnBusy(what)`：進行中時顯示「撰稿人還在寫這一回合，寫完才能○○。」並擋下——`switchLife()`、`renderConfirmReset()`(刪除人生)、`manualCloudSave()`(選單與上方雲端存檔狀態列共用)、`openAccountFlow()`(綁定／登入／換綁)、錢包裡的登出與「轉進帳號」按鈕；③存檔・設定面板在旁白書寫中(`aiWritingNow`)把切換／刪除人生變灰(`.menu-item.off`、`aria-disabled`)並加一行說明。不動存檔結構；`worker/`只換版本號。
+- 實作判斷：存到雲端也擋(否則會存到扣了點、還沒有內容的半個回合)；帳號綁定／登入／登出／轉入也擋(回合失敗退點時要看這段人生是否用帳號錢包)；放置代活開關、看金鑰、錢包、各種翻閱面板不擋。
+- 測試：新增`test-69-turn-guard.mjs`(假上游卡住模擬進行中)。
+
 ### 2026-10-04 續（測試部）test-43平行跑時失敗修正
 - 原因：按「睜開眼睛」(生活方式確認)、讀檔、存雲端等按鈕會在背後跑非同步流程(開場回合要等假上游回應)，測試只固定等30～120毫秒就往下走；平行跑時電腦忙，開場回合還沒寫完，測試就把state換成首頁／金鑰畫面，回合回來寫錯誤訊息時`state.log`不存在→TypeError。8份同時跑可穩定重現(8/8失敗)。
 - 修正：只改測試。按鈕後的固定等待改為`waitFor(條件)`(開場回合寫進日記、進入playing、拿到雲端格子、存檔視窗出現等，上限8秒)；已await的呼叫後面的短暫等待不動。
