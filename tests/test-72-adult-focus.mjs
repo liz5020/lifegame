@@ -143,15 +143,22 @@ click("social");
 A.check("再點一次拿掉，後面的往前補", js("state.focusRank").join() === "study,rest");
 click("social");
 // 擲骰：Math.random固定0.5 → 第2名(60%)發生、第3名(30%)沒發生
-ev("window.__rnd=Math.random; Math.random=()=>0.5; state.stats.knowledge=50; state.stats.health=50; state.socialTurns=0");
+ev("window.__rnd=Math.random; Math.random=()=>0.5; state.healthyTurnsThisYear=0; state.stats.knowledge=50; state.stats.health=50; state.socialTurns=0");
 override = () => ({ event_type: null });
 await H.playTurn(g, "嗯");
 ev("Math.random=window.__rnd");
 const ri = lastPayload.turn_focus.ranked_items;
 A.check("排序回合：AI拿到每一名有沒有發生(第2名60%中、第3名30%沒中)", ri && ri.map(x => x.label).join() === "進修,休息,社交" && ri.map(x => x.occurred).join() === "true,true,false", ri);
+A.check("排序制：休息排入名次且發生，算健康經營回合", ev("state.healthyTurnsThisYear") >= 1);
 A.check("發生的給全額：第1名進修才識成長、第2名休息健康＋2；沒發生的社交不給", ev("state.stats.knowledge") > 50 && ev("state.stats.health") >= 52 && ev("state.socialTurns") === 0, [ev("state.stats.knowledge"), ev("state.stats.health"), ev("state.socialTurns")]);
 A.check("60歲起：重心只寫進時間流逝段，不另外加字數", /時間流逝/.test(lastPayload.turn_focus.scene_directive) && !lastPayload.narrative_length_guide.focus_extra_words, lastPayload.narrative_length_guide);
 A.check("日記記下發生的幾件", lastLog().focusLabel === "進修、休息", lastLog().focusLabel);
+
+ev("state.focusRank=['study','social','rest']; window.__rnd=Math.random; Math.random=()=>0.5; state.healthyTurnsThisYear=0");
+override = () => ({ stat_deltas: { health: 0, network: 0, expression: 0 } });
+await H.playTurn(g, "嗯");
+ev("Math.random=window.__rnd");
+A.check("排序制：休息排第3名沒發生，不算健康經營回合", ev("state.healthyTurnsThisYear") === 0 && lastPayload.turn_focus.ranked_items[2].occurred === false);
 
 // 收入類不擲骰：半退休兼職排第2名＝60%
 ev("state.careerStatus=CAREER_STATUS.SEMI_RETIRED; state.interestCandidates=[]; state.focusWorkStatus=null; state.focusRank=['rest','work']; state.focusWorkId='sidejob'; ensureFocusRatio(state).year={n:0,push:0,biz:0}");
@@ -169,7 +176,7 @@ const ord = () => js("state.interestCandidates[0].gigOrders[0]");
 await H.playTurn(g, "嗯");
 A.check("副業排第2名：訂單進度推進0.6格、還沒交件", ord().done === 0.6 && ord().status === "進行中", ord());
 await H.playTurn(g, "嗯");
-A.check("下一回合payload進度顯示小數(0.6/1)", JSON.stringify(lastPayload).includes("0.6/1"));
+A.check("進度只用整數格(無條件捨去)：payload是0/1、進度條沒有小數", JSON.stringify(lastPayload).includes('"progress":"0/1"') && !JSON.stringify(lastPayload).includes("0.6/1") && ev("gigProgressBar({done:0.6,need:1})") === "□");
 A.check("再一回合累積滿：交件入帳", ord().status !== "進行中" && ord().reward > 0, ord());
 
 // ---------- 老年題材排除(十三、13.7.2補充定案) ----------
