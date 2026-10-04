@@ -10,6 +10,19 @@
 
 ---
 
+### 2026-10-04 續（開發部）AI費用控制 目標一(10.14，2026.10.04-l)
+- 起因：使用者貼來「定案交接：AI費用瘦身（目標一）與後台花費設定」(claude.ai Project定案)。先把定案寫進`life-sim-design/10-存檔與帳號系統.md`新小節10.14與`00-總覽.md`目錄、日誌；實作與量測如下。
+- **固定規則分學生版／完整版：不拆**(依10.14.2.4先量再拆)。學生版拿掉職涯、健康衰退與老年、人生總結(含工具定義`life_summary`欄位)只少約4,595字，換算約3,900 token，低於5,000門檻。拆分程式寫過一版量測後已還原，沒有進版本庫；量測保留在`test-70`。換算比例用實測「61,012字≈51,372 token」，不是真實token計數。
+- **快取保留時間：維持5分鐘版、不開1小時版**(10.14.4先算再開)。用`~/Downloads/呼叫成本紀錄_20261004-1015.csv`24筆逐筆重算：實際US$1.7361、若固定規則用1小時版約US$1.9622(貴約13%)；8次快取失效只有2次距上一次呼叫在60分鐘內。數字與但書(單一玩家、停頓長)記在QA手冊34.21.1，並列入公測前檢討清單。
+- **少變資料與人物卡移進快取**(10.14.3第1項)：`worker/worker.js`的`turnUserContent()`改為4段：【名冊】→【少變資料】(`STABLE_PAYLOAD_KEYS`：`milestone_status`、`milestone_skip_reason`、`character_appearance`、`family_structure`、`family_background`、`key_event`、`is_politician_child_hidden_flag`、`stat_delta_limits`、`intimacy_mode`、`chronicle_recent`)→【人物卡】(`active_characters`)→本回合資料，前三段設快取(連固定規則共4個斷點，剛好是上限)，欄位內容一字不變。挑選依據：示範模式25回合量每欄位字數與變動次數，加上欄位本身的意義(終身不變或只在事件時改)；`conscientiousness`、`attachment_axes`、`places_recent`、`purchase_price_guide`等字數小或可能常變的不放(放進去反而讓整段常失效)。`active_characters`實測紀錄約3,000字、會隨好感度變，但區塊排在少變資料之後，它變動只重算它自己與後面。`tests/harness.mjs`的`turnPayloadFromBody()`同步併回新區塊。
+- **規則與工具定義去重複**(第2項)：只刪工具定義裡跟system prompt逐字重複的描述(`action_result`、`scene_day_offset`、`scene_summary`、`turn_summary`、`stat_deltas`、`one_time_transaction`、`life_summary`頂層、`response_rating.approach`／`approach_type`)，同一條規則留在system prompt；欄位與`required`沒動。兩邊逐句比對後逐字重複的本來就少，工具定義少約530字。system prompt另加兩處小說明：訊息分【名冊】【少變資料】【人物卡】幾段送來；開場的`scene_day_offset`填0要輸出。
+- **開場固定重試一次**(第3項)：推測原因——system prompt【回傳資料精簡】要AI把值為0的欄位省略，開場的`scene_day_offset`本來就是0，AI照做後`validateSceneDate()`判「沒回傳整數」→自動重生成(9/30、10/4兩次都剛好一次)。修正：`index.html`的`validateSceneDate(r, win, prologue)`開場回合沒寫offset視為合法(套用時本來就當0)，並在規則裡註明0要輸出；一般回合沒寫照舊算違規。`test-70`用假上游驗證：舊程式開場呼叫2次、新程式1次。**這個原因沒有用真實API確認**，若真AI開場還是多一次，看測試選單待確認清單裡開場那筆的原因。
+- 後台設定：`設定說明_帳號與寄信.md`表格改為`AI_CALL_COST_ESTIMATE`＝3、`DAILY_SPEND_CAP`＝300(程式內建預設值沒動，後台設定值優先)；實際修改要使用者在Cloudflare後台做。
+- 版本：`index.html`／`worker/worker.js`都換成2026.10.04-l，加RELEASE_NOTES一筆。
+- 測試：新增`test-70-cost-slim.mjs`(16項通過)。全套(Node 20)73檔：72檔通過，只有`test-54-version`的「DEPLOY.md記錄過目前頁面版本號」未通過——這是上線後才補的紀錄行(使用者說上傳／部署後補)，不是程式問題，補完`DEPLOY.md`那一行就會過。
+
+---
+
 ### 2026-10-04 續（開發部）正式網域draftmylife.com(2026.10.04-j)
 - 起因：draftmylife.com已能開啟遊戲(當時線上為-h)，但Worker對`Origin: https://draftmylife.com`回403，新網址連不到AI；且新網址不在`OFFICIAL_HOSTS`，會預設示範模式。
 - `worker/worker.js`：`ALLOWED_ORIGINS`加入`https://draftmylife.com`(舊的兩個保留)。`index.html`：`OFFICIAL_HOSTS`加入`draftmylife.com`；`og:url`、`og:image`、`SHARE_URL`改為`https://draftmylife.com/`。`www.draftmylife.com`目前沒有解析，未加入。版本與Worker版本同步換-j(原本排-i，但-i已由遊玩說明那批先上線)，RELEASE_NOTES加一筆，DEPLOY.md白名單說明更新。

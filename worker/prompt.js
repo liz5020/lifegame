@@ -85,7 +85,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 字數：narrative_length_guide.target_total_words是兩部分合計的目標，回應段約action_result_words，新場景約scene_words；structure說明新場景該用什麼結構（核心場景＋次要片段＋轉場句依級距取捨，核心場景厚度以約450字的單一場景為基準，較長回合多出的字數用在次要片段與轉場）。
 - 回傳scene_day_offset（新場景日期＝round_start_date往後第幾天，0起算，必須在0到round_days-1之間）與scene_summary（新場景的一句話摘要，含時段與地點，例如「晚上，在房間整理書包」，不含行動結果）。系統會檢查：新場景跟上一回合同一天、或超出本回合範圍，都算違規，會要求你重寫；time_context.retry_note不是null時，代表你上一次回傳違規，這次務必修正。
 - 世代傳承後的開場回合，payload會有previous_generation_events（上一代留下的幾件事），可以在開場畫面裡用一個物件或一句話輕輕帶到上一代，只當素材，不要整段回顧（七、7.7.5，2026-09-27）。
-- 開場回合（is_prologue為true）：沒有上一回合，action_result填空陣列[]，只寫新場景，場景就在round_start_date當天（高一開學前一天），scene_day_offset填0。
+- 開場回合（is_prologue為true）：沒有上一回合，action_result填空陣列[]，只寫新場景，場景就在round_start_date當天（高一開學前一天），scene_day_offset填0（這個0要輸出，不可以省略）。
 - 選項只針對最後出現的場景：choices必須是你在新場景當下能做的行動，不能回頭針對回應段裡已經離開的場景（禁止：人在教室吃月餅，選項卻是「追問媽媽那些場面上的事」）。
 - 敘事品質：同一件趣事、梗或話題，不在連續回合重複出現（看recent_turns_full／recent_turns_summary，例如雨萱「隔壁班老師點錯名」不能連續幾回合都出現）；對話要清楚交代是誰說的，「他／她」一定要能明確對應到某個人（不寫「她的視線在你和阿翔臉上各停了一下」卻沒交代她是誰）；前後細節要合邏輯（午餐吃便當時不會問「妳都自己弄晚餐喔？」）。
 - time_jump不是null時（玩家這回合跳過了一段時間，從time_jump.from跳到time_jump.to），新場景開頭先用一兩句話交代這段被跳過的空白裡發生了什麼變化，再寫這一刻，不能假裝時間沒有跳躍。
@@ -157,7 +157,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 地點不要混淆：同一個地方前後要是同一個地方（工作室跟甜點店是兩個地方，就不能寫成同一處）。
 - avoid_phrases是最近5回合重複出現的句型與固定追蹤的用語（耳朵紅、耳根紅、臉紅），這回合一律避開，換別的寫法。
 【精簡名冊與角色狀態（一、1.2.14；四、4.6，2026-09-29）】
-- 使用者訊息最前面的【名冊】列出主角以外所有認識過的角色，每人一行：名字｜性別｜與主角的關係｜一句話簡介｜狀態。狀態有四種：一般、漸行漸遠、已故、失聯。active_characters只有在場角色的完整人物卡，名冊上其他人也是既定事實。
+- 使用者訊息分成幾段送來：【名冊】、【少變資料】、【人物卡】，最後一段是本回合的資料，合起來才是完整的payload（欄位名稱都沒變）。【名冊】列出主角以外所有認識過的角色，每人一行：名字｜性別｜與主角的關係｜一句話簡介｜狀態。狀態有四種：一般、漸行漸遠、已故、失聯。active_characters只有在場角色的完整人物卡，名冊上其他人也是既定事實。
 - 角色的性別、親屬關係以名冊為準，不跟著玩家自由輸入裡的代名詞改（玩家寫「去找他」，名冊上雅涵是女的，旁白仍寫「她」）。
 - 提到名冊上既有角色的親友時，不可捏造跟名冊矛盾的人物（名冊上璟璇是女性工作室老闆，就不能冒出「璟璇表哥」取代她的角色）。
 - 產生new_characters前先比對名冊：劇情需要的角色跟既有角色功能重疊（例如同樣是美術班、會畫畫的朋友），優先讓既有角色出場，不另建相似的新角色。
@@ -288,14 +288,14 @@ export const TURN_RESULT_TOOL = {
   input_schema: {
     type: "object",
     properties: {
-      action_result: { type: "array", items: { type: "string" }, description: "（1.2.9.11.3／1.2.9.16／十八、18.10）第一部分「回應段」的段落清單，每段一個字串，4-6個短段落：把玩家這回合選的動作本身演完(含它自然發生的時間點)，可接續上一回合場景的同一時間點；不寫重心。開場回合(time_context.is_prologue為true)不填" },
+      action_result: { type: "array", items: { type: "string" }, description: "（1.2.9.11.3／1.2.9.16／十八、18.10）第一部分「回應段」的段落清單，每段一個字串；開場回合不填" },
       narrative: { type: "array", items: { type: "string" }, description: "（1.2.9.11.3／1.2.9.16）第二部分「時間推進後的新場景」的段落清單，每段一個字串、約80字以內、角色開口另起一段、段落內不寫換行或\\n：推進到至少隔天，開頭一句自然的時間錨點，核心場景落在本回合範圍內。第二人稱、繁體中文。NPC台詞用{{名字|台詞}}標記，文件框的〔文件:標題〕與〔/文件〕各自一段" },
-      scene_day_offset: { type: "integer", description: "（1.2.9.11.4）新場景的日期＝time_context.round_start_date往後第幾天(0起算)，必須在0到round_days-1之間" },
-      scene_summary: { type: "string", description: "（1.2.9.11.4）新場景的一句話摘要(含時段與地點，例如「晚上，在房間整理書包」)，下一回合會當作上一回合場景傳回給你。不含行動結果" },
+      scene_day_offset: { type: "integer", description: "（1.2.9.11.4）新場景的日期，從round_start_date往後第幾天(0起算)；是0也要輸出" },
+      scene_summary: { type: "string", description: "（1.2.9.11.4）新場景的一句話摘要，不含行動結果" },
       chapter_subtitle: { type: "string", description: "（1.2.9.6）這回合的章節副標，含蓄、不劇透，約4-12字" },
       tone_switch: { type: ["string","null"], enum: ["key_event_reveal","relationship_turning",null], description: "（1.2.8.7）只有這回合你揭露了key_event、或寫到告白/表態/分手/關係破裂/結婚而系統給的tone_track不是restrained/high時才填，其餘填null" },
       response_rating: { type: ["object","null"], description: "（二、2.6.5）response_source不是null時必填：玩家這次回應的評價；點選項最高只到good",
-        properties: { grade:{type:"string", enum:["excellent","good","plain","blunder"]}, ability:{type:["string","null"], enum:["expression","network",null]}, target:{type:["string","null"], description:"互動對象的名字，沒有則null"}, approach:{type:["string","null"], enum:["approach","away","neutral",null], description:"（十八、18.16.3）玩家的回應是靠近／推遠／中性對方；只有這回合在處理人際衝突或情感互動時才填，其他省略"}, approach_type:{type:["string","null"], description:"靠近：接住感受／回應在意的事／具體做法／描述事實不指責；推遠：指責／翻舊帳或嘲諷／防衛辯解／冷處理"} } },
+        properties: { grade:{type:"string", enum:["excellent","good","plain","blunder"]}, ability:{type:["string","null"], enum:["expression","network",null]}, target:{type:["string","null"], description:"互動對象的名字，沒有則null"}, approach:{type:["string","null"], enum:["approach","away","neutral",null] }, approach_type:{type:["string","null"] } } },
       location: { type: "string", description: "（十八、18.15）分隔線下方新場景的地點名稱，每回合必填；名單上有的地點照抄名稱" },
       location_new: { type: "object", description: "（十八、18.15）只有location是第一次出現的新地點時才填", properties: { category:{type:"string", enum:["學校","住處","外面","別人那裡"]}, feature:{type:"string", description:"一行特徵，例如「巷子裡，隔壁是麵店，門口常有一隻缺耳朵的橘白貓」"}, owner:{type:"string", description:"主理人，可省略，例如「工作室・璟璇」"} } },
       place_updates: { type: "array", items: { type:"object", properties: { name:{type:"string"}, feature:{type:"string"}, status:{type:"string", enum:["營業中","已關閉"]} }, required:["name"] }, description:"（十八、18.15）名單上地點的特徵或狀態有變化時回報" },
@@ -323,11 +323,10 @@ export const TURN_RESULT_TOOL = {
       plot_reactions: { type: "array", description: "（十八、18.5.2）plot_touched_last_turn裡每一條，玩家這回合的反應", items: { type:"object", properties:{ id:{type:"string"}, reaction:{type:"string", enum:["dodge","gloss","catch","advance"]} } } },
       plot_resolved: { type: "array", items: { type:"object", properties:{ id:{type:"string"}, outcome:{type:"string", enum:["和好","各退一步","裂痕"], description:"（18.16）只有人際衝突線收尾時填"} }, required:["id"] }, description: "這回合解開的劇情線：{id, outcome}" },
       plot_reopened: { type: "array", items: { type:"string" }, description: "dropped_plot_lines裡玩家主動提起的id" },
-      turn_summary: { type: "string", description: "1-2句話摘要這回合實際發生的事，必填，不能省略" },
+      turn_summary: { type: "string" },
       age_advance: { type: "number", description: "一律填0，年齡推進已由系統結構化計算" },
       stat_deltas: {
         type: "object",
-        description: "（三、3.9.2）各項單回合範圍見payload的stat_delta_limits，超出會被系統截斷",
         properties: { health:{type:"number"}, network:{type:"number"}, expression:{type:"number"} },
               },
       event_type: { type: ["string","null"], description: "null（本回合無值得累積才識的事件）、ordinary、intensive、或milestone（需搭配event_id）" },
@@ -339,7 +338,6 @@ export const TURN_RESULT_TOOL = {
       },
       one_time_transaction: {
         type: "array",
-        description: "（三、3.9.1）正數收入合計不得超過payload的max_windfall_this_turn",
         items: { type:"object", properties:{ label:{type:"string", description:"（一、1.2.15）這筆錢是什麼，結算明細照這個名稱顯示"}, amount:{type:"number", description:"收入為正、支出為負"} }, required:["label","amount"] }
       },
       housing_choice: {
@@ -429,7 +427,6 @@ export const TURN_RESULT_TOOL = {
       is_ending: { type: "boolean" },
       life_summary: {
         type: ["object","null"],
-        description: "只有forceEnding為true時才填。七、7.1.4人生總結：不給標籤、不給分數、不做總評",
         properties: {
           segments: { type:"array", items: { type:"object", properties:{
             stage:{type:"string", description:"照抄payload裡life_summary_material.segments的stage值"},

@@ -34,13 +34,17 @@ export function memoryKV() {
 
 // 假的Anthropic上游：依payload產生一份合法的submit_turn_result，usage可自訂
 // 一、1.2.14（2026-09-29）：Worker把名冊拆成快取的第一個content block，其餘payload是第二個；這裡還原成單一payload物件
+// 十、10.14.3（2026-10-04）：少變資料(【少變資料】)與人物卡(【人物卡】)也拆成快取block，同樣在這裡併回單一payload物件
 export function turnPayloadFromBody(body) {
   const c = body && body.messages && body.messages[0] && body.messages[0].content;
   if (typeof c === "string") return JSON.parse(c);
   const blocks = Array.isArray(c) ? c : [];
   const payload = JSON.parse(blocks[blocks.length - 1].text);
-  const roster = blocks.find(b => /^【名冊】/.test(b.text || ""));
-  if (roster) payload.character_roster = roster.text.split("\n").slice(1).filter(Boolean);
+  for (const b of blocks.slice(0, -1)) {
+    const t = b.text || "";
+    if (/^【名冊】/.test(t)) payload.character_roster = t.split("\n").slice(1).filter(Boolean);
+    else if (/^【(少變資料|人物卡)】\n/.test(t)) Object.assign(payload, JSON.parse(t.slice(t.indexOf("\n") + 1)));
+  }
   return payload;
 }
 export function makeFakeAnthropic(opts = {}) {

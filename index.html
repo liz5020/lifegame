@@ -4812,9 +4812,12 @@ function buildExamCountdown(s, win){
     days_from_round_start: Math.max(0, next.abs-win.start), exact_countdown_allowed: exact };
 }
 // AI回傳的新場景日期檢查(1.2.9.11.4)：scene_day_offset是相對本回合起始日的天數，須落在本回合範圍內
-function validateSceneDate(r, win){
+// 十、10.14.3（2026-10-04）：開場回合的offset本來就是0，而【回傳資料精簡】要AI把0的欄位省略，AI照做就會被判「沒回傳整數」而固定多重生成一次
+// (9/30與10/4兩次開場都是13秒後多一次呼叫)；開場沒寫offset視為0(套用時本來就當0)，不重生成。一般回合一律至少隔天，沒寫照舊算違規
+function validateSceneDate(r, win, prologue){
   if(!win) return { ok:true };
   const off = r && r.scene_day_offset;
+  if(prologue && (off===undefined || off===null)) return { ok:true };
   const maxOff = win.end - win.start;
   if(typeof off!=="number" || !Number.isInteger(off)) return { ok:false, reason:`scene_day_offset沒有回傳整數（收到${JSON.stringify(off)}）` };
   if(off<0) return { ok:false, reason:`新場景日期早於本回合起始日（offset=${off}），等於停在上一回合的時間點` };
@@ -8122,8 +8125,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-k";
+const APP_VERSION = "2026.10.04-l";
 const RELEASE_NOTES = [
+  { version:"2026.10.04-l", date:"2026-10-04", title:"開場少等一下", items:[
+    "調整了旁白的準備方式，開場回合不再多等一次重新書寫的時間。",
+  ]},
   { version:"2026.10.04-k", date:"2026-10-04", title:"等待時的小防護", items:[
     "撰稿人還在寫這一回合時，切換人生、刪除人生、存到雲端和綁定信箱會先暫停，寫完就能用，避免這一回合寫到別段人生裡。",
   ]},
@@ -8891,14 +8897,14 @@ async function takeTurnInner(actionText, cost){
     }
     // 一、1.2.9.11.4（2026-09-24新增）：新場景日期檢查——與上一回合同一天或超出本回合範圍視為違規，
     // 自動重新生成一次(不扣行動點，點數在上面已經只扣過一次)並記錄；重新生成仍違規就照常顯示、記入待確認清單，不再重試
-    const dateCheck = validateSceneDate(result, timeCtx.window);
+    const dateCheck = validateSceneDate(result, timeCtx.window, !!timeCtx.prologue);
     if(!dateCheck.ok){
       console.warn("[場景日期違規] 自動重新生成一次：", dateCheck.reason);
       addReviewFlag(state, "scene_date_retry", "第一次生成違規，已自動重新生成："+dateCheck.reason);
       timeCtx.retryNote = `你上一次回傳的新場景日期不合規則：${dateCheck.reason}。這次scene_day_offset必須是0到${timeCtx.window.end-timeCtx.window.start}之間的整數（${calFormat(timeCtx.window.start)}～${calFormat(timeCtx.window.end)}）。`;
       try{
         const retried = await callOnce();
-        const recheck = validateSceneDate(retried, timeCtx.window);
+        const recheck = validateSceneDate(retried, timeCtx.window, !!timeCtx.prologue);
         result = retried;
         if(!recheck.ok) addReviewFlag(state, "scene_date_unresolved", "重新生成後仍違規，照常顯示："+recheck.reason);
       }catch(retryErr){
