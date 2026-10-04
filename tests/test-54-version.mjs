@@ -58,6 +58,10 @@ const direct = await H.callWorker(env, { method: "GET", path: "/version", origin
 A.check("Worker /version 直接用瀏覽器網址列(沒有Origin標頭)也查得到(2026-10-01)", direct.status === 200 && direct.json && direct.json.version === workerVer, direct.text);
 const bad = await H.callWorker(env, { method: "GET", path: "/version", origin: "https://evil.example.com" });
 A.check("Worker /version 不在來源白名單的請求仍被擋", bad.status === 403, bad.status);
+for (const o of ["https://draftmylife.com", "https://lifegame-6an.pages.dev"]) {
+  const ok = await H.callWorker(env, { method: "GET", path: "/version", origin: o });
+  A.check("Worker 來源白名單包含 " + o + "(2026-10-04正式網域)", ok.status === 200, ok.status);
+}
 const paused = await H.callWorker(H.makeEnv({ CLOUD_SAVE_ENABLED: "false" }), { method: "GET", path: "/version" });
 A.check("雲端暫停時 /version 照常可查", paused.status === 200 && paused.json.version === workerVer, paused.status);
 A.check("頁面與Worker版本號一致(發布前應一致；不一致代表只改了其中一邊)", appVer === workerVer, { appVer, workerVer });

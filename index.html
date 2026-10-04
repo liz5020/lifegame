@@ -10,8 +10,8 @@
 <meta property="og:site_name" content="人生草稿">
 <meta property="og:title" content="人生草稿｜這一次，換你決定要活成什麼樣子">
 <meta property="og:description" content="AI 文字人生模擬。生在哪裡你選不了，但每一頁都由你落筆。">
-<meta property="og:url" content="https://lifegame-6an.pages.dev/">
-<meta property="og:image" content="https://lifegame-6an.pages.dev/og.png">
+<meta property="og:url" content="https://draftmylife.com/">
+<meta property="og:image" content="https://draftmylife.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="人生草稿：15歲・起稿">
@@ -8119,8 +8119,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-i";
+const APP_VERSION = "2026.10.04-j";
 const RELEASE_NOTES = [
+  { version:"2026.10.04-j", date:"2026-10-04", title:"新網址", items:[
+    "遊戲有了正式網址 draftmylife.com，分享按鈕和分享圖上的連結都換成新的；舊網址 lifegame-6an.pages.dev 照樣可以玩。",
+  ]},
   { version:"2026.10.04-i", date:"2026-10-04", title:"新手說明", items:[
     "「玩法與圖例」最前面新增「一回合怎麼玩」：每一回合要做的兩件事，還有一個人生大約多長。",
     "第一次開始新人生時，會先跳出一段簡短說明。",
@@ -8371,7 +8374,7 @@ const DEV_TOOLS_KEY = "lifegame_dev_tools";
 })();
 // 2026-09-30(第三批，使用者同意)：正式網址(玩家用的lifegame-6an.pages.dev)預設用真AI，讓封測玩家直接玩；其他網址(本機、預覽、測試)仍預設示範模式。
 // 旗標優先：lifegame_force_real_api＝"yes"強制真AI、"no"強制示範；沒有旗標才看網址。費用提醒：正式網址每個玩家的回合都是真AI呼叫，靠10.9.3.1每日花費上限與Anthropic後台每月上限控管
-const OFFICIAL_HOSTS = ["lifegame-6an.pages.dev"];
+const OFFICIAL_HOSTS = ["draftmylife.com", "lifegame-6an.pages.dev"]; // 2026-10-04加入正式網域draftmylife.com；舊Pages網址照舊算正式網址
 function isOfficialHost(){ try{ return OFFICIAL_HOSTS.includes(location.hostname); }catch(e){ return false; } }
 const USE_MOCK = (function(){
   try {
@@ -14391,7 +14394,7 @@ async function unlockLifeReview(){
   }
 }
 // ---------- 16.7.0 分享這一生：圖片分享卡(沿用7.7分享卡的canvas產生方式) ----------
-const SHARE_URL = "https://lifegame-6an.pages.dev/";
+const SHARE_URL = "https://draftmylife.com/"; // 2026-10-04起分享連結用正式網域(舊網址lifegame-6an.pages.dev仍可玩)
 function wrapCanvasText(ctx, text, maxWidth){
   const lines = []; let line = "";
   for(const ch of Array.from(String(text||""))){

@@ -26,10 +26,10 @@
 - Worker `life-game`在Cloudflare後台Settings→Builds連到GitHub `liz5020/lifegame`，分支`master`，Path（Root directory）＝`worker`，Deploy command＝`npx wrangler deploy`，Build command留空。
 - 合併進`master`就會自動部署（目前沒設監看路徑，只改網頁時Worker也會重部署一次，內容相同、不影響）。
 - `ANTHROPIC_API_KEY`等secret存在Worker上，自動部署不會動到；`worker/wrangler.toml`的設定（KV、`CLOUD_SAVE_ENABLED`）以repo為準。
-- Worker的來源白名單`ALLOWED_ORIGINS`（`worker/worker.js`）目前有：`lifegamepage.smile80275.workers.dev`（舊）、`lifegame-6an.pages.dev`（現行）。以後換網址或綁自訂網域，要先把新網址加進白名單。
-- `index.html`的分享連結（`og:url`、`og:image`、`SHARE_URL`）已換成新網址（2026.09.30-b）。
+- Worker的來源白名單`ALLOWED_ORIGINS`（`worker/worker.js`）目前有：`lifegamepage.smile80275.workers.dev`（舊）、`lifegame-6an.pages.dev`（Pages原網址，照常可玩）、`draftmylife.com`（2026-10-04起正式網域）。以後換網址或綁自訂網域，要先把新網址加進白名單。
+- `index.html`的分享連結（`og:url`、`og:image`、`SHARE_URL`）2026.10.04-j起是`draftmylife.com`；正式網址判斷`OFFICIAL_HOSTS`同時包含`draftmylife.com`與`lifegame-6an.pages.dev`。
 - 非`master`分支的預覽建置用Settings→Builds的Preview command＝`npx wrangler versions upload`（2026-09-30由原本已淘汰的`npx wrangler preview`改過來）。
-- **推上去後確認線上版本**：用瀏覽器網址列直接打開`https://life-game.smile80275.workers.dev/version`(2026-10-01起可以，之前要帶Origin標頭才查得到)，回傳的`version`要等於這次的`WORKER_VERSION`；網頁看`https://lifegame-6an.pages.dev/`的`APP_VERSION`。
+- **推上去後確認線上版本**：用瀏覽器網址列直接打開`https://life-game.smile80275.workers.dev/version`(2026-10-01起可以，之前要帶Origin標頭才查得到)，回傳的`version`要等於這次的`WORKER_VERSION`；網頁看`https://draftmylife.com/`(或`https://lifegame-6an.pages.dev/`)的`APP_VERSION`。
 - **推上去後用`gh`查建置狀態(2026-09-30起，本機已裝`gh`並登入)**：`gh api repos/liz5020/lifegame/commits/<commit>/check-runs --jq '.check_runs[] | {name, status, conclusion, title: .output.title}'`，會列出「Workers Builds: life-game」(Worker)與「Cloudflare Pages」(網頁)各自的狀態(`in_progress`＝還在建、`success`／`failure`)，失敗時`.output.summary`有原因與後台日誌連結。Worker建置比網頁慢，推完等到兩邊都`success`再查`/version`，別看到舊版就以為失敗。`gh`裝在`~/.local/bin/gh`(沒有Homebrew，直接下載官方執行檔)，登入用`gh auth login`(網頁授權)。
 - **建置卡在「Initializing build environment」、5分鐘後「Build failed to initialize and was timed out」**：Cloudflare建置環境沒開起來，跟程式無關（2026-09-30的2026.09.30-d碰過一次）。到後台life-game的建置紀錄按Retry build重跑即可；重跑仍失敗再改用本機`cd worker && npx wrangler deploy`（要先問使用者）。
 
@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-04 | 2026.10.04-j（尚未上線，合併進`master`後自動部署） | 2026.10.04-j（同左） | 待填 | index.html、worker | 正式網域draftmylife.com：Worker來源白名單加入、算正式網址(預設真AI)、分享連結與og圖改用新網域；舊網址lifegame-6an.pages.dev照常可玩 |
 | 2026-10-04 | 2026.10.04-i（隨`master`自動部署，已用`/version`、頁面與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-i（同左，只換版本號） | `1f0c055` | index.html、worker(只換版本號) | 遊玩說明：玩法與圖例新增「一回合怎麼玩」、第一次開局說明跳窗、重心按鈕列小標題(十六、16.18.1／16.18.2、二、2.6.3) |
 | 2026-10-04 | 2026.10.04-h（隨`master`自動部署，已用`/version`、頁面與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-h（同左） | `771065b` | index.html(只改註解、版本號與更新說明)、worker(只換版本號) | 首頁年齡確認那段程式註解更新為現況(常見問題已無年齡題) |
 | 2026-10-04 | 2026.10.04-g（隨`master`自動部署，已用`/version`、頁面與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-g（同左） | `5a9abf6` | index.html、worker(只換版本號) | 首頁常見問題刪除「適合幾歲的人？」(十六、16.10.6，A15)；說明檔與設計文件一致性修正(純文件) |

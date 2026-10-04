@@ -10,6 +10,12 @@
 
 ---
 
+### 2026-10-04 續（開發部）正式網域draftmylife.com(2026.10.04-j)
+- 起因：draftmylife.com已能開啟遊戲(當時線上為-h)，但Worker對`Origin: https://draftmylife.com`回403，新網址連不到AI；且新網址不在`OFFICIAL_HOSTS`，會預設示範模式。
+- `worker/worker.js`：`ALLOWED_ORIGINS`加入`https://draftmylife.com`(舊的兩個保留)。`index.html`：`OFFICIAL_HOSTS`加入`draftmylife.com`；`og:url`、`og:image`、`SHARE_URL`改為`https://draftmylife.com/`。`www.draftmylife.com`目前沒有解析，未加入。版本與Worker版本同步換-j(原本排-i，但-i已由遊玩說明那批先上線)，RELEASE_NOTES加一筆，DEPLOY.md白名單說明更新。
+- 測試：`test-54-version`新增兩個來源都放行的檢查；`test-62-unbound-rules`新增draftmylife.com預設真AI且分享連結為新網域；`test-31-homepage` og:image改新網域。
+- 驗證：`cd tests && node run-all.mjs`全套(Node 20)。
+
 ### 2026-10-04 續（開發部）遊玩說明：一回合怎麼玩、第一次開局說明、重心小標題(2026.10.04-i)
 - 依十六、16.18.1／16.18.2、二、2.6.3（2026-10-04 claude.ai定案；重心段刪「出社會以後就沒有這排按鈕」一句，使用者於Claude Code對話修改）。
 - `index.html`：①`renderLegendModal()`最前面加「一回合怎麼玩」(回應／重心／一個人生有多長，照定案原文)，原「這段時間想做什麼」改名「興趣和副業怎麼選」排在其後，末句改為「你寫的內容會優先寫進故事，成長的部分還是看你選的重心。」；②新增`maybeShowIntroModal()`：`startLife()`領完啟程禮、進入playing後跳出精簡版說明(只有「開始」鈕)，開場回合照常在背後產生；按開始記`localStorage` `lifegame_intro_seen=1`，每台裝置一次；世代傳承(`familyChronicle`有內容)不跳；本機存取失敗時照常跳、照常關；③`renderFocusBar()`按鈕列上方加小標題「這段時間的重心」(`.focus-hint.focus-title`)，跟按鈕一起只在有重心時出現。不動存檔結構；`worker/`只換版本號(與頁面同步-i)。

@@ -106,7 +106,8 @@ const MAX_STATE_BYTES = 1024 * 1024;
 
 const ALLOWED_ORIGINS = [
   "https://lifegamepage.smile80275.workers.dev",
-  "https://lifegame-6an.pages.dev" // 2026-09-30起玩家用的Pages網址（連GitHub自動部署）
+  "https://lifegame-6an.pages.dev", // 2026-09-30起玩家用的Pages網址（連GitHub自動部署）
+  "https://draftmylife.com" // 2026-10-04起正式網域（同一個Pages專案）
   // , "http://localhost:8765" // 需要本機測試時再打開這行
 ];
 const ALLOWED_MODEL = "claude-sonnet-5";
@@ -1013,7 +1014,7 @@ async function handleStatsSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.04-i";
+const WORKER_VERSION = "2026.10.04-j";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

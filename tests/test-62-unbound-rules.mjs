@@ -47,6 +47,8 @@ A.check("綁定：點數剛好用光的人＝25(已用掉)＋30，錢包30點", 
 // ---- 正式網址預設真AI ----
 const off = await H.loadGame({ useMock: true, env, key: null, cloud: false, host: "lifegame-6an.pages.dev" });
 A.check("正式網址(lifegame-6an.pages.dev)沒有旗標：預設真AI，不顯示示範模式", off.ev("USE_MOCK") === false && off.ev("isOfficialHost()") === true);
+const dml = await H.loadGame({ useMock: true, env, key: null, cloud: false, host: "draftmylife.com" });
+A.check("正式網域(draftmylife.com，2026-10-04)沒有旗標：預設真AI、分享連結用新網域", dml.ev("USE_MOCK") === false && dml.ev("isOfficialHost()") === true && dml.ev("SHARE_URL") === "https://draftmylife.com/");
 const offMock = await H.loadGame({ useMock: true, env, key: null, cloud: false, host: "lifegame-6an.pages.dev", storage: { lifegame_force_real_api: "no" } });
 A.check("正式網址＋旗標no：開發者切到示範模式", offMock.ev("USE_MOCK") === true);
 const other = await H.loadGame({ useMock: true, env, key: null, cloud: false });
