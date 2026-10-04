@@ -258,6 +258,7 @@
   .focus-btn{border:1px solid rgba(74,46,31,.16);background:rgba(255,255,255,.55);color:var(--ink);border-radius:999px;padding:5px 11px;
     font-size:12.5px;font-family:var(--sans);cursor:pointer;}
   .focus-btn.on{background:var(--focus-bg);border-color:var(--focus-fg);color:var(--focus-fg);font-weight:600;}
+  .focus-rank{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;margin-right:4px;border-radius:999px;background:var(--focus-fg);color:#fff;font-size:11px;font-weight:700;line-height:1;}
   .focus-btn:disabled{opacity:.45;cursor:default;}
   .focus-hint{font-size:11.5px;color:var(--ink-soft);margin:2px 2px 8px;}
   .focus-hint.focus-title{margin:0 2px 4px;} /* 二、2.6.3（2026-10-04）：重心按鈕列上方的小標題 */
@@ -969,7 +970,7 @@ function renderDailyCapModal(){
   document.getElementById("btn-daily-cap-ok").onclick = ()=>div.remove();
 }
 // 短提示(撰稿人口吻的一般說明)：幾秒後自動收起
-function showWriterToast(text){
+function showWriterToast(text, ms){
   try{
     if(typeof document==="undefined" || !document.body) return;
     document.getElementById("writer-toast")?.remove();
@@ -978,7 +979,7 @@ function showWriterToast(text){
     div.textContent = text;
     div.onclick = ()=>div.remove();
     document.body.appendChild(div);
-    setTimeout(()=>div.remove(), 5000);
+    setTimeout(()=>div.remove(), ms||5000);
   }catch(e){}
 }
 
@@ -1349,15 +1350,18 @@ function detectPartTimeIntent(actionText){
   return /打工|兼職|工讀|家教|排班|輪班|接案|去店裡上班/.test(actionText||"");
 }
 // focusWork(2026-09-28，三、3.4.2)：學生時期改由「打工」重心觸發(true/false)，不再偵測行動文字；
-// 沒傳(undefined/null)＝待業、半退休等非學生時期，維持原本的文字偵測
+// 2026-10-04(二、2.6.7、三、3.4.2)：出社會後也改看重心——求職期選「工作：打工」、半退休選「工作：兼職」才入帳，文字不觸發；
+// 傳數字＝60歲起的名次比例(第1名1、第2名0.6、第3名0.3)，0＝沒選。沒傳(undefined/null)＝放置代活等沒有重心的回合，維持原本的文字偵測
 function applyPartTimeWork(s, actionText, win, focusWork){
   s.partTimeEventLog = null;
-  if(focusWork===true || focusWork===false){ if(!focusWork) return; }
+  if(focusWork===true) focusWork = 1;
+  if(focusWork===false) focusWork = 0;
+  if(typeof focusWork==="number"){ if(!(focusWork>0)) return; }
   else if(!detectPartTimeIntent(actionText)) return;
   if(s.careerStatus===CAREER_STATUS.EMPLOYED || s.careerStatus===CAREER_STATUS.BUSINESS || s.careerStatus===CAREER_STATUS.RETIRED) return;
   // 八、8.11（2026-09-29 A4）：學生時期的打工改成每次固定2份(1份＝這個階段每回合的平均零用錢)，不套用興趣加乘；
   // 取代上面時薪×時數的算法。待業、半退休等非學生時期沒有「每回合平均收入」可當單位，維持3.4.2時薪算法
-  if(focusWork===true){
+  if(typeof focusWork==="number" && isStudentPhase(s)){
     const earning = Math.max(1, Math.round(PART_TIME_SHARES * incomeShareUnit(s)));
     s.cash += earning;
     s.partTimeEventLog = { earning, shares: PART_TIME_SHARES };
@@ -1368,9 +1372,11 @@ function applyPartTimeWork(s, actionText, win, focusWork){
   const hourly = skilled ? Math.round((0.3 + Math.random()*0.2)*10)/10 : 0.2;
   const weeks = win && win.daysAdvanced ? win.daysAdvanced/7 : 1;
   const hours = Math.max(4, Math.round(PART_TIME_HOURS_PER_WEEK*weeks));
-  const earning = Math.round(hourly*hours);
+  const ratio = typeof focusWork==="number" ? focusWork : 1;
+  const earning = Math.round(hourly*hours*ratio);
   s.cash += earning;
   s.partTimeEventLog = { hourly, hours, earning, skilled };
+  if(ratio<1) s.partTimeEventLog.rank_ratio = ratio;
   if(s.milestones && s.milestones.first_part_time_job!=="completed") s.milestones.first_part_time_job = "completed";
 }
 // 3.5.3 核心數值的邊際遞減與人脈閒置衰退（9/14整併QA 60局測試後定案，係數皆為【測試參數】未定案）
@@ -1401,7 +1407,7 @@ function applyNetworkInteractionRules(s, r, relBefore, charCountBefore, turnFocu
   if(gain>0) s.stats.network = clamp(s.stats.network + applyMarginalDiminish(gain, s.stats.network), 0, 100);
   const focusC = r && r.focus_character ? chars.find(c=>c.name===r.focus_character) : null;
   // 2.6.4「社交」重心本來就算人脈經營行為，照舊歸零(實作判斷，與A5「有非家人的主要互動角色」同方向)
-  const interacted = (focusC && !isFamilyCharacter(focusC)) || newChars.length>0 || anyChange || !!(turnFocus && turnFocus.key==="social");
+  const interacted = (focusC && !isFamilyCharacter(focusC)) || newChars.length>0 || anyChange || !!focusHas(turnFocus, "social");
   if(interacted){ s.networkIdleStreak = 0; return; }
   s.networkIdleStreak = (s.networkIdleStreak||0)+1;
   if(ENABLE_NETWORK_IDLE_DECAY && s.networkIdleStreak>=NETWORK_IDLE_THRESHOLD){
@@ -2498,6 +2504,7 @@ function hireProbabilityBreakdown(s, targetCategory, opts){
   if(s.age>=55) add("55歲以上", -20); else if(s.age>=50) add("50歲以上", -10);
   // 十二、12.11.1（2026-09-22新增）：自由接案/演藝圈職涯伏筆成為候選時，「自由/創作類」錄取機率加成，比照科系對口加成的作法
   if(opts.creativeBonusPct && targetCategory==="自由/創作類") add("職涯伏筆", opts.creativeBonusPct);
+  { const fr = ensureFocusRatio(s); add("找工作的投入", focusRatioPp("hire", fr.search.hit, fr.search.n)); } // 二、2.6.7.4（2026-10-04）：只加不減，算在5～90%範圍內
   const raw = items.reduce((a,x)=>a+x.pp,0);
   return { items, raw, total: clamp(raw,5,90), min:5, max:90 };
 }
@@ -2585,6 +2592,7 @@ function applyJobHire(s, finalCategory, isTransfer, opts){
   const wasFirstJob = !s.occupationCategory;
   const sameCategory = isTransfer && s.occupationCategory===finalCategory;
   s.jobSearchStreak = 0;
+  ensureFocusRatio(s).search = { n:0, hit:0 }; // 2.6.7.4：找到工作，這段求職期結束
   // 十二、12.6.1【定案】海外型轉職一律視為跨類別轉職的子情境(留學/外派/移居)，即使選了同一類別也套用降級/歸零，不比照一般同類別轉職保留
   if(isTransfer && (!sameCategory || opts.isOverseas)){
     // 12.6【定案】跨類別轉職：job_level降一級(不低於新人)，tenure_months歸零（2026-09-27修正：原本直接歸零）
@@ -2691,6 +2699,7 @@ const PROMOTION_COOLDOWN_TURNS = 6; // 【測試參數,待驗證,12.5】
 // 「持續達標」＝這個職級期間自律、責任感的最低值都≥50；「期間無重大負面職涯事件」＝這個職級期間沒有申請轉職被拒、
 // 沒有連續兩次升遷失敗。職級期間從上任/升遷/轉職那一刻起算（resetLevelPeriod）
 function resetLevelPeriod(s){
+  ensureFocusRatio(s).level = { n:0, push:0 }; // 2.6.7.4：本業拚一點的比例也從這個職級起算
   s.levelMinDiscipline = s.conscientiousness.selfDiscipline;
   s.levelMinResponsibility = s.conscientiousness.responsibility;
   s.levelNegativeEvent = false;
@@ -2734,6 +2743,8 @@ function resolveCareerForkOffer(s, choice){ // choice: "stay"/"transfer"/"startu
 // 12.5【定案,測試參數】升遷成功機率＝基礎40%＋(成就傾向−50)×0.3個百分點，沿用3.7.3既有公式
 function promotionProbabilityBreakdown(s){
   const items = [{ label:"基礎", pp:40 }, { label:`成就傾向${Math.round(s.conscientiousness.achievement)}`, pp:(s.conscientiousness.achievement-50)*0.3 }];
+  // 二、2.6.7.4（2026-10-04）：這個職級期間「本業拚一點」的比例加分，只加不減，算在原本5～95%範圍內
+  { const fr = ensureFocusRatio(s); const pp = focusRatioPp("promotion", fr.level.push, fr.level.n); if(pp) items.push({ label:"本業拚一點", pp }); }
   const raw = items.reduce((a,x)=>a+x.pp,0);
   return { items, raw, total: clamp(raw,5,95), min:5, max:95 };
 }
@@ -2853,7 +2864,9 @@ function rollAnnualBusinessCheck(s){
   const interestMod = Math.min(topInvestment*0.05, 5); // 8.4限制：興趣投入度只能是有上限的修正項，不得直接當成功率使用
   const inheritedMod = s.businessOrigin==="inherited" ? INHERITED_BUSINESS_SUCCESS_BONUS_PP : 0;
   const partnerMod = s.businessPartner ? PARTNER_SUCCESS_BONUS_PP : 0; // 12.9（2026-09-27）
-  const probPct = clamp(45 + (s.conscientiousness.achievement-50)*0.3 + (s.stats.knowledge-50)*0.1 + (s.stats.network-50)*0.1 + interestMod + inheritedMod + partnerMod, 5, 95);
+  const fr = ensureFocusRatio(s);
+  const focusMod = focusRatioPp("business", fr.year.biz, fr.year.n); // 二、2.6.7.4（2026-10-04）：這一年「顧事業」的比例，只加不減，算在5～95%範圍內
+  const probPct = clamp(45 + (s.conscientiousness.achievement-50)*0.3 + (s.stats.knowledge-50)*0.1 + (s.stats.network-50)*0.1 + interestMod + inheritedMod + partnerMod + focusMod, 5, 95);
   const roll = rnd(1,100);
   // 技術判斷：三態切分非文件明文規定，成長取roll<=probPct，持平再取後20個百分點，其餘視為虧損
   let outcome;
@@ -3189,7 +3202,7 @@ function prepareOrderTurn(s, focus){
     });
     const fin = list.filter(o=>o.status!=="進行中");
     if(fin.length > ORDER_KEEP_FINISHED) c.gigOrders = list.filter(o=>o.status==="進行中").concat(fin.slice(-ORDER_KEEP_FINISHED));
-    const rollHere = focus ? (focus.key==="work" && focus.gigCardId===c.id) : !focusModeActive(s);
+    const rollHere = focus ? !!focusGigItem(focus, c.id) : !focusModeActive(s);
     if(rollHere && activeOrders(c).length < orderTier(c).cap && Math.random() < ORDER_INQUIRY_PROB[c.sideBusinessStatus]) notice.inquiry.push({ category:c.category });
   });
   s.orderNotice = notice;
@@ -3209,7 +3222,7 @@ function orderPayload(s){
   return cards.map(c=>{
     const t = orderTier(c), act = activeOrders(c);
     return { category:c.category, status:SIDE_BUSINESS_LABELS[c.sideBusinessStatus], open:act.length, cap:t.cap, at_cap: act.length>=t.cap,
-      orders: act.map(o=>({ order_no:String(o.no), client:o.client, via:o.via||null, item:o.item, size:o.size, progress:`${o.done}/${o.need}`,
+      orders: act.map(o=>({ order_no:String(o.no), client:o.client, via:o.via||null, item:o.item, size:o.size, progress:orderProgressText(o),
         due_in_turns: o.due - s.turnCount, overdue: s.turnCount > o.due })) };
   });
 }
@@ -3229,10 +3242,12 @@ function registerOrders(s, list){
   });
 }
 // 推進一格並在完成時交件入帳(每回合最多推進1格；這回合才登記的訂單不推進)。回傳交件紀錄
-function advanceOrder(s, card, o){
+// step：推進幾格(60歲起依名次比例，可以是小數，補充定案)
+function advanceOrder(s, card, o, step){
   if(!o || o.status!=="進行中" || o.reg >= s.turnCount) return null;
-  o.done = Math.min(o.need, o.done + 1);
-  if(o.done < o.need) return null;
+  o.done = Math.min(o.need, Math.round((o.done + (step==null ? 1 : step))*100)/100);
+  if(o.done < o.need - 1e-9) return null;
+  o.done = o.need;
   const late = s.turnCount > o.due;
   const reward = orderReward(card, o, late);
   o.status = late ? "延遲交件" : "已交件"; o.endTurn = s.turnCount; o.reward = reward;
@@ -3261,11 +3276,12 @@ function applyOrderResult(s, r, focus){
   const deliveries = [];
   let hit = null;
   const named = r && r.order_target!=null ? findOrderByNo(s, r.order_target) : null;
-  if(focus && focus.key==="work" && focus.gigCardId){
-    const card = sideGigCards(s).find(c=>c.id===focus.gigCardId);
+  const gigIt = focusGigItem(focus);
+  if(gigIt){
+    const card = sideGigCards(s).find(c=>c.id===gigIt.gigCardId);
     if(card){ const near = nearestDueOrder(card, s); hit = (named && named.card===card) ? named : (near ? { card, order:near } : null); }
   } else if(r && r.order_work===true && named) hit = named;
-  if(hit){ const d = advanceOrder(s, hit.card, hit.order); if(d) deliveries.push(d); }
+  if(hit){ const d = advanceOrder(s, hit.card, hit.order, gigIt && gigIt.ratio!=null ? gigIt.ratio : 1); if(d) deliveries.push(d); }
   s.sideGigIncomeNow = deliveries.length ? { amount: deliveries.reduce((a,d)=>a+d.amount,0), deliveries } : null;
   return s.sideGigIncomeNow;
 }
@@ -5435,6 +5451,7 @@ function advanceStructuredTime(actionText, focusKey){
     if(yearsToAdd>0){
       deathCheck = rollAnnualDeathCheck(s); // 七、7.1.5：每滿一年才判定一次，不是每回合都判定
       rollAnnualCareerChecks(s); // 十二、12.2/12.7/12.8/12.10：裁員/創業年度營運/退休候選，同樣每滿一年才判定一次
+      settleFocusYear(s); // 二、2.6.7.5（2026-10-04）：這一年拚工作的比例→年度健康扣分；放在營運判定之後(營運要用這一年的顧事業比例)
       rollAnnualHealthChecks(s); // 十三、13.2/13.3/13.5：健康cap收斂/疾病判定/父母健康狀態機推進，同樣每滿一年才判定一次
     }
     const toLabel = computeTimeLabel(s);
@@ -5838,7 +5855,7 @@ function bgLabelNow(s){
 function maybeRollBackgroundEvents(s, adv){
   if(s.idleMode || s.timeState.prologue) return false;
   let mode = null;
-  if(focusModeActive(s)){
+  if(isStudentPhase(s)){ // 2026-10-04：重心延續到出社會後，這裡仍只看學生時期(學期背景事件)
     if(adv && adv.holiday && (s.turnCount - (s.bgLastRollTurn ?? -99)) >= 12) mode = "student"; // 一個假期最長8回合，兩個假期相隔至少19回合
   } else if(adv && adv.window){
     const y = calAbsToDate(adv.window.start).y;
@@ -6405,6 +6422,17 @@ const OLD_AGE_BACKBONES = {
   "70-79": ["慢性病的長期管理","老朋友的聯絡漸漸變少","興趣的最後一次高峰","跟子女的角色反轉（從照顧人變成被照顧）"],
   "80+": ["時間顆粒拉大，日常與回顧交錯","身體的小警訊","把東西交代清楚"]
 };
+// 十三、13.7.2補充定案（2026-10-04）：依重心第1名排除題材，被排除的留在題庫、之後照常抽；表外組合不算衝突，不由AI判斷。
+// 目前題庫沒有退休、遠行題材(退休由系統事件處理)，規則先建好，題庫擴充後自動生效
+const OLD_AGE_THEME_EXCLUDE = [
+  { when: s=>{ const it = oldAgeFirstFocus(s); return it && it.key==="work" && (it.workKind==="push" || it.workKind==="biz"); }, re: /退休/ },
+  { when: s=>{ const it = oldAgeFirstFocus(s); return it && it.key==="family" && !!it.careTitle; }, re: /出國|遠行|旅行|長途|搬到外地/ }
+];
+function oldAgeFirstFocus(s){
+  if(!focusRankMode(s) || !Array.isArray(s.focusRank) || !s.focusRank.length) return null;
+  return buildFocusItem(s, s.focusRank[0], "");
+}
+function oldAgeThemeExcluded(s, text){ return OLD_AGE_THEME_EXCLUDE.some(x=>x.re.test(text) && x.when(s)); }
 function computeOldAgeTheme(s){
   if(s.age<60) return null;
   const band = OLD_AGE_THEME_WEIGHTS.find(b=>s.age>=b.minAge && s.age<=b.maxAge) || OLD_AGE_THEME_WEIGHTS[2];
@@ -6416,7 +6444,7 @@ function computeOldAgeTheme(s){
   let r = rnd(1,total), axis = "meaning";
   for(const k of Object.keys(w)){ if(r<=w[k]){ axis = k; break; } r -= w[k]; }
   const key = s.age>=80 ? "80+" : s.age>=70 ? "70-79" : "60-69";
-  return { axis, axis_label: OLD_AGE_THEME_LABELS[axis], backbone_material: OLD_AGE_BACKBONES[key], need_breather: needBreather };
+  return { axis, axis_label: OLD_AGE_THEME_LABELS[axis], backbone_material: OLD_AGE_BACKBONES[key].filter(t=>!oldAgeThemeExcluded(s, t)), need_breather: needBreather };
 }
 // 13.3.4 重大疾病四階段：徵兆期(1-3回合)→確診(1回合,里程碑)→治療期(3-6回合)→岔路點(康復/帶病生存/惡化)
 // 每回合都要檢查(治療期是連續回合而非年度事件)，跟疾病最初觸發的年度判定分開
@@ -6896,7 +6924,82 @@ const RESPONSE_GRADES = {         // 【測試參數,2.6.5】能力＝表達力�
   excellent:{ label:"出色", ability:2, affinity:3 }, good:{ label:"不錯", ability:1, affinity:2 },
   plain:{ label:"平常", ability:0, affinity:1 }, blunder:{ label:"失言", ability:-1, affinity:-3 }
 };
-function focusModeActive(s){ return isStudentPhase(s) && !s.idleMode; }
+// 二、2.6.7（2026-10-04）：重心延續到出社會後(放置代活仍不套用)；學生時期專屬的部分(18.2～18.4場景擲骰、學期背景事件)另外看isStudentPhase
+function focusModeActive(s){ return !s.idleMode; }
+// ===== 二、2.6.7 出社會後的重心（2026-10-04 claude.ai網頁版定案＋補充定案）【測試參數集中在這裡，見2.6.7.9】 =====
+const FOCUS_RANK_START_AGE = 60;                 // 排序制開始年齡
+const FOCUS_RANK_OCCUR = [1, 0.6, 0.3];          // 60歲起第1／2／3名發生機率(能力類)
+const FOCUS_RANK_INCOME = [1, 0.6, 0.3];         // 60歲起打工、兼職收入比例(不擲骰)
+const FOCUS_RANK_GIG = [1, 0.6, 0.3];            // 60歲起副業訂單進度比例(補充定案，不擲骰)
+const FOCUS_RANK_GIG_INTEREST = [1, 0.6, 0.3];   // 60歲起副業興趣投入比例(補充定案)
+const FOCUS_RATIO_BONUS_PP = { promotion:[10,5], hire:[10,5], business:[5,3] }; // 比例2/3以上／1/3～2/3的加分；1/3以下不加
+const FOCUS_HUSTLE_HEALTH = [3,1];               // 年度拚工作比例2/3以上／1/3～2/3的健康扣分
+const FOCUS_PUSH_AFFINITY = 1;                   // 本業拚一點：主管或同事一位關係＋1
+const ADULT_FOCUS_HINTS = {                      // 2.6.7.3補充定案：按鈕下方小字
+  study:"上課、讀書、考證照，才識成長", push:"多扛一點，升遷比較有機會；一年拚太兇身體會累",
+  search:"改履歷、投遞、面試，錄取比較有機會", biz:"顧店、顧客人、顧帳，營運比較穩；一年拚太兇身體會累",
+  sidejob:"做點兼差，賺點收入"
+};
+const FOCUS_RANK_INTRO = "人生走到下半場，日子不再只繞著一件事轉。從現在起，你可以依序點選最多三個重心，排在越前面的越常發生。";
+function focusRankMode(s){ return !isStudentPhase(s) && (s.age||0) >= FOCUS_RANK_START_AGE; }
+function focusStudyLabel(s){ return isStudentPhase(s) ? "讀書" : "進修"; }
+// 比例分級：2/3以上→0、1/3～2/3→1、1/3以下(或還沒有回合)→-1
+function focusRatioTier(num, den){ if(!den) return -1; const x = num/den; return x >= 2/3 - 1e-9 ? 0 : x >= 1/3 - 1e-9 ? 1 : -1; }
+function focusRatioPp(kind, num, den){ const t = focusRatioTier(num, den); return t<0 ? 0 : FOCUS_RATIO_BONUS_PP[kind][t]; }
+function ensureFocusRatio(s){
+  const fr = s.focusRatio || (s.focusRatio = {});
+  fr.level = fr.level || { n:0, push:0 }; fr.search = fr.search || { n:0, hit:0 }; fr.year = fr.year || { n:0, push:0, biz:0 };
+  return fr;
+}
+// 「工作」按鈕依職涯狀態展開(2.6.7.3)；第一項是職涯狀態改變時自動換上的子項(2.6.7.8)
+function adultWorkOptions(s){
+  const st = s.careerStatus;
+  let main;
+  if(st===CAREER_STATUS.EMPLOYED) main = [{ id:"push", kind:"push", label:"本業拚一點" }];
+  else if(st===CAREER_STATUS.BUSINESS) main = [{ id:"biz", kind:"biz", label:"顧事業" }];
+  else if(st===CAREER_STATUS.SEMI_RETIRED) main = [{ id:"sidejob", kind:"part", label:"兼職" }];
+  else if(st===CAREER_STATUS.RETIRED) main = [];
+  else main = [{ id:"search", kind:"search", label:"找工作" }, { id:"part", kind:"part", label:"打工" }];
+  return main.concat(sideGigCards(s).map(c=>({ id:c.id, kind:"gig", label:c.category, pickLabel:`${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}：${c.category}`, card:c })));
+}
+function currentAdultWork(s){
+  const opts = adultWorkOptions(s);
+  return opts.find(o=>o.id===s.focusWorkId) || opts[0] || null;
+}
+// 擔任主要照顧者時，家人按鈕改名、對象預設為被照顧的那位(2.6.7.6、十三、13.5)
+const CARE_TITLES = { 父親:"爸爸", 母親:"媽媽", 繼父:"繼父", 繼母:"繼母", 祖父:"爺爺", 祖母:"奶奶" };
+function focusCareTarget(s){
+  if(!s.caringForParentName) return null;
+  return (s.characters||[]).find(c=>c.name===s.caringForParentName && !c.deceased && !c.lost) || null;
+}
+function careTitle(c){ return CARE_TITLES[familyRoleOf(c.relation)] || c.name; }
+function focusFamilyAvailable(s){ return focusFamilyPool(s).length>0 || !!(!isStudentPhase(s) && focusCareTarget(s)); }
+function focusKeyAvailable(s, k){
+  if(k==="family") return focusFamilyAvailable(s);
+  if(k==="work") return isStudentPhase(s) || adultWorkOptions(s).length>0;
+  return FOCUS_KEYS.includes(k);
+}
+// 每次算重心或畫按鈕前整理狀態：畢業那一回合預設工作(2.6.7.8)、職涯狀態改變換子項、60歲生日改排序(2.6.7.7)
+function syncFocusState(s){
+  if(isStudentPhase(s)) return;
+  const opts = adultWorkOptions(s);
+  const workInUse = ()=> s.focus==="work" || (s.focusRank||[]).includes("work");
+  if(!s.focusAdultInit){
+    s.focusAdultInit = true;
+    s.focusWorkStatus = s.careerStatus;
+    s.focusWorkId = opts[0] ? opts[0].id : null;
+    if(opts.length) s.focus = "work";
+  } else if(s.focusWorkStatus !== s.careerStatus){
+    s.focusWorkStatus = s.careerStatus;
+    if(workInUse()) s.focusWorkId = opts[0] ? opts[0].id : null;
+  }
+  if(!focusKeyAvailable(s, currentFocus(s))) s.focus = FOCUS_DEFAULT;
+  if(focusRankMode(s)){
+    if(!Array.isArray(s.focusRank)){ s.focusRank = [currentFocus(s)]; s.focusRankIntroPending = true; }
+    s.focusRank = s.focusRank.filter((k,i,a)=>focusKeyAvailable(s,k) && a.indexOf(k)===i).slice(0,3);
+    if(!s.focusRank.length) s.focusRank = [FOCUS_DEFAULT];
+  }
+}
 const ORIGIN_FAMILY_ROLES = ["父親","母親","繼父","繼母","哥哥","姊姊","弟弟","妹妹"];
 const FAMILY_ROLE_ALIASES = { 父親:["爸","父"], 母親:["媽","母"], 繼父:["繼父"], 繼母:["繼母"], 哥哥:["哥"], 姊姊:["姊","姐"], 弟弟:["弟"], 妹妹:["妹"],
   祖父:["爺爺","阿公","外公"], 祖母:["奶奶","阿嬤","外婆"], 兒子:["兒子"], 女兒:["女兒"], 配偶:["老公","老婆","先生","太太"] };
@@ -6908,14 +7011,15 @@ function focusFamilyPool(s){
   return cohab.length ? cohab : living.filter(c=>ORIGIN_FAMILY_ROLES.includes(familyRoleOf(c.relation)));
 }
 function focusFamilyTargets(s, actionText){
-  const pool = focusFamilyPool(s);
+  const care = isStudentPhase(s) ? null : focusCareTarget(s);
+  const pool = care ? [care].concat(focusFamilyPool(s).filter(c=>c!==care)) : focusFamilyPool(s);
   const text = String(actionText||"");
   const named = pool.filter(c=>{
     if(text.includes(c.name)) return true;
     const role = familyRoleOf(c.relation);
     return !!role && (FAMILY_ROLE_ALIASES[role]||[role]).some(a=>text.includes(a));
   });
-  return named.length ? [named[0]] : pool;
+  return named.length ? [named[0]] : care ? [care] : pool;
 }
 // 2.6.3：正式興趣卡(含淡掉的背景興趣)，最近投入的排前面
 function formalInterestCards(s){
@@ -6941,10 +7045,32 @@ const FOCUS_SCENE_DIRECTIVES = {
   work:"本回合須有主角實際打工的描寫",
   family:"本回合須有主角和家人相處的場景，地點以家中或家庭活動為主"
 };
+// 一、1.2.16出社會後的重心指令(2026-10-04)：60歲前單選時新增的各列
+const ADULT_FOCUS_SCENE_DIRECTIVES = {
+  study:"本回合須有主角實際上課、讀書、考證照或自學的描寫",
+  push:"本回合須有主角加班、趕專案、多扛一件事的描寫",
+  search:"本回合須有主角改履歷、投遞、準備面試或去面試的描寫",
+  biz:"本回合須有主角處理店務、客人、帳目、進貨的描寫",
+  care:"本回合須有主角陪診、照料、處理照顧事務的描寫"
+};
+// 60歲起(2.6.7.7、1.2.16)：重心不決定新場景，發生的事各用一句寫進時間流逝那一段
+function focusItemPhrase(it){
+  if(it.key==="interest") return it.interestCategory ? `做${it.interestCategory}` : "嘗試一件新事物";
+  if(it.key==="work") return it.workKind==="gig" ? `處理${it.gigCategory}的訂單` : it.workLabel;
+  if(it.key==="family") return it.careTitle ? `照顧${it.careTitle}` : "陪家人";
+  return { study:"進修", social:"跟朋友相處", rest:"休息" }[it.key] || it.label;
+}
 function focusSceneDirective(focus, programEvent){
   if(!focus) return null;
+  if(focus.ranked){
+    const done = focus.items.filter(it=>it.occurred).map(focusItemPhrase);
+    return done.length ? `這段時間主角主要在${done.join("、")}。這幾件只寫進新場景開頭的時間流逝那一段，每件限一句帶過，不決定新場景；新場景照old_age_theme與系統事件安排` : null;
+  }
   let text;
-  if(focus.key==="interest"){
+  if(focus.adult && focus.key==="work" && ADULT_FOCUS_SCENE_DIRECTIVES[focus.workKind]) text = ADULT_FOCUS_SCENE_DIRECTIVES[focus.workKind];
+  else if(focus.adult && focus.key==="study") text = ADULT_FOCUS_SCENE_DIRECTIVES.study;
+  else if(focus.adult && focus.key==="family" && focus.careTitle) text = ADULT_FOCUS_SCENE_DIRECTIVES.care;
+  else if(focus.key==="interest"){
     text = focus.interestCategory ? `本回合須有主角實際從事${focus.interestCategory}的描寫（題材可與其他興趣交疊，但主角在做的事必須是${focus.interestCategory}）`
       : "本回合須有主角實際嘗試一件新事物的描寫";
   } else if(focus.key==="work" && focus.gigCategory){
@@ -6969,22 +7095,93 @@ function recentAmbientCategories(s){
 }
 const FOCUS_EXTRA_WORDS = 100; // 一、18.14【定案】每回合字數上限增加80～120字，取中間值
 // 呼叫AI之前算好這回合的重心(takeTurn用)；家人按鈕不顯示時(沒有可聯絡的家人)退回休息
-function resolveTurnFocus(s, actionText){
-  if(!focusModeActive(s)) return null;
-  let key = currentFocus(s);
-  if(key==="family" && !focusFamilyPool(s).length) key = FOCUS_DEFAULT;
-  const focus = { key, label: FOCUS_LABELS[key] };
+// 出社會後(2.6.7)：讀書改稱進修、工作依職涯狀態展開；60歲起排序前三，這裡同時擲出第2、3名有沒有發生
+function buildFocusItem(s, key, actionText){
+  const adult = !isStudentPhase(s);
+  if(key==="family" && !focusFamilyAvailable(s)) key = FOCUS_DEFAULT;
+  if(key==="work" && adult && !adultWorkOptions(s).length) key = FOCUS_DEFAULT;
+  const it = { key, label: key==="study" ? focusStudyLabel(s) : FOCUS_LABELS[key] };
+  if(adult) it.adult = true;
   if(key==="interest"){
     const card = currentInterestChoice(s);
-    focus.interestCardId = card ? card.id : null;
-    focus.interestCategory = card ? card.category : null; // null＝嘗試新的，類別由AI判斷(8.10)
+    it.interestCardId = card ? card.id : null;
+    it.interestCategory = card ? card.category : null; // null＝嘗試新的，類別由AI判斷(8.10)
   }
-  if(key==="family") focus.familyTargets = focusFamilyTargets(s, actionText).map(c=>c.name);
+  if(key==="family"){
+    it.familyTargets = focusFamilyTargets(s, actionText).map(c=>c.name);
+    const care = adult ? focusCareTarget(s) : null;
+    if(care && it.familyTargets.length===1 && it.familyTargets[0]===care.name) it.careTitle = careTitle(care);
+  }
   if(key==="work"){
-    const gig = currentWorkChoice(s);
-    if(gig){ focus.gigCardId = gig.id; focus.gigCategory = gig.category; }
+    if(adult){
+      const w = currentAdultWork(s);
+      it.workKind = w.kind; it.workLabel = w.label;
+      if(w.kind==="gig"){ it.gigCardId = w.card.id; it.gigCategory = w.card.category; }
+    } else {
+      const gig = currentWorkChoice(s);
+      if(gig){ it.workKind = "gig"; it.gigCardId = gig.id; it.gigCategory = gig.category; }
+      else it.workKind = "part";
+    }
   }
-  return focus;
+  return it;
+}
+function resolveTurnFocus(s, actionText){
+  if(!focusModeActive(s)) return null;
+  syncFocusState(s);
+  if(focusRankMode(s)){
+    const items = s.focusRank.map((k,i)=>{
+      const it = buildFocusItem(s, k, actionText);
+      it.rank = i+1;
+      // 收入類(打工、兼職)與副業不擲骰，依名次比例；其餘第1名一定發生、第2名60%、第3名30%
+      if(it.key==="work" && (it.workKind==="part" || it.workKind==="gig")){
+        it.occurred = true;
+        it.ratio = (it.workKind==="gig" ? FOCUS_RANK_GIG : FOCUS_RANK_INCOME)[i];
+      } else it.occurred = i===0 || Math.random() < FOCUS_RANK_OCCUR[i];
+      return it;
+    });
+    return Object.assign({}, items[0], { ranked:true, items });
+  }
+  return buildFocusItem(s, currentFocus(s), actionText);
+}
+// 這回合真的發生的重心項目(單選＝它自己；60歲起＝有發生的那幾件)
+function focusItems(focus){ return !focus ? [] : focus.ranked ? focus.items.filter(it=>it.occurred) : [focus]; }
+function focusHas(focus, key){ return focusItems(focus).find(it=>it.key===key) || null; }
+function focusPartTimeRatio(focus){
+  const it = focusItems(focus).find(x=>x.key==="work" && x.workKind==="part");
+  return it ? (it.ratio==null ? 1 : it.ratio) : 0;
+}
+function focusItemLabel(it){
+  if(it.key==="interest") return it.interestCategory ? `興趣：${it.interestCategory}` : "興趣：嘗試新的";
+  if(it.key==="work") return it.gigCategory ? `工作：${it.gigCategory}` : `工作：${it.workLabel || "打工"}`;
+  if(it.key==="family" && it.careTitle) return `家人：照顧${it.careTitle}`;
+  return it.label;
+}
+// 日記上的重心(B5)：60歲起列出這回合真的發生的幾件
+function focusLogLabel(focus){ return focusItems(focus).map(focusItemLabel).join("、") || focusItemLabel(focus); }
+function focusGigItem(focus, cardId){ return focusItems(focus).find(x=>x.key==="work" && x.gigCardId && (cardId==null || x.gigCardId===cardId)) || null; }
+// 比例計數(2.6.7.4)：分母只算有結算重心的回合；60歲起只看第1名
+function recordFocusRatio(s, focus){
+  if(!focus || isStudentPhase(s)) return;
+  const fr = ensureFocusRatio(s);
+  const first = focus.ranked ? focus.items[0] : focus;
+  const wk = first && first.key==="work" ? first.workKind : null;
+  if(s.careerStatus===CAREER_STATUS.EMPLOYED){ fr.level.n++; if(wk==="push") fr.level.push++; }
+  if([CAREER_STATUS.JOB_SEARCHING, CAREER_STATUS.UNEMPLOYED, CAREER_STATUS.NOT_EMPLOYED].includes(s.careerStatus)){ fr.search.n++; if(wk==="search") fr.search.hit++; }
+  fr.year.n++;
+  if(wk==="push") fr.year.push++;
+  if(wk==="biz") fr.year.biz++;
+}
+// 2.6.7.5：每年的年度結算扣一次健康(本業拚一點＋顧事業合併算比例)，結算時寫一行原因
+function settleFocusYear(s){
+  if(isStudentPhase(s)) return null;
+  const fr = ensureFocusRatio(s);
+  const t = focusRatioTier(fr.year.push + fr.year.biz, fr.year.n);
+  fr.year = { n:0, push:0, biz:0 };
+  if(t<0) return null;
+  const cost = FOCUS_HUSTLE_HEALTH[t];
+  s.stats.health = clamp(s.stats.health - cost, 0, 100);
+  s.focusYearNote = t===0 ? `這一年工作拚得比較兇，身體有點吃不消（健康−${cost}）` : `這一年工作偶爾多扛了一些，身體有點累（健康−${cost}）`;
+  return cost;
 }
 // 重心數值結算(AI回來之後、applyResult內呼叫)；才識另外在applyResult的才識公式裡處理(讀書保證至少ordinary)。
 // 回傳這回合重心帶來的變化，供畫面以橘色標記(2.6.2)
@@ -7022,40 +7219,56 @@ function takeFriendOpportunity(s){
 function applyFocusSettlement(s, focus, r){
   const out = {};
   if(!focus) return out;
-  if(focus.key==="rest"){
+  recordFocusRatio(s, focus); // 2.6.7.4：升遷、求職、營運與年度健康用的比例
+  focusItems(focus).forEach(it=>applyFocusItemSettlement(s, it, r, out));
+  return out;
+}
+function applyFocusItemSettlement(s, it, r, out){
+  if(it.key==="rest"){
+    // 2.6.7.2：健康＋2，不超過13.2健康年齡上限(學生時期上限是100)；原本就高於上限的不往下拉
     const before = s.stats.health;
-    s.stats.health = clamp(s.stats.health + FOCUS_REST_HEALTH, 0, 100);
-    out.health = s.stats.health - before;
-  } else if(focus.key==="social"){
+    const cap = isStudentPhase(s) ? 100 : computeHealthCap(s);
+    s.stats.health = Math.max(before, Math.min(clamp(before + FOCUS_REST_HEALTH, 0, 100), cap));
+    out.health = (out.health||0) + s.stats.health - before;
+  } else if(it.key==="social"){
     const teamNetworkMult = clamp(1+(s.conscientiousness.teamSolo-50)*0.01, 0.5, 1.5); // 2.6.4：照3.7.3團隊倍率＋3.5.3邊際遞減
     const before = s.stats.network;
     s.stats.network = clamp(s.stats.network + applyMarginalDiminish(FOCUS_SOCIAL_NETWORK*teamNetworkMult, s.stats.network), 0, 100);
-    out.network = s.stats.network - before;
-    applySocialTurnExtras(s, r, out);
-  } else if(focus.key==="family"){
+    out.network = (out.network||0) + s.stats.network - before;
+    applySocialTurnExtras(s, r, out); // 三、3.5.5：2026-10-04起出社會後也算(60歲起有發生才算)
+  } else if(it.key==="family"){
     const names = [];
-    (focus.familyTargets||[]).forEach(n=>{
+    (it.familyTargets||[]).forEach(n=>{
       const c = s.characters.find(x=>x.name===n && !x.deceased);
       if(!c) return;
       c.affinity = clamp(c.affinity + FOCUS_FAMILY_AFFINITY, 0, 100);
-      c.lastTurn = s.turnCount; c.active = true; // 算作與該家人有互動
+      c.lastTurn = s.turnCount; c.active = true; // 算作與該家人有互動(含子女，2.6.7.6)
       names.push(c.name);
     });
     if(names.length) out.family = names;
-  } else if(focus.key==="work" && focus.gigCategory){
+  } else if(it.key==="work" && it.gigCategory){
     // 二、2.8.2：選「工作：副業X」對X對應的興趣卡計入投入，份量為選「興趣：X」時的一半(訂單推進在applyOrderResult)
+    // 2.6.7.7補充定案：60歲起再乘名次比例
     const rx = r && r.interest_event && ["positive","neutral","negative"].includes(r.interest_event.reaction) ? r.interest_event.reaction : "positive";
-    applyInterestEvent(s, { category: focus.gigCategory, reaction: rx }, 0.5);
-    out.interest = focus.gigCategory;
-  } else if(focus.key==="interest" && focus.interestCategory){
+    const rankMult = it.rank ? FOCUS_RANK_GIG_INTEREST[it.rank-1] : 1;
+    applyInterestEvent(s, { category: it.gigCategory, reaction: rx }, 0.5*rankMult);
+    out.interest = it.gigCategory;
+  } else if(it.key==="work" && it.workKind==="push"){
+    // 2.6.7.3：本業拚一點，從主管和同事中隨機挑一位關係＋1(沒有就不加)
+    const pool = (s.characters||[]).filter(c=>!c.deceased && !c.lost && ["主管","同事"].includes(workplaceRelationCategory(c.relation)));
+    if(pool.length){
+      const c = pool[Math.floor(Math.random()*pool.length)];
+      c.affinity = clamp(c.affinity + FOCUS_PUSH_AFFINITY, 0, 100);
+      out.coworker = c.name;
+    }
+  } else if(it.key==="interest" && it.interestCategory){
     // 八、8.12.1（2026-09-29，取代8.10「一律算喜歡」）：投入直接記到指定的興趣卡，AI回報的category一律忽略，只讀reaction；沒回報時視為positive
     const rx = r && r.interest_event && ["positive","neutral","negative"].includes(r.interest_event.reaction) ? r.interest_event.reaction : "positive";
-    const ev = { category: focus.interestCategory, reaction: rx };
+    const ev = { category: it.interestCategory, reaction: rx };
     applyInterestEvent(s, ev);
     applyInterestCost(s, ev);
-    out.interest = focus.interestCategory;
+    out.interest = it.interestCategory;
   }
-  return out;
 }
 // 畫面上的橘色標記：數值依四捨五入後的實際變化；存款、家人、興趣用文字(關係與投入度不裸露數字，4.1.1／3.2.4)
 function buildFocusMarks(s, focus, changes){
@@ -7063,7 +7276,8 @@ function buildFocusMarks(s, focus, changes){
   // 存檔精簡(日記會存一輩子)：只存有變化的項目，stats/extra沒有就不寫
   const stats = {}, extra = [];
   ["knowledge","network","health"].forEach(k=>{ const v = Math.round(changes[k]||0); if(v) stats[k] = v; });
-  if(focus && focus.key==="work" && !focus.gigCardId && s.partTimeEventLog && s.partTimeEventLog.earning) extra.push(`存款 +${s.partTimeEventLog.earning}`);
+  if(focusPartTimeRatio(focus) && s.partTimeEventLog && s.partTimeEventLog.earning) extra.push(`存款 +${s.partTimeEventLog.earning}`);
+  if(changes.coworker) extra.push(`${changes.coworker}：更熟了一些`);
   if(changes.family && changes.family.length) extra.push(`${changes.family.length===1 ? changes.family[0] : "家人"}：更親近了一些`);
   if(changes.interest) extra.push(`${changes.interest}：又投入了一些`);
   if(Object.keys(stats).length) marks.stats = stats;
@@ -7120,6 +7334,7 @@ function pickSceneCategory(weights, exclude){
 // 呼叫AI之前：程式事前給條件(18.2補充定案)——這回合是「跟重心相關」還是「換到別處」、抽到的類別、不可使用的類別
 function buildScenePlan(s, ctx){
   if(!ctx.focus || ctx.prologue || ctx.skip) return null;
+  if(!isStudentPhase(s)) return null; // 十八、18.1（2026-10-04）：重心延續到出社會後，但18.2～18.4場景擲骰刻意不延伸
   const streak = s.sceneStreak || { cat:null, n:0 };
   const playerNamed = !!ctx.seek || PLAYER_PLACE_RE.test(ctx.actionText||"");
   let override = null;
@@ -8021,7 +8236,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     program_expenses_now: (timeCtx && timeCtx.expenseMentions && timeCtx.expenseMentions.length) ? timeCtx.expenseMentions : null,
     pending_side_business_category: s.pendingSideBusinessCardId ? ((s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId)||{}).category || null : null,
     // 一、1.2.9.1（2026-09-23新增）：取代原本system prompt裡寫死的「每次敘事約250-350字」，改依這回合monthsCrossed分級給字數目標
-    narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed, timeCtx && timeCtx.tone && timeCtx.tone.tension, !!(timeCtx && timeCtx.focus)),
+    narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed, timeCtx && timeCtx.tone && timeCtx.tone.tension, !!(timeCtx && timeCtx.focus && !timeCtx.focus.ranked)), // 18.14：60歲起不另外加
     recent_ambient_categories: (timeCtx && timeCtx.focus) || (s.log||[]).length ? recentAmbientCategories(s) : undefined, // 18.14：5回合內不重複使用
     // 一、1.2.9.11（2026-09-24新增）：日期由程式掌管，本回合範圍/上一回合場景/固定事件，見system prompt【時間與敘事結構】
     time_context: buildTimeContextPayload(s, timeCtx),
@@ -8043,11 +8258,15 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     renamed_characters: (s.renameNotices && s.renameNotices.length) ? s.renameNotices : null,
     // 二、2.6回合結構(2026-09-28，只在學生時期)：這回合的重心與回應來源；重心的數值由系統算好，你只寫「這段時間」
     turn_focus: timeCtx && timeCtx.focus ? {
-      key: timeCtx.focus.key, label: timeCtx.focus.label,
+      key: timeCtx.focus.key, label: focusItemLabel(timeCtx.focus),
       interest_category: timeCtx.focus.key==="interest" ? (timeCtx.focus.interestCategory||"嘗試新的") : undefined,
       family_targets: timeCtx.focus.familyTargets || undefined,
-      part_time: timeCtx.focus.key==="work" && !timeCtx.focus.gigCardId ? (s.partTimeEventLog||null) : undefined,
+      part_time: focusPartTimeRatio(timeCtx.focus) ? (s.partTimeEventLog||null) : undefined,
       gig_category: timeCtx.focus.gigCategory || undefined, // 八、8.13：重心是「工作：副業X」
+      // 二、2.6.7（2026-10-04）：出社會後的重心；60歲起排序前三，只告訴AI這回合發生了哪幾件(數值由程式算)
+      adult: timeCtx.focus.adult || undefined,
+      ranked_items: timeCtx.focus.ranked ? timeCtx.focus.items.map(it=>({ rank: it.rank, label: focusItemLabel(it), occurred: it.occurred })) : undefined,
+      no_part_time_income: (timeCtx.focus.adult && !focusPartTimeRatio(timeCtx.focus)) || undefined, // 1.2.16：這回合沒有打工收入
       scene_directive: focusSceneDirective(timeCtx.focus, programEventNow(s)) // 一、1.2.16
     } : null,
     relationship_scene_now: (timeCtx && timeCtx.relationScene) || undefined, // 四、4.8：本回合必須寫出的關係場面(交往成立、被拒、還不確定、分手)
@@ -8125,8 +8344,14 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-n";
+const APP_VERSION = "2026.10.04-o";
 const RELEASE_NOTES = [
+  { version:"2026.10.04-o", date:"2026-10-04", title:"出社會後也能決定時間花在哪", items:[
+    "出社會後，輸入框上方那排按鈕一樣每回合都在：「讀書」變成「進修」，「工作」會依你的狀況變成本業拚一點、找工作、顧事業、打工或兼職。這排按鈕管的是下班以外的時間，選休息不會被扣薪。",
+    "常選「本業拚一點」升遷比較有機會，常選「找工作」比較容易錄取，常顧事業營運比較穩；但一年拚太兇，身體也會累。",
+    "照顧爸媽期間，家人按鈕會變成「家人：照顧某某」。",
+    "60 歲起，改成依序點選最多三個按鈕，排越前面的越常發生。",
+  ]},
   { version:"2026.10.04-n", date:"2026-10-04", title:"幕後微調", items:[
     "伺服器開始記錄撰稿人每次用了多少資源，用來控制營運成本，不含你寫的內容與劇情。",
   ]},
@@ -8835,7 +9060,7 @@ async function takeTurnInner(actionText, cost){
   maybeRollBackgroundEvents(state, adv); // 四、4.7：學生時期每學期(假期第一回合)、出社會後每年(跨入新年第一回合)擲一次NPC背景事件
   const focus = (turnFocus && !adv.bigJump) ? turnFocus : null; // 2.6.1：跳過指令的回合不結算重心
   // 3.4.2（2026-09-27）：打工收入由程式依時薪×時數算好，AI只負責敘事；學生時期改由打工重心觸發(2026-09-28)
-  applyPartTimeWork(state, actionText, adv.window, turnFocus ? (!!focus && focus.key==="work" && !focus.gigCardId) : undefined);
+  applyPartTimeWork(state, actionText, adv.window, turnFocus ? (focus ? focusPartTimeRatio(focus) : 0) : undefined);
   const orderNotice = wasPrologue ? null : prepareOrderTurn(state, turnFocus); // 八、8.13（2026-09-30）：逾期處理、交件／逾期通知、新詢問擲骰
   applyFertilityTurn(state, actionText); // 7.3.2（2026-09-27）：生育/領養的大方向由程式判定
   if(!state.timeState.prologue) checkLockedParentDeath(state); // 七、7.4.3.3.1（2026-09-28）：傳承中的上一代到鎖定年紀過世
@@ -9709,7 +9934,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 二、2.6（2026-09-28）：學生時期(開場那一回合除外)的回應改走評價表、重心的數值由程式算；AI的stat_deltas只剩突發事件
   // (車禍、生病、被霸凌等)造成的扣分——回應不給健康加分(2.6.5)，表達力、人脈的加分改由評價表給(3.9.2補充)
   const turnFocus = timeCtx && timeCtx.focus ? timeCtx.focus : null;
-  const studentTurn = !!turnFocus;
+  const studentTurn = !!turnFocus; // 2026-10-04(二、2.6.7)：出社會後也有重心，變數名沿用＝「有重心的回合」
   if(studentTurn){ ["health","network","expression"].forEach(k=>{ if((d[k]||0)>0) d[k] = 0; }); }
   const rating = (studentTurn && !(timeCtx && timeCtx.prologue)) ? normalizeResponseRating(r.response_rating, !!(timeCtx && timeCtx.fromChoice)) : null;
   applyConflictApproach(s, rating); // 18.16.3：靠近／推遠
@@ -9717,14 +9942,16 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 十三、13.3.3（2026-09-20新增）：慢性病命中機率×0.85（每項疊乘），不封鎖選項本身，只是這次健康加分沒有生效；
   // 同時追蹤「連續健康經營行為」讓慢性病轉為控制良好狀態(控制良好後移除此機率折扣，保留支出與cap影響)
   let healthDelta = d.health||0;
+  // 2026-10-04(二、2.6.7)：出社會後AI的健康加分只剩突發事件以外不填，「休息」重心改由程式給健康，所以選休息的回合也算健康經營
+  const healthEffort = healthDelta>0 || !!focusHas(turnFocus, "rest");
   // 13.2（2026-09-27）：出社會後每回合累計健康經營回合數，年度結算見settleHealthyYear()（慢性病折扣前的原始訊號）
   if(s.timeState?.stageMode==="career"){
     s.turnsThisYearForHealth = (s.turnsThisYearForHealth||0)+1;
-    if(healthDelta>0) s.healthyTurnsThisYear = (s.healthyTurnsThisYear||0)+1;
+    if(healthEffort) s.healthyTurnsThisYear = (s.healthyTurnsThisYear||0)+1;
   }
   (s.chronicConditions||[]).forEach(c=>{
     if(c.controlled) return;
-    if(healthDelta>0){ c.controlledStreak = (c.controlledStreak||0)+1; if(c.controlledStreak>=CHRONIC_CONTROL_STREAK_TRIGGER) c.controlled = true; }
+    if(healthEffort){ c.controlledStreak = (c.controlledStreak||0)+1; if(c.controlledStreak>=CHRONIC_CONTROL_STREAK_TRIGGER) c.controlled = true; }
     else c.controlledStreak = 0;
   });
   if(healthDelta>0 && s.chronicConditions && s.chronicConditions.length){
@@ -9746,7 +9973,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 3.2.2補充(2026-09-28)：學生時期選讀書重心保證至少ordinary；沒選讀書時回應不給才識，只留milestone(規則不變)
   let eventType = r.event_type;
   if(studentTurn){
-    if(turnFocus.key==="study"){ if(eventType!=="intensive" && eventType!=="milestone") eventType = "ordinary"; }
+    if(focusHas(turnFocus, "study")){ if(eventType!=="intensive" && eventType!=="milestone") eventType = "ordinary"; } // 出社會後的進修同樣保證至少ordinary(2.6.7.2)
     else if(eventType!=="milestone") eventType = null;
   }
   const knowledgeRawValue = rollKnowledgeRawValue(eventType, r.event_id, s); // 3.2.2（9/16修正）：AI只給標籤，程式查表+計數把關
@@ -9754,7 +9981,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   knowledgeDelta = applyMarginalDiminish(knowledgeDelta, s.stats.knowledge); // 3.5.3邊際遞減
   const knowledgeBefore = s.stats.knowledge;
   s.stats.knowledge = clamp(s.stats.knowledge + knowledgeDelta, 0, 100);
-  if(studentTurn && turnFocus.key==="study") focusChanges.knowledge = s.stats.knowledge - knowledgeBefore;
+  if(studentTurn && focusHas(turnFocus, "study")) focusChanges.knowledge = s.stats.knowledge - knowledgeBefore;
 
   // 九、9.5.1（9/16新增）：考試結算時更新轉系候選的「連續低於預期」計數，完全不依賴AI敘事內容
   if(structured && timeCtx.examTriggered) updateTransferCandidateOnExam(s, timeCtx.studyCountAtExam);
@@ -9832,13 +10059,13 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 
   // 八、興趣系統v1（9/16新增）：AI只分類，候選成立/投入度/自律加成/副業契機一律由程式計算
   // 8.10（2026-09-28）：選興趣重心並指定正式興趣卡的回合，已由applyFocusSettlement直接算一次投入，AI的interest_event不再讀
-  const interestHandledByFocus = !!(turnFocus && ((turnFocus.key==="interest" && turnFocus.interestCategory) || (turnFocus.key==="work" && turnFocus.gigCategory)));
+  const interestHandledByFocus = focusItems(turnFocus).some(it=>(it.key==="interest" && it.interestCategory) || (it.key==="work" && it.gigCategory));
   // 一、1.2.18（2026-09-30）：interest_event有reaction時必須附category(重心為「興趣:X」由程式記錄的回合除外)，缺少就寫入錯誤紀錄
   if(!interestHandledByFocus && r.interest_event && r.interest_event.reaction && !r.interest_event.category) addReviewFlag(s, "interest_event_no_category", "interest_event有reaction卻沒有category");
   if(!interestHandledByFocus){
     applyInterestEvent(s, r.interest_event);
     applyInterestCost(s, r.interest_event); // 8.4（2026-09-27）：興趣的代價
-    if(turnFocus && turnFocus.key==="interest" && r.interest_event && r.interest_event.category) focusChanges.interest = r.interest_event.category;
+    if(focusHas(turnFocus, "interest") && r.interest_event && r.interest_event.category) focusChanges.interest = r.interest_event.category;
   }
   applyClubActivity(s, r.club_activity===true); // 3.8.2（2026-09-27）：社團參與
   applyLogicGrowth(s, actionText, r.interest_event); // 3.2.3（2026-09-27）：邏輯能力後天成長
@@ -10216,7 +10443,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     sceneDate = calFormat(win.start + off);
   }
   // 十八、敘事節奏（2026-09-28，取代一、1.2.9.7的伏筆記帳）：劇情線、焦點角色由程式記錄；場景類別依AI事後回報計連續次數(學生時期)
-  applyNarrativeRhythmResult(s, r, { prologue: !!(timeCtx && timeCtx.prologue), plan: timeCtx && timeCtx.scenePlan, gigCardId: timeCtx && timeCtx.focus && timeCtx.focus.gigCardId });
+  applyNarrativeRhythmResult(s, r, { prologue: !!(timeCtx && timeCtx.prologue), plan: timeCtx && timeCtx.scenePlan, gigCardId: (focusGigItem(timeCtx && timeCtx.focus)||{}).gigCardId });
   // 十八、18.13（2026-09-29 A10）：約定的新增、兌現/延期/取消；淡出中的約定在角色出場後移除
   { const lastAppear = (s.appearLog||[]).slice(-1)[0]; applyPromiseResults(s, r, timeCtx && timeCtx.window, new Set(lastAppear && lastAppear.turn===s.turnCount ? lastAppear.names : [])); }
   if(timeCtx && timeCtx.scenePlan) recordSceneCategory(s, s.placeCatNow || r.scene_category); // 18.15：類別以地點名單為準，scene_category只當舊回報的退路
@@ -10239,10 +10466,11 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 二、2.6.2（2026-09-28）：學生時期的數值標記依來源上色——重心帶來的橘色、回應(及其他)帶來的紫色
   const focusMarks = studentTurn ? buildFocusMarks(s, turnFocus, focusChanges) : undefined; // 沒有任何重心變化時也要留空物件：代表這則用來源上色
   s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", settlement:compactSettlementForLog(s.lastSettlement), statChanges, focusMarks, relationshipHints,
-    /* B5（2026-09-29）：這回合的重心也記在日記上(選擇紀錄、下載故事) */ focusLabel: turnFocus ? (turnFocus.key==="interest" ? (turnFocus.interestCategory ? `興趣：${turnFocus.interestCategory}` : "興趣：嘗試新的") : turnFocus.key==="work" ? (turnFocus.gigCategory ? `工作：${turnFocus.gigCategory}` : "工作：打工") : turnFocus.label) : undefined,
+    /* B5（2026-09-29）：這回合的重心也記在日記上(選擇紀錄、下載故事) */ focusLabel: turnFocus ? focusLogLabel(turnFocus) : undefined, focusNote: s.focusYearNote || undefined,
     /* 二、2.4.2（A2）：分數組成在公布時攤開 */ examNote: (timeCtx && timeCtx.examCheck) ? `${timeCtx.examCheck.examType}：${examBreakdownText(timeCtx.examCheck)}` : undefined, purchaseNote: purchaseNotes.join("；")||undefined, levelNotes: interestLevelNote||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
   // 足夠涵蓋單一人生全程(~1200-1400回合)不流失；每世reincarnate/succeedAsChild時log都會重置為[]，不會跨世累積
+  s.focusYearNote = null; // 2.6.7.5：年度拚工作的健康扣分說明只跟這一則日記
   if(s.log.length>2000) s.log.shift();
   pruneSettlementDetails(s); // 十六、16.11：明細只留最近30則日記
 
@@ -11695,7 +11923,7 @@ function renderEntryBody(e, withTag){
     ? `${resultText ? renderParagraphs(resultText, true) : ``}${resultText && sceneText ? `<hr class="turn-divider" aria-hidden="true">` : ``}${renderParagraphs(sceneText, true)}`
     : renderParagraphs(text, true);
   return `${e.action ? `<div class="choice-line">→ ${escapeHtml(e.action)}${e.focusLabel ? `<span class="focus-note">　重心：${escapeHtml(e.focusLabel)}</span>` : ``}</div>` : ``}${withTag ? `<div class="age-tag">${renderEntryTag(e)}</div>` : ``}${story}
-    <div class="entry-meta">${(withTag && e.genMs!=null && devToolsOn()) ? `<p class="small-line dev-gen-time">${icon("timer")} AI生成 ${(e.genMs/1000).toFixed(1)} 秒（測試模式）</p>` : ``}${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}</div>`;
+    <div class="entry-meta">${(withTag && e.genMs!=null && devToolsOn()) ? `<p class="small-line dev-gen-time">${icon("timer")} AI生成 ${(e.genMs/1000).toFixed(1)} 秒（測試模式）</p>` : ``}${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}${e.focusNote ? `<p class="small-line late">${escapeHtml(e.focusNote)}</p>` : ``}</div>`;
 }
 // 16.3.2（2026-09-28改定）：最新一回合完整卡片之上，保留更早的3個回合，各收合成一行摘要，點開展開(展開後同樣套用16.3.8.2排版)
 const OLD_ENTRY_SUMMARY_COUNT = 3;
@@ -11806,28 +12034,48 @@ function restoreCustomDraft(text){
 }
 function renderFocusBar(s, disabled){
   if(!focusModeActive(s)) return ``;
-  const hasFamily = focusFamilyPool(s).length>0;
+  syncFocusState(s);
+  const adult = !isStudentPhase(s);
+  const ranked = focusRankMode(s);
+  const rank = ranked ? s.focusRank : null;
   let key = currentFocus(s);
-  if(key==="family" && !hasFamily) key = FOCUS_DEFAULT;
+  if(!focusKeyAvailable(s, key)) key = FOCUS_DEFAULT;
   const cards = formalInterestCards(s);
   const chosenCard = currentInterestChoice(s);
   const interestLabel = chosenCard ? `興趣：${chosenCard.category}${cards.length ? " ▾" : ""}` : (cards.length ? "興趣：嘗試新的 ▾" : "興趣");
   const gigCards = sideGigCards(s);
-  const workGig = currentWorkChoice(s);
-  const workLabel = gigCards.length ? `工作：${workGig ? workGig.category : "打工"} ▾` : "工作";
-  const btn = k=>`<button class="focus-btn${key===k?" on":""}" data-focus="${k}" role="radio" aria-checked="${key===k}" ${disabled?"disabled":""}>${escapeHtml(k==="interest" ? interestLabel : k==="work" ? workLabel : FOCUS_LABELS[k])}</button>`;
-  const keys = FOCUS_KEYS.filter(k=>k!=="family" || hasFamily);
+  // 「工作」：學生時期＝打工＋副業；出社會後依職涯狀態展開(2.6.7.3)
+  const workOpts = adult ? adultWorkOptions(s) : null;
+  const adultWork = adult ? currentAdultWork(s) : null;
+  const workGig = adult ? (adultWork && adultWork.kind==="gig" ? adultWork.card : null) : currentWorkChoice(s);
+  const workHasPicker = adult ? workOpts.length>1 : gigCards.length>0;
+  const workLabel = adult ? `工作：${adultWork ? adultWork.label : ""}${workHasPicker ? " ▾" : ""}` : (gigCards.length ? `工作：${workGig ? workGig.category : "打工"} ▾` : "工作");
+  const care = adult ? focusCareTarget(s) : null;
+  const familyLabel = care ? `家人：照顧${careTitle(care)}` : FOCUS_LABELS.family;
+  const labelOf = k=> k==="interest" ? interestLabel : k==="work" ? workLabel : k==="family" ? familyLabel : k==="study" ? focusStudyLabel(s) : FOCUS_LABELS[k];
+  const on = k=> ranked ? rank.includes(k) : key===k;
+  const badge = k=> ranked && rank.includes(k) ? `<span class="focus-rank">${rank.indexOf(k)+1}</span>` : ``;
+  const btn = k=>`<button class="focus-btn${on(k)?" on":""}" data-focus="${k}" ${ranked ? `aria-pressed="${on(k)}"` : `role="radio" aria-checked="${on(k)}"`} ${disabled?"disabled":""}>${badge(k)}${escapeHtml(labelOf(k))}</button>`;
+  const keys = FOCUS_KEYS.filter(k=>focusKeyAvailable(s, k));
+  const removeBtn = k=> ranked && rank.includes(k) && rank.length>1 ? `<button class="focus-btn" data-rank-remove="${k}">從排序拿掉</button>` : ``;
   const picker = (interestPickerOpen && cards.length && !disabled) ? `<div class="interest-pick" id="interest-pick">
       ${cards.map(c=>`<button class="focus-btn${chosenCard && chosenCard.id===c.id?" on":""}" data-interest-card="${escapeHtml(c.id)}">${escapeHtml(c.category)}</button>`).join("")}
-      <button class="focus-btn${!chosenCard?" on":""}" data-interest-card="new">嘗試新的</button>
+      <button class="focus-btn${!chosenCard?" on":""}" data-interest-card="new">嘗試新的</button>${removeBtn("interest")}
     </div>` : ``;
-  const workPicker = (workPickerOpen && gigCards.length && !disabled) ? `<div class="interest-pick" id="work-pick">
-      <button class="focus-btn${!workGig?" on":""}" data-work-pick="part">打工</button>
-      ${gigCards.map(c=>`<button class="focus-btn${workGig && workGig.id===c.id?" on":""}" data-work-pick="${escapeHtml(c.id)}">${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}：${escapeHtml(c.category)}</button>`).join("")}
+  const workPicker = (workPickerOpen && workHasPicker && !disabled) ? `<div class="interest-pick" id="work-pick">
+      ${adult ? workOpts.map(o=>`<button class="focus-btn${adultWork && adultWork.id===o.id?" on":""}" data-work-pick="${escapeHtml(o.id)}">${escapeHtml(o.pickLabel||o.label)}</button>`).join("")
+        : `<button class="focus-btn${!workGig?" on":""}" data-work-pick="part">打工</button>
+      ${gigCards.map(c=>`<button class="focus-btn${workGig && workGig.id===c.id?" on":""}" data-work-pick="${escapeHtml(c.id)}">${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}：${escapeHtml(c.category)}</button>`).join("")}`}${removeBtn("work")}
     </div>` : ``;
-  const hint = key==="interest" && !chosenCard ? "主要給興趣投入，下個場景可能在嘗試新的事物"
-    : (key==="work" && workGig) ? "主要推進手上的訂單（也算一半興趣投入），下個場景可能在處理訂單的地方" : FOCUS_HINTS[key];
-  return `<div class="focus-hint focus-title">這段時間的重心</div><div class="focus-row" role="radiogroup" aria-label="這段時間的重心">${keys.map(btn).join("")}</div>${picker}${workPicker}<div class="focus-hint">${escapeHtml(hint)}</div>`;
+  let hint;
+  if(key==="interest" && !chosenCard) hint = "主要給興趣投入，下個場景可能在嘗試新的事物";
+  else if(key==="work" && workGig) hint = "主要推進手上的訂單（也算一半興趣投入），下個場景可能在處理訂單的地方";
+  else if(adult && key==="work" && adultWork) hint = adultWork.id==="part" ? FOCUS_HINTS.work : ADULT_FOCUS_HINTS[adultWork.id];
+  else if(adult && key==="study") hint = ADULT_FOCUS_HINTS.study;
+  else if(key==="family" && care) hint = `陪伴照顧，和${careTitle(care)}更親近`;
+  else hint = FOCUS_HINTS[key];
+  const rankNote = ranked ? `<div class="focus-hint">依序點選最多三個，排越前面越常發生；再點一次可以拿掉。</div>` : ``;
+  return `<div class="focus-hint focus-title">這段時間的重心</div><div class="focus-row" ${ranked ? `role="group"` : `role="radiogroup"`} aria-label="這段時間的重心">${keys.map(btn).join("")}</div>${picker}${workPicker}${rankNote}<div class="focus-hint">${escapeHtml(hint||"")}</div>`;
 }
 function sheetHead(title){
   return `<div class="sheet-grip"></div><div class="sheet-head"><h3>${title}</h3><button class="sheet-close" aria-label="關閉">×</button></div>`;
@@ -12144,6 +12392,8 @@ function renderLegendModal(){
         <h4>重心：這段時間主要花在哪</h4>
         <p>回應是處理眼前這一刻，重心是決定接下來一兩週主要在做什麼。選了哪一項，那方面就會成長，下一個場景也可能跟著換到那裡。</p>
         <p>・讀書：才識變高，期中、期末考前讀得越多次，考得越好<br>・興趣：興趣越練越熟<br>・社交：人脈變廣，朋友也比較會帶來機會<br>・休息：身體變好<br>・工作：存款變多<br>・家人：跟家人更親近</p>
+        <p>出社會後一樣每回合選重心。「讀書」會變成「進修」，「工作」會依你的狀況變成本業拚一點、找工作、顧事業或兼職。重心是下班以外的時間怎麼過，選休息不會被扣薪。常選「本業拚一點」，升遷比較有機會，但一年拚太兇，身體也會累。</p>
+        <p>60 歲起，重心改成依序點選最多三個，排越前面越常發生。</p>
         <p>沒有換的話，會沿用上一回合。想過得更具體，也可以在輸入框寫，例如選讀書，再寫「約她一起留校讀書」。你寫的內容會優先寫進故事，成長的部分還是看你選的重心。</p>
         <h4>一個人生有多長</h4>
         <p>一段人生從高中開始，一路寫到老年，能活多久每個人不一樣。</p>
@@ -12531,23 +12781,52 @@ function bindPlaying(){
   const undoBtn = document.getElementById("btn-undo");
   if(undoBtn) undoBtn.onclick = restoreUndo;
   // 二、2.6.3重心按鈕：選了就記著，下一回合沿用；興趣按鈕已選中時再點一次，打開切換清單
+  // 二、2.6.7.7（2026-10-04）：60歲起改排序——沒排的點一下排到最後(最多3個)；已排的再點一下拿掉，有子項的(工作、興趣)改打開清單，清單裡有「從排序拿掉」
   document.querySelectorAll(".focus-btn[data-focus]").forEach(btn=>{
     btn.onclick = ()=>{
       const k = btn.dataset.focus;
-      if(k==="interest" && currentFocus(state)==="interest" && formalInterestCards(state).length) interestPickerOpen = !interestPickerOpen;
+      const hasSub = k==="interest" ? formalInterestCards(state).length>0 : k==="work" ? (isStudentPhase(state) ? sideGigCards(state).length>0 : adultWorkOptions(state).length>1) : false;
+      if(focusRankMode(state)){
+        syncFocusState(state);
+        const rank = state.focusRank;
+        if(rank.includes(k)){
+          if(hasSub){
+            if(k==="interest"){ interestPickerOpen = !interestPickerOpen; workPickerOpen = false; }
+            else { workPickerOpen = !workPickerOpen; interestPickerOpen = false; }
+          } else if(rank.length>1){ rank.splice(rank.indexOf(k),1); interestPickerOpen = workPickerOpen = false; }
+        } else if(rank.length<3){ rank.push(k); interestPickerOpen = workPickerOpen = false; }
+        state.focus = k; // 小字提示跟著最後點的那一顆
+        keepDraftAndRender();
+        return;
+      }
+      if(k==="interest" && currentFocus(state)==="interest" && hasSub) interestPickerOpen = !interestPickerOpen;
       else interestPickerOpen = false;
-      if(k==="work" && currentFocus(state)==="work" && sideGigCards(state).length) workPickerOpen = !workPickerOpen;
+      if(k==="work" && currentFocus(state)==="work" && hasSub) workPickerOpen = !workPickerOpen;
       else workPickerOpen = false;
       state.focus = k;
       keepDraftAndRender();
     };
   });
+  document.querySelectorAll(".focus-btn[data-rank-remove]").forEach(btn=>{
+    btn.onclick = ()=>{
+      const k = btn.dataset.rankRemove, rank = state.focusRank||[];
+      if(rank.includes(k) && rank.length>1) rank.splice(rank.indexOf(k),1);
+      interestPickerOpen = workPickerOpen = false; keepDraftAndRender();
+    };
+  });
   document.querySelectorAll(".focus-btn[data-work-pick]").forEach(btn=>{
-    btn.onclick = ()=>{ state.focusWorkId = btn.dataset.workPick==="part" ? null : btn.dataset.workPick; state.focus = "work"; workPickerOpen = false; keepDraftAndRender(); };
+    btn.onclick = ()=>{
+      const v = btn.dataset.workPick;
+      state.focusWorkId = isStudentPhase(state) ? (v==="part" ? null : v) : v;
+      if(!focusRankMode(state)) state.focus = "work";
+      workPickerOpen = false; keepDraftAndRender();
+    };
   });
   document.querySelectorAll(".focus-btn[data-interest-card]").forEach(btn=>{
-    btn.onclick = ()=>{ state.focusInterestId = btn.dataset.interestCard; state.focus = "interest"; interestPickerOpen = false; keepDraftAndRender(); };
+    btn.onclick = ()=>{ state.focusInterestId = btn.dataset.interestCard; if(!focusRankMode(state)) state.focus = "interest"; interestPickerOpen = false; keepDraftAndRender(); };
   });
+  // 2.6.7.7：60歲生日那一回合跳一則撰稿人訊息
+  if(state.focusRankIntroPending && focusRankMode(state)){ state.focusRankIntroPending = false; showWriterToast(FOCUS_RANK_INTRO, 12000); }
   const seekClear = document.getElementById("btn-seek-clear");
   if(seekClear) seekClear.onclick = ()=>{ state.seekTarget = null; keepDraftAndRender(); };
   const customBtn = document.getElementById("btn-custom");
@@ -12743,7 +13022,8 @@ function orderDueMonth(s, o){
   const span = Math.max(1, cal.lastRoundEnd - (cal.lastWinStart!=null ? cal.lastWinStart : cal.lastRoundEnd) + 1); // 排好的日期用完了，才用「最近一回合的天數」估算
   return calAbsToDate(cal.lastRoundEnd + Math.max(0, o.due - s.turnCount) * span).m + "月";
 }
-function gigProgressBar(o){ return "■".repeat(o.done) + "□".repeat(Math.max(0, o.need - o.done)); }
+function gigProgressBar(o){ const d = Math.floor(o.done+1e-9); return "■".repeat(d) + "□".repeat(Math.max(0, o.need - d)); }
+function orderProgressText(o){ return `${Math.round(o.done*10)/10}/${o.need}`; } // 60歲起進度可能是小數
 function renderGigCardHtml(s, c){
   const t = orderTier(c), act = activeOrders(c).slice().sort((a,b)=>a.due-b.due||a.no-b.no);
   const done = orderList(c).filter(o=>o.status==="已交件" || o.status==="延遲交件").slice(-5).reverse();
@@ -12787,6 +13067,7 @@ function renderGigModal(){
   div.querySelectorAll(".gig-rush").forEach(btn=>{
     btn.onclick = ()=>{
       state.focus = "work"; state.focusWorkId = btn.dataset.card;
+      if(focusRankMode(state)){ syncFocusState(state); if(!state.focusRank.includes("work") && state.focusRank.length<3) state.focusRank.push("work"); }
       div.remove();
       openPanel = null;
       render();
@@ -14696,6 +14977,7 @@ function buildStoryExport(s){
     if(e.examNote) out.push(`考試：${e.examNote}`, "");
     if(e.sideBusinessNote) out.push(`副業：${e.sideBusinessNote}`, "");
     if(e.levelNotes && e.levelNotes.length) out.push(e.levelNotes.join("；"), "");
+    if(e.focusNote) out.push(e.focusNote, "");
     if(e.settlement) out.push(`結算：${settlementText(e.settlement, s.cash)}`, "");
     // 這回合給的選項，標出下一回合選了哪個(下一則日記的action)；自己打字的另外列出
     if(e.options && e.options.length){

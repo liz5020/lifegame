@@ -207,10 +207,10 @@ ev("state.turnsThisYearForHealth=10; state.healthyTurnsThisYear=1; settleHealthy
 A.check("中斷一年(10%)：連續年數歸零", ev("state.healthyYearStreak") === 0);
 for (let y = 0; y < 8; y++) ev("state.turnsThisYearForHealth=8; state.healthyTurnsThisYear=2; settleHealthyYear(state)");
 A.check("連續8年≥25%：取得cap+5", ev("state.healthCapBonusEarned") === true && ev("computeHealthCap(state)") === cap0 + 5, { cap0, cap: ev("computeHealthCap(state)") });
-ev("state.healthCapBonusEarned=false; state.turnsThisYearForHealth=0; state.healthyTurnsThisYear=0; state.timeState.stageMode='career'; state.phase='playing'");
+ev("state.healthCapBonusEarned=false; state.turnsThisYearForHealth=0; state.healthyTurnsThisYear=0; state.timeState.stageMode='career'; state.phase='playing'; state.focus='rest'; state.focusRank=['rest']"); // 2026-10-04：出社會後健康加分改由休息重心給
 override = () => ({ stat_deltas: { health: 2, network: 0, expression: 0 } });
 await H.playTurn(g);
-A.check("出社會後健康+的回合會被計入", ev("state.healthyTurnsThisYear") >= 1 && ev("state.turnsThisYearForHealth") >= 1, { h: ev("state.healthyTurnsThisYear"), t: ev("state.turnsThisYearForHealth") });
+A.check("出社會後選休息的回合會被計入健康經營", ev("state.healthyTurnsThisYear") >= 1 && ev("state.turnsThisYearForHealth") >= 1, { h: ev("state.healthyTurnsThisYear"), t: ev("state.turnsThisYearForHealth") });
 override = () => ({});
 
 A.check("整段沒有jsdom錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));

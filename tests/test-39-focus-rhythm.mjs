@@ -314,11 +314,12 @@ A.check("反悔時劇情線回到上一回合", ev("state.plotLines.length") ===
 
 // ---------- 出社會後 ----------
 ev("state.studentStatus='graduated'; state.timeState.stageMode='career'; state.age=23; render()");
-A.check("出社會後不顯示重心按鈕", !doc.querySelector(".focus-btn"));
+// 2026-10-04(二、2.6.7)：重心延續到出社會後；18.2～18.4場景擲骰仍只在學生時期(18.1)
+A.check("出社會後照樣顯示重心按鈕，讀書改稱進修", !!doc.querySelector(".focus-btn[data-focus='study']") && doc.querySelector(".focus-btn[data-focus='study']").textContent === "進修");
 override = () => ({ stat_deltas: { health: 0, network: 0, expression: 3 } });
 ev("state.stats.expression=30");
 await H.playTurn(g, "嗯");
-A.check("出社會後沒有重心、AI的表達力照舊", lastPayload.turn_focus === null && lastPayload.scene_plan === null && ev("state.stats.expression") === 33, [lastPayload.turn_focus, lastPayload.scene_plan, ev("state.stats.expression")]);
+A.check("出社會後有重心、沒有場景擲骰，AI的表達力加分改走回應評價", lastPayload.turn_focus && lastPayload.turn_focus.adult === true && lastPayload.scene_plan === null && ev("state.stats.expression") === 30, [lastPayload.turn_focus, lastPayload.scene_plan, ev("state.stats.expression")]);
 A.check("出社會後劇情線與角色輪替照常送", !!lastPayload.narrative_rhythm && Array.isArray(lastPayload.narrative_rhythm.focus_candidates));
 
 A.check("沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
