@@ -57,7 +57,7 @@ const blocks = req.messages[0].content;
 A.check("1.2.14 Worker把名冊放在第一個content block並設cache_control，其餘payload在後面", Array.isArray(blocks) && blocks[0].cache_control && blocks[0].text === "【名冊】\n甲｜女｜同學｜—｜一般\n乙｜男｜同學｜—｜已故" && JSON.parse(blocks[1].text).a === 1 && !("character_roster" in JSON.parse(blocks[1].text)), blocks);
 A.check("1.2.14 沒有名冊時維持字串content", typeof W.buildTurnRequest([{ role: "user", content: JSON.stringify({ a: 1 }) }]).messages[0].content === "string");
 const upstreamLast = fake.calls[fake.calls.length - 1];
-A.check("1.2.14 實際送到上游的請求：名冊在快取block", Array.isArray(upstreamLast.messages[0].content) && upstreamLast.messages[0].content[0].cache_control && /^【名冊】/.test(upstreamLast.messages[0].content[0].text));
+A.check("1.2.14 實際送到上游的請求：名冊在快取block(10.14.3起排在【少變資料】之後)", Array.isArray(upstreamLast.messages[0].content) && upstreamLast.messages[0].content.some(b => b.cache_control && /^【名冊】/.test(b.text)));
 
 // ---------- 4.6.4 重逢(想找) ----------
 ev("state.seekTarget='阿哲'");

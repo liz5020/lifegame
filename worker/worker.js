@@ -686,12 +686,13 @@ async function handleChapter(body, env, origin, ctx) {
 // 一、1.2.14（2026-09-29）：精簡名冊變動頻率低，拆成第一個content block並設cache_control，
 // 讓「system＋工具＋名冊」這段前綴可以套用提示快取；其餘每回合都會變的payload放在後面
 const MAX_ROSTER_LINES = 120, MAX_ROSTER_LINE_CHARS = 120;
-// 十、10.14.3（2026-10-04）：很少變又很大的欄位也放進提示快取，排在名冊後面；欄位內容一字不變，只是換位置、分段送。
-// 快取區塊由前往後排「變動由少到多」：名冊→少變資料→人物卡→本回合資料，後面的區塊變動只會讓它自己與更後面的重算。
-// 這份清單由示範模式量過每個欄位的字數與變動次數挑出(見QA手冊34.21)；新增欄位只要「大而且幾乎不變」才放進來，常變的欄位放進來反而讓整段快取一直失效
+// 十、10.14.3（2026-10-04）：很少變又很大的欄位也放進提示快取；欄位內容一字不變，只是換位置、分段送。
+// 快取區塊由前往後排「變動由少到多」：少變資料→名冊→本回合資料，前面的區塊變動會讓它自己與後面全部重算。
+// 這份清單由示範模式量過每個欄位的字數與變動次數挑出(見QA手冊34.21)；新增欄位只要「大而且幾乎不變」才放進來，常變的欄位放進來反而讓整段快取一直失效。
+// （2026-10-04使用者拍板，依上線後真實紀錄調整：後期人物卡active_characters幾乎每回合都變，放進快取只是多付1.25倍寫入費，移回本回合資料；
+//  名冊後期也常變，改排在少變資料後面，名冊變動時少變資料不必跟著重寫）
 export const STABLE_PAYLOAD_KEYS = ["milestone_status", "milestone_skip_reason", "character_appearance", "family_structure", "family_background",
   "key_event", "is_politician_child_hidden_flag", "stat_delta_limits", "intimacy_mode", "chronicle_recent"];
-export const NPC_PAYLOAD_KEYS = ["active_characters"];
 function pickPayloadKeys(payload, keys) {
   const out = {};
   for (const k of keys) if (k in payload) { out[k] = payload[k]; delete payload[k]; }
@@ -703,18 +704,16 @@ export function turnUserContent(content) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return content;
   const roster = payload.character_roster;
   const hasRoster = Array.isArray(roster) && roster.length > 0;
-  const hasSlow = STABLE_PAYLOAD_KEYS.concat(NPC_PAYLOAD_KEYS).some(k => k in payload);
-  if (!hasRoster && !hasSlow) return content;
+  const hasStable = STABLE_PAYLOAD_KEYS.some(k => k in payload);
+  if (!hasRoster && !hasStable) return content;
   const blocks = [];
+  const stable = pickPayloadKeys(payload, STABLE_PAYLOAD_KEYS);
+  if (stable) blocks.push({ type: "text", text: "【少變資料】\n" + JSON.stringify(stable), cache_control: { type: "ephemeral" } });
   if (hasRoster) {
     const lines = roster.filter(x => typeof x === "string").slice(0, MAX_ROSTER_LINES).map(x => x.slice(0, MAX_ROSTER_LINE_CHARS).replace(/\n/g, " "));
     delete payload.character_roster;
     blocks.push({ type: "text", text: "【名冊】\n" + lines.join("\n"), cache_control: { type: "ephemeral" } });
   }
-  const stable = pickPayloadKeys(payload, STABLE_PAYLOAD_KEYS);
-  if (stable) blocks.push({ type: "text", text: "【少變資料】\n" + JSON.stringify(stable), cache_control: { type: "ephemeral" } });
-  const npc = pickPayloadKeys(payload, NPC_PAYLOAD_KEYS);
-  if (npc) blocks.push({ type: "text", text: "【人物卡】\n" + JSON.stringify(npc), cache_control: { type: "ephemeral" } });
   blocks.push({ type: "text", text: JSON.stringify(payload) });
   return blocks;
 }
@@ -1034,7 +1033,7 @@ async function handleStatsSummary(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.04-l";
+const WORKER_VERSION = "2026.10.04-m";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

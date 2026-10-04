@@ -1,4 +1,4 @@
-// 十、10.14（2026-10-04）AI費用控制（目標一）：少變資料與人物卡移進快取區塊、規則與工具定義去重複、開場不再固定多重生成一次、
+// 十、10.14（2026-10-04）AI費用控制（目標一）：少變資料移進快取區塊(排在名冊前；人物卡上線後發現後期每回合都變，移回本回合資料)、規則與工具定義去重複、開場不再固定多重生成一次、
 // 快取保留時間維持5分鐘版（1小時版試算較貴）、學生版固定規則不拆（少不到5,000 token）。全程假上游，不打真實API
 import * as H from "./harness.mjs";
 import * as W from "../worker/worker.js";
@@ -17,14 +17,14 @@ const payload = {
 };
 const req = W.buildTurnRequest([{ role: "user", content: JSON.stringify(payload) }]);
 const blocks = req.messages[0].content;
-A.check("10.14.3 區塊順序：名冊→少變資料→人物卡→本回合資料", Array.isArray(blocks) && blocks.length === 4 && /^【名冊】/.test(blocks[0].text) && /^【少變資料】/.test(blocks[1].text) && /^【人物卡】/.test(blocks[2].text), blocks.map(b => b.text.slice(0, 6)));
-A.check("10.14.3 前三個區塊設快取、最後一段(每回合會變)不設", blocks.slice(0, 3).every(b => b.cache_control && b.cache_control.type === "ephemeral") && !blocks[3].cache_control);
+A.check("10.14.3 區塊順序：少變資料→名冊→本回合資料(2026-10-04使用者拍板調整；人物卡留在本回合資料)", Array.isArray(blocks) && blocks.length === 3 && /^【少變資料】/.test(blocks[0].text) && /^【名冊】/.test(blocks[1].text) && !blocks.some(b => /^【人物卡】/.test(b.text)), blocks.map(b => b.text.slice(0, 6)));
+A.check("10.14.3 前兩個區塊設快取、最後一段(每回合會變)不設", blocks.slice(0, 2).every(b => b.cache_control && b.cache_control.type === "ephemeral") && !blocks[2].cache_control);
 A.check("10.14.3 快取斷點總數不超過4(含固定規則)", blocks.filter(b => b.cache_control).length + req.system.filter(b => b.cache_control).length <= 4);
 const merged = H.turnPayloadFromBody({ messages: [{ content: blocks }] });
 const sortKeys = (o) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
 A.check("10.14.3 搬位置後內容一字不差(併回後與原payload完全相同)", sortKeys(merged) === sortKeys(payload), Object.keys(payload).filter(k => JSON.stringify(merged[k]) !== JSON.stringify(payload[k])));
-A.check("10.14.3 少變資料區塊只含清單內的欄位，本回合資料不含這些欄位", Object.keys(JSON.parse(blocks[1].text.split("\n")[1])).every(k => W.STABLE_PAYLOAD_KEYS.includes(k)) && W.STABLE_PAYLOAD_KEYS.every(k => !(k in JSON.parse(blocks[3].text))) && !("active_characters" in JSON.parse(blocks[3].text)));
-A.check("10.14.3 常變欄位(狀態、時間、近況)留在最後一段", ["stats", "time_context", "player_action", "turn"].every(k => k in JSON.parse(blocks[3].text)));
+A.check("10.14.3 少變資料區塊只含清單內的欄位，本回合資料不含這些欄位", Object.keys(JSON.parse(blocks[0].text.split("\n")[1])).every(k => W.STABLE_PAYLOAD_KEYS.includes(k)) && W.STABLE_PAYLOAD_KEYS.every(k => !(k in JSON.parse(blocks[2].text))));
+A.check("10.14.3 常變欄位(狀態、時間、近況、人物卡)留在最後一段", ["stats", "time_context", "player_action", "turn", "active_characters"].every(k => k in JSON.parse(blocks[2].text)));
 const noSlow = W.buildTurnRequest([{ role: "user", content: JSON.stringify({ a: 1, character_roster: ["甲｜女｜同學｜—｜一般"] }) }]).messages[0].content;
 A.check("10.14.3 沒有少變欄位時不多出空區塊(名冊＋本回合資料共2段)", noSlow.length === 2);
 const onlySlow = W.buildTurnRequest([{ role: "user", content: JSON.stringify({ a: 1, milestone_status: [] }) }]).messages[0].content;
@@ -37,7 +37,7 @@ A.check("10.14.4 固定規則快取維持5分鐘版(不帶ttl)——1小時版�
 const toolJson = JSON.stringify(TURN_RESULT_TOOL);
 A.check("10.14.3 去重複後每個欄位仍在工具定義裡(沒有刪欄位)", ["scene_day_offset", "scene_summary", "turn_summary", "stat_deltas", "one_time_transaction", "life_summary", "response_rating", "action_result"].every(k => k in TURN_RESULT_TOOL.input_schema.properties) && JSON.stringify(TURN_RESULT_TOOL.input_schema.required) === JSON.stringify(["narrative", "scene_day_offset", "scene_summary", "location", "chapter_subtitle", "turn_summary", "emotional_tone", "choices"]));
 A.check("10.14.3 規則仍保留被去重的那幾條(留在system prompt一處)", /scene_day_offset（新場景日期＝round_start_date往後第幾天/.test(TURN_SYSTEM_PROMPT) && /stat_delta_limits是這回合health/.test(TURN_SYSTEM_PROMPT) && /one_time_transaction裡所有正數收入加起來/.test(TURN_SYSTEM_PROMPT) && /turn_summary：用1-2句話/.test(TURN_SYSTEM_PROMPT) && /life_summary（七、7\.1\.4/.test(TURN_SYSTEM_PROMPT));
-A.check("10.14.3 規則說明回合內容分段送來；開場offset的0要輸出", /【少變資料】、【人物卡】/.test(TURN_SYSTEM_PROMPT) && /scene_day_offset填0（這個0要輸出，不可以省略）/.test(TURN_SYSTEM_PROMPT));
+A.check("10.14.3 規則說明回合內容分段送來；開場offset的0要輸出", /【少變資料】、【名冊】，最後一段是本回合的資料/.test(TURN_SYSTEM_PROMPT) && !/【人物卡】/.test(TURN_SYSTEM_PROMPT) && /scene_day_offset填0（這個0要輸出，不可以省略）/.test(TURN_SYSTEM_PROMPT));
 
 // ---------- 開場不再固定多重生成一次 ----------
 let omitOffset = true;
