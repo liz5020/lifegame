@@ -3,6 +3,9 @@
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("10.8 封測期間暫停雲端存檔");
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+// 按鈕觸發的非同步流程(開場回合、讀檔、存雲端)改成等到條件成立，不靠固定毫秒——平行跑時電腦忙，固定等待會在開場回合寫完前就往下走
+const waitFor = async (fn, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (fn()) return true; } catch (e) {} await sleep(15); } return false; };
+const prologueDone = (g) => g.ev("state.phase==='playing' && (state.log||[]).length>=1");
 
 // KV每一種操作都計數
 function countKV(env) {
@@ -48,7 +51,7 @@ A.check("0 前端開關預設讀到關閉(旗標off)", ev("CLOUD_SAVE_ENABLED===
 // 從取名後的生活方式畫面按「睜開眼睛」(這台裝置還沒有金鑰)
 ev(`state = newRoll(null, {name:"周本機", gender:"女"}); state.spendingHabit="普通"; state.mealArrangement=state.mealArrangement||"家裡煮"; state.phase="lifestyle"; render();`);
 ev(`document.getElementById("btn-lifestyle-confirm").click()`);
-await sleep(80); H.clickModals(g.win);
+await waitFor(() => prologueDone(g)); H.clickModals(g.win);
 A.check("4 恢復金鑰畫面隱藏：沒有經過金鑰畫面，直接開始", ev("state.phase") === "playing" && !g.win.document.getElementById("app").textContent.includes("這是你的復原金鑰"), ev("state.phase"));
 A.check("4 金鑰仍在背景產生(本機存檔的編號)", !!ev("localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)"));
 A.check("3 新人生啟程禮25點(本機計數第1次)＋每日5點", ev("totalAP(state)") === 30 && ev("state.ap.gift") === 25 && ev(`Number(localStorage.getItem(GIFT_CLAIMS_LOCAL_PREFIX+localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)))`) === 1, ev("JSON.stringify(state.ap)"));
@@ -91,14 +94,14 @@ const paths2 = trackPaths(g2);
 const ev2 = g2.ev;
 A.check("2 重新整理後首頁列出還沒寫完的人生", ev2("homeUnfinishedLives().length") === 1 && ev2("homeUnfinishedLives()[0].name") === nameBefore);
 g2.win.document.querySelector(".life-card[data-slot]").click();
-await sleep(80);
+await waitFor(() => ev2("state.phase") === "playing" && ev2("state.turnCount") === ev("state.turnCount"));
 A.check("1／2 重新整理後讀檔：進度還在", ev2("state.phase") === "playing" && ev2("state.turnCount") === ev("state.turnCount") && ev2("state.log.length") === ev("state.log.length"), { t: ev2("state.turnCount"), expect: ev("state.turnCount") });
 A.check("2 重新整理後點數還在", ev2("totalAP(state)") === 5);
 // 切換人生畫面：三格從本機讀
 await ev2("switchLife()");
 A.check("1 切換人生畫面：第1格是這段人生(本機)，其他空白", ev2("state.phase") === "slotPicker" && ev2("state.slots[0] && state.slots[0].meta.name") === nameBefore && ev2("state.slots[1]") === null && ev2("renderSlotPicker()").includes("這台裝置最多可以同時進行3段人生"));
 g2.win.document.querySelector('.slot-btn[data-slot="0"]').click();
-await sleep(60);
+await waitFor(() => ev2("state.phase") === "playing" && ev2("state.name") === nameBefore);
 A.check("1 從切換畫面讀回同一段人生", ev2("state.phase") === "playing" && ev2("state.name") === nameBefore);
 // 啟程禮：同一台裝置只領1次(2026-09-30第三批由3次改1次)，第1次已在開人生時領過，之後都不發
 const giftResults = [];
@@ -113,7 +116,7 @@ const arch = JSON.parse(ev2(`localStorage.getItem(ARCHIVE_LOCAL_PREFIX+${JSON.st
 A.check("1 人生結束：存進本機人生回顧(壓縮)，原本格子空出", arch.length === 1 && arch[0].enc === "gzip-b64" && !arch[0].state && !ev2(`localStorage.getItem(STORAGE_KEY+":0")`), arch.map(a => ({ id: a.id, enc: a.enc })));
 await ev2(`showArchiveList(${JSON.stringify(key2)})`);
 g2.win.document.querySelector(".archive-btn").click();
-await sleep(60);
+await waitFor(() => ev2("state.phase") === "archiveView");
 A.check("1 人生回顧可以翻閱(解壓)", ev2("state.phase") === "archiveView" && ev2("state.archived.name") === nameBefore);
 
 // ---------- 5 完全沒有KV呼叫 ----------
@@ -130,14 +133,14 @@ A.check("5 AI呼叫照常(假上游)", fake.calls ? fake.calls.length >= 5 : tru
   const pA = trackPaths(gA);
   gA.ev(`state = newRoll(null, {name:"周雲端", gender:"女"}); state.spendingHabit="普通"; state.mealArrangement=state.mealArrangement||"家裡煮"; state.phase="lifestyle"; render();`);
   gA.ev(`document.getElementById("btn-lifestyle-confirm").click()`);
-  await sleep(80); H.clickModals(gA.win);
+  await waitFor(() => prologueDone(gA)); H.clickModals(gA.win);
   for (let i = 0; i < 4; i++) await H.playTurn(gA);
   await sleep(30);
   A.check("M1 按之前：雲端0次", kvTotal(cS) === 0 && pA.length === 0, { cS, pA });
   const keyA = gA.ev("localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)");
   gA.ev("render()");
   gA.win.document.getElementById("link-manual-cloud-save").click();
-  await sleep(120);
+  await waitFor(() => !!gA.win.document.getElementById("manual-save-modal"));
   A.check("M2 按一次＝雲端寫入1次(沒有其他KV操作)", cS.put === 1 && cS.get === 0 && cS.delete === 0 && cS.list === 0 && pA.filter(p => p === "/save").length === 1, cS);
   const modal = gA.win.document.getElementById("manual-save-modal");
   A.check("M3 顯示「已存到雲端」與復原金鑰", !!modal && modal.textContent.includes("已存到雲端") && modal.textContent.includes(keyA));
@@ -158,14 +161,14 @@ A.check("5 AI呼叫照常(假上游)", fake.calls ? fake.calls.length >= 5 : tru
   const gB = await H.loadGame({ useMock: true, env: envS, key: null, cloud: false, storage: { life_sim_age_confirmed: "yes" } });
   gB.ev("state={phase:'home'}; render()");
   gB.win.document.getElementById("btn-home-switch").click();
-  await sleep(30);
+  await waitFor(() => gB.ev("state.phase") === "keyInput");
   A.check("M7 新裝置按「切換其他人生」：進到輸入金鑰畫面", gB.ev("state.phase") === "keyInput");
   gB.win.document.getElementById("key-input-field").value = keyA;
   gB.win.document.getElementById("btn-key-input-submit").click();
-  await sleep(80);
+  await waitFor(() => gB.ev("state.fromCloud") === true && !!gB.ev("state.slots && state.slots[0]"));
   A.check("M8 列出雲端的人生", gB.ev("state.fromCloud") === true && gB.ev("state.slots[0] && state.slots[0].meta.name") === "周雲端");
   gB.win.document.querySelector('.slot-btn[data-slot="0"]').click();
-  await sleep(120);
+  await waitFor(() => gB.ev("state.phase") === "playing" && gB.ev("state.lifeId") === lifeA);
   A.check("M9 拿回的是按按鈕當時的進度(之後多玩的不會跟過去)", gB.ev("state.phase") === "playing" && gB.ev("state.turnCount") === turnsA && gB.ev("state.lifeId") === lifeA, { got: gB.ev("state.turnCount"), expect: turnsA });
   A.check("M10 行動點跟著存檔走", gB.ev("totalAP(state)") === apA, { got: gB.ev("totalAP(state)"), apA });
   A.check("M11 新裝置沿用這把金鑰，並存在本機", gB.ev("localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)") === keyA && JSON.parse(gB.ev(`localStorage.getItem(STORAGE_KEY+":"+localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME))`)).lifeId === lifeA);
@@ -176,7 +179,7 @@ A.check("5 AI呼叫照常(假上游)", fake.calls ? fake.calls.length >= 5 : tru
   const ownLife = gC.ev("state.lifeId");
   await gC.ev(`showCloudPicker(${JSON.stringify(keyA)})`);
   gC.win.document.querySelector('.slot-btn[data-slot="0"]').click();
-  await sleep(120);
+  await waitFor(() => gC.ev("state.lifeId") === lifeA && gC.ev("state.phase") === "playing");
   A.check("M12 已有人生的裝置：放進空的格子，原本的人生還在", gC.ev("localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)") === "1" && gC.ev("state.lifeId") === lifeA && JSON.parse(gC.ev(`localStorage.getItem(STORAGE_KEY+":0")`)).lifeId === ownLife);
   A.check("M13 這台裝置的金鑰不變；選單金鑰顯示這段人生的金鑰", gC.ev("localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)") === "devicec01" && (gC.ev("renderKeyViewModal()"), gC.win.document.getElementById("key-view-modal").textContent.includes(keyA)));
   gC.win.document.getElementById("key-view-modal").remove();
@@ -199,7 +202,7 @@ A.check("5 AI呼叫照常(假上游)", fake.calls ? fake.calls.length >= 5 : tru
   const pm = trackPaths(gm);
   gm.ev(`state = newRoll(null, {name:"周示範", gender:"男"}); state.spendingHabit="普通"; state.mealArrangement=state.mealArrangement||"家裡煮"; state.phase="lifestyle"; render();`);
   gm.ev(`document.getElementById("btn-lifestyle-confirm").click()`);
-  await sleep(80); H.clickModals(gm.win);
+  await waitFor(() => prologueDone(gm)); H.clickModals(gm.win);
   for (let i = 0; i < 3; i++) await H.playTurn(gm);
   await sleep(30);
   A.check("5 mock模式：沒有任何Worker呼叫、KV為0", pm.length === 0 && kvTotal(cM) === 0 && gm.ev("state.turnCount") >= 3, { pm, cM });
