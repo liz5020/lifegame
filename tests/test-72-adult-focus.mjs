@@ -26,7 +26,7 @@ ev("state.stats.knowledge=50");
 await H.playTurn(g, "嗯");
 const tf = lastPayload.turn_focus;
 A.check("payload：出社會後的重心、工作子項、沒有打工收入的提示", tf && tf.adult === true && tf.label === "工作：找工作" && tf.no_part_time_income === true && /改履歷/.test(tf.scene_directive), tf);
-A.check("出社會後沒有場景擲骰(18.1)", lastPayload.scene_plan === null);
+A.check("出社會後沒有場景擲骰(18.1)", lastPayload.scene_plan == null);
 A.check("出社會後回應也要評價(response_source)", lastPayload.response_source === "free_input");
 A.check("找工作計入求職比例", js("state.focusRatio.search").n === 1 && js("state.focusRatio.search").hit === 1, js("state.focusRatio"));
 

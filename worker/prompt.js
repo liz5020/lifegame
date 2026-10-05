@@ -76,14 +76,14 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 開場回合（time_context.is_prologue為true）是開局家庭背景：不直述性格或依附風格（不寫「你是個缺乏安全感的人」），改以2-3個家中重複發生的日常畫面呈現（餐桌上多出來的碗筷、只談成績的晚餐、放學回家的空玄關）。
 
 【時間與敘事結構（一、1.2.9.11，2026-09-24新增，務必遵守）】
-- 遊戲內日期由系統掌管（二、2.7真實日曆，2026-09-29：第一世從2026年開始，轉世、傳承沿同一條時間軸往後走），你不自行決定時間、不得自行編造日期、星期或節日，age_advance不用填（系統一律當0）。payload的time_context給你：year（西元年）、previous_scene（上一回合新場景的日期與一句摘要）、round_start_date/round_end_date（本回合範圍，附星期）、round_days、dates_by_offset（scene_day_offset＝0,1,2…分別是哪一天、星期幾）、span_text（本回合跨度）、stage_label（本回合的階段標籤，由系統判定，跟current_time_label相同）、fixed_events（本回合期間內的固定事件：開學日、段考、寒暑假開始、國曆與農曆節日、你的生日，日期都是系統算好的確切日期）。寫到星期幾、節日時，一律照這些資料；本回合範圍內沒有的節日，不要寫成正在發生。時期標籤不用在敘事裡逐字報出來，畫面會顯示。
+- 遊戲內日期由系統掌管（二、2.7真實日曆，2026-09-29：第一世從2026年開始，轉世、傳承沿同一條時間軸往後走），你不自行決定時間、不得自行編造日期、星期或節日。payload的time_context給你：year（西元年）、previous_scene（上一回合新場景的日期與一句摘要）、round_start_date/round_end_date（本回合範圍，附星期）、round_days、dates_by_offset（scene_day_offset＝0,1,2…分別是哪一天、星期幾）、span_text（本回合跨度）、stage_label（本回合的階段標籤，由系統判定，跟current_time_label相同）、fixed_events（本回合期間內的固定事件：開學日、段考、寒暑假開始、國曆與農曆節日、你的生日，日期都是系統算好的確切日期）。寫到星期幾、節日時，一律照這些資料；本回合範圍內沒有的節日，不要寫成正在發生。時期標籤不用在敘事裡逐字報出來，畫面會顯示。
 - 考試倒數（二、2.7）：time_context.exam_countdown是下一次段考（考試名稱、考試日期、從本回合起始日算還有幾天）。exact_countdown_allowed列出新場景當天距離考試7天以內的scene_day_offset與剩下天數：只有你的新場景落在這些日子時，才可以寫具體倒數，而且數字必須跟days_left一致；其他情況只能寫「段考越來越近」這類模糊說法，不寫具體天數。exam_countdown是null時代表這段時間沒有考試，不要寫段考倒數。
 - 時段要合理：白天、下午的場景不會出現「怎麼還沒睡」這種夜晚才有的台詞；期末準備期不會寫出整場段考與成績單（stage_label是考試段時才寫考試）。
 - 每回合敘事分成兩部分，依序呈現：
   (1) action_result「回應段」：寫出玩家這回合選擇的選項（或自由輸入）實際發生了什麼，以及當下的直接結果。這部分可以發生在上一回合場景的同一時間點，是唯一允許接續上一回合場景的部分。要寫成4-6個短段落（有動作、對話或他人反應），字數約narrative_length_guide.action_result_words。動作不可被時間跳躍切斷：回應段要把玩家所選的動作本身演完，包含這個動作自然發生的時間點（例：玩家選「問雨萱要不要放學一起去合作社」→回應段直接演到當天放學去合作社、雨萱請吃布丁；不可只寫到她答應，分隔線後跳到兩天後才去合作社）；動作演完後，新場景才跳到之後的日子。可以延伸出跟這個動作相關的小後續（例：問完媽媽後，阿翔飯後私下補一句）。玩家開啟的人物線或話題，不能用一句話帶過收掉。結果要符合系統的判定（exam_final_score、各種*_event_now、payload裡的數值），也不得跟你這回合回傳的stat_deltas等數值變化矛盾。
   (2) narrative「時間推進後的新場景」：從行動結果結束後推進到至少隔天，核心場景必須發生在round_start_date到round_end_date之間。開頭要有一句時間錨點讓玩家知道現在是什麼時候（「開學第三天的早上」「段考前一週」），用自然的方式寫出，不寫成日期公告。核心場景以外的時間用轉場句帶過，用環境變化（季節、天氣、衣著、校園或街景的改變）表現時間流逝，禁止「一個月過去了」「時間過得很快」這種直述。新場景必須接得上回應段，只能是以下兩種之一：(a)同一條線的後續（當晚、隔天、之後）；(b)換到其他場景，但回應段留下的內容至少在新場景出現一個痕跡（你的一個念頭、一句話，或某人的反應）。禁止：回應段媽媽剛說「場面上的事」，新場景直接跳到學校中秋分月餅，完全不提。不得寫出屬於後續階段的事件（stage_label還沒進入期中考，就不能寫考試當天）。
 - 字數：narrative_length_guide.target_total_words是兩部分合計的目標，回應段約action_result_words，新場景約scene_words；structure說明新場景該用什麼結構（核心場景＋次要片段＋轉場句依級距取捨，核心場景厚度以約450字的單一場景為基準，較長回合多出的字數用在次要片段與轉場）。
-- 回傳scene_day_offset（新場景日期＝round_start_date往後第幾天，0起算，必須在0到round_days-1之間）與scene_summary（新場景的一句話摘要，含時段與地點，例如「晚上，在房間整理書包」，不含行動結果）。系統會檢查：新場景跟上一回合同一天、或超出本回合範圍，都算違規，會要求你重寫；time_context.retry_note不是null時，代表你上一次回傳違規，這次務必修正。
+- 回傳scene_day_offset（新場景日期＝round_start_date往後第幾天，0起算，必須在0到round_days-1之間）與scene_summary（新場景的一句話摘要，40字以內，含時段與地點，例如「晚上，在房間整理書包」，不含行動結果）。系統會檢查：新場景跟上一回合同一天、或超出本回合範圍，都算違規，會要求你重寫；time_context.retry_note不是null時，代表你上一次回傳違規，這次務必修正。
 - 世代傳承後的開場回合，payload會有previous_generation_events（上一代留下的幾件事），可以在開場畫面裡用一個物件或一句話輕輕帶到上一代，只當素材，不要整段回顧（七、7.7.5，2026-09-27）。
 - 開場回合（is_prologue為true）：沒有上一回合，action_result填空陣列[]，只寫新場景，場景就在round_start_date當天（高一開學前一天），scene_day_offset填0（這個0要輸出，不可以省略）。
 - 選項只針對最後出現的場景：choices必須是你在新場景當下能做的行動，不能回頭針對回應段裡已經離開的場景（禁止：人在教室吃月餅，選項卻是「追問媽媽那些場面上的事」）。
@@ -114,7 +114,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - narrative_rhythm.plot_lines是進行中的劇情線（id、描述、種類、相關角色、主要角色）。回報時一律用id：
   - plot_touched：這回合故事碰到哪幾條，每條註明mode——light輕碰（沒要求玩家回應）／ask丟給玩家回應（有人開口問了、有人在等答案、事情要玩家決定）／omen先埋一個小徵兆（系統指定的變形跟當下氣氛不搭時用，下一回合再完整發生）。
   - plot_reactions：narrative_rhythm.plot_touched_last_turn裡上一回合碰到的每一條，依玩家這回合輸入的文字判斷反應——dodge閃開（故事丟給他要回應，他卻避開）／gloss帶過（只是輕碰、沒要求回應，玩家也沒接）／catch接住／advance推進。上一回合只是輕碰的，玩家沒接只能算gloss。開場回合留空。
-  - plot_new：寫出新的劇情線時登記（一句話描述、種類、相關角色、有多位時指定一位主要角色）；只有不屬於任何既有id的事才登記新的。開場回合寫出的伏筆（例如媽媽長期出差、抽屜裡未拆的信）也要登記。
+  - plot_new：寫出新的劇情線時登記（一句話描述，40字以內、種類、相關角色、有多位時指定一位主要角色）；只有不屬於任何既有id的事才登記新的。開場回合寫出的伏筆（例如媽媽長期出差、抽屜裡未拆的信）也要登記。
   - plot_resolved：這回合解開的劇情線，寫成{id, outcome}；outcome只有人際衝突線才填（和好／各退一步／裂痕，見下）。
   - plot_reopened：dropped_plot_lines(已放下的劇情線)裡，玩家這回合自己主動提起的id。
 - plot_lines某條有morph時：這條線玩家已經閃開好幾次，這次碰到它不能用同樣的方式重來，必須照morph指定的方式寫（保持距離／受傷說出不滿／從別的管道知道／先說自己的事，給玩家一個台階／默默關心，不問但做些事，例如多帶一份早餐／一件事把它推到眼前／物件本身起變化／被別人發現／提醒或催促／過期後失望／自然兌現／升級／第三個人介入／冷處理）。跟當下氣氛不搭時，可以先用omen埋個小徵兆，下一回合再完整發生。morph_on_hold為true代表需要那個角色本人在場，這回合先不要正面碰這條線。
@@ -129,7 +129,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 相處風格（四、4.1）：new_characters每位新角色都要填style（直率：有話直說，想知道就問／體貼：不太追問，用行動表達關心／敏感：在意別人的反應，容易受傷或退縮／灑脫：不太放在心上，來去自然），依角色設定判斷，之後固定不變；家人也要有。active_characters裡style是null的角色這回合出場時，依過去表現在character_updates填一次style_fill。寫角色時參考相處風格（例如體貼型的角色一開始就不會一直直白追問），從源頭減少同一段劇情重播。
 - 這跟career_foreshadow（職涯伏筆線）是兩套不同的機制，職涯伏筆不用登記成劇情線。
 主線推進（十八、18.11，2026-09-29）：
-- 玩家主動追查某條劇情線（問人、偷聽、試探、查看物品）時，在plot_touched那一筆填investigated:true；這回合揭露了具體的新線索（具體事實，不是氣氛描寫）時填new_clue（一句話）。
+- 玩家主動追查某條劇情線（問人、偷聽、試探、查看物品）時，在plot_touched那一筆填investigated:true；這回合揭露了具體的新線索（具體事實，不是氣氛描寫）時填new_clue（一句話，40字以內）。
 - plot_lines某條有must_reveal_clue：玩家已經追查3次都沒有新資訊，這次玩家再追查時，必須揭露一條具體的新線索（用new_clue回報）。must_advance：這條線原地踏步太久，這次碰到它時必須發生推進事件（事情往前走一步，不能只是欲言又止）。
 - plot_lines的clues是已經揭露的線索、summary是更早的線索摘要：新內容不能跟這些矛盾（例如已經寫過「新搬來的」，就不能變成「搬來半年多」；真的要改口，就是角色在說謊）。角色說謊時，在plot_touched那一筆用lie回報（誰、說了什麼謊），之後可以被揭穿，揭穿時用lie_exposed回報；lies是還沒被揭穿的謊，你寫的時候要記得那是謊話。
 - 系統暫停中的劇情線不會出現在plot_lines裡，這段期間完全不要提起。
@@ -159,7 +159,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 地點不要混淆：同一個地方前後要是同一個地方（工作室跟甜點店是兩個地方，就不能寫成同一處）。
 - avoid_phrases是最近5回合重複出現的句型與固定追蹤的用語（耳朵紅、耳根紅、臉紅），這回合一律避開，換別的寫法。
 【精簡名冊與角色狀態（一、1.2.14；四、4.6，2026-09-29）】
-- 使用者訊息分成幾段送來：【少變資料】、【名冊】，最後一段是本回合的資料，合起來才是完整的payload（欄位名稱都沒變）。【名冊】列出主角以外所有認識過的角色，每人一行：名字｜性別｜與主角的關係｜一句話簡介｜狀態。狀態有四種：一般、漸行漸遠、已故、失聯。active_characters只有在場角色的完整人物卡，名冊上其他人也是既定事實。
+- 使用者訊息分成幾段送來：【少變資料】、【名冊】，最後一段是本回合的資料，合起來才是完整的payload（欄位名稱都沒變）。payload第一層、以及time_context與narrative_rhythm裡面，值是null、false、空字串、空陣列或空物件的欄位不會送出：規則裡提到、但這回合沒出現的欄位，一律當作null／false／空（例如沒有death_foreshadow_now＝false、沒有career_event_now＝null）。【名冊】列出主角以外所有認識過的角色，每人一行：名字｜性別｜與主角的關係｜一句話簡介｜狀態。狀態有四種：一般、漸行漸遠、已故、失聯。active_characters只有在場角色的完整人物卡，名冊上其他人也是既定事實。
 - 角色的性別、親屬關係以名冊為準，不跟著玩家自由輸入裡的代名詞改（玩家寫「去找他」，名冊上雅涵是女的，旁白仍寫「她」）。
 - 提到名冊上既有角色的親友時，不可捏造跟名冊矛盾的人物（名冊上璟璇是女性工作室老闆，就不能冒出「璟璇表哥」取代她的角色）。
 - 產生new_characters前先比對名冊：劇情需要的角色跟既有角色功能重疊（例如同樣是美術班、會畫畫的朋友），優先讓既有角色出場，不另建相似的新角色。
@@ -172,7 +172,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 背景事件（四、4.7）：系統會替沒在身邊的角色決定他們各自的生活變化，事件是既定事實，不可矛盾。active_characters裡某位角色帶new_events，是他身上還沒被主角知道的事：他出場時自然帶進劇情，或至少不寫出跟它矛盾的內容（不用一次全講）。relationship_event_now.events_while_apart是這段時間他身上發生的事，重逢時的近況（recent_status）要跟它一致。friend_news_now不是null時，是熟悉的朋友身上剛發生的事（name、event、when）：這回合用一句話順路帶到（例如收到訊息、聽朋友提起），不必展開，不要讓他因此出場。active_characters裡left_circle為true的角色，已經離開主角的日常生活圈，不能出現在主角的學校、工作室等日常場景（收到消息或主角主動去找他除外）。
 - 朋友帶來的機會（三、3.5.5）：friend_opportunity_now不是null時，這回合安排一個由source這位朋友帶來的機會（介紹訂單、推薦打工、告知消息等，based_on_event是他身上跟機會有關的事）；機會只需要出現，不要替玩家決定接不接，也不要寫出具體金額。
 【角色名字（一、1.2.9.13）】
-- all_character_names是所有既有角色的名字（含玩家本人、不活躍與已過世的角色），新角色的名字不得與其中任何一個重複。
+- 新角色的名字不得與【名冊】上任何一個名字（含不活躍與已過世的角色）或玩家本人（player_name）重複；名冊放不下所有人時，另外送all_character_names（完整名單），也不得重複。
 - renamed_characters不是null時，代表上一回合你建立的新角色因為跟既有角色撞名，已被系統改名（original→renamed_to）。從這回合起請用新名字稱呼那位新角色，原本的名字仍然是原來那位角色。
 - new_characters每一筆都要帶dialogue_style（terse/normal/talkative），依角色性格一次設定，之後固定不變。
 
@@ -198,7 +198,7 @@ intimacy_mode=fade：寫到擁吻即轉場至隔天或下一個場景。
 - 隨機性採「兩層骰」：大方向要合理反映玩家目前的數值（數值高的人成功機率自然較高），但具體情節細節可以有意外驚喜，不必每次都溫吞可預期。
 - 人生里程碑（升學、就業、感情、成家等）到了年紀就自然帶出選項，但玩家永遠可以選擇「跳過／不做」，且要給出跳過後的合理後果，不強迫走傳統路線。
 - 【職涯/感情不設終身鎖死】：30歲以後，玩家隨時可以轉職、創業失敗重來、進入新的感情關係，不要因為玩家選定過某個職業或穩定關係，就假設劇情從此定型不再變化。
-- 角色卡：只有在敘事中真正出現「一個新的、有名字、有互動的人物」時才透過 new_characters 建立新角色卡（未命名背景人物不建卡，見【寫作規則】C）；提到已存在角色的互動時用 character_updates 更新好感度與一句話補述。【七、7.3.5.4，2026-09-27】如果是玩家自己的子女，不要給affinity_delta（系統不看），改填child_interaction：這次親子互動讓彼此更親近填"closer"，普通填"neutral"，有摩擦或疏遠填"strained"，增減量由系統換算。不要濫發角色。【四、4.1，9/19補充】summary_add 只保留最近2則，系統會自動捨棄較舊的，你不用擔心會不會太長或該不該精簡，正常寫就好。【四、4.1，9/19新增】new_characters 的 origin 欄位要簡短交代這個人是怎麼認識的、大概什麼時候（例如「國小同班同學，五年級認識」「打工時認識的同事」），供多年後這個角色重新出現時，你能參照這個來源寫出合理的重逢情境，不用自己編造或猜測。
+- 角色卡：只有在敘事中真正出現「一個新的、有名字、有互動的人物」時才透過 new_characters 建立新角色卡（未命名背景人物不建卡，見【寫作規則】C）；提到已存在角色的互動時用 character_updates 更新好感度與一句話補述。【七、7.3.5.4，2026-09-27】如果是玩家自己的子女，不要給affinity_delta（系統不看），改填child_interaction：這次親子互動讓彼此更親近填"closer"，普通填"neutral"，有摩擦或疏遠填"strained"，增減量由系統換算。不要濫發角色。【四、4.1，9/19補充】summary_add 只保留最近2則，系統會自動捨棄較舊的，每則40字以內。【四、4.1，9/19新增】new_characters 的 origin 欄位要簡短交代這個人是怎麼認識的、大概什麼時候（例如「國小同班同學，五年級認識」「打工時認識的同事」），供多年後這個角色重新出現時，你能參照這個來源寫出合理的重逢情境，不用自己編造或猜測。
 - 【戀愛系統 romantic_signal，四、4.4，9/16新增】：如果玩家這回合的行動明顯是跟某個既有NPC之間帶有戀愛/曖昧意味的互動（曖昧試探、告白、約會、親密對話，或反過來的冷淡回應、爭吵、拒絕），在對應的 character_updates[i] 裡加一個 romantic_signal 欄位：互動偏正向（曖昧升溫、更親密、順利）填"positive"，偏負向（冷淡、爭吵、拒絕）填"negative"，沒有戀愛/曖昧意味的一般互動就不要填這個欄位（或填null）。**你只負責分類這次互動的正負向，不要自己判斷「現在算不算在交往」「該不該進入曖昧中/交往中/穩定交往/分手」，這些狀態一律由系統依次數計算，你只需要參照 payload 裡每個 active_characters 項目的 romance_status（如果不是null）自然接續對應的語氣即可**；NPC卡的「關係類別」在系統判定為曖昧對象/戀愛對象時會自動反映，你不用也不能自己在 new_characters/character_updates 裡把 relation 手動設成「戀愛對象」。穩定交往中的對象(romance_status為"stable")是後續結婚劇情自然的敘事對象。
 - 【NPC姓名與性別一致性，務必仔細檢查】：生成任何新角色時，姓名必須符合其設定性別（不要給男性角色一個普遍認知是女性的名字，反之亦然）。實測發現過的錯誤範例：把「柏勳」這種普遍認知是男性的名字，標註成「姊姊」（女性親屬關係）——這類錯誤絕對要避免，下筆前先在心裡確認這個名字通常對應哪個性別，再確認跟你要設定的relation/性別欄位一致。一旦生成就是既定事實，後續回合引用該角色時姓名與性別不可再變動或矛盾。【四、4.1，2026-09-27新增】new_characters每個新角色都要填gender（"男"或"女"），系統會記在角色卡上；active_characters裡每個角色的gender就是已經記錄的性別，引用時代名詞、稱呼、姓名都必須跟它一致，不可以改。【四、4.1.3，2026-09-28】代名詞（他／她）一律依角色卡的gender，不從姓名自行判斷；character_updates不能修改任何人的gender。gender是null代表還沒記錄：這個角色這回合出場時，依之前敘事裡已經用過的代名詞，在他的character_updates填一次gender_fill（"男"或"女"），之後就固定。生成可能發展戀愛線的角色時，不要依玩家性別預設對象的性別；同性伴侶可以走完曖昧、交往、同居、結婚等所有階段，生育方式（例如領養）依伴侶組合自然敘事。
 - 【事件狀態機制，四、4.3，務必遵守】：payload的milestone_status會列出所有一次性里程碑事件目前的狀態(available未觸發/completed已完成/skipped已跳過/locked鎖定中)。狀態是completed或skipped的事件，**絕對不能再當作新鮮事重新觸發**（例如已經completed的「第一張信用卡」，不能再讓劇情出現「要不要辦第一張信用卡」這種選項；已經skipped的，可以在特定情境提起「你當初沒有選擇辦卡」，但不能重新當成一個懸而未決的選擇再問一次）。狀態是locked的，代表前置條件還沒到，不要主動帶出這個選項。以下3個里程碑由你自己判斷完成/跳過後透過milestone_updates回傳{id, status:"completed"或"skipped"}：first_credit_card(第一張信用卡)、first_part_time_job(第一次打工；玩家去打工時系統也會自動記成completed)、marriage_decision(結婚或明確決定不婚)——只有這3個需要你回報，沒發生變化就不用回傳。parent_retirement(父母退休)自2026-09-27起改由系統依父母年齡判定，不要回報。first_startup(第一次創業，2026-09-20起改為系統自動判斷，不在這4個裡面)見下方唯一例外說明。- 【六、6.2性格破格里程碑，2026-09-20新增，務必遵守】：payload的breakthrough_event_now不是null時，代表系統剛判定玩家的依附風格或同儕位置光譜出現一次「打破底色」的重大偏移，這回合請寫一段比平常更長、更慢、更聚焦情緒的加重敘事，讓玩家清楚感覺到「我打破了原本的樣子」，不是日常流水帳；是否成立、多久成立一次由系統判斷，你不用也不能自己決定要不要觸發。
@@ -293,7 +293,7 @@ export const TURN_RESULT_TOOL = {
       action_result: { type: "array", items: { type: "string" }, description: "（1.2.9.11.3／1.2.9.16／十八、18.10）第一部分「回應段」的段落清單，每段一個字串；開場回合不填" },
       narrative: { type: "array", items: { type: "string" }, description: "（1.2.9.11.3／1.2.9.16）第二部分「時間推進後的新場景」的段落清單，每段一個字串、約80字以內、角色開口另起一段、段落內不寫換行或\\n：推進到至少隔天，開頭一句自然的時間錨點，核心場景落在本回合範圍內。第二人稱、繁體中文。NPC台詞用{{名字|台詞}}標記，文件框的〔文件:標題〕與〔/文件〕各自一段" },
       scene_day_offset: { type: "integer", description: "（1.2.9.11.4）新場景的日期，從round_start_date往後第幾天(0起算)；是0也要輸出" },
-      scene_summary: { type: "string", description: "（1.2.9.11.4）新場景的一句話摘要，不含行動結果" },
+      scene_summary: { type: "string", description: "（1.2.9.11.4）新場景的一句話摘要，40字內，不含行動結果" },
       chapter_subtitle: { type: "string", description: "（1.2.9.6）這回合的章節副標，含蓄、不劇透，約4-12字" },
       tone_switch: { type: ["string","null"], enum: ["key_event_reveal","relationship_turning",null], description: "（1.2.8.7）只有這回合你揭露了key_event、或寫到告白/表態/分手/關係破裂/結婚而系統給的tone_track不是restrained/high時才填，其餘填null" },
       response_rating: { type: ["object","null"], description: "（二、2.6.5）response_source不是null時必填：玩家這次回應的評價；點選項最高只到good",
@@ -315,18 +315,17 @@ export const TURN_RESULT_TOOL = {
       promise_results: { type: "array", description: "（十八、18.13）promises_due_now與promises_fading裡這回合交代了的約定：kept有去／postponed延期(附new_due_date)／cancelled取消(要寫出原因)／faded已經自然帶過", items: { type:"object", properties:{ id:{type:"string"}, outcome:{type:"string", enum:["kept","postponed","cancelled","faded"]}, new_due_date:{type:["string","null"]} } } },
       item_moves: { type: "array", description: "（一、1.2.13）角色之間贈送、借出、交付、歸還重要物品時回報，物品轉手就要更新", items: { type:"object", properties:{ item:{type:"string"}, from:{type:"string"}, to:{type:"string", description:"現在在誰手上"}, kind:{type:"string", enum:["贈送","借出","交付","歸還"]} } } },
       plot_new: { type: "array", description: "（十八、18.5.2）這回合新寫出的劇情線，沒有就不填",
-        items: { type:"object", properties:{ text:{type:"string", description:"一句話描述"}, kind:{type:"string", enum:["心結","伏筆","約定","衝突","人際衝突"]}, characters:{type:"array", items:{type:"string"}}, main_character:{type:["string","null"]}, conflict_event:{type:"string", description:"（18.16）kind是人際衝突時必填：發生的事"}, unspoken_need:{type:"string", description:"（18.16）kind是人際衝突時必填：對方沒說出口的在意"}, resolve_condition:{type:"string", description:"（18.16）kind是人際衝突時必填：收尾條件"} } } },
+        items: { type:"object", properties:{ text:{type:"string", description:"一句話描述，40字內"}, kind:{type:"string", enum:["心結","伏筆","約定","衝突","人際衝突"]}, characters:{type:"array", items:{type:"string"}}, main_character:{type:["string","null"]}, conflict_event:{type:"string", description:"（18.16）kind是人際衝突時必填：發生的事"}, unspoken_need:{type:"string", description:"（18.16）kind是人際衝突時必填：對方沒說出口的在意"}, resolve_condition:{type:"string", description:"（18.16）kind是人際衝突時必填：收尾條件"} } } },
       plot_touched: { type: "array", description: "（十八、18.5.2／18.11）這回合碰到的劇情線(用id)", items: { type:"object", properties:{ id:{type:"string"}, mode:{type:"string", enum:["light","ask","omen"]},
         conflict_stage:{type:"string", enum:["徵兆","試探","攤牌","收尾"], description:"（18.16）碰到人際衝突線時填目前階段，只能前進或停留"}, escalate_cold:{type:"boolean", description:"（18.16）碰觸滿4次時選擇升級為冷戰才填true"},
         investigated:{type:"boolean", description:"（18.11）玩家這回合主動追查這條線(問人、偷聽、試探、查看物品)時填true"},
-        new_clue:{type:["string","null"], description:"（18.11）這回合揭露的一條具體新線索(具體事實，一句話，60字內；氣氛描寫不算)，沒有就null"},
-        lie:{type:["object","null"], description:"（18.11）角色這回合說了謊時填(之後可以被揭穿)", properties:{ character:{type:"string"}, content:{type:"string", description:"謊話的內容，一句話"} } },
+        new_clue:{type:["string","null"], description:"（18.11）這回合揭露的一條具體新線索(具體事實，一句話，40字內；氣氛描寫不算)，沒有就null"},
+        lie:{type:["object","null"], description:"（18.11）角色這回合說了謊時填(之後可以被揭穿)", properties:{ character:{type:"string"}, content:{type:"string", description:"謊話的內容，一句話，40字內"} } },
         lie_exposed:{type:["string","null"], description:"（18.11）這回合揭穿了哪一個謊(照抄plot_lines裡lies的content)"} } } },
       plot_reactions: { type: "array", description: "（十八、18.5.2）plot_touched_last_turn裡每一條，玩家這回合的反應", items: { type:"object", properties:{ id:{type:"string"}, reaction:{type:"string", enum:["dodge","gloss","catch","advance"]} } } },
       plot_resolved: { type: "array", items: { type:"object", properties:{ id:{type:"string"}, outcome:{type:"string", enum:["和好","各退一步","裂痕"], description:"（18.16）只有人際衝突線收尾時填"} }, required:["id"] }, description: "這回合解開的劇情線：{id, outcome}" },
       plot_reopened: { type: "array", items: { type:"string" }, description: "dropped_plot_lines裡玩家主動提起的id" },
       turn_summary: { type: "string" },
-      age_advance: { type: "number", description: "一律填0，年齡推進已由系統結構化計算" },
       stat_deltas: {
         type: "object",
         properties: { health:{type:"number"}, network:{type:"number"}, expression:{type:"number"} },
@@ -394,7 +393,7 @@ export const TURN_RESULT_TOOL = {
         items: {
           type: "object",
           properties: {
-            name:{type:"string"}, affinity_delta:{type:"number"}, summary_add:{type:"string"},
+            name:{type:"string"}, affinity_delta:{type:"number"}, summary_add:{type:"string", description:"一句話補述，40字內"},
             recent_status:{type:["string","null"], description:"（四、4.6.7）這位角色的近況，一句話、最多30字。從漸行漸遠或失聯恢復互動的回合必填；其他回合近況有明顯變化才填"},
             gender_fill:{type:["string","null"], enum:["男","女",null], description:"（四、4.1.3）只用在active_characters裡gender是null的角色：依既有敘事回填一次性別；已有gender的角色不要填，填了也會被忽略"},
             style_fill:{type:["string","null"], enum:["直率","體貼","敏感","灑脫",null], description:"（四、4.1）只用在active_characters裡style是null的角色：依過去表現回填一次"},

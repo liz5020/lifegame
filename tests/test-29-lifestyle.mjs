@@ -110,7 +110,7 @@ A.check("payload有money_situation", payload && ["寬裕", "剛好", "吃緊", "
 const st = ev("state.lastSettlement && JSON.parse(JSON.stringify(state.lastSettlement))");
 A.check("下一回合起生效：這回合結算用新倍率", !st || st.expenses === 59, st);
 await H.playTurn(g);
-A.check("再下一回合：不再通知", payload && payload.lifestyle_changed_now === null);
+A.check("再下一回合：不再通知", payload && payload.lifestyle_changed_now == null);
 // 改成自己打理 → 烹飪興趣種子
 ev("state.cookingInterestSeed=false; renderLifestyleModal()");
 [...doc.querySelectorAll("#lifestyle-modal .ls-opt")].find(b => b.dataset.val === "自己打理").click();

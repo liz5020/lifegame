@@ -21,7 +21,7 @@ let payload = null;
 override = (p) => { payload = p; return {}; };
 ev("state.studentStatus='graduated'; state.timeState.stageMode='career'");
 await H.playTurn(g);
-A.check("畢業未就業：payload is_student=false", payload && payload.is_student === false, payload && payload.is_student);
+A.check("畢業未就業：payload is_student=false", payload && !payload.is_student, payload && payload.is_student);
 ev("state.cash=1; state.monthlyExpenses=[]");
 override = () => ({ one_time_transaction: [{ label: "買東西", amount: -30 }] });
 await H.playTurn(g);

@@ -46,7 +46,7 @@ const base = js("narrativeLengthTier(1, 'normal', false)"), plus = js("narrative
 A.check("18.14 有重心的回合字數上限增加100字，其餘不變", plus.target_total_words - base.target_total_words === 100 && plus.focus_extra_words === 100 && !base.focus_extra_words && wg.focus_extra_words === 100, { base, plus });
 ev("state.log.push({age:15,text:'窗外的蟬聲很吵。巷口有一隻野貓走過。夕陽斜斜地照進來。他們的節奏對不上。'})");
 const amb = js("recentAmbientCategories(state)");
-A.check("18.14 程式從最近5回合正文比對出用過的環境描寫類別，送給旁白", amb.length >= 3 && lastPayload.recent_ambient_categories !== undefined, amb);
+A.check("18.14 程式從最近5回合正文比對出用過的環境描寫類別，送給旁白", amb.length >= 3 && JSON.stringify(JSON.parse(ev("buildUserMessage('x', false, {structured:true,label:'x'})")).recent_ambient_categories) === JSON.stringify(amb), amb);
 ev("state.log.pop()");
 
 // ---------- 8.12.1 投入歸屬 ----------

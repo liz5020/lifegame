@@ -692,7 +692,8 @@ const MAX_ROSTER_LINES = 120, MAX_ROSTER_LINE_CHARS = 120;
 // （2026-10-04使用者拍板，依上線後真實紀錄調整：後期人物卡active_characters幾乎每回合都變，放進快取只是多付1.25倍寫入費，移回本回合資料；
 //  名冊後期也常變，改排在少變資料後面，名冊變動時少變資料不必跟著重寫）
 export const STABLE_PAYLOAD_KEYS = ["milestone_status", "milestone_skip_reason", "character_appearance", "family_structure", "family_background",
-  "key_event", "is_politician_child_hidden_flag", "stat_delta_limits", "intimacy_mode", "chronicle_recent"];
+  "key_event", "is_politician_child_hidden_flag", "stat_delta_limits", "intimacy_mode", "chronicle_recent",
+  "home_purchase_min_down_payment_pct", "player_pronoun"]; // 10.14.8.4（2026-10-05）：兩個固定不變的值也放進來
 function pickPayloadKeys(payload, keys) {
   const out = {};
   for (const k of keys) if (k in payload) { out[k] = payload[k]; delete payload[k]; }
@@ -1089,7 +1090,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.04-p";
+const WORKER_VERSION = "2026.10.05-a";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

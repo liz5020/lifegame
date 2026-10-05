@@ -10,6 +10,15 @@
 
 ---
 
+### 2026-10-05（開發部）每回合費用再降(十、10.14.8，2026.10.05-a)
+- 起因：網頁版定案10.14.8(後期每回合≤NT$0.9)。10.14.8.2人物卡只送出場者本次不做(與18.7焦點角色輪替衝突，使用者拍板)。
+- `worker/prompt.js`：工具定義刪`age_advance`；scene_summary、summary_add、plot_new.text、new_clue、lie.content說明改40字；規則補「payload沒出現的欄位＝空值」、新角色名字改對照名冊。turn_summary暫不限(人生之書素材，待使用者決定)。
+- `worker/worker.js`：`STABLE_PAYLOAD_KEYS`加`home_purchase_min_down_payment_pct`、`player_pronoun`。
+- `index.html`：`compactTurnPayload()`空值欄位不送(第一層＋time_context、narrative_rhythm內層，Worker必填照送)；刪`current_time_label`、`word_range`；`all_character_names`只在名冊超過`ROSTER_MAX`(80)時送；`C_SUMMARY_MAX`(40)截斷C類摘要；逐筆紀錄正文字數改為也算段落清單(原本一律0)。
+- 量測(示範模式第100～701回合)：每回合不進暫存的資料約6,090字→3,460字，估計少約850 token(約NT$0.05)。結果與估算見`qa/AI費用實測與瘦身計畫_2026-10-04.md`第九節、QA手冊34.24。
+- 測試：新增`test-73-cost-slim2`(19項)；8個測試改成「沒出現＝空值」。全套76檔通過。需要真實API的項目未測試。
+
+
 ### 2026-10-04 續（開發部）出社會後的重心：技術判斷確認(2026.10.04-p)
 - 使用者確認2.6.7五項【技術判斷】改為【定案】，並補充：才識只靠進修照舊(實測留意上班族才識不成長的手感，本版不調整)；60歲起休息排入名次且發生時同樣算健康經營(原本程式已是如此，補測試)；副業進度畫面不出現小數。
 - `index.html`：`orderProgressText`(給旁白的訂單進度)改為整數格(無條件捨去)，畫面進度條原本就取整數。WORKER_VERSION同步換成2026.10.04-p(版本檢查要求兩邊一致，Worker內容沒改)。

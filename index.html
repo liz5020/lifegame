@@ -5715,8 +5715,9 @@ function rosterLine(s, c){
   if(c.left_circle) status += "（已離開主角的日常生活圈）"; // 四、4.7.3【距】
   return [c.name, c.gender||"未記錄", rel, intro || "—", status].join("｜");
 }
+const ROSTER_MAX = 80;
 function buildCharacterRoster(s){
-  return (s.characters||[]).map(c=>rosterLine(s, c)).slice(0, 80);
+  return (s.characters||[]).map(c=>rosterLine(s, c)).slice(0, ROSTER_MAX);
 }
 
 
@@ -6770,7 +6771,7 @@ function narrativeLengthTier(monthsCrossed, tension, focusExtra){
   const extra = focusExtra ? FOCUS_EXTRA_WORDS : 0; // 18.14：有重心的回合，額外額度專門用於重心活動的描寫
   const total = Math.round((sceneMin+sceneMax)/2) + Math.round((RESPONSE_WORDS_MIN+RESPONSE_WORDS_MAX)/2) + extra;
   return {
-    tier:g.tier, word_range:`${sceneMin+RESPONSE_WORDS_MIN}-${sceneMax+RESPONSE_WORDS_MAX+extra}字`, target_total_words: total,
+    tier:g.tier, target_total_words: total, // 10.14.8.4：word_range(＝scene_words＋action_result_words)與其他欄位重複，不再送
     focus_extra_words: extra || undefined,
     action_result_words: `${RESPONSE_WORDS_MIN}-${RESPONSE_WORDS_MAX}字（4-6個短段落）`,
     scene_words: `${sceneMin}-${sceneMax}字`,
@@ -7486,8 +7487,10 @@ const PLOT_LIES_MAX = 3;              // 【實作判斷】每條線記最近3�
 function markPlotProgress(s, l){
   l.lastProgressTurn = s.turnCount; l.investigatedSinceProgress = false; l.mustAdvance = false; l.investigateNoClue = 0; l.mustRevealClue = false;
 }
+// 十、10.14.8.3（2026-10-05）：給紀事、近況用的C類摘要欄位(scene_summary、summary_add、劇情線一句話、線索、謊話內容)字數上限；超過照舊規則截斷，不重新產生
+const C_SUMMARY_MAX = 40;
 function addPlotClue(s, l, text){
-  const t = String(text||"").trim().slice(0,60);
+  const t = String(text||"").trim().slice(0,C_SUMMARY_MAX); // 10.14.8.3：C類摘要欄位40字
   if(!t) return;
   l.clues = (l.clues||[]).concat([t]);
   while(l.clues.length>PLOT_CLUES_MAX){
@@ -7967,7 +7970,7 @@ function applyNarrativeRhythmResult(s, r, ctx){
     }
     if(hadMustAdvance && mode!=="omen") markPlotProgress(s, l); // 被要求推進的線這回合碰到了，視為已推進
     if(x.lie && x.lie.content){
-      l.lies = (l.lies||[]).concat([{ character: String(x.lie.character||"").slice(0,12), content: String(x.lie.content).slice(0,60), turn, exposed:false }]);
+      l.lies = (l.lies||[]).concat([{ character: String(x.lie.character||"").slice(0,12), content: String(x.lie.content).slice(0,C_SUMMARY_MAX), turn, exposed:false }]);
       while(l.lies.length>PLOT_LIES_MAX){ const i = l.lies.findIndex(v=>v.exposed); l.lies.splice(i>=0 ? i : 0, 1); }
     }
     if(x.lie_exposed){ const lie = (l.lies||[]).find(v=>!v.exposed && (v.content===x.lie_exposed || String(x.lie_exposed).includes(v.content) || v.content.includes(String(x.lie_exposed)))); if(lie) lie.exposed = true; }
@@ -7987,7 +7990,7 @@ function applyNarrativeRhythmResult(s, r, ctx){
       if(f("conflict_event") && f("unspoken_need") && f("resolve_condition") && main) cf = { event:f("conflict_event"), need:f("unspoken_need"), resolve:f("resolve_condition") };
       else { kind = "衝突"; addReviewFlag(s, "conflict_line_incomplete", `人際衝突線「${String(p.text).slice(0,20)}」沒有填齊三欄或主要角色，降為一般衝突線`); }
     }
-    const l = newPlotLine(s, { id:"p"+s.plotSeq, text:String(p.text).slice(0,80), kind, chars, main, lastTouchMode:"light" });
+    const l = newPlotLine(s, { id:"p"+s.plotSeq, text:String(p.text).slice(0,C_SUMMARY_MAX), kind, chars, main, lastTouchMode:"light" });
     if(cf){ l.cf = cf; l.cfStage = "徵兆"; l.cfTouches = 0; l.cfEscalated = 0; l.cfToward = 0; l.cfAway = 0; }
     lines.push(l); born.push(l);
   });
@@ -8151,7 +8154,6 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
   const payload = {
     player_name: s.name, gender: s.gender,
     age:s.age, stage:stageLabel(s.age), turn:s.turnCount,
-    current_time_label: timeCtx?.structured ? timeCtx.label : null,
     time_jump: (timeCtx?.structured && timeCtx.jump) ? timeCtx.jump : null,
     college_location: s.collegeLocation,
     stats:s.stats, happiness:s.happiness,
@@ -8247,7 +8249,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     graduation_event_now: s.graduationEventLog || null, // 1.2.8.6（2026-09-24拍板）：剛畢業的那回合，{type:"highschool"|"college"}
     interest_formed_event_now: s.interestFormedEventLog || null, // 1.2.8.6（2026-09-24拍板）：上一回合興趣卡剛由候選正式成形，{category}
     // 一、1.2.9.13（2026-09-24新增）：所有既有角色名字(含不活躍/已過世)，新角色不得重名；上一回合被系統改名的新角色另外告知
-    all_character_names: Array.from(allUsedNames(s)),
+    // 10.14.8.4（2026-10-05）刪重複：名冊已列出所有角色名字，只有名冊放不下(超過ROSTER_MAX人)時才另外送完整名單
+    all_character_names: (s.characters||[]).length > ROSTER_MAX ? Array.from(allUsedNames(s)) : null,
     // 一、1.2.9.15（2026-09-29 A1）：旁白與NPC對主角說話用這個代名詞(依主角性別)；選項用主角自己的口吻，不出現指稱主角的代名詞
     player_pronoun: playerPronoun(s),
     // 一、1.2.13（2026-09-29 A11）：重要物品清單(目前在誰手上)、最近5回合重複出現、這回合要避開的句型
@@ -8334,7 +8337,26 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     milestone_skip_reason: s.milestoneSkipReason || {},
     forceEnding: !!forceEnding
   };
-  return JSON.stringify(payload);
+  return JSON.stringify(compactTurnPayload(payload));
+}
+// 十、10.14.8.4（2026-10-05）精簡格式：值是null、false、空字串、空陣列、空物件的欄位不送(system prompt說明沒出現＝空值)，AI收到的資訊不變。
+// Worker必填的欄位(REQUIRED_TURN_PAYLOAD_FIELDS)一律保留；處理第一層，以及time_context、narrative_rhythm裡面一層
+// (人物卡裡的null有意義(gender／style／age是null＝要回填)，不處理)
+const PAYLOAD_NESTED_COMPACT = ["time_context","narrative_rhythm"];
+const PAYLOAD_ALWAYS_KEEP = new Set(["player_name","gender","age","turn","stats","player_action","forceEnding"]);
+function isEmptyPayloadValue(v){
+  return v===null || v===undefined || v===false || v==="" || (Array.isArray(v) && !v.length) || (v && typeof v==="object" && !Array.isArray(v) && !Object.keys(v).length);
+}
+function compactTurnPayload(p){
+  const out = {};
+  Object.keys(p).forEach(k=>{
+    let v = p[k];
+    if(PAYLOAD_NESTED_COMPACT.includes(k) && v && typeof v==="object" && !Array.isArray(v)){
+      const o = {}; Object.keys(v).forEach(j=>{ if(!isEmptyPayloadValue(v[j])) o[j] = v[j]; }); v = o;
+    }
+    if(PAYLOAD_ALWAYS_KEEP.has(k) || !isEmptyPayloadValue(v)) out[k] = v;
+  });
+  return out;
 }
 
 const WORKER_URL = "https://life-game.smile80275.workers.dev/";
@@ -8344,8 +8366,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.04-p";
+const APP_VERSION = "2026.10.05-a";
 const RELEASE_NOTES = [
+  { version:"2026.10.05-a", date:"2026-10-05", title:"幕後整理", items:[
+    "整理了每回合送給旁白的資料，拿掉空白和重複的部分，玩起來不會有差別。",
+  ]},
   { version:"2026.10.04-p", date:"2026-10-04", title:"副業進度顯示微調", items:[
     "60 歲以後副業每回合可能只推進一部分，畫面上的進度一律顯示完整的格數，做滿一格才會多亮一格。",
   ]},
@@ -10277,7 +10302,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     const frozen = c.deceased || c.lost || recallTurn;
     if(frozen) delta = 0;
     c.affinity = clamp(c.affinity + delta,0,100);
-    appendNpcSharedMemory(c, cu.summary_add);
+    appendNpcSharedMemory(c, cu.summary_add ? String(cu.summary_add).trim().slice(0, C_SUMMARY_MAX) : cu.summary_add);
     // 四、4.6.7：近況，一句話最多30字，覆蓋舊值(失聯的人沒有新近況)
     if(cu.recent_status && !c.lost) c.recentStatus = String(cu.recent_status).trim().slice(0, 30);
     if(!c.deceased && !c.lost && !recallTurn) markCharacterInteracted(s, c);
@@ -10441,7 +10466,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     const win = timeCtx.window;
     const off = Number.isInteger(r.scene_day_offset) ? clamp(r.scene_day_offset, 0, win.end-win.start) : 0;
     s.timeState.cal.lastSceneDay = win.start + off;
-    s.timeState.cal.lastSceneSummary = String(r.scene_summary || r.turn_summary || "").slice(0,80);
+    s.timeState.cal.lastSceneSummary = String(r.scene_summary || r.turn_summary || "").slice(0,C_SUMMARY_MAX);
     syncBirthdayAge(s, win.start + off); // B1：新場景那天已過生日的話，年齡＋1
     sceneDate = calFormat(win.start + off);
   }
@@ -14852,7 +14877,7 @@ function outputBlockChars(data){
   const blk = (data && data.content || []).find(b=>b.type==="tool_use");
   const inp = blk && blk.input;
   if(!inp) return { narr:0, other:0 };
-  const narr = ["narrative","action_result","text","body"].reduce((n,k)=>n + (typeof inp[k]==="string" ? inp[k].length : 0), 0);
+  const narr = ["narrative","action_result","text","body"].reduce((n,k)=>n + (typeof inp[k]==="string" ? inp[k].length : Array.isArray(inp[k]) ? inp[k].reduce((m,x)=>m+(typeof x==="string" ? x.length : 0), 0) : 0), 0); // 10.14.8（2026-10-05）：正文是段落清單，原本只算字串→後期一律0
   return { narr, other: Math.max(0, JSON.stringify(inp).length - narr) };
 }
 const callNonceCount = new Map(); // 同一個turn_nonce第二次以後的呼叫算「失敗重試／重新生成」

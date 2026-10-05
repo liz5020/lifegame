@@ -17,7 +17,7 @@ const js = (x) => JSON.parse(ev(`JSON.stringify(${x})`));
 const ORIGIN_ROLES = ["父親","母親","繼父","繼母","哥哥","姊姊","弟弟","妹妹"];
 
 // ---------- 開場 ----------
-A.check("開場回合沒有重心(payload.turn_focus為null)", lastPayload && lastPayload.turn_focus === null);
+A.check("開場回合沒有重心(payload.turn_focus為null)", lastPayload && lastPayload.turn_focus == null);
 A.check("整局第一回合預設亮休息", ev("currentFocus(state)") === "rest");
 ev("render()");
 const btns = [...doc.querySelectorAll(".focus-btn[data-focus]")].map(b => b.textContent);
@@ -157,7 +157,7 @@ setSeg("期中後放鬆");
 ev("state.focus='rest'; state.stats.health=50");
 override = () => ({ stat_deltas: { health: 0, network: 0, expression: 0 } });
 await H.playTurn(g, "跳過");
-A.check("跳過指令的回合不結算重心", Math.round(ev("state.stats.health")) === 50 && lastPayload.turn_focus === null);
+A.check("跳過指令的回合不結算重心", Math.round(ev("state.stats.health")) === 50 && lastPayload.turn_focus == null);
 
 // ---------- 場景 ----------
 setSeg("開學初");
@@ -319,7 +319,7 @@ A.check("出社會後照樣顯示重心按鈕，讀書改稱進修", !!doc.query
 override = () => ({ stat_deltas: { health: 0, network: 0, expression: 3 } });
 ev("state.stats.expression=30");
 await H.playTurn(g, "嗯");
-A.check("出社會後有重心、沒有場景擲骰，AI的表達力加分改走回應評價", lastPayload.turn_focus && lastPayload.turn_focus.adult === true && lastPayload.scene_plan === null && ev("state.stats.expression") === 30, [lastPayload.turn_focus, lastPayload.scene_plan, ev("state.stats.expression")]);
+A.check("出社會後有重心、沒有場景擲骰，AI的表達力加分改走回應評價", lastPayload.turn_focus && lastPayload.turn_focus.adult === true && lastPayload.scene_plan == null && ev("state.stats.expression") === 30, [lastPayload.turn_focus, lastPayload.scene_plan, ev("state.stats.expression")]);
 A.check("出社會後劇情線與角色輪替照常送", !!lastPayload.narrative_rhythm && Array.isArray(lastPayload.narrative_rhythm.focus_candidates));
 
 A.check("沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));

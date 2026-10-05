@@ -35,7 +35,7 @@ ev("ageChildren(state, 1)");
 A.check("4.1.4 建卡後由程式每年加一歲", age("李老師") === 42 && age("路人甲") === 20);
 const payload = JSON.parse(ev("buildUserMessage('去上學', false, {structured:true,label:'x'})"));
 const roster = payload.active_characters.find(c => c.name === "陳柏宇");
-A.check("payload：角色卡帶age；intimacy_mode預設full", roster && roster.age === 17 && payload.intimacy_mode === "full" && Array.isArray(payload.romance_flags), { roster, mode: payload.intimacy_mode, names: payload.active_characters.map(c=>c.name+":"+c.age) });
+A.check("payload：角色卡帶age；intimacy_mode預設full", roster && roster.age === 17 && payload.intimacy_mode === "full" && (payload.romance_flags === undefined || Array.isArray(payload.romance_flags)), { roster, mode: payload.intimacy_mode, names: payload.active_characters.map(c=>c.name+":"+c.age) });
 A.check("整段沒有jsdom錯誤(真實路徑)", g.errors.length === 0, g.errors.map(String).slice(0, 3));
 
 // ================= 規則單元(USE_MOCK) =================

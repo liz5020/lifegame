@@ -69,7 +69,7 @@ A.check("人生履歷寫下「10歲時母親就離開了」", ev("state.chronicl
 ev("state.spendingHabit='普通花費'; state.mealArrangement='自己打理'; state.phase='playing'");
 const pro = JSON.parse(ev("buildUserMessage('開場', false, {structured:true,label:'x',prologue:true})"));
 const nonPro = JSON.parse(ev("buildUserMessage('上學', false, {structured:true,label:'x'})"));
-A.check("只有開場回合送succession_opening_event", pro.succession_opening_event && pro.succession_opening_event.child_age === 10 && nonPro.succession_opening_event === null);
+A.check("只有開場回合送succession_opening_event", pro.succession_opening_event && pro.succession_opening_event.child_age === 10 && nonPro.succession_opening_event == null);
 
 A.check("整段沒有jsdom錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
 process.exit(A.report() ? 0 : 1);
