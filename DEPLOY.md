@@ -37,7 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| 2026-10-05 | 2026.10.05-a（待推送） | 2026.10.05-a（待推送） | （待補） | index.html、worker(prompt.js、worker.js) | 每回合費用再降(10.14.8)：空值欄位不送、刪重複、C類摘要40字 |
+| 2026-10-05 | 2026.10.05-a（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.05-a（同左） | `750c4e7`、`060fb1b` | index.html、worker(prompt.js、worker.js) | 每回合費用再降(10.14.8)：空值欄位不送、刪重複、C類摘要40字 |
 | 2026-10-05 | 2026.10.04-p（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-p（同左，Worker內容沒改、只換版本號） | `bf25172` | index.html、worker.js(只換版本號) | 出社會後的重心：技術判斷改定案，副業進度給旁白只用整數格 |
 | 2026-10-04 | 2026.10.04-o（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.04-o（同左） | `6094f1e` | index.html、worker(prompt.js、worker.js只換版本號) | 出社會後的重心(二、2.6.7＋補充定案)、60歲起排序前三 |
 | 2026-10-04 | 2026.10.04-n（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；`/usage-detail.csv`回200、`/dashboard`有新區塊） | 2026.10.04-n（同左） | `e1d44d3` | index.html(只換版本號與更新說明)、worker(gate.js、worker.js、dashboard.js) | 伺服器端AI實際用量紀錄(10.14.7)：每日加總、逐筆明細、CSV下載、數據總覽區塊 |
