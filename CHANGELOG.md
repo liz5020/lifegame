@@ -12,7 +12,7 @@
 
 ### 2026-10-05（開發部）每回合費用再降(十、10.14.8，2026.10.05-a)
 - 起因：網頁版定案10.14.8(後期每回合≤NT$0.9)。10.14.8.2人物卡只送出場者本次不做(與18.7焦點角色輪替衝突，使用者拍板)。
-- `worker/prompt.js`：工具定義刪`age_advance`；scene_summary、summary_add、plot_new.text、new_clue、lie.content說明改40字；規則補「payload沒出現的欄位＝空值」、新角色名字改對照名冊。turn_summary暫不限(人生之書素材，待使用者決定)。
+- `worker/prompt.js`：工具定義刪`age_advance`；scene_summary、summary_add、plot_new.text、new_clue、lie.content說明改40字；規則補「payload沒出現的欄位＝空值」、新角色名字改對照名冊。turn_summary不限(人生之書素材，使用者拍板)。
 - `worker/worker.js`：`STABLE_PAYLOAD_KEYS`加`home_purchase_min_down_payment_pct`、`player_pronoun`。
 - `index.html`：`compactTurnPayload()`空值欄位不送(第一層＋time_context、narrative_rhythm內層，Worker必填照送)；刪`current_time_label`、`word_range`；`all_character_names`只在名冊超過`ROSTER_MAX`(80)時送；`C_SUMMARY_MAX`(40)截斷C類摘要；逐筆紀錄正文字數改為也算段落清單(原本一律0)。
 - 量測(示範模式第100～701回合)：每回合不進暫存的資料約6,090字→3,460字，估計少約850 token(約NT$0.05)。結果與估算見`qa/AI費用實測與瘦身計畫_2026-10-04.md`第九節、QA手冊34.24。

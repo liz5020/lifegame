@@ -12,7 +12,7 @@ const toolJson = JSON.stringify(TURN_RESULT_TOOL);
 A.check("10.14.8.3 C類摘要欄位在工具定義與規則都寫40字", /新場景的一句話摘要，40字內/.test(toolJson) && /一句話描述，40字內/.test(toolJson) && /一句話補述，40字內/.test(toolJson) && /一句話，40字內；氣氛描寫不算/.test(toolJson) && /謊話的內容，一句話，40字內/.test(toolJson)
   && /scene_summary（新場景的一句話摘要，40字以內/.test(TURN_SYSTEM_PROMPT) && /new_clue（一句話，40字以內）/.test(TURN_SYSTEM_PROMPT) && /一句話描述，40字以內/.test(TURN_SYSTEM_PROMPT) && /每則40字以內/.test(TURN_SYSTEM_PROMPT));
 A.check("10.14.8.3 舊的60字、「正常寫就好」說明已拿掉", !/60字內；氣氛描寫不算/.test(toolJson) && !/你不用擔心會不會太長或該不該精簡/.test(TURN_SYSTEM_PROMPT));
-A.check("10.14.8.3 turn_summary維持原規則(人生之書素材，待使用者決定)", /turn_summary：用1-2句話/.test(TURN_SYSTEM_PROMPT));
+A.check("10.14.8.3 turn_summary維持原規則(人生之書素材，使用者拍板不限)", /turn_summary：用1-2句話/.test(TURN_SYSTEM_PROMPT));
 A.check("10.14.8.3 玩家看得到的欄位不動(narrative、choices、chapter_subtitle、life_summary仍在)", ["narrative", "action_result", "choices", "chapter_subtitle", "life_summary"].every(k => k in props));
 
 const long = "很長的摘要".repeat(12); // 60字
