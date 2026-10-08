@@ -37,7 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| 2026-10-09 | 2026.10.09-b（隨`master`自動部署，推送後再確認線上版本） | 2026.10.09-b（同左，Worker程式本身沒改） | （推送後補） | index.html、worker/worker.js(僅版本號) | 首頁背景色塊隨螢幕縮放：電腦大螢幕連成一整片，手機不變 |
+| 2026-10-09 | 2026.10.09-b（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.09-b（同左，Worker程式本身沒改） | `16ce1c1` | index.html、worker/worker.js(僅版本號) | 首頁背景色塊隨螢幕縮放：電腦大螢幕連成一整片，手機不變 |
 | 2026-10-09 | 2026.10.09-a（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；prompt修改的實際敘事效果尚未用真實API驗證） | 2026.10.09-a（同左） | `ac2f7dc` | index.html、worker(prompt.js、worker.js)、tests、CLAUDE.md | prompt稽核修正：補location必填、移除加重語氣與新舊對照說明、章節分段規則、工具欄位說明 |
 | 2026-10-08 | 2026.10.08-j（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；逾時、本機存檔失敗、錢包校正尚未在正式環境實際遇到） | 2026.10.08-j（同左） | `499ef0f` | index.html、worker(ap.js、account.js、account-routes.js、gate.js、worker.js、prompt.js)、tests | 十、10.17回合流程與出錯處理：AI逾時90秒與慢提示30秒、失敗後等2秒再重打、「再試一次」沿用回合編號(Worker不重複扣點、又失敗時退回、上限5改9)、本機存檔失敗常駐提示並補存雲端、帳號錢包失敗以伺服器餘額為準、失敗還原範圍(快照補欄位，快照結構新增`extra`)、system prompt防護句、Worker逐筆紀錄耗時 |
 | 2026-10-08 | 2026.10.08-i（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；原本排的-f與其他工作階段的興趣多元化版本號撞號，接在-h之後改為-i） | 2026.10.08-i（同左） | `2f1f911` | index.html、worker(account.js、worker.js) | 封存包寫入計數(`r:`)也由每小時排程清除，最長保留不超過2小時(10.16.15補) |
