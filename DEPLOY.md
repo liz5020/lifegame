@@ -37,7 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| 2026-10-08 | 2026.10.08-j（**尚未上線**，推上`master`後再補確認結果） | 2026.10.08-j（同左，尚未部署） | （尚未commit） | index.html、worker(ap.js、account.js、account-routes.js、gate.js、worker.js、prompt.js)、tests | 十、10.17回合流程與出錯處理：AI逾時90秒與慢提示30秒、失敗後等2秒再重打、「再試一次」沿用回合編號(Worker不重複扣點、又失敗時退回、上限5改9)、本機存檔失敗常駐提示並補存雲端、帳號錢包失敗以伺服器餘額為準、失敗還原範圍(快照補欄位，快照結構新增`extra`)、system prompt防護句、Worker逐筆紀錄耗時 |
+| 2026-10-08 | 2026.10.08-j（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；逾時、本機存檔失敗、錢包校正尚未在正式環境實際遇到） | 2026.10.08-j（同左） | `499ef0f` | index.html、worker(ap.js、account.js、account-routes.js、gate.js、worker.js、prompt.js)、tests | 十、10.17回合流程與出錯處理：AI逾時90秒與慢提示30秒、失敗後等2秒再重打、「再試一次」沿用回合編號(Worker不重複扣點、又失敗時退回、上限5改9)、本機存檔失敗常駐提示並補存雲端、帳號錢包失敗以伺服器餘額為準、失敗還原範圍(快照補欄位，快照結構新增`extra`)、system prompt防護句、Worker逐筆紀錄耗時 |
 | 2026-10-08 | 2026.10.08-i（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；原本排的-f與其他工作階段的興趣多元化版本號撞號，接在-h之後改為-i） | 2026.10.08-i（同左） | `2f1f911` | index.html、worker(account.js、worker.js) | 封存包寫入計數(`r:`)也由每小時排程清除，最長保留不超過2小時(10.16.15補) |
 | 2026-10-08 | 2026.10.08-f（隨`master`自動部署，Cloudflare Pages檢查成功；頁面版本號尚未另外在網址上直接確認） | 2026.10.08-f（使用者確認`/version`回傳此版） | `5e1684c` | index.html、worker(prompt.js、worker.js)、tests | 興趣多元化：程式擲骰決定興趣類別與項目（嘗試新的＋自然種子約8%）、已有類別權重減半、興趣卡記項目、副業訂單範例各類輪流舉例；PR分支那次Workers Builds曾顯示失敗，合併後線上Worker已是新版。AI是否真的照指定類別項目寫、自然種子8%手感：未測試（需真實API／實際遊玩） |
 | 2026-10-08 | 2026.10.08-e（隨`master`自動部署，已用`/version`、頁面(兩個網址，`/privacy`顯示版本1.1與新增資料項目)與check-runs確認線上網頁與Worker都是此版；每小時排程清除防濫用紀錄尚未在正式環境觀察） | 2026.10.08-e（同左） | `b11778d` | index.html、terms.html、privacy.html、pricing.html、worker(account.js、account-routes.js、entry.js、worker.js) | 網頁版討論回覆：隱私補寫與版本1.1、防濫用紀錄1小時到期、指定NPC必定登場（未登場退10點）、試看花絮6句改寫、舊存檔反悔換算 |
