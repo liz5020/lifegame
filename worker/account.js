@@ -599,7 +599,7 @@ export class AccountStore {
     if (!a) return { ok: false, error: "unauthorized", status: 401 };
     const ctx = this._ctx(b);
     const flags = await this._tick(a, ctx);
-    const n = clampInt(b.n, 50);
+    const n = clampInt(b.n, 100);
     if (n <= 0) return { ok: false, error: "bad_amount", status: 400 };
     if (walletTotal(a.wallet) < n) return this._out(a, { ok: false, status: 402, error: { type: "insufficient_action_points", message: "行動點不足" }, wallet: publicWallet(a) }, flags, null);
     spend(a.wallet, n);
@@ -612,7 +612,7 @@ export class AccountStore {
     const ctx = this._ctx(b);
     const flags = await this._tick(a, ctx);
     await this._putAcct(a);
-    return this._out(a, { can: walletTotal(a.wallet) >= clampInt(b.n, 50), wallet: publicWallet(a) }, flags, null);
+    return this._out(a, { can: walletTotal(a.wallet) >= clampInt(b.n, 100), wallet: publicWallet(a) }, flags, null);
   }
   // 10.9.3.2：帳號有沒有購買紀錄(購買功能上線前永遠是false；沒有任何程式會把它改回false)
   async opIsPurchased(b) {

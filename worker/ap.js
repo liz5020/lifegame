@@ -218,9 +218,9 @@ export function chargeIdleRollback(rec) {
   rec.idleRollbackAvailable = false;
   return { ok: true };
 }
-// 十六、16.7.2.1【定案】回顧這一生解鎖扣5點(比照10.6.5)，扣點順序同10.3.3。AI成功產生後才扣(10.3.1 API失敗不扣點)；
+// 十六、16.7.2.1【定案】回顧這一生解鎖扣60點(2026-10-08付費周邊，取代原本的5點)，扣點順序同10.3.3。AI成功產生後才扣(10.3.1 API失敗不扣點)；
 // 請求前先確認餘額夠，不夠直接擋下、不呼叫AI
-export const LIFE_REVIEW_COST = 5;
+export const LIFE_REVIEW_COST = 60;
 export function canAffordLifeReview(rec) { return rec.daily + rec.gift + rec.purchased >= LIFE_REVIEW_COST; }
 export function chargeLifeReview(rec) { spend(rec, LIFE_REVIEW_COST); }
 export function isUsableLifeReviewResponse(data) {

@@ -141,14 +141,18 @@ setNow(8 * DAY); await me(tPay);
 const nn = "payregen001"; let lastSt = 0;
 for (let i = 0; i < 6; i++) lastSt = (await aiTurn(tPay, { nonce: nn })).status;
 A.check("同一回合最多呼叫5次AI，第6次→429", lastSt === 429, lastSt);
-// 回顧這一生5點
+// 回顧這一生60點(2026-10-08付費周邊，取代原本的5點)
 setNow(9 * DAY); r = await me(tPay); await aiTurn(tPay); // 補到5點後扣1點＝4點
 const reviewMsg = JSON.stringify({ stages: [{ stage: "a", stage_label: "高中" }], tidbits: [] });
 r = await post("/", { wallet: true, kind: "life_review", life_id: "lifepay01", messages: [{ role: "user", content: reviewMsg }] }, auth(tPay));
-A.check("回顧這一生：餘額不足5點→402、不呼叫AI", r.status === 402, r.status);
+A.check("回顧這一生：餘額不足60點→402、不呼叫AI", r.status === 402, r.status);
 await post("/account/lives", { op: "add", lid: "lifepay02" }, auth(tPay)); // 第2份啟程禮+55
 r = await post("/", { wallet: true, kind: "life_review", life_id: "lifepay01", messages: [{ role: "user", content: reviewMsg }] }, auth(tPay));
-A.check("回顧這一生：成功才扣5點", r.status === 200 && r.json.lifegame.wallet.total > 0, r.json.lifegame);
+A.check("回顧這一生：59點仍不夠60點→402", r.status === 402, r.status);
+{ const k = [...env.ACCOUNTS._store.keys()].find(x => x.startsWith("a:") && env.ACCOUNTS._store.get(x).email === "pay@example.com") || [...env.ACCOUNTS._store.keys()].filter(x => x.startsWith("a:")).pop(); const a = env.ACCOUNTS._store.get(k); a.wallet.gift += 11; env.ACCOUNTS._store.set(k, a); }
+const before60 = (await me(tPay)).json.account.wallet.total;
+r = await post("/", { wallet: true, kind: "life_review", life_id: "lifepay01", messages: [{ role: "user", content: reviewMsg }] }, auth(tPay));
+A.check("回顧這一生：成功才扣60點", r.status === 200 && r.json.lifegame.wallet.total === before60 - 60, [r.status, before60, r.json.lifegame]);
 // mock模式用的錢包端點
 const w0 = (await me(tPay)).json.account.wallet.total;
 r = await post("/account/wallet", { op: "charge", nonce: "mockcharge01", life_id: "lifepay01" }, auth(tPay));

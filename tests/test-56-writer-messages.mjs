@@ -2,7 +2,7 @@
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("撰稿人訊息與用量計數");
 let failing = false;
-const fake = H.makeFakeAnthropic({ fail: () => failing });
+const fake = H.makeFakeAnthropic({ fail: () => failing, usage: () => H.ONE_TWD_USAGE });
 H.installUpstream(fake);
 
 // ---- Worker：假的Durable Object(記憶體)，驗證計數、跨日歸零、只有成功呼叫才算、管理密碼保護、設定值預設與覆寫 ----

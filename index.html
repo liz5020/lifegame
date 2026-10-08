@@ -933,6 +933,22 @@ async function walletSpendOnce(n){
   return { ok:false, insufficient: r.status===402 };
 }
 
+// ========== 十、10.3.13 付費周邊（2026-10-08）：用行動點支付的單次項目 ==========
+// 反悔(超過免費次數)每次1點、人生重開丹10點、回顧這一生60點；免費點數也可以用，照一般扣點順序(先免費、後購買)。
+// 帳號人生扣帳號錢包(伺服器一次性扣點)，其他扣這段人生的本機點數；10.8重新打開後「行動點以伺服器為準」時需另補伺服器端單次扣點(目前雲端暫停，SERVER_AP永遠是false)
+const UNDO_FREE_PER_LIFE = 5;      // 【定案,10.3.13】每一世免費反悔5次
+const UNDO_PAID_COST = 1;          // 【定案,10.3.13】第6次起每次1點
+const LIFE_KEEP_COST = 10;         // 【定案,7.4.3.4】人生重開丹
+async function paySinglePoints(s, n, reason){
+  if(totalAP(s) < n) return { ok:false, insufficient:true };
+  if(walletActive(s)){
+    const r = await walletSpendOnce(n);
+    if(!r.ok) return { ok:false, insufficient: !!r.insufficient };
+  } else spendAP(s, n);
+  apLogAdd(s, reason, -n);
+  return { ok:true };
+}
+
 // 十、10.9.3.1／10.12.5第4則：全站每日花費上限，暫停AI呼叫。同一天只跳窗一次，之後在輸入列上方顯示一行小字，恢復後小字消失
 const CAP_MODAL_DATE_KEY = "life_sim_cap_modal_date";
 let dailyCapDate = null; // 這個台灣日期碰過暫停
@@ -1864,9 +1880,9 @@ function buildLifeSummaryMaterial(s){
   // 十六、16.7.0（2026-09-28）：人生總結的性格描述要跟7.7人生特質一致，生成時一併提供；試看花絮的素材由客戶端先挑好
   const trait = classifyLifeTrait(s.playStyle);
   const tidbits = buildTidbitMaterials(s, { segments, transitions });
-  const teaser = pickTeaserTidbit(tidbits);
+  // 十六、16.7.2.1（2026-10-08）：試看花絮改由程式組句（buildOpeningTeaser），不呼叫AI、不送給AI
   return { segments, transitions, life_trait: trait.type ? { label: trait.label, text: trait.text } : { label: null, text: trait.text },
-    teaser_tidbit_material: teaser };
+    teaser_tidbit_material: null };
 }
 // ========== 十六、16.7.2.3 人生花絮素材（2026-09-28）==========
 // 花絮只寫玩家遊玩時看不到、但程式有記錄的事實；挑選由客戶端決定，AI只負責寫成句子。
@@ -1906,9 +1922,35 @@ function buildTidbitMaterials(s, material){
   });
   return Object.values(byStage).flat();
 }
-// 16.7.0試看：優先從命運的骰子類挑一則；沒有就照16.7.2.3的優先順序
-function pickTeaserTidbit(list){
-  return (list||[]).find(t=>t.category==="fate") || (list||[]).slice().sort((a,b)=>TIDBIT_CATEGORY_ORDER.indexOf(a.category)-TIDBIT_CATEGORY_ORDER.indexOf(b.category))[0] || null;
+// 16.7.0試看（2026-10-08改）：程式組句，不呼叫AI。從「開局設定揭曉」類挑（家境、性格傾向），每種開局設定準備數句，固定句型列在設計文件16.7.2.3；
+// 同一段人生固定不變（用人生代號決定用哪一句，結果存進ending.teaser）
+const TEASER_FAMILY_SENTENCES = {
+  清寒: ["你出生的家，日子過得不寬裕，後來很多事，你都比同齡的人早一點學會算。", "你從小就知道錢要省著用，這件事悄悄影響了你後來好幾個決定。"],
+  小康: ["你出生的家，不富也不缺，那份剛剛好的安穩，是你很多選擇的底色。", "你家的日子不算寬裕也不算拮据，這讓你很多時候以為，大家的生活都是這個樣子。"],
+  富裕: ["你出生的家，從來不用為錢煩惱，這讓有些事你做起來比別人輕鬆，也有些事你看得比別人慢。", "你從小不缺什麼，這份不缺，後來成了你某些決定的底氣。"]
+};
+const TEASER_TRAIT_SENTENCES = {
+  anxiety_high: ["你一開始其實是個很在意別人怎麼看你的人。", "你一開始很怕被丟下，只是從來沒對誰說過。"],
+  avoidance_high: ["你一開始其實是個不太習慣開口求助的人。", "你一開始就習慣自己扛事情，不太讓別人靠近。"],
+  peer_low: ["你一開始在同學之間，其實是比較安靜、不太起眼的那一邊。", "你剛進高中的時候，在班上是那種不太會被注意到的人。"],
+  peer_high: ["你一開始在同學之間，其實是比較容易被注意到的那一邊。", "你剛進高中的時候，走到哪裡都比較容易有人跟你搭話。"]
+};
+function teaserVariantIndex(s, n){
+  const id = String(s.lifeId || s.name || "x"); let h = 0;
+  for(let i=0;i<id.length;i++) h = (h*31 + id.charCodeAt(i)) >>> 0;
+  return h % n;
+}
+function buildOpeningTeaser(s){
+  const init = s.openingProfile || null;
+  let list = null;
+  if(init){ // 先看性格傾向裡最突出的一項；都不突出就寫家境
+    if(init.anxiety >= 60) list = TEASER_TRAIT_SENTENCES.anxiety_high;
+    else if(init.avoidance >= 60) list = TEASER_TRAIT_SENTENCES.avoidance_high;
+    else if(typeof init.peerPosition==="number" && init.peerPosition <= 35) list = TEASER_TRAIT_SENTENCES.peer_low;
+    else if(typeof init.peerPosition==="number" && init.peerPosition >= 65) list = TEASER_TRAIT_SENTENCES.peer_high;
+  }
+  if(!list) list = TEASER_FAMILY_SENTENCES[s.family] || TEASER_FAMILY_SENTENCES["小康"];
+  return { stage: "student", category: "opening", text: list[teaserVariantIndex(s, list.length)], source: "program" };
 }
 // AI沒寫到時的備案句子(試看花絮)
 function fallbackTidbitText(t, s){
@@ -2023,9 +2065,8 @@ function assembleEnding(s, r){
     overview: String(ls.overview||"").trim() || composeLifeOverviewFallback(s),
     overviewSource: String(ls.overview||"").trim() ? "ai" : (composeLifeOverviewFallback(s) ? "fallback" : "none"),
     lifeTrait: material.life_trait || null,
-    // 十六、16.7.0試看：一則免費花絮，素材客戶端挑好，AI寫句子；AI沒寫就用程式句子
-    teaser: material.teaser_tidbit_material ? { stage: material.teaser_tidbit_material.stage, category: material.teaser_tidbit_material.category,
-      text: String(ls.teaser_tidbit||"").trim() || fallbackTidbitText(material.teaser_tidbit_material, s) } : null,
+    // 十六、16.7.2.1（2026-10-08）：試看花絮由程式組句（不呼叫AI），同一段人生固定不變
+    teaser: buildOpeningTeaser(s),
     review: null, // 16.7.2「回顧這一生」解鎖後才有
     successionAvailable: !!r.succession_available
   };
@@ -2226,6 +2267,8 @@ function applyInterestEvent(s, interestEvent, scale){ // scale：投入份量倍
       lastEngagedRound: s.turnCount, sideBusinessOffered:false, sideBusinessStatus:null,
       selfDisciplineAwarded3:false, selfDisciplineAwarded6:false
     };
+    // 七、7.4.3.4（2026-10-08）人生重開丹的興趣天賦：下一世這個興趣的卡一建立就從投入度20起始
+    if(s.lifeKeep && s.lifeKeep.type==="interest" && !s.lifeKeep.used && s.lifeKeep.category===category){ card.investment = 20; s.lifeKeep.used = true; }
     s.interestCandidates.push(card);
   }
   // 八、8.1（2026-09-23拍板）：candidate階段positive/neutral都算互動、重置淡出計時；
@@ -4633,7 +4676,7 @@ function newRoll(carry, identity){
     log:[],
     choices:[],
     reincarnations: carry?.reincarnations || 0,
-    undosLeft:3,
+    undosLeft:UNDO_FREE_PER_LIFE, undoRule:2,
     snapshot:null,
     ending:null,
     // 5.5生活方式選擇（9/14新增，玩家開局自選，不是骰定）
@@ -8329,6 +8372,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     old_age_theme: computeOldAgeTheme(s), // 13.7.2（2026-09-27）：60歲以後本回合的主題方向
     previous_generation_events: (timeCtx && timeCtx.prologue && s.prevGenerationEventTitles && s.prevGenerationEventTitles.length) ? s.prevGenerationEventTitles : null, // 7.7.5（2026-09-27）：只在傳承後的開場回合送上一代事件標題
     succession_opening_event: (timeCtx && timeCtx.prologue && s.successionOpening) ? s.successionOpening : null,
+    reunion_npc_now: s.reunionNow || null, // 七、7.4.3.4（2026-10-08）：轉世指定的NPC這回合以新身份登場
     romance_flags: buildRomanceFlags(s), // 一、1.2.11.7（2026-09-28）：曖昧以上的NPC各自的年齡旗標(npc_id＝角色姓名)
     intimacy_mode: "full", // 1.2.11.7／十六、16.3.7（2026-09-28改定）：不開放開關，一律完整呈現；舊存檔存過fade也不再生效 // 7.4.3.3.1（2026-09-28）：上一代在孩子未滿15歲就過世，開場先交代再接遺產
     interest_cost_last_turn: s.interestCostNow || null, // 8.4（2026-09-27）：上一回合興趣投入的代價（材料費/小傷/熬夜），可以在敘事裡帶一下
@@ -8496,8 +8540,13 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-b";
+const APP_VERSION = "2026.10.08-c";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-c", date:"2026-10-08", title:"反悔、人生重開丹、回顧這一生", items:[
+    "反悔：每一世有 5 次免費機會，轉世或傳承後重新計算；用完之後還想反悔，每次扣 1 點。",
+    "轉世或傳承時，可以用 10 點換一份帶到下一世的東西：一個興趣、才識或人脈的起點，或是一個你認識的人。點數不夠也可以照常轉世或傳承。",
+    "回顧這一生改為 60 點，結局頁會先附一則免費的試看花絮。",
+  ]},
   { version:"2026.10.08-b", date:"2026-10-08", title:"封測名額與候補", items:[
     "封測期間，新玩家每天有名額限制。名額滿了，可以留下信箱候補，輪到你時會寄信通知，位子保留 3 天。",
     "候補中再打開遊戲，會看到你目前排第幾位。",
@@ -9138,6 +9187,8 @@ function applySnapshot(){
   const snap = JSON.parse(JSON.stringify(state.snapshot));
   const bookDraft = snap.bookDraft; delete snap.bookDraft;
   Object.assign(state, snap);
+  // 七、7.4.3.4：反悔掉的回合剛好是指定NPC登場的那一回合，卡片隨角色名冊回到登場前，要讓它重新排程
+  if(state.reunionNpc && state.reunionNpc.done && state.reunionNpc.cardName && !(state.characters||[]).some(c=>c.name===state.reunionNpc.cardName)){ state.reunionNpc.done = false; state.reunionNpc.cardName = null; }
   // 十五：被反悔掉的那一回合如果剛好收成了一章，那一章也撤掉(已經寫好的章節不受影響)
   if(state.book && bookDraft!==undefined){
     state.book.draft = bookDraft ? bookDraft.draft : null;
@@ -9145,12 +9196,37 @@ function applySnapshot(){
     state.book.chapters = state.book.chapters.filter(c=>c.createdTurn <= state.turnCount || c.status==="done");
   }
 }
+// 十、10.3.13（2026-10-08）：每一世免費5次(取代每段人生3次)，用完每次扣1點、跳確認視窗。舊存檔(沒有undoRule)只補上新增的2次，不改變已用掉的次數
+function ensureUndoRule(s){
+  if(!s || s.undoRule===2) return;
+  s.undoRule = 2;
+  s.undosLeft = Math.min(UNDO_FREE_PER_LIFE, Math.max(0, s.undosLeft||0) + (UNDO_FREE_PER_LIFE - 3));
+}
+function undoIsPaid(s){ return (s.undosLeft||0) <= 0; }
 function restoreUndo(){
   if(!state.snapshot) return;
   applySnapshot();
-  state.undosLeft -= 1;
+  if(state.undosLeft>0) state.undosLeft -= 1;
   state.snapshot = null;
   saveGame(); render();
+}
+// 免費次數用完後：點數不足1點不能按；夠就跳確認視窗，確定才扣點並反悔
+function requestUndo(){
+  if(!state.snapshot || blockIfTurnBusy("反悔")) return;
+  if(!undoIsPaid(state)){ restoreUndo(); return; }
+  if(totalAP(state) < UNDO_PAID_COST) return;
+  const div = entryModal("undo-pay-modal", `<p>這一世的免費反悔用完了。</p><p>這次反悔要扣 ${UNDO_PAID_COST} 點，扣了不退。</p>
+    <button class="primary-btn" id="btn-undo-pay-ok">反悔</button><button class="ghost-btn" id="btn-undo-pay-no">先不要</button>`);
+  document.getElementById("btn-undo-pay-no").onclick = ()=>div.remove();
+  document.getElementById("btn-undo-pay-ok").onclick = async ()=>{
+    const b = document.getElementById("btn-undo-pay-ok"); if(b) b.disabled = true;
+    const s0 = state;
+    const r = await paySinglePoints(s0, UNDO_PAID_COST, "反悔（超過 5 次）");
+    div.remove();
+    if(state!==s0) return;
+    if(!r.ok){ showWriterToast(r.insufficient ? "撰稿人提醒你：行動點不夠，這次不能反悔。" : "撰稿人提醒你：這次沒有成功，請稍後再試一次。"); return; }
+    restoreUndo();
+  };
 }
 
 // 回合進行中(從送出到結果寫回)會換掉或存下目前人生的操作一律先擋下：回合的await回來時寫的是全域state，
@@ -9173,6 +9249,7 @@ async function takeTurnInner(actionText, cost){
   // 十、10.3.12（2026-09-29）：測試用「不扣行動點」開著時本機不扣點(真實模式實際扣不扣由Worker依測試鑰匙名單決定)，回合數照常+1
   const apCost = apTestFreeActive() ? 0 : cost;
   if(totalAP(state) < apCost){ renderAPExhaustedModal(); render(); return; }
+  maybeFireReunionNpc(state); // 七、7.4.3.4：轉世指定NPC在第一個人生階段內登場
   snapshotForUndo();
   const apBefore = { ...ensureAP(state) }; // 10.3.11：舊存檔第一次打Worker時，給Worker建立伺服器端紀錄用(扣點前的數字)
   const apTotalBefore = totalAP(state), apLogStartedAt = Date.now(); // 10.10.3：這回合點數紀錄用(扣點前餘額)
@@ -10706,15 +10783,112 @@ async function startLife(){
 
 // 16.7「再寫一次人生」＝轉世。七、7.4.3.2（2026-09-28定案）：免費轉世不保留任何數值(取代原本隨機一項數值小幅加成)，
 // 只留前世記憶式的敘事痕跡，寫給旁白的素材也不直接說「前世」。點數照十、10.3.6全部保留
-function reincarnate(){
+function reincarnate(opts){
   const carry = { reincarnations:(state.reincarnations||0)+1,
     calStartYear: calNextOpeningYear(state.timeState && state.timeState.cal && state.timeState.cal.v===2 ? state.timeState.cal.lastRoundEnd : 0), // 二、2.7：轉世從上一世結束後的下一個開局日開始
     chronicleCarry: `（說不上來的熟悉感）偶爾會有似曾相識的片刻或夢境，只能隱約帶過，不說破來由。`,
     name: state.name, gender: state.gender,
     ap: ensureAP(state), apLog: state.apLog, giftGranted: state.giftGranted, acct: state.acct }; // 十、10.3.6（2026-09-23使用者確認轉世丹＝restart_item）：點數全部保留，「第X回合」歸零
+  const prevForKeep = state;
   state = newRoll(carry, null);
+  if(opts && opts.keep) applyLifeKeep(state, opts.keep, "reincarnate", prevForKeep);
   saveGame();
   render();
+}
+
+// ========== 七、7.4.3.4／十、10.3.13 人生重開丹（2026-10-08）：10點，轉世或傳承時三選一，帶一份東西到下一世 ==========
+// 興趣天賦：挑一個這一世的興趣，下一世的同一個興趣卡一建立就從投入度20起始（上限100；副業門檻40不受影響）
+// 數值起點：才識或人脈擇一，下一世起點＋5
+// 指定NPC：轉世＝以新身份在下一世第一個人生階段內宿緣重逢（好感度從一般新角色的起點開始，熟悉感只以敘事呈現）；傳承＝也帶到孩子這一世
+const LIFE_KEEP_STAT_LABELS = { knowledge:"才識", network:"人脈" };
+const LIFE_KEEP_REUNION_RELATIONS = ["同學","鄰居","補習班同學","社團同學"];
+function lifeKeepNpcCandidates(s, mode, childName){
+  return (s.characters||[]).filter(c=>c && c.name && !isFamilyCharacter(c) && c.name!==childName && c.romanceStatus!=="married")
+    .slice().sort((a,b)=>(b.affinity||0)-(a.affinity||0)).slice(0,8);
+}
+function lifeKeepText(keep, succeed){
+  if(keep.type==="interest") return succeed ? `${keep.label}（從小跟著爸媽接觸）` : `興趣：${keep.label}`;
+  if(keep.type==="stat") return succeed ? (keep.stat==="knowledge" ? "才識起點（家裡的教育資源）" : "人脈起點（家裡的人脈）") : `${LIFE_KEEP_STAT_LABELS[keep.stat]}起點`;
+  return `指定的人：${keep.name}`;
+}
+function openLifeKeepPanel(mode, childName){
+  if(blockIfTurnBusy("選人生重開丹")) return;
+  const s = state, succeed = mode==="succeed";
+  const can = totalAP(s) >= LIFE_KEEP_COST;
+  const cards = formalInterestCards(s);
+  const npcs = lifeKeepNpcCandidates(s, mode, childName);
+  const need = can ? "" : `<span class="rv-note" style="margin-left:6px;">需要 ${LIFE_KEEP_COST} 點</span>`;
+  const dis = can ? "" : "disabled";
+  const btn = (keep, text, extra)=>`<button class="choice-btn" data-keep="${escapeHtml(JSON.stringify(keep))}" ${dis||extra||""}>${escapeHtml(text)}</button>`;
+  const interestHtml = cards.length ? cards.map(c=>btn({ type:"interest", category:c.category, label:c.category }, c.category)).join("") : `<p class="rv-note">這一世沒有可以帶的興趣。</p>`;
+  const statHtml = ["knowledge","network"].map(k=>btn({ type:"stat", stat:k }, succeed ? (k==="knowledge" ? "才識（家裡的教育資源）" : "人脈（家裡的人脈）") : LIFE_KEEP_STAT_LABELS[k])).join("");
+  const npcHtml = npcs.length ? npcs.map(c=>btn({ type:"npc", name:c.name }, `${c.name}（${c.relation||"認識的人"}）`)).join("") : `<p class="rv-note">這一世沒有可以指定的人。</p>`;
+  const div = entryModal("life-keep-modal", `<h3>人生重開丹</h3>
+    <p style="font-size:13.5px;">用 ${LIFE_KEEP_COST} 點，換一份帶到下一世的東西。一次只能選一項。${need}</p>
+    <div class="keep-group"><b>${succeed ? "興趣天賦（從小跟著爸媽接觸）" : "興趣天賦"}</b><p class="rv-note">挑一個這一世的興趣，下一世的它一開始就有基礎。</p>${interestHtml}</div>
+    <div class="keep-group"><b>${succeed ? "數值起點（家裡的資源）" : "數值起點"}</b><p class="rv-note">才識或人脈擇一，下一世的起點多一點。</p>${statHtml}</div>
+    <div class="keep-group"><b>指定的人</b><p class="rv-note">${succeed ? "挑一位這一世認識的人，也出現在孩子的這一世。" : "挑一位這一世認識的人，下一世會用新的身份再遇見，只剩說不上來的熟悉感。"}</p>${npcHtml}</div>
+    <button class="ghost-btn" id="btn-keep-skip">${succeed ? "不帶，直接接著寫" : "不帶，直接轉世"}</button>
+    <button class="ghost-btn" id="btn-keep-cancel">取消</button>`);
+  div.querySelector(".modal").style.cssText += "max-height:86vh;overflow-y:auto;text-align:left;";
+  const go = (keep)=>{ div.remove(); if(succeed) succeedAsChild(childName, keep ? { keep } : undefined); else reincarnate(keep ? { keep } : undefined); };
+  document.getElementById("btn-keep-skip").onclick = ()=>go(null);
+  document.getElementById("btn-keep-cancel").onclick = ()=>div.remove();
+  div.querySelectorAll("button[data-keep]").forEach(b=>{
+    b.onclick = ()=>{
+      let keep; try{ keep = JSON.parse(b.dataset.keep); }catch(e){ return; }
+      const ok = entryModal("life-keep-confirm", `<p>用 ${LIFE_KEEP_COST} 點換這份人生重開丹，帶到下一世。</p><p class="rv-note">${escapeHtml(lifeKeepText(keep, succeed))}</p>
+        <button class="primary-btn" id="btn-keep-ok">確定</button><button class="ghost-btn" id="btn-keep-back">再想想</button>`);
+      document.getElementById("btn-keep-back").onclick = ()=>ok.remove();
+      document.getElementById("btn-keep-ok").onclick = async ()=>{
+        const okBtn = document.getElementById("btn-keep-ok"); if(okBtn) okBtn.disabled = true;
+        const s0 = state;
+        const r = await paySinglePoints(s0, LIFE_KEEP_COST, "人生重開丹");
+        ok.remove();
+        if(state!==s0) return;
+        if(!r.ok){ showWriterToast(r.insufficient ? "撰稿人提醒你：行動點不夠，這次不能用人生重開丹。" : "撰稿人提醒你：這次沒有成功，請稍後再試一次。"); return; }
+        go(keep);
+      };
+    };
+  });
+}
+// 新的一世建好後套用（出身骰定後不可重骰，所以直接寫進新state）
+function applyLifeKeep(ns, keep, mode, prev){
+  if(!ns || !keep) return;
+  ns.lifeKeep = { type:keep.type, mode };
+  if(keep.type==="stat" && LIFE_KEEP_STAT_LABELS[keep.stat]){
+    ns.stats[keep.stat] = clamp((ns.stats[keep.stat]||0) + 5, 0, 100);
+    ns.lifeKeep.stat = keep.stat;
+  } else if(keep.type==="interest" && INTEREST_CATEGORIES.includes(keep.category)){
+    ns.lifeKeep.category = keep.category; ns.lifeKeep.used = false; // 下一世第一次建立這個興趣的卡時，投入度從20起始（applyInterestEvent）
+  } else if(keep.type==="npc"){
+    const c = (prev && prev.characters || []).find(x=>x.name===keep.name);
+    if(!c) return;
+    const gender = CHARACTER_GENDERS.includes(c.gender) ? c.gender : rollNpcGender();
+    if(mode==="succeed"){
+      // 傳承：從孩子的角度重新寫來歷，直接帶進這一世的人脈
+      ns.characters.push({ name:c.name, relation:"爸媽的舊識", gender, dialogueStyle:c.dialogueStyle||rollDialogueStyle(), traits:c.traits||"",
+        affinity:50, summary:"", lastTurn:0, active:true, isChild:false, origin:"爸媽的舊識，從小就認識", cohabiting:false,
+        age: typeof c.age==="number" ? Math.max(15, Math.round(c.age)) : rnd(35,55) });
+      ns.lifeKeep.name = c.name; ns.lifeKeep.used = true;
+    } else {
+      ns.reunionNpc = { name:c.name, gender, traits:c.traits||"", relation:pick(LIFE_KEEP_REUNION_RELATIONS), triggerTurn:rnd(6,24), done:false, cardName:null };
+      ns.lifeKeep.name = c.name;
+    }
+  }
+}
+// 轉世指定NPC：第一個人生階段內的某一回合新角色登場（建卡＋這回合告訴AI自然安排登場，熟悉感只以敘事呈現）
+function maybeFireReunionNpc(s){
+  s.reunionNow = null;
+  const r = s.reunionNpc;
+  if(!r || r.done || s.turnCount < r.triggerTurn) return;
+  if(!s.timeState || s.timeState.stageMode!=="highschool"){ r.done = true; return; } // 錯過第一個人生階段就不再安排
+  let name = r.name;
+  if((s.characters||[]).some(c=>c.name===name)) name = renameForConflict(s, name, r.relation);
+  s.characters.push({ name, relation:r.relation, gender:r.gender, dialogueStyle:rollDialogueStyle(), traits:r.traits||"", style:null,
+    affinity:50, summary:"", lastTurn:s.turnCount, active:true, isChild:false, origin:"新認識的人，卻有種說不上來的熟悉感", age:rnd(15,17) });
+  r.done = true; r.cardName = name;
+  s.reunionNow = { name, relation:r.relation, gender:r.gender };
 }
 
 function economicTierForSavingsAmount(savings){
@@ -10739,7 +10913,7 @@ function eligibleChildren(){
   return state.characters.filter(c=>c.isChild);
 }
 let succeeding = false; // 十五、15.1：保存上一代的書要等網路，避免連點選了兩個孩子
-async function succeedAsChild(childName){
+async function succeedAsChild(childName, opts){
   const prev = state;
   const child = prev.characters.find(c=>c.name===childName && c.isChild);
   if(!child || succeeding) return;
@@ -10893,7 +11067,7 @@ async function succeedAsChild(childName){
     chronicle: [`（傳承）延續上一世的血脈，成為${prev.name}的${child.relation}。${prev.ending?.epitaph ? "上一世留下的最後一句是：「"+prev.ending.epitaph+"」" : ""}`]
       .concat(prevAliveAtStart ? [] : [`（${childAgeAtParentDeath}歲）${deceasedRelation}就離開了，留下一筆遺產`]),
     log:[], choices:[], reincarnations:(prev.reincarnations||0)+1,
-    undosLeft:3, snapshot:null, ending:null,
+    undosLeft:UNDO_FREE_PER_LIFE, undoRule:2, snapshot:null, ending:null,
     // 5.5生活方式選擇：世代傳承沒有結構化的教養風格/職業資料可判斷資格，簡化為預設可選（家族已有一定資源與歷史）
     spendingHabit: null, mealArrangement: null, mealCareEligibleAtStart: true,
     mealFullyUnlocked: false, cookingInterestSeed: false,
@@ -10925,6 +11099,7 @@ async function succeedAsChild(childName){
     lastExamPerformanceLog: null,
     halfYearCarry: 0
   };
+  if(opts && opts.keep) applyLifeKeep(state, opts.keep, "succeed", prev);
   saveGame();
   render();
 }
@@ -11450,7 +11625,7 @@ const HOME_FAQ = [
   ["可以同時過好幾段人生嗎？", ["還沒綁定信箱時，同時只能過一段人生；綁定信箱後，可以同時過兩段。"]],
   ["什麼路都能走嗎？", ["幾乎都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "唯一走不通的是超能力。這裡的世界，跟外面那個一樣講道理。"]],
   ["一生走完之後呢？", ["這一生會留下一頁回顧：走過的路、陪過你的人，最後蓋上一枚印章。", "然後，你可以轉世重來，或者把故事交給下一代。"]],
-  ["可以反悔嗎？", ["可以，但次數有限。畢竟是草稿，也不是每一筆都擦得掉。"]]
+  ["可以反悔嗎？", ["每一世可以免費反悔 5 次，轉世或傳承後重新計算。用完之後還想反悔，每次扣 1 點。"]]
 ];
 function renderHome(){
   const lives = homeUnfinishedLives();
@@ -12152,7 +12327,9 @@ function renderPlaying(loadingTurn){
   const timeLabel = (s.timeState && computeMonthTitle(s)) || (s.timeState ? computeTimeLabel(s) : stageLabel(s.age));
   const progress = s.timeState ? computeStageProgress(s) : null;
   const busy = !!loadingTurn;
-  const canUndo = !!(s.snapshot && s.undosLeft>0);
+  ensureUndoRule(s);
+  const canUndo = !!(s.snapshot && (s.undosLeft>0 || totalAP(s)>=UNDO_PAID_COST));
+  const undoPaidNoPoints = !!(s.snapshot && undoIsPaid(s) && totalAP(s)<UNDO_PAID_COST);
   return `
   <header class="topbar glass">
     <div class="tb-main">
@@ -12182,7 +12359,8 @@ function renderPlaying(loadingTurn){
     </div>
     <div id="custom-input-error" class="input-error"></div>
     <div class="act-foot">
-      ${canUndo ? `<button class="text-btn" id="btn-undo" ${busy?"disabled":""}>${icon("undo")} 反悔上一步（剩${s.undosLeft}次）</button>`
+      ${canUndo ? `<button class="text-btn" id="btn-undo" ${busy?"disabled":""}>${icon("undo")} ${undoIsPaid(s) ? `反悔上一步（扣 ${UNDO_PAID_COST} 點）` : `反悔上一步（剩 ${s.undosLeft} 次）`}</button>`
+        : undoPaidNoPoints ? `<button class="text-btn" id="btn-undo" disabled>${icon("undo")} 反悔上一步（扣 ${UNDO_PAID_COST} 點）</button>`
         : (s.undoUnavailableHere && s.undosLeft>0 ? `<span><button class="text-btn" id="btn-undo" disabled>${icon("undo")} 反悔上一步</button><span class="undo-note">在這台裝置上還沒有可以回到的時間點</span></span>` : `<span></span>`)}
       <span id="custom-input-count">0／${CUSTOM_INPUT_MAX_CHARS}</span>
     </div>
@@ -12958,7 +13136,7 @@ function bindPlaying(){
     takeTurn(last.retryAction, last.retryCost!=null ? last.retryCost : AP_COST_PER_TURN);
   };
   const undoBtn = document.getElementById("btn-undo");
-  if(undoBtn) undoBtn.onclick = restoreUndo;
+  if(undoBtn) undoBtn.onclick = requestUndo;
   // 二、2.6.3重心按鈕：選了就記著，下一回合沿用；興趣按鈕已選中時再點一次，打開切換清單
   // 二、2.6.7.7（2026-10-04）：60歲起改排序——沒排的點一下排到最後(最多3個)；已排的再點一下拿掉，有子項的(工作、興趣)改打開清單，清單裡有「從排序拿掉」
   document.querySelectorAll(".focus-btn[data-focus]").forEach(btn=>{
@@ -14736,7 +14914,7 @@ function renderEldercareDecisionModal(pending){
 // ========== 十六、16.7 結局人生回顧頁（2026-09-28定案版面，16.7.0）==========
 // 由上到下：結局標題 → 享年N歲・定稿印章 → 人生總結 → 墓誌銘 → 雷達圖＋最終存款 → 重要的人 → 回顧這一生(付費) → 分享這一生、開始下一世；
 // 下方保留「翻開人生之書」「闔上這份草稿」(寫入時的處理，見16.7.0說明)。七、7.1.4的L1/L2照舊產生存檔，不在這一頁顯示
-const LIFE_REVIEW_COST = 5; // 16.7.2.1【定案】比照十、10.6.5；金流上線後改定價
+const LIFE_REVIEW_COST = 60; // 16.7.2.1【定案,2026-10-08付費周邊】60點(取代原本的5點)；是否足以支付實際花費的檢查規則見十、10.9.9.8
 const ENDING_RADAR_STATS = [["health","健康"],["knowledge","才識"],["expression","表達力"],["appearance","外表"],["network","人脈"]];
 function endingStatValue(s, k){ return Math.round(k==="appearance" ? (s.appearance||0) : ((s.stats||{})[k]||0)); }
 function renderEndingRadar(s){
@@ -14772,10 +14950,10 @@ function renderLifeReviewBlock(s, opts){
   return `<section class="end-review glass" id="end-review">
     <h3>回顧這一生</h3>
     <p class="rv-note">解鎖後可以看「人生軌跡」與「人生花絮」——那些玩的時候看不到、但一直記著的事。</p>
-    ${e.teaser && e.teaser.text ? `<div class="rv-teaser"><span class="rv-free">試看一則花絮</span><p class="serif">${escapeHtml(e.teaser.text)}</p></div>` : ``}
+    ${(()=>{ const t = e.teaser && e.teaser.text ? e.teaser : buildOpeningTeaser(s); return `<div class="rv-teaser"><span class="rv-free">試看</span><p class="serif">${escapeHtml(t.text)}</p></div>`; })()}
     ${readOnly ? `<p class="rv-note">這一生已經闔上，封測期間不能再解鎖。</p>` : `
-    <button class="primary-btn" id="btn-review-unlock" ${ap<LIFE_REVIEW_COST||lifeReviewBusy?"disabled":""}>${lifeReviewBusy ? "旁白正在整理這一生…" : `解鎖回顧這一生（${LIFE_REVIEW_COST}點）`}</button>
-    ${ap<LIFE_REVIEW_COST && !lifeReviewBusy ? `<p class="rv-note">行動點不足${LIFE_REVIEW_COST}點（目前${ap}點）。</p>` : ``}
+    <button class="primary-btn" id="btn-review-unlock" ${ap<LIFE_REVIEW_COST||lifeReviewBusy?"disabled":""}>${lifeReviewBusy ? "旁白正在整理這一生…" : `回顧這一生　${LIFE_REVIEW_COST} 點`}</button>
+    ${ap<LIFE_REVIEW_COST && !lifeReviewBusy ? `<p class="rv-note">需要 ${LIFE_REVIEW_COST} 點（目前 ${ap} 點）。</p>` : ``}
     <p class="rv-note" id="review-msg" aria-live="polite"></p>`}
   </section>`;
 }
@@ -14827,12 +15005,12 @@ function bindLifeReviewBlock(){
 function bindEnding(){
   const endingBook = document.getElementById("btn-ending-book");
   if(endingBook) endingBook.onclick = ()=>openBookPage(ensureBook(state), { owner: state.name });
-  document.getElementById("btn-reincarnate").onclick = reincarnate;
+  document.getElementById("btn-reincarnate").onclick = ()=>openLifeKeepPanel("reincarnate");
   document.getElementById("btn-reset-end").onclick = ()=>endLife("ended"); // 「闔上這份草稿」：進唯讀封存區(10.3.7)
   const kidsOpen = document.getElementById("btn-succeed-open");
   if(kidsOpen) kidsOpen.onclick = ()=>{ const k = document.getElementById("end-kids"); if(k){ k.hidden = !k.hidden; if(!k.hidden && k.scrollIntoView) k.scrollIntoView({block:"nearest", behavior: reducedMotion() ? "auto" : "smooth"}); } };
   document.querySelectorAll(".choice-btn[data-child]").forEach(btn=>{
-    btn.onclick = ()=> succeedAsChild(btn.dataset.child);
+    btn.onclick = ()=> openLifeKeepPanel("succeed", btn.dataset.child);
   });
   const share = document.getElementById("btn-ending-share");
   if(share) share.onclick = shareThisLife;
@@ -14891,7 +15069,11 @@ async function unlockLifeReview(){
     const byStage = {}; (out.trajectory||[]).forEach(t=>{ if(t && t.stage) byStage[t.stage] = String(t.text||"").trim(); });
     s.ending.review = {
       trajectory: m.stages.map(g=>({ stage:g.stage, label:g.stage_label, text: byStage[g.stage] || "" })).filter(t=>t.text),
-      tidbits: (out.tidbits||[]).map(t=>{ const src = m.tidbits[t.i]; return src ? { stage:src.stage, label:labelOf(src.stage), category:src.category, text:String(t.text||"").trim() } : null; }).filter(t=>t && t.text),
+      tidbits: (()=>{ // 試看那一則保留在花絮最前面（16.7.2.1）
+        const tz = (s.ending.teaser && s.ending.teaser.text) ? s.ending.teaser : buildOpeningTeaser(s);
+        const first = { stage:tz.stage||"student", label:labelOf(tz.stage||"student"), category:"opening", text:tz.text, teaser:true };
+        return [first].concat((out.tidbits||[]).map(t=>{ const src = m.tidbits[t.i]; return src ? { stage:src.stage, label:labelOf(src.stage), category:src.category, text:String(t.text||"").trim() } : null; }).filter(t=>t && t.text));
+      })(),
       unlockedAtTurn: s.turnCount
     };
     lifeReviewBusy = false;

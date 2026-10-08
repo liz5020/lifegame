@@ -3,7 +3,7 @@
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("帳號前端(續)：補發、補點、換裝置、換綁");
 let upstreamFail = false;
-const fakeAI = H.makeFakeAnthropic({ fail: () => upstreamFail });
+const fakeAI = H.makeFakeAnthropic({ fail: () => upstreamFail, usage: () => H.ONE_TWD_USAGE });
 const resend = H.makeFakeResend();
 H.installUpstream(fakeAI, resend);
 const env = await H.makeAccountEnv({ TEST_NOW_MS: undefined, CLOUD_SAVE_ENABLED: "false" });

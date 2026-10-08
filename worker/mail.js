@@ -36,13 +36,14 @@ export function taipeiTimeText(ms) {
   return `${d.getUTCFullYear()}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}（台灣時間）`;
 }
 
+const round2 = x => Math.round(Number(x) * 100) / 100; // 2026-10-08：花費改記實際花費，金額會有小數，通知信取兩位
 // 管理通知信(10.9.3.1、10.9.3.2)。kind：spend80／spend100／gift15／giftFull；info：{spent, cap, gifts, queued, giftCap, now}
 export function noticeMail(kind, info) {
   const time = taipeiTimeText(info.now);
   if (kind === "spend80" || kind === "spend100") {
     const lines = [
-      "今日估計花費：" + info.spent + " 元",
-      "目前上限：" + info.cap + " 元",
+      "今日估計花費：" + round2(info.spent) + " 元",
+      "目前上限：" + round2(info.cap) + " 元",
       "時間：" + time
     ];
     if (kind === "spend80") {

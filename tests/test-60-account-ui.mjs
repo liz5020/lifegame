@@ -3,7 +3,7 @@
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("帳號前端：綁定／登入／錢包／訊息");
 let upstreamFail = false;
-const fakeAI = H.makeFakeAnthropic({ fail: () => upstreamFail });
+const fakeAI = H.makeFakeAnthropic({ fail: () => upstreamFail, usage: () => H.ONE_TWD_USAGE });
 const resend = H.makeFakeResend();
 H.installUpstream(fakeAI, resend);
 // 前端用真的時鐘算台灣日期，Worker也用真的時鐘，兩邊才一致
@@ -196,7 +196,7 @@ A.check("mock模式：帳號人生玩一回合，伺服器上的錢包扣1點，
 const gc = await newDevice("uikey0000008", { name: "上限" });
 // 上限設成「目前花費＋1」：下一次成功的呼叫剛好碰到上限(不靠系統時鐘，避免跨台灣午夜時計數天數不同)
 const spentNow = (await H.callWorker(env, { method: "GET", path: "/usage-today", origin: null, headers: { Authorization: "Bearer admin-secret" } })).json.est_cost_twd;
-env.DAILY_SPEND_CAP = String(spentNow + 1);
+env.DAILY_SPEND_CAP = String(spentNow + 1.2); // 2026-10-08(10.9.3.1a補充二)：呼叫前判斷「花費＋預估(1元)」，所以多留0.2：下一次呼叫放行、花費到達後再來一次就擋
 await H.playTurn(gc, "先玩一回合讓花費到達上限");
 const cd = gc.win.document;
 const totalBefore = gc.ev("totalAP(state)"), turnBefore = gc.ev("state.turnCount"), logBefore = gc.ev("state.log.length");

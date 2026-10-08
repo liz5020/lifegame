@@ -2,7 +2,8 @@
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("數據總覽：玩家／瀏覽人次／stats-summary／dashboard");
 let upstreamFail = false;
-const fakeAI = H.makeFakeAnthropic({ fail: () => upstreamFail });
+let usageNow = H.ONE_TWD_USAGE; // 2026-10-08(10.9.3.1a補充二)：花費改記實際花費，假用量剛好1元
+const fakeAI = H.makeFakeAnthropic({ fail: () => upstreamFail, usage: () => usageNow });
 const resend = H.makeFakeResend();
 H.installUpstream(fakeAI, resend);
 
@@ -111,7 +112,7 @@ const callsTotal = fakeAI.calls.length;
 s = await stats();
 const u = s.usage;
 A.check("總回合數：只算成功且非開場的回合——累計5、今天2、近7天5", u.turns.total === 5 && u.turns.today === 2 && u.turns.last7 === 5, u.turns);
-A.check("總耗費：所有AI呼叫(含開場與失敗的)都按固定估價計——累計＝呼叫次數、今天2", u.cost.total === callsTotal && u.cost.today === 2 && u.cost.last7 === callsTotal, { cost: u.cost, callsTotal });
+A.check("總耗費：所有AI呼叫(含開場與失敗的)都計入(成功的記實際花費、失敗的照預估)——累計＝呼叫次數、今天2", u.cost.total === callsTotal && u.cost.today === 2 && u.cost.last7 === callsTotal, { cost: u.cost, callsTotal });
 A.check("花費與回合分開記：改估價設定值只影響花費(另立環境驗證見下)", u.turns.total !== u.cost.total);
 A.check("平均每位玩家花費：今天2÷活躍2＝1、累計7÷玩家3≈2.33", u.avg_cost_per_player.today === 1 && u.avg_cost_per_player.total === Math.round(callsTotal / 3 * 100) / 100, u.avg_cost_per_player);
 A.check("平均每位玩家回合數：今天2÷2＝1、近7天5÷活躍3≈1.67、累計5÷3≈1.67", u.avg_turns_per_player.today === 1 && u.avg_turns_per_player.last7 === 1.67 && u.avg_turns_per_player.total === 1.67, u.avg_turns_per_player);
@@ -120,10 +121,12 @@ A.check("起算日＝第一筆花費紀錄的日期", u.since === "2026-10-04", 
 A.check("綁定信箱人數：累計2、今天2(綁定當天)、近7天2", s.accounts_bound.total === 2 && s.accounts_bound.today === 2 && s.accounts_bound.last7 === 2, s.accounts_bound);
 A.check("開啟人生段數：累計3(trial1、other1、new001)、今天1(new001)、近7天3；開場不算", s.lives_started.total === 3 && s.lives_started.today === 1 && s.lives_started.last7 === 3, s.lives_started);
 A.check("daily每筆有turns與cost：第1天3回合、第2天2回合", s.daily.find(d => d.date === "2026-10-04").turns === 3 && s.daily.find(d => d.date === "2026-10-05").turns === 2 && s.daily.find(d => d.date === "2026-10-05").cost === 2, s.daily);
-const envP = await H.makeAccountEnv({ TEST_NOW_MS: String(T0), CLOUD_SAVE_ENABLED: "false", AI_CALL_COST_ESTIMATE: "3" });
+usageNow = { ...H.ONE_TWD_USAGE, output_tokens: 9375 }; // 剛好3元
+const envP = await H.makeAccountEnv({ TEST_NOW_MS: String(T0), CLOUD_SAVE_ENABLED: "false" });
 await H.callWorker(envP, { path: "/", body: { life_id: "lifeprice1", turn_nonce: "pp1zzzzzzzzzz", messages: [{ role: "user", content: turnPayload() }] } });
 r = await H.callWorker(envP, { method: "GET", path: "/stats-summary", headers: ADMIN, origin: null });
-A.check("改估價(3元)：花費變3、回合仍是1；平均每回合3", r.json.usage.cost.total === 3 && r.json.usage.turns.total === 1 && r.json.usage.avg_cost_per_turn.total === 3, r.json.usage);
+usageNow = H.ONE_TWD_USAGE;
+A.check("每次呼叫實際花費3元：花費變3、回合仍是1；平均每回合3", r.json.usage.cost.total === 3 && r.json.usage.turns.total === 1 && r.json.usage.avg_cost_per_turn.total === 3, r.json.usage);
 const envZ = await H.makeAccountEnv({ TEST_NOW_MS: String(T0), CLOUD_SAVE_ENABLED: "false" });
 r = await H.callWorker(envZ, { method: "GET", path: "/stats-summary", headers: ADMIN, origin: null });
 A.check("沒有任何玩家與回合：平均全是null(畫面顯示「—」)，不是0", r.json.usage.avg_cost_per_player.total === null && r.json.usage.avg_turns_per_player.today === null && r.json.usage.avg_cost_per_turn.last7 === null && r.json.usage.since === null, r.json.usage);

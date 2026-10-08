@@ -14,6 +14,8 @@ import { nowMs, taipeiDateString } from "./ap.js";
 export const DEFAULT_DAILY_SPEND_CAP = 500;
 export const DEFAULT_DAILY_GIFT_CAP = 20;
 export const DEFAULT_AI_CALL_COST_ESTIMATE = 1;
+export const DEFAULT_SPEND_ESTIMATE_MIN_CALLS = 100; // 十、10.9.3.1a補充二(2026-10-08)：近7天呼叫次數少於這個數字時，預估改用固定估價
+export const USD_TO_TWD = 32;                         // 設計文件現有匯率(1美元約32元)
 export const GIFT_NOTICE_AT = 15;          // 10.9.3.2：當天發到15份寄一封
 export const NOTICE_MAX_ATTEMPTS = 3;      // 10.9.3.1：同一封信每日最多嘗試3次
 export const NOTICE_LEASE_MS = 60 * 1000;  // 寄送中的保留時間，避免同時進來的幾個請求各寄一封
@@ -34,6 +36,7 @@ export function newPlayerCap(env) {
 }
 export function playerCheckpoint(env) { return readSetting(env, "BETA_PLAYER_CHECKPOINT", 50); }
 export function callCostEstimate(env) { return readSetting(env, "AI_CALL_COST_ESTIMATE", DEFAULT_AI_CALL_COST_ESTIMATE); }
+export function spendEstimateMinCalls(env) { return readSetting(env, "SPEND_ESTIMATE_MIN_CALLS", DEFAULT_SPEND_ESTIMATE_MIN_CALLS); }
 
 function freshDay(date) { return { date, calls: 0, spent: 0, gifts: 0, queued: 0, notices: {} }; }
 
@@ -57,6 +60,8 @@ export class UsageCounter {
     const now = Number(p.get("now")) || 0;
     const cap = Number(p.get("cap")) > 0 ? Number(p.get("cap")) : DEFAULT_DAILY_SPEND_CAP;
     const gcap = Number(p.get("gift_cap")) > 0 ? Number(p.get("gift_cap")) : DEFAULT_DAILY_GIFT_CAP;
+    const estFallback = Number(p.get("est_fallback")) > 0 ? Number(p.get("est_fallback")) : DEFAULT_AI_CALL_COST_ESTIMATE;
+    const minCalls = Number(p.get("min_calls")) > 0 ? Number(p.get("min_calls")) : DEFAULT_SPEND_ESTIMATE_MIN_CALLS;
     // 十、10.13.7.5：瀏覽人次——只記每日總數(永久保留)與開始計數日，不記任何個別訪客資料；跟花費計數分開存
     if (op === "pv" && request.method === "POST") {
       const k = "pv:" + date;
@@ -97,7 +102,7 @@ export class UsageCounter {
     if (op === "add" && request.method === "POST") {
       cur.calls += 1;
       const cost = Number(p.get("cost"));
-      const c = Number.isFinite(cost) && cost >= 0 ? cost : 1;
+      const c = p.has("cost") && Number.isFinite(cost) && cost >= 0 ? cost : (await this._estimate(date, estFallback, minCalls)).twd; // 沒有回報用量(失敗呼叫)：照預估計入
       cur.spent += c;
       dirty = true;
       await this.state.storage.put("co:" + date, Math.round((((await this.state.storage.get("co:" + date)) || 0) + c) * 1e6) / 1e6); // 10.13.7.11：每日耗費累計(永久保留)
@@ -111,10 +116,12 @@ export class UsageCounter {
       if (n && p.get("ok") === "1") { n.sent = true; dirty = true; }
       else if (n) { n.lease = 0; dirty = true; } // 寄失敗：下一次AI呼叫可以再試(次數已在交出時計入)
     }
-    const out = Object.assign({}, cur, { capped: cur.spent >= cap, due: [] });
+    // 十、10.9.3.1a補充二：每次呼叫前判斷「當日實際花費＋這次預估」是否達上限；預估＝近7天每次呼叫的實際平均花費，近7天呼叫少於min_calls次時用固定估價
+    const est = await this._estimate(date, estFallback, minCalls);
+    const out = Object.assign({}, cur, { capped: cur.spent + est.twd >= cap, estimate_twd: est.twd, estimate_source: est.source, recent_calls: est.calls, due: [] });
     // 到了門檻、還沒寄成功、次數沒用完、沒有別的請求正在寄：交給呼叫端寄，並記一次嘗試
     if (op === "add" || op === "gate" || op === "gifts") {
-      const rules = [["spend80", cur.spent >= 0.8 * cap], ["spend100", cur.spent >= cap], ["gift15", cur.gifts >= GIFT_NOTICE_AT], ["giftFull", cur.gifts >= gcap]];
+      const rules = [["spend80", cur.spent >= 0.8 * cap], ["spend100", out.capped], ["gift15", cur.gifts >= GIFT_NOTICE_AT], ["giftFull", cur.gifts >= gcap]];
       for (const [kind, hit] of rules) {
         if (!hit) continue;
         const n = cur.notices[kind] || (cur.notices[kind] = { sent: false, attempts: 0, lease: 0 });
@@ -128,6 +135,19 @@ export class UsageCounter {
   }
 }
 
+// 近7天(含今天)的實際平均花費：ua:日期 的各類型加總(calls、usd)。回傳{twd, source:"actual"|"fixed", calls}
+UsageCounter.prototype._estimate = async function (date, fallback, minCalls) {
+  const from = new Date(Date.parse(date + "T00:00:00Z") - 6 * 86400000).toISOString().slice(0, 10);
+  let calls = 0, usd = 0;
+  if (typeof this.state.storage.list !== "function") return { twd: fallback, source: "fixed", calls: 0 };
+  for (const [k, kinds] of await this.state.storage.list({ prefix: "ua:" })) {
+    const d = k.slice(3);
+    if (d < from || d > date) continue;
+    for (const b of Object.values(kinds || {})) { calls += b.calls || 0; usd += b.usd || 0; }
+  }
+  if (calls < minCalls || calls === 0) return { twd: fallback, source: "fixed", calls };
+  return { twd: Math.round(usd / calls * USD_TO_TWD * 1e4) / 1e4, source: "actual", calls };
+};
 UsageCounter.prototype._json = function (o) { return new Response(JSON.stringify(o), { headers: { "Content-Type": "application/json" } }); };
 UsageCounter.prototype._recordDetail = async function (p, date, now) {
   const st = this.state.storage;
@@ -185,7 +205,7 @@ export async function usageCall(env, op, params, method) {
   const stub = usageCounterStub(env);
   if (!stub) return null;
   const now = nowMs(env);
-  const q = new URLSearchParams(Object.assign({ date: taipeiDateString(now), now: String(now), cap: String(spendCap(env)), gift_cap: String(giftCap(env)) }, params || {}));
+  const q = new URLSearchParams(Object.assign({ date: taipeiDateString(now), now: String(now), cap: String(spendCap(env)), gift_cap: String(giftCap(env)), est_fallback: String(callCostEstimate(env)), min_calls: String(spendEstimateMinCalls(env)) }, params || {}));
   const r = await stub.fetch("https://usage.internal/" + op + "?" + q.toString(), { method: method || "POST" });
   return r.json();
 }
@@ -224,11 +244,13 @@ export function flushNotices(env, ctx, due) {
   return job;
 }
 
-// 每次成功的AI呼叫記一筆估價；達80%／上限時通知。計數失敗絕不能影響回合
-export async function countAICall(env, ctx) {
+// 每次AI呼叫記一筆花費；達80%／上限時通知。計數失敗絕不能影響回合。
+// 十、10.9.3.1a補充二(2026-10-08)：伺服器有回報用量的呼叫記實際花費(台幣)；沒有回報用量的(失敗呼叫、連線失敗)照這次預估計入(預估由計數器算：近7天平均，資料不足用固定估價)
+export async function countAICall(env, ctx, actualTwd) {
   try {
     if (!usageCounterStub(env)) return;
-    const r = await usageCall(env, "add", { cost: String(callCostEstimate(env)) });
+    const hasActual = Number.isFinite(actualTwd) && actualTwd >= 0;
+    const r = await usageCall(env, "add", hasActual ? { cost: String(actualTwd) } : {});
     const j = flushNotices(env, ctx, r && r.due);
     if (j) await j;
   } catch (e) { /* 只是紀錄 */ }

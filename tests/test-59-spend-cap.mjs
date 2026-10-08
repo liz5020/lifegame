@@ -2,7 +2,7 @@
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("花費上限與管理通知信");
 let upstreamFail = false;
-const fakeAI = H.makeFakeAnthropic({ fail: () => upstreamFail });
+const fakeAI = H.makeFakeAnthropic({ fail: () => upstreamFail, usage: () => H.ONE_TWD_USAGE });
 const resend = H.makeFakeResend();
 H.installUpstream(fakeAI, resend);
 
@@ -26,9 +26,9 @@ async function bind(email, key) {
 const notice = (sub) => resend.notices().filter(x => x.subject.includes(sub));
 
 // ================= 上限暫調為1 =================
-env.DAILY_SPEND_CAP = "1";
+env.DAILY_SPEND_CAP = "1.2"; // 2026-10-08(10.9.3.1a補充二)：每次呼叫前判斷「當日花費＋這次預估」是否達上限，所以上限設1.2：第1次呼叫放行(0＋1<1.2)，花費到1後再來一次就會超過
 let t = await today();
-A.check("上限設定值：DAILY_SPEND_CAP=1 生效、預設估價1元", t.daily_spend_cap_twd === 1 && t.est_cost_per_call_twd === 1 && t.est_cost_twd === 0, t);
+A.check("上限設定值：DAILY_SPEND_CAP=1.2 生效、預設估價1元", t.daily_spend_cap_twd === 1.2 && t.est_cost_per_call_twd === 1 && t.est_cost_twd === 0, t);
 const acct = await bind("cap@example.com", "CAPKEY");
 const tok = acct.token, walletBefore = acct.account.wallet.total;
 let r = await anonTurn();
@@ -61,7 +61,7 @@ A.check("暫停只擋AI呼叫：寄驗證碼照常", r.status === 200);
 // ---- 通知信 ----
 const n80 = notice("已達上限的 80%"), n100 = notice("已碰到上限");
 A.check("通知信：達80%與碰到上限各寄一封(cap=1兩個門檻同時到)，寄給ADMIN_NOTIFY_EMAIL", n80.length === 1 && n100.length === 1 && n80[0].to === "admin@example.com" && n100[0].to === "admin@example.com", resend.notices().map(x => x.subject));
-A.check("通知信：80%主旨「人生草稿：今日花費已達上限的 80%」，內文有估計花費、上限、台灣時間、狀態", n80[0].subject === "人生草稿：今日花費已達上限的 80%" && /今日估計花費：1 元/.test(n80[0].text) && /目前上限：1 元/.test(n80[0].text) && /2026\/09\/30 11:00（台灣時間）/.test(n80[0].text) && /已達上限的 80%/.test(n80[0].text), n80[0].text);
+A.check("通知信：80%主旨「人生草稿：今日花費已達上限的 80%」，內文有估計花費、上限、台灣時間、狀態", n80[0].subject === "人生草稿：今日花費已達上限的 80%" && /今日估計花費：1 元/.test(n80[0].text) && /目前上限：1.2 元/.test(n80[0].text) && /2026\/09\/30 11:00（台灣時間）/.test(n80[0].text) && /已達上限的 80%/.test(n80[0].text), n80[0].text);
 A.check("通知信：碰到上限主旨「人生草稿：今日花費已碰到上限」，多一句暫停說明", n100[0].subject === "人生草稿：今日花費已碰到上限" && n100[0].text.includes("已暫停從未購買過的帳號的 AI 呼叫，台灣時間午夜自動恢復。"), n100[0].text);
 const noticeCount = resend.notices().length;
 await anonTurn(); await anonTurn(); await get("/gate");
@@ -87,37 +87,39 @@ r = await anonTurn();
 A.check("又把上限調低到低於目前花費→再度暫停", r.status === 503, r.status);
 // 午夜歸零
 setNow(DAY);
-env.DAILY_SPEND_CAP = "1";
+env.DAILY_SPEND_CAP = "1.2";
 t = await today();
 A.check("台灣時間午夜：花費計數歸零、暫停自動解除", t.date === "2026-10-01" && t.est_cost_twd === 0 && (await anonTurn()).status === 200);
 A.check("午夜歸零後通知標記也歸零：當天再碰到上限再寄一輪(各一封)", notice("已達上限的 80%").length === 2 && notice("已碰到上限").length === 2, resend.notices().map(x => x.subject));
 
 // ---- 失敗的呼叫也計入(2026-10-02定案A3)；80%門檻依當下上限自動計算 ----
+// 2026-10-08(10.9.3.1a補充二)：成功的呼叫記實際花費(測試用的假用量剛好1元)，失敗的(沒有回報用量)照預估(近7天呼叫少於100次→固定估價1元)；
+// 每次呼叫前判斷「當日花費＋預估」是否達上限，所以上限11元時，花費到10元那一刻就開始擋
 setNow(2 * DAY);
-env.DAILY_SPEND_CAP = "10";
+env.DAILY_SPEND_CAP = "11";
 upstreamFail = true; await anonTurn(); await anonTurn(); upstreamFail = false;
-A.check("Anthropic失敗的呼叫也計入花費(2次＝2元)", (await today()).est_cost_twd === 2);
+A.check("Anthropic失敗的呼叫也計入花費(2次＝2元，照預估)", (await today()).est_cost_twd === 2);
 const base80 = notice("已達上限的 80%").length;
-for (let i = 0; i < 5; i++) await anonTurn();
-A.check("cap=10、花費7元(失敗2＋成功5)：還沒到80%，不寄信", notice("已達上限的 80%").length === base80 && (await today()).pct_of_cap === 70);
+for (let i = 0; i < 6; i++) await anonTurn();
+A.check("cap=11、花費8元(失敗2＋成功6)：還沒到80%(8.8元)，不寄信", notice("已達上限的 80%").length === base80 && (await today()).est_cost_twd === 8);
 await anonTurn();
-A.check("花費8元＝上限10元的80%→寄80%通知(依當下設定的上限自動計算)", notice("已達上限的 80%").length === base80 + 1 && notice("已碰到上限").length === 2, resend.notices().map(x => x.subject));
-await anonTurn(); await anonTurn();
-A.check("花費到10元→再寄上限通知", notice("已碰到上限").length === 3);
+A.check("花費9元＞上限11元的80%→寄80%通知(依當下設定的上限自動計算)", notice("已達上限的 80%").length === base80 + 1 && notice("已碰到上限").length === 2, resend.notices().map(x => x.subject));
+await anonTurn();
+A.check("花費10元(10＋預估1＝11達上限)→再寄上限通知", notice("已碰到上限").length === 3);
 r = await anonTurn();
-A.check("cap=10、花費10元：下一次被擋", r.status === 503);
+A.check("cap=11、花費10元：下一次被擋(沒有等到花到11元才擋)", r.status === 503 && (await today()).est_cost_twd === 10);
 
 // ---- 每次估價可調 ----
 setNow(3 * DAY);
 env.DAILY_SPEND_CAP = "100"; env.AI_CALL_COST_ESTIMATE = "2.5";
-await anonTurn(); await anonTurn();
+upstreamFail = true; await anonTurn(); await anonTurn(); upstreamFail = false; // 沒有回報用量的呼叫才用固定估價
 t = await today();
-A.check("AI_CALL_COST_ESTIMATE=2.5：2次呼叫＝5元", t.est_cost_twd === 5 && t.est_cost_per_call_twd === 2.5, t);
+A.check("AI_CALL_COST_ESTIMATE=2.5：2次沒有回報用量的呼叫＝5元", t.est_cost_twd === 5 && t.est_cost_per_call_twd === 2.5, t);
 delete env.AI_CALL_COST_ESTIMATE;
 
 // ---- 寄信失敗：下一次AI呼叫重試，同一封每日最多3次 ----
 setNow(4 * DAY);
-env.DAILY_SPEND_CAP = "2";
+env.DAILY_SPEND_CAP = "1.2";
 const mailsBefore = resend.notices().length;
 resend.failNext(99); // 管理通知信全部寄失敗
 await anonTurn(); await anonTurn(); // 到達上限(第2次讓80%與上限同時到達；第1次1元＝50%)
@@ -130,7 +132,7 @@ await anonTurn();
 t = await today();
 A.check("嘗試3次用完就不再試(當天不會無限重試)", t.notices.spend80.attempts === 3 && resend.notices().length === mailsBefore);
 setNow(5 * DAY);
-env.DAILY_SPEND_CAP = "2";
+env.DAILY_SPEND_CAP = "1.2";
 resend.failNext(2); // 第一次嘗試(80%與上限兩封)都失敗，之後恢復
 await anonTurn(); await anonTurn();
 await anonTurn(); // 被擋的這次會重試

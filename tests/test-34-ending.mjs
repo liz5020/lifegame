@@ -18,14 +18,16 @@ const endNow = async () => { ev("state.age = 78"); await ev("takeTurn(state.choi
 ev("MOCK_ENDING_OVERVIEW_FAIL = false");
 const material = JSON.parse(ev("JSON.stringify(buildLifeSummaryMaterial(state))"));
 A.check("16.7.0 結局素材帶人生特質(7.7)給AI", material.life_trait && typeof material.life_trait.text === "string", material.life_trait);
-A.check("16.7.0 試看花絮素材優先挑命運的骰子", material.teaser_tidbit_material && material.teaser_tidbit_material.category === "fate", material.teaser_tidbit_material);
-A.check("試看花絮的命運骰子素材用文字寫機率(隱藏判定不給數字)", material.teaser_tidbit_material.facts.probability_words === "機會很小");
+A.check("16.7.2.1(2026-10-08) 試看花絮由程式組句：不送素材給AI（teaser_tidbit_material為null）", material.teaser_tidbit_material === null, material.teaser_tidbit_material);
+const teaser1 = JSON.parse(ev("JSON.stringify(buildOpeningTeaser(state))")), teaser2 = JSON.parse(ev("JSON.stringify(buildOpeningTeaser(state))"));
+A.check("試看花絮：開局設定揭曉類（家境或性格傾向）的固定句子，同一段人生每次都一樣", teaser1.category === "opening" && teaser1.text.length > 10 && teaser1.text === teaser2.text && ev("[].concat(...Object.values(TEASER_FAMILY_SENTENCES), ...Object.values(TEASER_TRAIT_SENTENCES)).includes(" + JSON.stringify(teaser1.text) + ")"), teaser1);
+A.check("試看花絮：每種開局設定都準備了數句（家境3種×2、性格傾向4種×2）", ev("Object.values(TEASER_FAMILY_SENTENCES).every(a=>a.length>=2) && Object.values(TEASER_TRAIT_SENTENCES).every(a=>a.length>=2) && Object.keys(TEASER_FAMILY_SENTENCES).length===3 && Object.keys(TEASER_TRAIT_SENTENCES).length===4"));
 
 const setEnding = (withKid) => ev(`
   state.age = 78; state.cash = 1234;
   state.lifeTrajectory = [{stage:"student",age_from:15,age_to:22,happiness_avg:60,resume_entries:["高中畢業"],key_npcs:[],spectrum_snapshot:{}},{stage:"23-29",age_from:23,age_to:29,happiness_avg:50,resume_entries:["第一份工作"],key_npcs:[],spectrum_snapshot:{}}];
   state.ending = assembleEnding(state, { life_summary: { segments: [], transitions: [], epitaph: "她走得很慢，但沒有停。",
-    overview: "她在巷口開了一間早餐店，一路開到交給女兒。她總是先把別人的事做完，才輪到自己。", teaser_tidbit: "那一年，其實機會很小，結果生意成長了。" } });
+    overview: "她在巷口開了一間早餐店，一路開到交給女兒。她總是先把別人的事做完，才輪到自己。" } });
   state.characters = state.characters.filter(c=>!c.isChild);
   ${withKid ? `state.characters.push({name:"林小安",relation:"女兒",isChild:true,active:true,affinity:70,gender:"女",age:40,summary:"",lastTurn:99});` : ``}
   state.phase = "ending"; render();`);
@@ -44,7 +46,8 @@ const expectedPeople = JSON.parse(ev("JSON.stringify(state.characters.slice().so
 A.check("重要的人：關係等級最高的前四位，同級時最近互動優先", people.length === Math.min(4, ev("state.characters.length")) && people.every((p, i) => p.endsWith(expectedPeople[i])), { people, expectedPeople });
 A.check("不顯示隱藏數值(福緣)", !/福緣/.test(app.textContent));
 const review = doc.getElementById("end-review");
-A.check("回顧這一生：未解鎖時免費試看一則花絮＋解鎖按鈕(5點)", /試看一則花絮/.test(review.textContent) && /機會很小/.test(review.textContent) && /解鎖回顧這一生（5點）/.test(doc.getElementById("btn-review-unlock").textContent));
+A.check("回顧這一生：未解鎖時顯示標示「試看」的程式花絮＋按鈕〔回顧這一生　60 點〕", review.querySelector(".rv-free").textContent === "試看" && review.querySelector(".rv-teaser p").textContent === teaser1.text && doc.getElementById("btn-review-unlock").textContent === "回顧這一生　60 點", review.textContent);
+A.check("試看花絮：重新打開結局頁看到同一則", (() => { ev("render()"); return doc.querySelector(".rv-teaser p").textContent === teaser1.text; })());
 const next = [...app.querySelectorAll(".end-next button")];
 A.check("開始下一世：有子女時「選一個孩子接著寫」「再寫一次人生」並列同樣式", next.length === 2 && next[0].textContent === "選一個孩子接著寫" && next[1].textContent === "再寫一次人生" && next[0].className === next[1].className);
 A.check("分享這一生按鈕", doc.getElementById("btn-ending-share").textContent === "分享這一生");
@@ -66,20 +69,23 @@ A.check("備案不列失業、離婚等負面經歷(沒有對應字詞)", !/失�
 
 // 解鎖回顧這一生(mock)
 setEnding(false);
-ev("state.ap.daily = 2; state.ap.gift = 0; state.ap.purchased = 0; render()");
-A.check("行動點不足5點：解鎖按鈕停用並說明", doc.getElementById("btn-review-unlock").disabled && /不足5點/.test(doc.getElementById("end-review").textContent));
-ev("state.ap.daily = 3; state.ap.gift = 7; render()");
+ev("state.ap.daily = 2; state.ap.gift = 57; state.ap.purchased = 0; render()");
+A.check("行動點不足60點：解鎖按鈕變灰並寫「需要 60 點」", doc.getElementById("btn-review-unlock").disabled && /需要 60 點/.test(doc.getElementById("end-review").textContent));
+ev("state.ap.daily = 3; state.ap.gift = 67; render()");
 doc.getElementById("btn-review-unlock").click(); await sleep(60);
-A.check("解鎖：扣5點(每日池→禮包點)", ev("state.ap.daily") === 0 && ev("state.ap.gift") === 5);
+A.check("解鎖：扣60點(先扣每日池再扣禮包點)", ev("state.ap.daily") === 0 && ev("state.ap.gift") === 10);
+A.check("解鎖後試看那一則保留在花絮最前面；點數紀錄名稱「回顧這一生」", ev("state.ending.review.tidbits[0].teaser===true") && ev("state.ending.review.tidbits[0].text") === teaser1.text && ev("state.apLog.some(e=>e.type==='回顧這一生' && e.n===-60)"));
 A.check("解鎖後有人生軌跡與人生花絮兩個分頁", ev("!!state.ending.review") && doc.querySelectorAll(".rv-tab").length === 2 && doc.querySelectorAll(".rv-traj li").length === ev("state.ending.review.trajectory.length") && ev("state.ending.review.trajectory.length") > 0);
 [...doc.querySelectorAll(".rv-tab")].find(b => b.dataset.tab === "tidbits").click();
 A.check("切到人生花絮分頁", doc.querySelectorAll(".rv-tidbits li").length >= 1 && !doc.querySelector(".rv-traj"));
-A.check("解鎖後不再出現解鎖按鈕、重看不再扣點", !doc.getElementById("btn-review-unlock") && ev("totalAP(state)") === 5);
+A.check("解鎖後不再出現解鎖按鈕、重看不再扣點", !doc.getElementById("btn-review-unlock") && ev("totalAP(state)") === 10);
 A.check("花絮每則都有階段標籤、只從客戶端挑好的素材來", ev("state.ending.review.tidbits.every(t=>t.label && t.category)"));
 
 // 7.4.3.2 免費轉世
 ev("window.__o = newRoll; newRoll = function(c,id){ window.__carry = c; return window.__o(c,id); }");
 doc.getElementById("btn-reincarnate").click(); await sleep(20);
+A.check("(2026-10-08) 按「再寫一次人生」先出現人生重開丹選擇畫面，含〔不帶，直接轉世〕", !!doc.getElementById("life-keep-modal") && doc.getElementById("btn-keep-skip").textContent === "不帶，直接轉世");
+doc.getElementById("btn-keep-skip").click(); await sleep(20);
 const carried = JSON.parse(ev("JSON.stringify(window.__carry)")); ev("newRoll = window.__o");
 A.check("7.4.3.2 轉世不帶任何數值加成、敘事痕跡不說「前世」", carried && !["health", "knowledge", "network", "expression", "savingsCarry"].some(k => k in carried) && /熟悉感/.test(carried.chronicleCarry) && !/前世/.test(carried.chronicleCarry));
 A.check("整段沒有jsdom錯誤(前端)", g.errors.length === 0, g.errors.map(String).slice(0, 3));
@@ -94,6 +100,7 @@ await H.startNewLife(g2, { name: "陳予安" });
 await H.playTurn(g2); await sleep(20);
 const ev2 = g2.ev, d2 = g2.win.document;
 ev2(`state.age=70; state.ending = assembleEnding(state, { life_summary:{ segments:[], transitions:[], epitaph:'x', overview:'y' } }); state.phase='ending'; render()`);
+{ const k = `ap:${H.loc("reviewkey1")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); await env.SAVES.put(k, JSON.stringify(Object.assign(rec, { daily: 0, gift: 100, purchased: 0 }))); ev2(`syncServerAP(state, {daily:0,gift:100,purchased:0,lastRefillDate:taipeiDateString()})`); }
 const apBefore = ev2("totalAP(state)");
 const callsBefore = fake.calls.length;
 failNext = true;
@@ -103,7 +110,7 @@ failNext = false;
 await ev2("unlockLifeReview()"); await sleep(50);
 const lastCall = fake.calls[fake.calls.length - 1];
 A.check("Worker：送出kind=life_review，用回顧專用的系統提示與工具", lastCall.tool_choice.name === "submit_life_review" && /回顧這一生/.test(lastCall.system[0].text));
-A.check("Worker：成功後扣5點、前端以伺服器餘額為準", ev2("totalAP(state)") === apBefore - 5 && ev2("!!state.ending.review"), { before: apBefore, after: ev2("totalAP(state)") });
+A.check("Worker：成功後扣60點、前端以伺服器餘額為準", ev2("totalAP(state)") === apBefore - 60 && ev2("!!state.ending.review"), { before: apBefore, after: ev2("totalAP(state)") });
 // 餘額不足直接擋、不呼叫AI
 ev2("state.ending.review = null; render()");
 const apRec = JSON.parse(await env.SAVES.get(`ap:${H.loc("reviewkey1")}:0`));

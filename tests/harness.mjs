@@ -47,6 +47,8 @@ export function turnPayloadFromBody(body) {
   }
   return payload;
 }
+// 2026-10-08（10.9.3.1a補充二：花費改用實際花費）：剛好1元台幣的用量(只有輸出token：3125 × 10美元/百萬 × 32 = 1元)，讓花費相關測試好算
+export const ONE_TWD_USAGE = { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 3125 };
 export function makeFakeAnthropic(opts = {}) {
   const calls = [];
   const fake = async (url, init) => {

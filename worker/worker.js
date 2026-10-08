@@ -83,12 +83,12 @@ import {
   isValidNonce, isValidLifeId, isUsableTurnResponse, taipeiDateString, nowMs,
   addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse,
   claimIdle, preIdleSummary, isUsableIdleSummaryResponse, chargeIdleRollback,
-  canAffordLifeReview, chargeLifeReview, isUsableLifeReviewResponse, markAction
+  canAffordLifeReview, chargeLifeReview, isUsableLifeReviewResponse, markAction, LIFE_REVIEW_COST
 } from "./ap.js";
 import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual, markLifeEnded } from "./usage.js";
 import { corsHeaders, jsonResponse } from "./http.js";
 import {
-  UsageCounter, readSetting, spendCap, giftCap, callCostEstimate, usageCall, usageCounterStub, accountsCall, accountStore,
+  UsageCounter, readSetting, spendCap, giftCap, callCostEstimate, USD_TO_TWD, usageCall, usageCounterStub, accountsCall, accountStore,
   bearerToken, countAICall, recordAIUsage, spendGate, syncGiftStats, DEFAULT_DAILY_SPEND_CAP, DEFAULT_DAILY_GIFT_CAP
 } from "./gate.js";
 import { AccountStore } from "./account.js";
@@ -738,14 +738,15 @@ export { DEFAULT_DAILY_GIFT_CAP, readSetting };
 async function buildUsageToday(env) {
   const now = nowMs(env), date = taipeiDateString(now);
   const cap = spendCap(env);
-  const out = { date, calls: 0, est_cost_twd: 0, est_cost_per_call_twd: callCostEstimate(env),
+  const out = { date, calls: 0, est_cost_twd: 0, est_cost_per_call_twd: callCostEstimate(env), estimate_source: "fixed",
     daily_spend_cap_twd: cap, daily_gift_cap: giftCap(env), counter: !!usageCounterStub(env) };
   if (out.counter) {
     const d = await usageCall(env, "get", {}, "GET");
     out.calls = d.calls || 0;
     out.est_cost_twd = Math.round((d.spent || 0) * 100) / 100;
     out.pct_of_cap = Math.round(out.est_cost_twd / cap * 1000) / 10;
-    out.paused_for_never_purchased = out.est_cost_twd >= cap; // 10.9.3.1：碰到上限＝暫停從未購買過的帳號
+    out.paused_for_never_purchased = !!d.capped; // 10.9.3.1：「當日花費＋這次預估」達上限＝暫停從未購買過的帳號(10.9.3.1a補充二)
+    if (d.estimate_twd !== undefined) { out.est_cost_per_call_twd = d.estimate_twd; out.estimate_source = d.estimate_source; out.recent_7d_calls = d.recent_calls; }
     out.gifts = { issued: d.gifts || 0, queued: d.queued || 0, cap: out.daily_gift_cap };
     out.notices = {};
     for (const [k, v] of Object.entries(d.notices || {})) out.notices[k] = { sent: !!v.sent, attempts: v.attempts || 0 };
@@ -776,16 +777,15 @@ async function callAnthropic(env, upstreamBody, ctx, meta) {
       body: JSON.stringify(upstreamBody)
     });
   } catch (e) {
-    await countAICall(env, ctx); // 連線失敗也算一次呼叫(2026-10-02定案A3：每日花費上限是內部成本帳，所有呼叫含失敗的都計入)；玩家端照舊不扣點、不算回合
+    await countAICall(env, ctx); // 連線失敗也算一次呼叫(2026-10-02定案A3：每日花費上限是內部成本帳，所有呼叫含失敗的都計入)；沒有回報用量，照預估計入(10.9.3.1a補充二)；玩家端照舊不扣點、不算回合
     throw e;
   }
-  await countAICall(env, ctx); // 十、10.9.3.1／10.9.3.3：每次AI呼叫(含失敗)記一筆估價，達80%／上限時寄管理通知信
-  if (meta && res.ok) {
-    const job = res.clone().json().then(d => {
-      if (!d || !d.usage) return;
-      const t = extractUsage(d.usage);
-      return recordAIUsage(env, meta, t, costUSD(t));
-    }).catch(() => {});
+  // 十、10.9.3.1／10.9.3.3／10.9.3.1a補充二(2026-10-08)：每次AI呼叫記一筆花費——有回報用量的記實際花費(美元×匯率)，沒有的(失敗呼叫)照預估；達80%／上限時寄管理通知信
+  let usage = null;
+  if (res.ok) { try { const d = await res.clone().json(); if (d && d.usage) usage = extractUsage(d.usage); } catch (e) { usage = null; } }
+  await countAICall(env, ctx, usage ? costUSD(usage) * USD_TO_TWD : undefined);
+  if (meta && usage) {
+    const job = recordAIUsage(env, meta, usage, costUSD(usage)).catch(() => {});
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
   }
   // 十、10.9.4（2026-09-30）：固定規則(system prompt＋工具定義)的字數，給前端逐筆成本紀錄當比例參考(不換算token)
@@ -852,7 +852,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
     if (!r.ok) return walletFail(r);
     walletPre = r.pre;
   } else if (wallet && body.kind === "life_review") {
-    const r = await acctCall({ op: "wallet_can_afford", n: 5 });
+    const r = await acctCall({ op: "wallet_can_afford", n: LIFE_REVIEW_COST });
     if (!r.ok) return walletFail(r);
     if (!r.can) return jsonResponse(origin, { error: { type: "insufficient_action_points", message: "行動點不足" }, lifegame: { wallet: walletInfo, wallet_events: walletEvents } }, 402);
   }
@@ -869,7 +869,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
   const usable = !!(upstream.ok && data && isUsable(data));
   if (usable && isTurn && !(check.payload.time_context && check.payload.time_context.is_prologue === true)) recordLidSeen(env, ctx, safeLifeId); // 10.13.7.3
   if (wallet && isTurn) await acctCall({ op: "wallet_post", nonce: body.turn_nonce, life_id: safeLifeId, success: usable });
-  else if (wallet && body.kind === "life_review" && usable) await acctCall({ op: "wallet_spend", n: 5 });
+  else if (wallet && body.kind === "life_review" && usable) await acctCall({ op: "wallet_spend", n: LIFE_REVIEW_COST });
   const lifegame = { usable, cloud_disabled: true };
   if (wallet) { lifegame.wallet = walletInfo; lifegame.wallet_events = walletEvents; lifegame.charged = !!(walletPre && walletPre.charged && usable); }
   if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
@@ -1031,7 +1031,7 @@ async function handleStatsSummary(request, env) {
   const per = (num, den) => (den > 0 ? r2(num / den) : null); // 分母為0＝沒有平均可言(顯示「—」)
   const allPlayers = ps.free.total + ps.paid.total;
   const usage = {
-    since: pv.us_since || null, unit: "元(固定估價，AI_CALL_COST_ESTIMATE)", turns, cost,
+    since: pv.us_since || null, unit: "元(實際花費；沒有回報用量的呼叫照預估)", turns, cost,
     avg_cost_per_player: { today: per(cost.today, ps.active.today), last7: per(cost.last7, ps.active.last7), total: per(cost.total, allPlayers) },
     avg_turns_per_player: { today: per(turns.today, ps.active.today), last7: per(turns.last7, ps.active.last7), total: per(turns.total, allPlayers) },
     avg_cost_per_turn: { today: per(cost.today, turns.today), last7: per(cost.last7, turns.last7), total: per(cost.total, turns.total) }
@@ -1104,7 +1104,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.08-b";
+const WORKER_VERSION = "2026.10.08-c";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

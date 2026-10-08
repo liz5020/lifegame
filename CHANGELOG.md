@@ -10,6 +10,15 @@
 
 ---
 
+### 2026-10-08（開發部）付費周邊(十、10.3.13、7.4.3.4、16.7.2.1、10.9.3.1a補充二，2026.10.08-c，尚未上線)
+- 起因：網頁版定案(2026-10-08)三份交接文件的第一份，設計文件已寫入(commit `a3ed913`)。
+- 反悔：每一世免費5次(`UNDO_FREE_PER_LIFE`)，用完每次扣1點並跳確認視窗(`requestUndo()`)，舊存檔補2次(`ensureUndoRule()`)；扣點共用`paySinglePoints()`(帳號人生扣帳號錢包、其他扣本機點數)。
+- 人生重開丹(新功能)：轉世與傳承都先出現`openLifeKeepPanel()`，10點三選一；`applyLifeKeep()`套用數值起點、興趣天賦(`applyInterestEvent`建卡時投入度20)、指定NPC(轉世`maybeFireReunionNpc()`排程登場並送`reunion_npc_now`給AI，傳承直接建卡)；`worker/prompt.js`加登場規則。
+- 回顧這一生：60點(前端`LIFE_REVIEW_COST`、`worker/ap.js`、帳號錢包扣點與`wallet_can_afford`，`account.js`單次扣點上限50→100)；試看花絮改程式組句(`buildOpeningTeaser()`，不送AI；`worker/prompt.js`刪除`teaser_tidbit`欄位與說明)。
+- 全站花費上限：`worker/gate.js`成功呼叫記實際花費(美元×32)、失敗呼叫照預估；呼叫前用「當日花費＋預估」判斷；預估＝近7天實際平均，少於`SPEND_ESTIMATE_MIN_CALLS`(後台，預設100)次用固定估價；`worker/worker.js`、`mail.js`(金額兩位小數)同步。
+- 測試：新增`test-77`(34項)、`test-78`(8項)、`test-79`(12項)；調整`test-31/34/56/58/59/60/61/66`(新數字與新規則)、`harness.mjs`加`ONE_TWD_USAGE`。全套82檔通過。
+- ⚠️推上線前要問使用者：動到`worker/`(花費計算、prompt、單次扣點)。不改遊戲狀態結構的必要欄位(新增`undoRule`、`lifeKeep`、`reunionNpc`皆為選用)，舊存檔可直接讀。
+
 ### 2026-10-08（開發部）封測名額與候補(十、10.15，2026.10.08-b，尚未上線)
 - 起因：網頁版定案(2026-10-04)交接文件，公開招募前限制每日新玩家人數，滿了可留信箱候補。設計文件已寫入10.15(commit `3cb9208`)。
 - `worker/account.js`：帳號資料庫新增名額帳(`en`)、累計(`cum`)、候補隊伍(`wq`)、持有位子清單(`wh`)與操作`entry_status`／`entry_claim`／`wl_join`／`wl_direct`／`wl_requeue`／`wl_due`／`wl_mail_result`／`entry_stats`／`cp_result`；當天第一次有人碰到就自動做過期收回與分配；`life_add`加候補入場(領25＋30點)；`/account/me`帶`wl`狀態。
