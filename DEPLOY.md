@@ -16,7 +16,7 @@
 
 - Cloudflare Pages專案`lifegame`連到GitHub `liz5020/lifegame`，正式分支`master`；玩家用的網址已改指向這個專案。
 - 設定：Framework preset＝None、Build command＝`sh build-pages.sh`、Build output directory＝`dist`。
-- `build-pages.sh`只把`index.html`、`og.png`、`lunar.min.js`複製進`dist/`，所以設計文件、測試、`worker/`不會被公開。以後若網站多了要公開的檔案（例如新圖片），記得改`build-pages.sh`。
+- `build-pages.sh`只把`index.html`、`og.png`、`lunar.min.js`，以及2026-10-08起的三個說明頁`terms.html`、`privacy.html`、`pricing.html`(十、10.16，網址`/terms`、`/privacy`、`/pricing`，Pages會把`xxx.html`對應到不含副檔名的網址)複製進`dist/`，所以設計文件、測試、`worker/`不會被公開。以後若網站多了要公開的檔案（例如新圖片），記得改`build-pages.sh`。
 - 注意：Build output directory的`dist`後面**不能有空白**（手機貼上容易帶入），否則建置會失敗，log顯示`Output directory "dist " not found`。
 - 只有合併進`master`才會更新正式網站；其他分支不會上線。
 - 舊的手動上傳Pages專案先保留備用，不再更新。
@@ -37,7 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| 2026-10-08 | 2026.10.08-c（**尚未上線**：本機完成，推送前先問使用者——動到`worker/`的花費計算與prompt） | 2026.10.08-c（同左） | — | index.html、worker(gate.js、worker.js、ap.js、account.js、mail.js、prompt.js) | 付費周邊(十、10.3.13)：反悔5次＋超過每次1點、人生重開丹10點、回顧這一生60點＋程式試看花絮、全站花費改用實際花費(10.9.3.1a補充二) |
+| 2026-10-08 | 2026.10.08-d（**尚未上線**：本機完成，推送前先問使用者——動到`worker/`的花費計算與prompt；2026.10.08-c併入此版，沒有單獨上線） | 2026.10.08-d（同左） | — | index.html、terms.html、privacy.html、pricing.html、build-pages.sh、worker(gate.js、worker.js、ap.js、account.js、mail.js、prompt.js) | 付費周邊(十、10.3.13)：反悔5次＋超過每次1點、人生重開丹10點、回顧這一生60點＋程式試看花絮、全站花費改用實際花費(10.9.3.1a補充二)；說明頁面三頁(10.16) |
 | 2026-10-08 | 2026.10.08-b（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；Worker新增每小時排程`0 * * * *`，排程實際執行尚未觀察） | 2026.10.08-b（同左） | `54b9b19` | index.html、worker(account.js、account-routes.js、entry.js、mail.js、gate.js、save-admin.js、dashboard.js、worker.js、wrangler.toml) | 封測名額與候補(十、10.15，2026-10-04定案) |
 | 2026-10-08 | 2026.10.08-a（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.08-a（同左） | `ac02aad` | index.html、worker(prompt.js、worker.js) | 訂單現況以訂單簿為準(八、8.13.1，2026-10-08)；近況維持3回合原文；第三輪驗證條件②通過、條件①判定為舊存檔問題(10.14.8補充第八節) |
 | 2026-10-05 | 2026.10.05-b（**沒有上線**：10.14.8補充第二輪比對未通過，2026-10-08改回3回合原文，併入2026.10.08-a） | — | `43b2676` | — | 近況縮減(10.14.8補充) |

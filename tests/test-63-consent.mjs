@@ -28,9 +28,13 @@ await wait(30);
 A.check("重新整理後不再出現", !gate(again));
 
 // ---- 說明版本提高：所有玩家重新同意 ----
+// 2026-10-08(10.16.5)：同意頁加了條款連結，說明版本號加一版(CONSENT_VERSION=2)，但已同意過舊版(1)的玩家不用重新同意、也不跳更新通知(CONSENT_MIN_ACCEPTED=1)
 const bumped = await H.loadGame({ useMock: true, env, key: null, cloud: false, consent: false, storage: Object.assign(JSON.parse(saved), { lifegame_consent: JSON.stringify({ v: 0, at: 1700000000000 }) }) });
 await wait(30);
-A.check("裝置上的同意版本低於目前版本：再次出現", gate(bumped));
+A.check("裝置上的同意版本低於可接受的最低版本：再次出現", gate(bumped));
+const oldV1 = await H.loadGame({ useMock: true, env, key: null, cloud: false, consent: false, storage: { lifegame_consent: JSON.stringify({ v: 1, at: 1700000000000 }) } });
+await wait(30);
+A.check("10.16.5 已經同意過舊版(1)的玩家：不用重新同意、不跳更新通知", !gate(oldV1) && oldV1.ev("CONSENT_VERSION") === 2 && oldV1.ev("CONSENT_MIN_ACCEPTED") === 1);
 // 紀錄壞掉／不存在：再次出現
 const broken = await H.loadGame({ useMock: true, env, key: null, cloud: false, consent: false, storage: { lifegame_consent: "{壞掉" } });
 await wait(30);
@@ -45,13 +49,12 @@ await wait(30);
 A.check("本規則生效前已在遊戲中的玩家：下次開啟先看到同意頁", gate(old));
 
 // ---- 紀錄隨存檔上傳 ----
-A.check("存檔裡帶著同意紀錄(說明版本＋時間)", mid.ev("state.consent && state.consent.v") === mid.ev("CONSENT_VERSION") && JSON.parse(mid.ev("localStorage.getItem('life_sim_save_v1:0')")).consent.at > 0);
+A.check("存檔裡帶著同意紀錄(說明版本＋時間)", mid.ev("state.consent && state.consent.v") === mid.ev("getConsent().v") && JSON.parse(mid.ev("localStorage.getItem('life_sim_save_v1:0')")).consent.at > 0);
 
 // ---- 隱私說明連結 ----
 A.check("選單有「隱私說明」連結", /隱私說明/.test(mid.ev("renderMenuPanel(state)")) && mid.ev("renderMenuPanel(state)").includes('id="link-privacy"'));
-mid.ev("document.body.insertAdjacentHTML('beforeend','<a class=\"privacy-link\" id=\"t-p\">x</a>'); document.getElementById('t-p').click()");
-const pm = mid.ev("document.getElementById('privacy-modal') && document.getElementById('privacy-modal').textContent");
-A.check("點隱私說明：顯示同意頁同樣的四點文字，可關閉", /定期自動存檔/.test(pm) && /不要在遊戲裡輸入真實姓名/.test(pm) && (mid.ev("document.getElementById('btn-privacy-close').click()"), !mid.ev("!!document.getElementById('privacy-modal')")));
+A.check("選單的「隱私說明」改連 /privacy、開新分頁(10.16.4)", /id="link-privacy" href="\/privacy" target="_blank" rel="noopener"/.test(mid.ev("renderMenuPanel(state)")));
+A.check("各處隱私說明連結(privacyLinkHTML)：連 /privacy、開新分頁，不再跳短版彈窗", /href="\/privacy" target="_blank"/.test(mid.ev("privacyLinkHTML()")) && !mid.ev("typeof renderPrivacyModal"==="x") && mid.ev("typeof renderPrivacyModal") === "undefined");
 mid.ev("openAccountFlow('bind')");
 const bt = mid.ev("document.getElementById('account-modal').textContent");
 A.check("綁定說明頁只保留一句話＋隱私說明連結", bt.includes("信箱只用來保存進度和找回帳號，綁定後會收到啟程禮。") && !bt.includes("第 1 段") && !!mid.ev("document.querySelector('#account-modal .privacy-link')"), bt);

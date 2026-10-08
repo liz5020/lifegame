@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#F7F0E3">
+<title>收費說明｜人生草稿</title>
+<style>
+:root{--paper:#F7F0E3;--card:#FAF4EA;--ink:#4A2E1F;--soft:#8A6F5E;--line:rgba(74,46,31,.16);--stamp:#C8553D;
+--serif:"Noto Serif TC","Songti TC","PMingLiU",serif;--sans:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif}
+@media (prefers-color-scheme:dark){:root{--paper:#1F1712;--card:#2A201A;--ink:#F1E6D6;--soft:#B49C89;--line:rgba(241,230,214,.18);--stamp:#E58B73}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.8;-webkit-font-smoothing:antialiased}
+main{max-width:720px;margin:0 auto;padding:16px 16px 40px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0 12px;border-bottom:1px solid var(--line);font-size:14px}
+.top a{color:var(--stamp);text-decoration:none;font-weight:600}
+.top .nav a{margin-left:12px;font-weight:400;color:var(--soft)}
+h1{font-family:var(--serif);font-size:26px;margin:22px 0 4px;line-height:1.35}
+h2{font-family:var(--serif);font-size:19px;margin:28px 0 6px;line-height:1.4;scroll-margin-top:12px}
+p,li{font-size:16px}
+p{margin:8px 0}
+.meta{color:var(--soft);font-size:14px;margin:0 0 14px}
+ol,ul{padding-left:1.4em;margin:8px 0}
+li{margin:6px 0}
+a{color:var(--stamp)}
+.notice{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--stamp);border-radius:8px;padding:10px 14px;margin:14px 0}
+.table-wrap{overflow-x:auto;margin:12px 0}
+table{border-collapse:collapse;width:100%;min-width:420px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);font-size:15px;white-space:nowrap}
+th{color:var(--soft);font-weight:600}
+footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-size:14px;color:var(--soft)}
+footer p{margin:2px 0;font-size:14px}
+footer .links{margin-top:12px}
+footer .links a{margin-right:14px}
+</style></head><body><main>
+<div class="top"><a href="/">← 回到遊戲</a><span class="nav"><a href="/terms">服務條款</a><a href="/privacy">隱私權政策</a></span></div>
+<h1>收費說明</h1>
+<p class="meta">最後更新 2026 年 10 月 8 日</p>
+<p class="notice" id="prep-note"><strong>購買功能準備中，開放時會在遊戲內公告。</strong></p>
+<h2>行動點怎麼用</h2>
+<p>故事每推進一回合，會用掉 1 點行動點。使用時會先扣免費的點數，再扣購買的點數。</p>
+<h2>免費點數</h2>
+<ul><li>啟程禮：第一次開始就有，綁定信箱再多領一份。</li><li>每天補點：每天台灣時間午夜補上免費點數。</li></ul>
+<h2>點數包</h2>
+<div class="table-wrap"><table><thead><tr><th>名稱</th><th>價格</th><th>點數</th><th>說明</th></tr></thead><tbody><tr><td>短篇</td><td>99 元</td><td>90 點</td><td>先試試看</td></tr><tr><td>中篇</td><td>499 元</td><td>600 點</td><td>約半段人生</td></tr><tr><td>長篇</td><td>999 元</td><td>1,300 點</td><td>約一段人生</td></tr></tbody></table></div>
+<p>每段人生的長度依角色經歷而不同。</p>
+<p class="notice" id="launch-offer" hidden><strong>開站首月，第一次購買多送 10%。</strong></p>
+<h2>點數期限</h2>
+<p>購買與贈送的點數都沒有使用期限。人生結束時，剩下的購買點數會留在錢包。</p>
+<h2>付款方式</h2>
+<p>付款透過藍新金流進行。付款成功後，點數會立即存入你的帳號，不需寄送實體商品。</p>
+<h2>付費帶來什麼</h2>
+<p>付費讓你可以寫更多段人生，也能體驗更多樣的玩法。</p>
+<h2>奇幻人生，即將推出</h2>
+<h2>退款</h2>
+<p>退款規則請見《服務條款》第七條。</p>
+<h2>價格調整</h2>
+<p>價格如有調整，會事先在這一頁公告，已經購買的點數不受影響。</p>
+<footer>
+<p>經營者：人生草稿（個人經營）</p><p>客服信箱：<a href="mailto:support@draftmylife.com">support@draftmylife.com</a></p><p>回覆時間：3 個工作天內</p>
+<p class="links"><a href="/terms">服務條款</a><a href="/privacy">隱私權政策</a></p>
+</footer>
+<script>
+// 開站首月優惠與「購買功能準備中」的出現條件（十、10.16.8）：開放購買前顯示「準備中」；開放購買後（填入開放當天）拿掉，並在優惠期間內顯示首月優惠一行
+var PURCHASE_OPENED_ON = null;   // 開放購買當天（台灣日期 "YYYY-MM-DD"），開放購買時填入
+var LAUNCH_OFFER_DAYS = 30;      // 開站首月優惠天數（與後台設定值一致，預設30）
+(function(){
+  if(!PURCHASE_OPENED_ON) return;
+  var prep = document.getElementById("prep-note"); if(prep) prep.hidden = true;
+  var start = Date.parse(PURCHASE_OPENED_ON + "T00:00:00+08:00"), now = Date.now();
+  var offer = document.getElementById("launch-offer");
+  if(offer && now >= start && now < start + LAUNCH_OFFER_DAYS * 86400000) offer.hidden = false;
+})();
+</script>
+</main></body></html>

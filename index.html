@@ -457,6 +457,7 @@
   .home-foot p{font-size:15px;}
   .foot-mark{font-family:var(--serif);font-size:22px;letter-spacing:8px;color:rgba(74,46,31,.22);margin-top:34px;}
   .foot-copy{font-size:11px;color:var(--ink-soft);margin-top:6px;}
+  .foot-copy a{color:inherit;text-decoration:underline;text-underline-offset:2px;}
   /* 16.10.0 進站年齡確認：毛玻璃卡片浮在暖陽背景上，首頁內容在後方淡淡透出 */
 
   /* 十六、16.6 回憶錄時間軸 */
@@ -3545,7 +3546,12 @@ setInterval(()=>{
 // 玩家進站時，裝置上沒有同意紀錄、或說明版本號低於CONSENT_VERSION，就先擋一頁〔同意並開始〕／〔不同意〕；同意一次後不再出現。
 // 新增資料用途或新增資料接收對象時CONSENT_VERSION加一(所有玩家重新同意)，字句修飾不加版本。
 // 紀錄{v,at}存在裝置(localStorage)、隨存檔上傳(state.consent)、已綁信箱者另記在帳號資料(account/consent)。
-const CONSENT_VERSION = 1;
+const CONSENT_VERSION = 2;          // 十、10.16.5（2026-10-08）：同意頁加了服務條款與隱私權政策連結，說明版本號加一版
+const CONSENT_MIN_ACCEPTED = 1;     // ……但已經同意過舊版（1）的玩家不用重新同意、也不跳更新通知（10.16.5，是上方「版本號提高就重新同意」的例外）；之後真的新增資料用途時，把這個數字也調高
+// 十、10.16.2：服務條款與隱私權政策的版本號與最後更新日期，三頁（terms.html／privacy.html／pricing.html）的文字要跟這裡一致（tests/test-80檢查）；之後購買流程要讀這個版本號記進購買紀錄
+const LEGAL_DOCS_VERSION = "1.0";
+const LEGAL_DOCS_UPDATED = "2026 年 10 月 8 日";
+const LEGAL_PAGE_LINKS = [["服務條款","/terms"],["隱私權政策","/privacy"]];
 const CONSENT_STORAGE_NAME = "lifegame_consent";
 const CONSENT_SYNCED_NAME = "lifegame_consent_synced";
 const CONSENT_ITEMS = [
@@ -3558,7 +3564,7 @@ function getConsent(){
   try{ const c = JSON.parse(localStorage.getItem(CONSENT_STORAGE_NAME) || "null"); if(c && Number.isInteger(c.v) && Number.isFinite(c.at)) return c; }catch(e){}
   return null;
 }
-function hasValidConsent(){ const c = getConsent(); return !!c && c.v>=CONSENT_VERSION; }
+function hasValidConsent(){ const c = getConsent(); return !!c && c.v>=CONSENT_MIN_ACCEPTED; }
 function recordConsent(){
   const c = { v:CONSENT_VERSION, at:Date.now() };
   try{ localStorage.setItem(CONSENT_STORAGE_NAME, JSON.stringify(c)); }catch(e){}
@@ -3586,6 +3592,7 @@ function showConsentGate(onAgree){
     <div class="modal">
       <h3>開始之前，先跟你說明</h3>
       ${consentItemsHTML()}
+      <p id="consent-legal" style="font-size:13.5px;margin:8px 0;text-align:left;">按〔同意並開始〕，代表你同意<a href="/terms" target="_blank" rel="noopener">《服務條款》</a>與<a href="/privacy" target="_blank" rel="noopener">《隱私權政策》</a>。</p>
       <p id="consent-hint" style="display:none;color:var(--stamp);font-size:12.5px;margin:6px 0;">需要同意才能開始遊戲</p>
       <button class="primary-btn" id="btn-consent-agree">同意並開始</button>
       <button class="ghost-btn" id="btn-consent-decline">不同意</button>
@@ -3594,24 +3601,9 @@ function showConsentGate(onAgree){
   document.getElementById("btn-consent-agree").onclick = ()=>{ recordConsent(); div.remove(); if(onAgree) onAgree(); };
   document.getElementById("btn-consent-decline").onclick = ()=>{ document.getElementById("consent-hint").style.display = "block"; };
 }
-// 選單／綁定頁的「隱私說明」：內容同開場同意頁的文字(完整版隱私說明上線後改連完整版)
-function renderPrivacyModal(){
-  if(document.getElementById("privacy-modal")) return;
-  const div = document.createElement("div");
-  div.id = "privacy-modal";
-  div.className = "modal-backdrop";
-  div.style.zIndex = 3000;
-  div.innerHTML = `
-    <div class="modal">
-      <h3>隱私說明</h3>
-      ${consentItemsHTML()}
-      <button class="ghost-btn" id="btn-privacy-close" style="margin-top:10px;">關閉</button>
-    </div>`;
-  document.body.appendChild(div);
-  document.getElementById("btn-privacy-close").onclick = ()=>div.remove();
-}
-function privacyLinkHTML(){ return `<p style="font-size:12px;margin:8px 0;"><a class="privacy-link" style="cursor:pointer;text-decoration:underline;">隱私說明</a></p>`; }
-document.addEventListener("click", e=>{ const t = e.target && e.target.closest && e.target.closest(".privacy-link"); if(t){ e.preventDefault(); renderPrivacyModal(); } });
+// 各處的「隱私說明」連結（選單、綁定信箱、用信箱登入、換綁信箱、候補畫面）：十、10.16.4（2026-10-08）起一律連到 /privacy，開新分頁，玩家不離開遊戲
+// （取代原本的短版彈窗；同意頁上的四點說明文字照舊）
+function privacyLinkHTML(){ return `<p style="font-size:12px;margin:8px 0;"><a class="privacy-link" href="/privacy" target="_blank" rel="noopener" style="cursor:pointer;text-decoration:underline;">隱私說明</a></p>`; }
 
 // 十、10.1（9/19新增）：封測階段純金鑰模式的啟動流程。
 // 十六、16.10.9（2026-09-28使用者同意Claude建議）：取消「有金鑰就自動接續上次那段人生」，進站一律先顯示首頁，
@@ -8540,8 +8532,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-c";
+const APP_VERSION = "2026.10.08-d";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-d", date:"2026-10-08", title:"說明頁面", items:[
+    "新增「收費說明」「服務條款」「隱私權政策」三個說明頁，首頁最下方、點數錢包和開場說明頁都有連結。",
+  ]},
   { version:"2026.10.08-c", date:"2026-10-08", title:"反悔、人生重開丹、回顧這一生", items:[
     "反悔：每一世有 5 次免費機會，轉世或傳承後重新計算；用完之後還想反悔，每次扣 1 點。",
     "轉世或傳承時，可以用 10 點換一份帶到下一世的東西：一個興趣、才識或人脈的起點，或是一個你認識的人。點數不夠也可以照常轉世或傳承。",
@@ -11689,6 +11684,8 @@ function renderHome(){
       <button class="ghost-btn" id="btn-home-top">↑ 翻回第一頁</button>
       <div class="foot-mark">人生草稿</div>
       <div class="foot-copy">© 2026 人生草稿・版本 ${escapeHtml(APP_VERSION)}（${escapeHtml(currentRelease().date)}）</div>
+      <div class="foot-copy" id="home-soon">奇幻人生，即將推出</div>
+      <div class="foot-copy" id="home-legal"><a href="/pricing" target="_blank" rel="noopener">收費說明</a>｜<a href="/terms" target="_blank" rel="noopener">服務條款</a>｜<a href="/privacy" target="_blank" rel="noopener">隱私權政策</a></div>
     </footer>
   </div>`;
 }
@@ -12706,6 +12703,8 @@ function renderWalletModal(){
         ${bindTip}
         ${others.length ? `<div class="menu-sec" style="margin-top:14px;">其他進行中的人生</div>${others.map(o=>`<div class="ic-sub" style="display:flex;justify-content:space-between;margin:3px 0;"><span>${escapeHtml(o.name)}</span><b>${o.shared ? "共用錢包" : o.total+" 點"}</b></div>`).join("")}` : ``}
         ${log.length ? `<div class="menu-sec" style="margin-top:14px;">最近點數紀錄</div>${apLogRowsHTML(log)}` : ``}
+        <div class="menu-sec" style="margin-top:14px;">說明</div>
+        <div class="ic-sub" id="wallet-legal-links" style="line-height:2;"><a href="/pricing" target="_blank" rel="noopener">收費說明</a><br><a href="/terms" target="_blank" rel="noopener">服務條款</a>｜<a href="/privacy" target="_blank" rel="noopener">隱私權政策</a><br><a href="/terms#refund" target="_blank" rel="noopener">退款說明</a></div>
         <div class="ic-sub" style="margin-top:14px;opacity:.7;">資料截至 ${taipeiStampText()}（台灣時間）</div>
         <button class="ghost-btn" id="btn-wallet-report" style="margin-top:8px;">回報帳務問題</button>
       </div>
@@ -12809,7 +12808,7 @@ function renderMenuPanel(s){
     ${acct ? `<a class="menu-item" id="link-account">${icon("key")} 帳號：${escapeHtml(acct.email_masked||"")}</a>`
            : `<a class="menu-item" id="link-account">${icon("key")} 綁定信箱　<span style="font-size:12px;opacity:.7;">再領 30 點、換手機找得回</span></a>`}
     <a class="menu-item" id="link-report-game">${icon("alert")} 回報遊戲問題</a>
-    <a class="menu-item privacy-link" id="link-privacy">${icon("help")} 隱私說明</a>
+    <a class="menu-item privacy-link" id="link-privacy" href="/privacy" target="_blank" rel="noopener">${icon("help")} 隱私說明</a>
     ${CLOUD_SAVE_ENABLED ? `<div class="menu-note" id="cloud-sync-status-wrap">${cloudSyncStatusHTML()}</div>` : `<a class="menu-item" id="link-manual-cloud-save">${icon("cloud")} 存到雲端</a>`}
     ${lastKnownWallet>0 ? `<div class="menu-note">${icon("wallet")} 金鑰錢包：${lastKnownWallet} 點</div>` : ``}
     <a class="menu-item${aiWritingNow?" off":""}" id="link-switch-life"${aiWritingNow?' aria-disabled="true"':""}>${icon("refresh")} 切換其他人生</a>

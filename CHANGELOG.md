@@ -10,6 +10,13 @@
 
 ---
 
+### 2026-10-08（開發部）說明頁面三頁(十、10.16，2026.10.08-d，尚未上線)
+- 起因：網頁版定案(2026-10-08)三份交接文件的第三份；設計文件已寫入10.16(commit `a3ed913`)。
+- 新增`terms.html`、`privacy.html`、`pricing.html`(根目錄，純靜態)與產生腳本`design-assets/build-legal-pages.py`(從設計文件全文區塊逐字產生)；`build-pages.sh`放進`dist/`；`CLAUDE.md`、`DEPLOY.md`、`WORKFLOW.md`的檔案清單同步。
+- `index.html`：首頁最下方預告＋三連結、錢包頁三行連結、開場同意頁條款連結(`CONSENT_VERSION`=2、`CONSENT_MIN_ACCEPTED`=1，舊玩家不重新同意)、`LEGAL_DOCS_VERSION`／`LEGAL_DOCS_UPDATED`設定值；各處「隱私說明」連結改連`/privacy`(刪除短版彈窗)。
+- 10.16.9核對隱私頁資料項目：6項不符或沒列出(IP、人生代號清單、存檔索引、同意紀錄、寄信次數紀錄、刪除帳號缺工具)，見10.16.13第7點，沒有改頁面文字。
+- 測試：新增`test-80`(33項)；`test-63`調整。QA手冊34.27。
+
 ### 2026-10-08（開發部）付費周邊(十、10.3.13、7.4.3.4、16.7.2.1、10.9.3.1a補充二，2026.10.08-c，尚未上線)
 - 起因：網頁版定案(2026-10-08)三份交接文件的第一份，設計文件已寫入(commit `a3ed913`)。
 - 反悔：每一世免費5次(`UNDO_FREE_PER_LIFE`)，用完每次扣1點並跳確認視窗(`requestUndo()`)，舊存檔補2次(`ensureUndoRule()`)；扣點共用`paySinglePoints()`(帳號人生扣帳號錢包、其他扣本機點數)。

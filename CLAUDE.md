@@ -6,7 +6,7 @@
 
 ## 檔案結構
 
-- `index.html`：遊戲本體，單一HTML檔（前端+呼叫AI的邏輯），部署到Cloudflare Pages（**2026-09-30起連GitHub自動部署**：合併進`master`就上線，`build-pages.sh`只把下列三個檔放進`dist/`，見`DEPLOY.md`；舊的手動上傳專案保留備用）；**2026-09-28起Pages要一起上傳根目錄的`og.png`**（社群分享預覽圖，16.10.9唯一例外；原始檔在`design-assets/og-image.html`，不上傳）；**2026-09-29起也要一起上傳根目錄的`lunar.min.js`**（農曆套件lunar-javascript，二、2.7真實日曆用；沒上傳時程式退回瀏覽器內建農曆，少數年份春節會差一天。jsdom測試由`tests/harness.mjs`直接內嵌）
+- `index.html`：遊戲本體，單一HTML檔（前端+呼叫AI的邏輯），部署到Cloudflare Pages（**2026-09-30起連GitHub自動部署**：合併進`master`就上線，`build-pages.sh`只把下列檔案放進`dist/`（`index.html`、`og.png`、`lunar.min.js`，**2026-10-08起再加三個說明頁`terms.html`、`privacy.html`、`pricing.html`**，十、10.16；這三頁由`design-assets/build-legal-pages.py`從設計文件10.16.6～10.16.8的全文區塊產生，改條款文字＝先改設計文件、再重跑這支），見`DEPLOY.md`；舊的手動上傳專案保留備用）；**2026-09-28起Pages要一起上傳根目錄的`og.png`**（社群分享預覽圖，16.10.9唯一例外；原始檔在`design-assets/og-image.html`，不上傳）；**2026-09-29起也要一起上傳根目錄的`lunar.min.js`**（農曆套件lunar-javascript，二、2.7真實日曆用；沒上傳時程式退回瀏覽器內建農曆，少數年份春節會差一天。jsdom測試由`tests/harness.mjs`直接內嵌）
 - `worker/`：Cloudflare Worker中繼站（AI代理、存檔KV、行動點、簡轉繁；**2026-09-30第二批起還有帳號系統：`account.js`帳號Durable Object、`account-routes.js`、`gate.js`花費上限與通知、`mail.js`Resend寄信**，設定步驟見`設定說明_帳號與寄信.md`）。**2026-09-24起用wrangler 3部署**（`cd worker && npx wrangler deploy`，步驟見`worker/README.md`），不再貼線上編輯器；API金鑰只用`wrangler secret put`存放
 - `life-sim-design/`：**唯一的設計正本**，所有規則以各章節檔案裡的【定案】標記為準。`00-總覽.md`收檔案對照表、總目錄、全域更新日誌（新條目只寫這裡；9/26以前的舊條目在`00-總覽-更新日誌封存.md`）、設計精神說明；`01`~`18`一章一檔（對照見`00-總覽.md`「檔案對照表」），`14-內容範例庫/`依生命階段再分子檔案。拆檔規則見`協作流程說明-共同基準.md`「## 唯一正本」
 - `DEPLOY.md`（2026-09-30起）：部署步驟與「每次上傳／部署了哪個版本」紀錄表。**每次要上傳前**：換`index.html`的`APP_VERSION`、在`RELEASE_NOTES`最前面加一筆玩家看得懂的更新說明；`worker/`有改就同步換`worker/worker.js`的`WORKER_VERSION`；使用者說「我上傳／部署了」就在`DEPLOY.md`補一行。`tests/test-54-version.mjs`檢查這幾處對不對得上
