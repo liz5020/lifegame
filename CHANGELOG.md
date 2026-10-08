@@ -10,6 +10,17 @@
 
 ---
 
+### 2026-10-08（開發部）共用職業細表(2026.10.08-h，尚未上線)
+- 起因：使用者要求父母與玩家共用一張具體職業細表（方案2），並拍板：高風險併進細表、玩家自己挑具體職缺、具體職業不影響數值。設計文件五、5.2.5／十二、12.3／12.4／三、3.4.3／四、4.9／九、9.2。
+- `index.html`：新增`OCCUPATION_JOBS`（八類共8～4個職業，權重、高風險旗標）與`jobsOfCategory`／`isValidJob`／`jobIsHighRisk`／`rollJobInCategory`／`PARENT_LABEL_CATEGORY`／`backfillOccupationJobs`；移除`HIGH_RISK_JOB_SUBTYPES`與`rollJobRiskSubtype`（高風險改由職業旗標決定，舊的工種名稱加字尾：工地→工地工人等）；家長卡新增`occupationJob`、配偶`spouseOccupationJob`、手足子女`path.job`、玩家`jobTitle`；`resolveJobApplication`／`applyJobHire`／`acceptJobOffer`帶職缺；求職彈窗選類別後列出職缺（高風險標註）、錄取畫面顯示職缺；payload新增`job_title`；「關於我」加職稱；轉職履歷加職稱；舊存檔載入時補擲。版本2026.10.08-h與更新說明。
+- `worker/prompt.js`：新增`job_title`說明（照職稱寫、不自己編）；`worker/worker.js`：WORKER_VERSION 2026.10.08-h（prompt有改，需重新部署Worker）。
+- 驗證：新增`tests/test-83-job-table.mjs`（24項：細表權重與高風險比例、家長／配偶／手足、玩家挑職缺、不屬類別改抽、保底改類別、退休清除、彈窗、舊存檔補擲）；`test-19`、`test-56`改配合新機制。**未測試（需真實API／實機）**：AI是否照`job_title`寫職稱、求職彈窗職缺按鈕在手機版的排版。舊存檔可直接繼續玩（載入時補擲）。
+
+### 2026-10-08（開發部）家長職業加權(2026.10.08-g，尚未上線)
+- 起因：使用者確認父母職業機率清單；原本`pick()`平均抽，政治人物每位家長12.5%（雙親家庭約23%有政治人物家長，連動鎖定富裕家境）。設計文件五、5.2.5。
+- `index.html`：`PARENT_OCCUPATIONS`每項加`weight`（30/25/15/10/8/5/5/2，測試參數）；新增`rollParentOccupation(excludePolitician)`（用既有`weightedPick`，排除政治人物時其餘按比例放大），三處抽職業（雙親在場、離異不同住／失聯／已故）改用；版本2026.10.08-g與更新說明。不改遊戲狀態結構，舊存檔不受影響；`worker/`沒動。
+- 驗證：`tests/test-56-occupation.mjs`新增4項（10000次比例、政治人物約2%、排除版不出現政治人物、權重合計100）。
+
 ### 2026-10-08（開發部）興趣多元化(2026.10.08-f，尚未上線)
 - 起因：使用者回饋興趣玩幾次都是手作居多；查核程式端沒有任何出現機率，類別全由AI挑，prompt範例也偏手作。設計文件八、8.8.1～8.8.3（claude.ai網頁版定案）。
 - `index.html`：新增`INTEREST_ITEMS`／`rollInterestSeed`／`prepareInterestSeed`／`interestCardLabel`；每回合在timeCtx算一次種子(重新生成沿用)；payload新增`turn_focus.try_new_suggestion`、`interest_seed_now`、`interest_status[].item`；種子回合AI類別不符改回種子並記`interest_event_mismatch`；興趣卡`item`欄位(選填，舊卡無)；興趣面板與人生回顧顯示「類別・項目」；版本2026.10.08-f與更新說明。

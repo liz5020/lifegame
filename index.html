@@ -1234,6 +1234,9 @@ function refreshMilestoneLocks(s){
 function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
 function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
 function pick(arr){ return arr[rnd(0,arr.length-1)]; }
+function rollParentOccupation(excludePolitician){ // 5.2.5加權抽職業；排除政治人物時剩餘權重自動重新正規化
+  return weightedPick(PARENT_OCCUPATIONS.filter(o=>!(excludePolitician && o.label==="政治人物")).map(o=>[o,o.weight]));
+}
 
 // ========== 三、3.3 外表成長來源（2026-09-27補上，使用者授權Claude全權判斷，數字皆為【測試參數】） ==========
 // 顏值：先天骰值不變，另加兩項「會回來的」修正（天花板低、不大幅翻轉）：
@@ -2613,7 +2616,7 @@ function finalizeDivorce(s, spouseName, propertyChoice, custodyChoice){
     // keep_self：玩家保留房產並承接房貸剩餘本金，房產/房貸/housing皆維持原樣不變動
   }
   s.cash = Math.round(s.cash * (playerSharePct/100));
-  s.spouseIncome = 0; s.spouseOccupationCategory = null;
+  s.spouseIncome = 0; s.spouseOccupationCategory = null; s.spouseOccupationJob = null;
   spouse.romanceStatus = "divorced";
   completeMilestone(s, "divorce"); // 4.3.1（2026-09-27）
   s.divorceRecoveryNodeAtTurn = s.turnCount + DIVORCE_RECOVERY_NODE_DELAY_TURNS; // 7.6.3（2026-09-27）：之後開放重新累積的正向節點
@@ -2759,30 +2762,32 @@ function resolveJobApplication(s, category, isTransfer, opts){
   // 12.4【定案】流程第③步「要不要接受offer」、保底offer玩家仍可拒絕（2026-09-27補上）：彈窗傳deferAccept，錄取後先不上任，
   // 等玩家在彈窗選接受(acceptJobOffer)或拒絕(declineJobOffer)；沒傳deferAccept的呼叫維持原本錄取即上任
   const deferred = hired && opts.deferAccept;
+  // 12.4（2026-10-08）：具體職業——玩家在類別底下自己挑；保底offer改了類別、或沒挑(放置模式)時由程式依權重抽
+  const finalJob = hired ? ((finalCategory===category && isValidJob(category, opts.job)) ? opts.job : rollJobInCategory(finalCategory)) : null;
   if(hired && !deferred){
-    applyJobHire(s, finalCategory, isTransfer, opts);
+    applyJobHire(s, finalCategory, isTransfer, Object.assign({}, opts, { job: finalJob }));
   } else if(!hired){
     if(isTransfer) s.levelNegativeEvent = true; // 12.5：申請轉職被拒算這個職級期間的負面職涯事件
     s.jobSearchStreak = (s.jobSearchStreak||0)+1;
     if(s.careerStatus!==CAREER_STATUS.EMPLOYED) s.careerStatus = CAREER_STATUS.JOB_SEARCHING;
   }
   s.pendingJobSearch = null;
-  s.pendingJobOffer = deferred ? { category:finalCategory, isTransfer:!!isTransfer, opts } : null;
+  s.pendingJobOffer = deferred ? { category:finalCategory, job:finalJob, isTransfer:!!isTransfer, opts } : null;
   // 十二、12.11.1（2026-09-22新增）：若這次求職候選來自職涯伏筆(自由接案/演藝圈線/海外線)，結算候選狀態——
   // 「已接受」定義為確實錄取且落在該線對應的目標路徑(自由接案/演藝圈線需命中自由/創作類；海外線只要錄取即算，因為重點是離開原職而非特定類別)
   if(opts.foreshadowLine && !deferred){
     const landedIntendedPath = opts.isOverseas ? hired : (hired && finalCategory==="自由/創作類");
     closeForeshadowCandidate(s, opts.foreshadowLine, landedIntendedPath);
   }
-  s.careerEventLog = { type:"job_search", category:finalCategory, roll, probPct, hired, isTransfer:!!isTransfer, wasFallback:isFallbackForced };
+  s.careerEventLog = { type:"job_search", category:finalCategory, job:finalJob, roll, probPct, hired, isTransfer:!!isTransfer, wasFallback:isFallbackForced };
   logJobApplicationPlayStyle(s, category, isTransfer, isFallbackForced, probPct);
-  return { category:finalCategory, roll, probPct, hired, breakdown };
+  return { category:finalCategory, job:finalJob, roll, probPct, hired, breakdown };
 }
 function acceptJobOffer(s){
   const offer = s.pendingJobOffer;
   if(!offer) return;
   s.pendingJobOffer = null;
-  applyJobHire(s, offer.category, offer.isTransfer, offer.opts||{});
+  applyJobHire(s, offer.category, offer.isTransfer, Object.assign({}, offer.opts||{}, { job: offer.job }));
   if(offer.opts && offer.opts.foreshadowLine){
     closeForeshadowCandidate(s, offer.opts.foreshadowLine, offer.opts.isOverseas ? true : offer.category==="自由/創作類");
   }
@@ -2812,8 +2817,10 @@ function applyJobHire(s, finalCategory, isTransfer, opts){
   // 同類別轉職：job_level/tenure_months保留，只重骰薪資落點（12.6【定案】）
   s.occupationCategory = finalCategory;
   const catDef = findOccupationCategory(finalCategory);
-  // 12.3：is_high_risk旗標接上7.1.1死亡機率加成（2026-09-27改為錄取時擲工種，見rollJobRiskSubtype）
-  s.jobRiskSubtype = rollJobRiskSubtype(finalCategory);
+  // 12.3：is_high_risk旗標接上7.1.1死亡機率加成（2026-10-08改為由所選具體職業的旗標決定，見OCCUPATION_JOBS）
+  const job = isValidJob(finalCategory, opts.job) ? opts.job : rollJobInCategory(finalCategory);
+  s.jobTitle = job; // 12.3（2026-10-08）：具體職業；高風險由職業本身的旗標決定(取代舊的錄取後獨立擲工種)
+  s.jobRiskSubtype = jobIsHighRisk(finalCategory, job) ? job : null;
   s.riskyLifestyle = !!s.jobRiskSubtype;
   s.careerStatus = CAREER_STATUS.EMPLOYED;
   s.retirementStatus = s.retirementStatus || "在職";
@@ -2823,7 +2830,7 @@ function applyJobHire(s, finalCategory, isTransfer, opts){
   if(wasFirstJob) s.milestones.first_full_time_job = "completed";
   else if(isTransfer && s.milestones.first_job_change!=="completed") s.milestones.first_job_change = "completed";
   // 12.6（2026-09-27使用者同意Claude建議）：第二次以後的轉職也寫進履歷（第一次由里程碑自動記，見recordMilestoneChronicle）
-  else if(isTransfer) s.chronicle.push(`（${s.age}歲）${opts.isOverseas?"到海外工作，":""}轉職到${finalCategory.replace(/類$/,"")}`);
+  else if(isTransfer) s.chronicle.push(`（${s.age}歲）${opts.isOverseas?"到海外工作，":""}轉職到${finalCategory.replace(/類$/,"")}${job?`（${job}）`:""}`);
   // 12.6.1【定案】海外型轉職成功後cohabiting依4.1.2在搬離時解除（2026-09-27補上）：只解除原生家庭(父母/隔代/手足)，
   // 配偶與未成年子女是否一起出國文件沒規定，維持同住
   if(opts.isOverseas){
@@ -3013,7 +3020,7 @@ function rollAnnualLayoffCheck(s){
   if(!s.layoffForeshadowed){ s.layoffForeshadowed = true; return { justForeshadowed:true, layoffTriggered:false }; }
   s.layoffForeshadowed = false;
   s.careerStatus = CAREER_STATUS.UNEMPLOYED;
-  s.riskyLifestyle = false; s.jobRiskSubtype = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
+  s.riskyLifestyle = false; s.jobRiskSubtype = null; s.jobTitle = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
   s.justLostJob = true; // 【定案,2026-09-23】七、7.6.2婚姻危機失業觸發改讀這個旗標，回合結束時清除
   markPlayStyleSetback(s, "job_loss", s.occupationCategory); // 十六、16.2.3
   s.monthlyIncome = 0;
@@ -3056,7 +3063,7 @@ function launchBusiness(s, opts){
   s.businessOrigin = "startup"; // 12.11.1（2026-09-22新增）：區別於接手家業，供rollAnnualBusinessCheck()判斷是否套用接手家業的成功率加成
   s.occupationCategory = "自營/家庭事業類";
   s.careerStatus = CAREER_STATUS.BUSINESS;
-  s.riskyLifestyle = false; s.jobRiskSubtype = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
+  s.riskyLifestyle = false; s.jobRiskSubtype = null; s.jobTitle = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
   s.consecutiveLossYears = 0;
   s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE * businessIncomeFactor(s));
   // 12.8.3：第一次創業改列客戶端結構化自動判斷
@@ -3114,7 +3121,7 @@ function resolveBusinessContinuation(s, choice){ // "close"/"persist"/"inject"
     markPlayStyleSetback(s, "job_loss", "自營/家庭事業類"); // 十六、16.2.3：收攤視同一次失業
     s.businessStatus = "收攤";
     s.careerStatus = CAREER_STATUS.UNEMPLOYED; // 12.8.2【定案】收攤後回到12.4求職段落，不卡死人生
-    s.riskyLifestyle = false; s.jobRiskSubtype = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
+    s.riskyLifestyle = false; s.jobRiskSubtype = null; s.jobTitle = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
     s.justLostJob = true; // 【定案,2026-09-23】收攤視同一次失業寫入點，同樣要設旗標
     s.occupationCategory = null;
     s.monthlyIncome = 0;
@@ -3201,7 +3208,7 @@ function resolveRetirementOffer(s, choice, customText){
   s.retirementStatus = "已退休";
   completeMilestone(s, "retirement"); // 4.3.1（2026-09-27）
   s.careerStatus = choice==="semi" ? CAREER_STATUS.SEMI_RETIRED : CAREER_STATUS.RETIRED;
-  s.riskyLifestyle = false; s.jobRiskSubtype = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
+  s.riskyLifestyle = false; s.jobRiskSubtype = null; s.jobTitle = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
   // 3.4.7既有「下一個完整月份才計入」規則：這裡直接覆寫monthlyIncome，因為退休決定發生在彈窗(回合之間)，
   // 自然只會影響下一次月結算，不會回溯這一回合已經算過的舊薪水，效果上等同「下一個完整月份起才變動」
   s.monthlyIncome = Math.round(preRetireSalary * rate * (choice==="semi" ? 0.5 : 1));
@@ -3298,7 +3305,7 @@ function acceptFamilyBusinessOffer(s){
   s.businessOrigin = "inherited"; // 供rollAnnualBusinessCheck()判斷是否套用接手家業的成功率加成
   s.businessPartner = null;
   s.careerStatus = CAREER_STATUS.BUSINESS;
-  s.riskyLifestyle = false; s.jobRiskSubtype = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
+  s.riskyLifestyle = false; s.jobRiskSubtype = null; s.jobTitle = null; // 12.3（2026-09-27）：高風險旗標只來自在職的職業類別，離開該職業(失業/創業/收攤/退休)就清掉
   s.consecutiveLossYears = 0;
   s.monthlyIncome = Math.round(computeCareerSalary(s, "自營/家庭事業類") * SALARY_SCALE * businessIncomeFactor(s));
   s.careerEventLog = { type:"family_business_takeover", success:true };
@@ -3658,7 +3665,7 @@ async function initApp(){
 // 讀檔時的舊存檔遷移：4.1.3性別；二、2.7／B1（2026-09-29）舊行事曆換算到真實日曆、年齡依生日重算
 function migrateLoadedState(st){
   if(!st) return;
-  if(st.characters){ ensureCharacterGenders(st); updateFamilyPaths(st); } // 4.9.5：舊存檔的兄弟姊妹、子女依目前年齡補擲出路
+  if(st.characters){ ensureCharacterGenders(st); updateFamilyPaths(st); backfillOccupationJobs(st); } // 4.9.5：舊存檔的兄弟姊妹、子女依目前年齡補擲出路
   revealPendingExams(st); // B3：上次沒看完就離開的考試分數，重新進來直接公布
   if(st.timeState && st.phase && st.phase!=="home" && st.phase!=="setup"){ try{ ensureCalendar(st); }catch(e){ console.warn("行事曆遷移失敗", e); } }
 }
@@ -4209,15 +4216,16 @@ const PARENTING_STYLES = [
   { label:"情感疏忽",
     parentTrait:"報喜不報憂、情感表達少、常常心不在焉", affinityRange:[25,45] }
 ];
+// 五、5.2.5（2026-10-08使用者確認，【測試參數，待驗證】）：八類依貼近台灣的分布加權抽，不再平均各12.5%；weight合計100
 const PARENT_OCCUPATIONS = [
-  { label:"自營業者", trait:"自己做生意，家裡常聊到生意上的事" },
-  { label:"白領上班族", trait:"朝九晚五，偶爾加班，話題常繞著公司" },
-  { label:"勞力/服務業", trait:"工時不固定，體力活，回家常喊累" },
-  { label:"待業中", trait:"目前沒有固定工作，家裡氣氛偶爾緊繃" },
-  { label:"長期不在身邊", trait:"因工作長期在外地或國外，聚少離多" },
-  { label:"自由接案", trait:"收入不穩定，工作時間彈性但常常在忙" },
-  { label:"軍公教警消", trait:"作息規律，重紀律，偶爾提起工作上的責任" },
-  { label:"政治人物", trait:"公眾人物，家裡常有外人不太自然的關注" }
+  { label:"自營業者", weight:15, trait:"自己做生意，家裡常聊到生意上的事" },
+  { label:"白領上班族", weight:30, trait:"朝九晚五，偶爾加班，話題常繞著公司" },
+  { label:"勞力/服務業", weight:25, trait:"工時不固定，體力活，回家常喊累" },
+  { label:"待業中", weight:5, trait:"目前沒有固定工作，家裡氣氛偶爾緊繃" },
+  { label:"長期不在身邊", weight:5, trait:"因工作長期在外地或國外，聚少離多" },
+  { label:"自由接案", weight:8, trait:"收入不穩定，工作時間彈性但常常在忙" },
+  { label:"軍公教警消", weight:10, trait:"作息規律，重紀律，偶爾提起工作上的責任" },
+  { label:"政治人物", weight:2, trait:"公眾人物，家裡常有外人不太自然的關注" }
 ];
 const SIBLING_TRAITS = ["競爭心強，什麼都要比一下","很罩你，關鍵時刻挺你","各過各的，感情普通但不差","話不多，但需要時找得到人"];
 // bug修正（9/14，人生草稿0914測試.pdf）：原本SIBLING_NAMES混著男女名字、跟SIBLING_RELATIONS各自獨立亂數，
@@ -4377,7 +4385,7 @@ function livingCostTierForState(s){
 const OCCUPATION_CATEGORIES = [
   { key:"自營/家庭事業類", salaryRange:[25,80], isHighRisk:false },
   { key:"受雇專業/白領類", salaryRange:[32,100], isHighRisk:false },
-  { key:"勞力/服務類", salaryRange:[29.5,45], isHighRisk:true }, // isHighRisk＝這個類別可能有高風險工種，實際是否高風險見HIGH_RISK_JOB_SUBTYPES
+  { key:"勞力/服務類", salaryRange:[29.5,45], isHighRisk:true }, // isHighRisk＝這個類別可能有高風險工種，實際是否高風險見OCCUPATION_JOBS的旗標
   { key:"不穩定/待業類", salaryRange:[0,25], isHighRisk:false },
   { key:"長期不在身邊類", salaryRange:[35,70], isHighRisk:true },
   { key:"自由/創作類", salaryRange:[0,150], isHighRisk:false },
@@ -4385,30 +4393,55 @@ const OCCUPATION_CATEGORIES = [
   { key:"政治人物子女(自身從政)", salaryRange:[50,100], isHighRisk:false }
 ];
 function findOccupationCategory(key){ return OCCUPATION_CATEGORIES.find(o=>o.key===key) || null; }
-// 十二、12.3【定案】is_high_risk細到工種（工地、遠洋、特技、警消外勤等）（2026-09-27補上，使用者授權Claude全權判斷，機率為【測試參數】）：
-// 原本整個類別一起標，勞力/服務類、長期不在身邊類、軍公教/警消類的每個人都算高風險。改成錄取時依類別擲一次，
-// 抽中才是高風險工種，工種名稱送給AI當敘事素材；自由/創作類也有小機率是特技類工作
-const HIGH_RISK_JOB_SUBTYPES = {
-  "勞力/服務類": { prob:0.3, subtypes:["工地","遠洋漁業","高空作業"] },
-  "長期不在身邊類": { prob:0.4, subtypes:["遠洋船員","海外工地"] },
-  "軍公教/警消類": { prob:0.4, subtypes:["警消外勤","野戰部隊"] },
-  "自由/創作類": { prob:0.05, subtypes:["特技演員"] }
+// 十二、12.3／五、5.2.5（2026-10-08使用者確認，權重為【測試參數，待驗證】）：職業八大類底下的具體職業細表，家長／配偶／手足／子女／玩家共用。
+// 每項[職業名稱, 家長等人物抽取時的權重, 是否高風險工種]；玩家求職時自己從類別底下挑，不抽權重。具體職業只影響顯示、傳給AI的敘事素材與高風險判定，
+// 薪資、錄取率、升遷仍只看類別。高風險旗標取代舊的rollJobRiskSubtype()獨立擲骰（權重依原本30%／40%／40%／5%調，抽出來的高風險比例大致不變）
+const OCCUPATION_JOBS = {
+  "自營/家庭事業類": [["餐飲店老闆",25],["傳統零售店",20],["小型工廠",15],["家庭代工",10],["農漁業",15],["電商賣家",15]],
+  "受雇專業/白領類": [["行政事務",20],["業務",20],["工程師",15],["財務會計",15],["醫護人員",10],["私校/補教老師",10],["金融業",10]],
+  "勞力/服務類": [["工廠作業員",14],["司機",14],["餐飲服務輪班",14],["外送員",14],["保全清潔",14],["工地工人",10,true],["遠洋漁業船員",10,true],["高空作業員",10,true]],
+  "不穩定/待業類": [["打零工",40],["待業中",30],["臨時工",20],["生意失敗後轉職中",10]],
+  "長期不在身邊類": [["外派人員",30],["長途貨運",30],["遠洋船員",20,true],["海外工地工人",20,true]],
+  "自由/創作類": [["設計接案",19],["寫作",19],["攝影",19],["插畫",19],["影音創作者",19],["特技演員",5,true]],
+  "軍公教/警消類": [["公務員",30],["公立學校老師",30],["野戰部隊軍人",20,true],["警消外勤",20,true]],
+  "政治人物子女(自身從政)": [["民意代表",50],["縣市首長/更高層級",30],["政黨幕僚",20]]
 };
-function rollJobRiskSubtype(category){
-  const def = HIGH_RISK_JOB_SUBTYPES[category];
-  if(!def || Math.random() >= def.prob) return null;
-  return pick(def.subtypes);
+function jobsOfCategory(category){ return (OCCUPATION_JOBS[category]||[]).map(j=>({ name:j[0], weight:j[1], risk:!!j[2] })); }
+function isValidJob(category, name){ return !!name && jobsOfCategory(category).some(j=>j.name===name); }
+function jobIsHighRisk(category, name){ return jobsOfCategory(category).some(j=>j.name===name && j.risk); }
+// 依權重抽類別底下一個職業；nonRiskOnly＝舊存檔補擲用，只從非高風險職業抽(避免改變舊存檔本來的高風險狀態)
+function rollJobInCategory(category, nonRiskOnly){
+  const pool = jobsOfCategory(category).filter(j=>!(nonRiskOnly && j.risk));
+  return pool.length ? weightedPick(pool.map(j=>[j.name, j.weight])) : null;
+}
+// 家長職業(5.2.5的八個短名稱)對應到職業類別key
+const PARENT_LABEL_CATEGORY = {
+  "自營業者":"自營/家庭事業類", "白領上班族":"受雇專業/白領類", "勞力/服務業":"勞力/服務類", "待業中":"不穩定/待業類",
+  "長期不在身邊":"長期不在身邊類", "自由接案":"自由/創作類", "軍公教警消":"軍公教/警消類", "政治人物":"政治人物子女(自身從政)"
+};
+// 舊存檔補擲(2026-10-08)：沒有具體職業的家長、手足子女、配偶、在職玩家，依類別補擲一次，比照4.9.5的做法
+function backfillOccupationJobs(st){
+  (st.characters||[]).forEach(c=>{
+    if(c.occupation && !c.occupationJob && PARENT_LABEL_CATEGORY[c.occupation]) c.occupationJob = rollJobInCategory(PARENT_LABEL_CATEGORY[c.occupation]);
+    if(c.path && c.path.stage==="work" && c.path.category && !c.path.job) c.path.job = rollJobInCategory(c.path.category);
+  });
+  if(st.spouseOccupationCategory && !st.spouseOccupationJob) st.spouseOccupationJob = rollJobInCategory(st.spouseOccupationCategory);
+  if(st.occupationCategory && st.careerStatus===CAREER_STATUS.EMPLOYED && !st.jobTitle){
+    const old = st.jobRiskSubtype; // 舊存檔的高風險工種名稱(舊名是新名的前段，例如「工地」→「工地工人」)，有的話沿用同一個職業
+    const hit = old ? jobsOfCategory(st.occupationCategory).find(j=>j.risk && j.name.includes(old)) : null;
+    st.jobTitle = hit ? hit.name : rollJobInCategory(st.occupationCategory, true);
+  }
 }
 function rollSalaryInRange(range){ return +(range[0] + Math.random()*(range[1]-range[0])).toFixed(1); }
 // 【定案】配偶收入採中間深度：骰定一類職業八大類，套3.4.3薪資範圍抽一份固定月薪，不模擬配偶升遷/轉職，
 // 只有配偶失業/配偶轉職這類特定里程碑事件才改寫這個數字（本輪未建自動觸發器，setSpouseIncome供未來事件呼叫，見CHANGELOG）
 function rollSpouseIncome(){
   const cat = pick(OCCUPATION_CATEGORIES);
-  return { category: cat.key, monthlyIncome: rollSalaryInRange(cat.salaryRange) };
+  return { category: cat.key, job: rollJobInCategory(cat.key), monthlyIncome: rollSalaryInRange(cat.salaryRange) };
 }
-function setSpouseIncome(s, amount, category){
+function setSpouseIncome(s, amount, category, job){
   s.spouseIncome = amount;
-  if(category!==undefined) s.spouseOccupationCategory = category;
+  if(category!==undefined){ s.spouseOccupationCategory = category; s.spouseOccupationJob = job || null; }
 }
 // 【定案】household_status：單身／同居／已婚雙薪／已婚單薪／離婚後——這格原本算不出來，補上後3.4.8共同生活那格才能落實
 function computeHouseholdStatus(s){
@@ -4491,7 +4524,7 @@ function newRoll(carry, identity){
   const presentParentInfos = []; // 5.5三餐資格判定專用：只收「在場、有能力煮飯」的家長(不含服刑中那位)
 
   function addNormalParent(relationLabel){
-    const occ = pick(PARENT_OCCUPATIONS);
+    const occ = rollParentOccupation(false);
     if(occ.label==="政治人物") isPoliticianChild = true;
     const style = pick(PARENTING_STYLES);
     presentParentStyles.push(style.label);
@@ -4507,7 +4540,8 @@ function newRoll(carry, identity){
       origin: "父母，從出生起", // 四、4.1（9/19新增）：家人是先天既有關係，不是AI敘事中新認識的
       cohabiting: true, // 四、4.1.2（2026-09-20新增）：開局起與父母同住
       age: 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX), // 十三、13.5.1（2026-09-22修正）：父母年齡＝玩家年齡＋22~38歲，開局時玩家已15歲
-      occupation: occ.label // 五、5.2.5／十二、12.11.1（2026-09-22新增）：持久化在角色卡上，供「接手家業」職涯伏筆線的前置條件判斷用
+      occupation: occ.label, // 五、5.2.5／十二、12.11.1（2026-09-22新增）：持久化在角色卡上，供「接手家業」職涯伏筆線的前置條件判斷用
+      occupationJob: rollJobInCategory(PARENT_LABEL_CATEGORY[occ.label]) // 5.2.5（2026-10-08）：類別底下的具體職業，細表共用
     });
   }
 
@@ -4520,7 +4554,7 @@ function newRoll(carry, identity){
   // 【技術判斷，使用者確認】比照離異仍有聯絡那一支骰姓名、職業、教養風格；好感：失聯者風格區間−10、已故者照風格區間，開局即凍結。
   // 失聯期間不進13.5父母健康狀態機(找回後才開始)，已故者不進。不列入presentParentStyles(不影響依附/社交起點)、不抽政治人物
   function addAbsentParent(relationLabel, kind){
-    const occ = pick(PARENT_OCCUPATIONS.filter(o=>o.label!=="政治人物"));
+    const occ = rollParentOccupation(true);
     const style = pick(PARENTING_STYLES);
     const lost = kind==="lost";
     characters.push({
@@ -4533,12 +4567,12 @@ function newRoll(carry, identity){
       lost: lost || undefined, lostTurn: lost ? turnCount : undefined,
       deceased: lost ? undefined : true, estateSettled: lost ? undefined : true, healthStage: lost ? 1 : 4,
       age: lost ? 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX) : undefined,
-      occupation: occ.label
+      occupation: occ.label, occupationJob: rollJobInCategory(PARENT_LABEL_CATEGORY[occ.label])
     });
   }
   function addNonResidentDivorcedParent(relationLabel){
     if(Math.random() >= DIVORCED_PARENT_CONTACT_PROB){ addAbsentParent(relationLabel, "lost"); return; }
-    const occ = pick(PARENT_OCCUPATIONS.filter(o=>o.label!=="政治人物"));
+    const occ = rollParentOccupation(true);
     const style = pick(PARENTING_STYLES);
     characters.push({
       name: relationLabel==="父親" ? "爸爸" : "媽媽",
@@ -4548,7 +4582,7 @@ function newRoll(carry, identity){
       summary:"", lastTurn:turnCount, active:true, isChild:false,
       origin: "父母，從出生起", cohabiting: false,
       age: 15 + rnd(PARENT_CHILD_AGE_GAP_MIN, PARENT_CHILD_AGE_GAP_MAX),
-      occupation: occ.label
+      occupation: occ.label, occupationJob: rollJobInCategory(PARENT_LABEL_CATEGORY[occ.label])
     });
   }
   // 第二步：家長職業（在addNormalParent裡一併骰）+ 建立角色卡（依家庭結構決定有誰）
@@ -6394,7 +6428,7 @@ function applyMarriageDecisionCompletion(s){
   partner.lastTurn = s.turnCount;
   // 三、3.4.11（2026-09-20新增）：配偶收入採中間深度，結婚當下骰定一次固定月薪，寫進週期性收入
   const spouseRoll = rollSpouseIncome();
-  setSpouseIncome(s, spouseRoll.monthlyIncome, spouseRoll.category);
+  setSpouseIncome(s, spouseRoll.monthlyIncome, spouseRoll.category, spouseRoll.job);
   return partner;
 }
 
@@ -6933,7 +6967,7 @@ function rollSpouseAnnualDeath(s){
   if(Math.random() >= deathAgeBaseProbability(spouse.age)) return null;
   spouse.deceased = true; spouse.active = false; spouse.romanceStatus = "widowed";
   releaseCohabiting(spouse);
-  s.spouseIncome = 0; s.spouseOccupationCategory = null;
+  s.spouseIncome = 0; s.spouseOccupationCategory = null; s.spouseOccupationJob = null;
   completeMilestone(s, "widowed");
   s.chronicle.push(`（${s.age}歲）${spouse.name}走了`);
   s.spouseDeathEventLog = { spouseName: spouse.name };
@@ -7759,14 +7793,15 @@ const OCCUPATION_DISPLAY_NAMES = { // 4.9.4：職業類別給玩家看的名稱(
 function occupationDisplayName(key){ return OCCUPATION_DISPLAY_NAMES[key] || String(key||"").replace(/類$/,""); }
 function hasFamilyPath(c){ return !!c && (c.isChild || ["哥哥","姊姊","弟弟","妹妹"].includes(familyRoleOf(c.relation))); }
 function rollFamilyWorkCategory(){ return pick(OCCUPATION_CATEGORIES.filter(o=>!/政治/.test(o.key))).key; }
+function rollFamilyWork(){ const category = rollFamilyWorkCategory(); return { stage:"work", category, job: rollJobInCategory(category) }; } // 2026-10-08：類別底下再擲具體職業
 // 4.9.5：滿18歲擲讀大學／工作，讀大學的滿22歲畢業擲職業類別；開局或舊存檔已經18歲以上的依年齡補擲。
 // 劇情交代過(affiliation)就以劇情為準、不再擲；已故的不再變。只影響顯示與傳給AI的內容
 function updateFamilyPath(c){
   if(!hasFamilyPath(c) || c.deceased || c.affiliation || typeof c.age!=="number" || c.age<18) return;
   if(!c.path){
-    c.path = (c.age<22 && Math.random()<FAMILY_COLLEGE_RATE) ? { stage:"college" } : { stage:"work", category: rollFamilyWorkCategory() };
+    c.path = (c.age<22 && Math.random()<FAMILY_COLLEGE_RATE) ? { stage:"college" } : rollFamilyWork();
   } else if(c.path.stage==="college" && c.age>=22){
-    c.path = { stage:"work", category: rollFamilyWorkCategory() };
+    c.path = rollFamilyWork();
   }
 }
 function updateFamilyPaths(s){ (s.characters||[]).forEach(updateFamilyPath); }
@@ -7781,7 +7816,7 @@ function isClassmateRelation(relation){
   return /同學|同班/.test(r) && !/的/.test(r);
 }
 function parentOccupationText(c){ // 4.9.3
-  const base = c.occupation==="長期不在身邊" ? "在外地工作" : c.occupation;
+  const base = c.occupationJob || (c.occupation==="長期不在身邊" ? "在外地工作" : c.occupation);
   return (c.retired && !c.deceased) ? `已退休（原本是${base}）` : base;
 }
 // 回傳null＝未知。forAI：傳給AI時，同在讀高中的兄弟姊妹補一句不同校(B8：弟弟妹妹不會出現在主角的高中)
@@ -7793,10 +7828,10 @@ function npcOccupationText(s, c, forAI){
     const st = schoolStageForAge(c.age);
     if(st) return (forAI && st==="讀高中" && mode==="highschool") ? "讀高中（跟你不同校，除非劇情已經交代過同校）" : st;
     if(!c.path) return null;
-    return c.path.stage==="college" ? "讀大學" : occupationDisplayName(c.path.category);
+    return c.path.stage==="college" ? "讀大學" : (c.path.job || occupationDisplayName(c.path.category));
   }
   if(c.occupation) return parentOccupationText(c);
-  if(c.romanceStatus==="married" && s.spouseOccupationCategory) return occupationDisplayName(s.spouseOccupationCategory);
+  if(c.romanceStatus==="married" && s.spouseOccupationCategory) return s.spouseOccupationJob || occupationDisplayName(s.spouseOccupationCategory);
   const r = String(c.relation||"");
   if(isClassmateRelation(r)){
     const level = /高中|國中|國小/.test(r) ? "highschool" : (/大學/.test(r) ? "college" : null);
@@ -8387,6 +8422,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     // 十二、職涯系統（2026-09-20新增）：以下欄位僅供你敘事參考，狀態轉換/薪資/成敗全部由系統計算，你不用也不能自己判斷或回報
     career_status: s.careerStatus||CAREER_STATUS.NOT_EMPLOYED,
     job_level_label: s.occupationCategory ? jobLevelLabel(s.occupationCategory, s.jobLevel) : null,
+    job_title: s.jobTitle || null, // 12.3（2026-10-08）：玩家目前的具體職業
     job_risk_subtype: s.jobRiskSubtype || null,
     job_search_phase: s.jobSearchPhase ? { turn: s.jobSearchPhase.turn+1, total: s.jobSearchPhase.total, first_time: s.jobSearchPhase.first } : null, // 12.2（2026-09-27）：求職期第幾回合 // 12.3（2026-09-27）：高風險工種（例如工地、遠洋船員、警消外勤），null代表一般工作
     business_status: s.businessStatus||null,
@@ -8575,8 +8611,16 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-f";
+const APP_VERSION = "2026.10.08-h";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-h", date:"2026-10-08", title:"職業更具體", items:[
+    "家人、配偶的職業不再只是大方向，會寫出具體的工作，例如工程師、餐飲店老闆、護理人員、警消外勤。",
+    "求職時選好方向後，可以從底下的具體職缺裡挑想做的工作；高風險的工作會特別標出來。錄取後你的職稱也會固定下來，劇情裡不會再亂換。",
+    "薪資、錄取機會仍然只看大方向，不受具體職缺影響。",
+  ]},
+  { version:"2026.10.08-g", date:"2026-10-08", title:"家長職業更貼近現實", items:[
+    "開局時爸媽的職業不再八種平均出現：上班族、勞力/服務業、自營業者最常見，政治人物變得很少見（原本每位家長約八分之一，現在約2%）。",
+  ]},
   { version:"2026.10.08-f", date:"2026-10-08", title:"興趣更多元", items:[
     "遇到的新興趣不再老是手作：現在會從藝術、手作、知識、運動、科技、表演、買賣七大類裡輪流出現，每一類還有更具體的項目（例如陶藝、街舞、天文、攝影）。",
     "你已經在經營的類別比較不容易再抽到，想嘗試新的東西時更容易遇到沒碰過的領域。",
@@ -13382,7 +13426,7 @@ function renderKeyViewModal(){
 // 十七、17.5「關於我」：由程式組合文字，不呼叫AI
 function aboutMeText(s){
   const d = ensureAppearanceDesc(s);
-  const who = isStudentPhase(s) ? "學生" : s.occupationCategory ? `${s.occupationCategory}（${jobLevelLabel(s.occupationCategory, s.jobLevel)}）` : "目前沒有正職";
+  const who = isStudentPhase(s) ? "學生" : s.occupationCategory ? `${s.jobTitle ? s.jobTitle+"，" : ""}${s.occupationCategory}（${jobLevelLabel(s.occupationCategory, s.jobLevel)}）` : "目前沒有正職";
   const lines = [`${s.name}，${s.age}歲，${who}。`];
   if(d.innate) lines.push(`天生的樣子：${d.innate}`);
   if(d.styling) lines.push(`現在的打扮：${d.styling}`);
@@ -14723,24 +14767,41 @@ function renderJobSearchModal(pending){
       ${pending.isFallback ? `<p>已經連續碰壁好幾次了，這次至少會有一個底線的機會。</p>` : `<p>可以投遞的方向與大概的錄取機會：</p>`}
       <div id="job-search-stage1">
         ${pending.offers.map(o=>`<button class="ghost-btn job-search-btn" data-key="${o.category}" style="display:block;width:100%;text-align:left;margin:4px 0;">${escapeHtml(o.category)}（約${o.probPct}%）</button>`).join("")}
+        <p style="font-size:13px;margin-top:10px;">想投遞的職缺：</p>
+        <div id="job-pick-list"></div>
         <button class="primary-btn" id="btn-job-search-apply" style="margin-top:14px;">投遞</button>
       </div>
       <div id="job-search-stage2" style="display:none;"></div>
     </div>`;
   document.body.appendChild(div);
   let chosen = pending.offers[0].category;
+  let chosenJob = null;
+  // 12.4（2026-10-08）：選好類別後，底下列出該類別的全部職缺讓玩家挑(高風險的標出來)；錄取率只看類別
+  const renderJobPick = ()=>{
+    const jobs = jobsOfCategory(chosen);
+    if(!jobs.some(j=>j.name===chosenJob)) chosenJob = jobs.length ? jobs[0].name : null;
+    const box = document.getElementById("job-pick-list");
+    box.innerHTML = jobs.map(j=>`<button class="ghost-btn job-pick-btn" data-job="${escapeHtml(j.name)}" style="display:inline-block;margin:3px 4px 3px 0;">${escapeHtml(j.name)}${j.risk?"（高風險）":""}</button>`).join("");
+    box.querySelectorAll(".job-pick-btn").forEach(b=>{
+      const mark = ()=>{ const on = b.dataset.job===chosenJob; b.style.background = on ? "var(--ink)" : ""; b.style.color = on ? "var(--paper)" : ""; };
+      mark();
+      b.onclick = ()=>{ chosenJob = b.dataset.job; box.querySelectorAll(".job-pick-btn").forEach(x=>{ const on = x.dataset.job===chosenJob; x.style.background = on ? "var(--ink)" : ""; x.style.color = on ? "var(--paper)" : ""; }); };
+    });
+  };
+  const markCategory = ()=>div.querySelectorAll(".job-search-btn").forEach(b=>{ const on = b.dataset.key===chosen; b.style.background = on ? "var(--ink)" : ""; b.style.color = on ? "var(--paper)" : ""; });
   div.querySelectorAll(".job-search-btn").forEach(btn=>{
-    btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".job-search-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
+    btn.onclick = ()=>{ chosen = btn.dataset.key; markCategory(); renderJobPick(); };
   });
+  markCategory(); renderJobPick();
   document.getElementById("btn-job-search-apply").onclick = ()=>{
-    const result = resolveJobApplication(s, chosen, pending.isTransfer, { isOverseas: pending.isOverseas, foreshadowLine: pending.foreshadowLine, creativeBonusPct: pending.creativeBonusPct, deferAccept:true });
+    const result = resolveJobApplication(s, chosen, pending.isTransfer, { job: chosenJob, isOverseas: pending.isOverseas, foreshadowLine: pending.foreshadowLine, creativeBonusPct: pending.creativeBonusPct, deferAccept:true });
     document.getElementById("job-search-stage1").style.display = "none";
     const stage2 = document.getElementById("job-search-stage2");
     stage2.style.display = "block";
     stage2.innerHTML = `
       ${result.breakdown ? breakdownHtml(result.breakdown) : ""}
       <p style="font-size:13px;">骰值：擲出${result.roll}（1-100），門檻${result.probPct}%${pending.isFallback?"（保底offer，必定成立）":""}</p>
-      <p style="font-size:16px;margin-top:6px;"><strong>${result.hired ? `錄取了：${escapeHtml(result.category)}` : "這次沒有錄取"}</strong></p>
+      <p style="font-size:16px;margin-top:6px;"><strong>${result.hired ? `錄取了：${escapeHtml(result.job||result.category)}（${escapeHtml(result.category)}）` : "這次沒有錄取"}</strong></p>
       ${result.hired ? jobOfferDecisionButtonsHtml() : `<button class="primary-btn" id="btn-job-search-confirm" style="margin-top:10px;">知道了</button>`}`;
     if(result.hired) bindJobOfferDecisionButtons(div);
     else document.getElementById("btn-job-search-confirm").onclick = ()=>{ div.remove(); saveGame(); render(); };
@@ -14761,7 +14822,7 @@ function renderJobOfferDecisionModal(){
   const div = document.createElement("div");
   div.id = "job-offer-decision-modal";
   div.className = "modal-backdrop";
-  div.innerHTML = `<div class="modal"><h3>錄取了：${escapeHtml(offer.category)}</h3>${jobOfferDecisionButtonsHtml()}</div>`;
+  div.innerHTML = `<div class="modal"><h3>錄取了：${escapeHtml(offer.job||offer.category)}（${escapeHtml(offer.category)}）</h3>${jobOfferDecisionButtonsHtml()}</div>`;
   document.body.appendChild(div);
   bindJobOfferDecisionButtons(div);
 }
