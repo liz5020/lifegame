@@ -225,5 +225,7 @@ A.check("放置：每回合自動推進交期最近的一筆並入帳", ev("stat
 A.check("舊存檔：舊制gigOpenOrders／gigNextOfferTurn被丟棄，訂單簿從空白開始(只有新登記的)", ev(`${C}.gigOpenOrders`) === undefined && ev(`${C}.gigNextOfferTurn`) === undefined);
 const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
 A.check("prompt：訂單簿規則(接單上限、order_new、order_target、程式判定交件、不說系統用語)", ["side_gig_orders", "at_cap", "order_new", "order_target", "order_work", "order_notices", "order_inquiry_now", "gig_category", "系統用語"].every(k => prompt.includes(k)));
+A.check("8.13.1(2026-10-08) prompt：訂單現況以本回合side_gig_orders為準、沒有的訂單不可寫成還在趕或重新登記、open為0＝沒有在趕", /訂單現況一律以本回合side_gig_orders為準/.test(prompt) && /不可以寫成還在趕工或還剩幾件，也不可以用order_new重新登記/.test(prompt) && /open為0代表目前沒有在趕的訂單/.test(prompt));
+A.check("8.13.1(2026-10-08) prompt：order_new只限新客人／新詢問或玩家行動寫明兩種情況；舊的「故事提到就登記」說法不在", /order_new只在兩種情況登記：本回合真的出現新客人或新詢問/.test(prompt) && /玩家這回合的行動寫明要做一筆side_gig_orders裡沒有的訂單/.test(prompt) && !/故事中提到進行中的訂單/.test(prompt));
 A.check("沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
 process.exit(A.report() ? 0 : 1);

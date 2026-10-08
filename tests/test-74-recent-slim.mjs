@@ -1,5 +1,5 @@
-// 十、10.14.8補充(2026-10-05)近況縮減：最近3回合只有上一回合送原文，前第2、3回合送turn_summary；
-// 沒有摘要的回合送原文；退路(2回合原文＋1回合摘要)。全程假上游，不打真實API
+// 十、10.14.8補充近況縮減：2026-10-08第二輪比對未通過，預設維持3回合原文(跟2026.10.05-a相同)；
+// 縮減程式保留，明確設成1回合原文時才檢查縮減寫法(上一回合原文＋前2回合摘要、沒有摘要送原文、退路2)。全程假上游，不打真實API
 import * as H from "./harness.mjs";
 import { TURN_SYSTEM_PROMPT } from "../worker/prompt.js";
 const A = H.makeAsserter("近況縮減(10.14.8補充)");
@@ -14,7 +14,19 @@ const turnBodies = () => fake.calls.filter(c => c.tool_choice && c.tool_choice.n
 const lastPayload = () => H.turnPayloadFromBody(turnBodies().slice(-1)[0]);
 const logs = () => g.ev("state.log.map(e=>({text:e.text, sum:e.turnSummary||''}))");
 
-A.check("預設RECENT_FULL_TEXT_TURNS＝1(定案)、近況範圍仍是3回合＋6則摘要", g.ev("RECENT_FULL_TEXT_TURNS") === 1 && g.ev("RECENT_CONTEXT_TURNS") === 3 && g.ev("RECENT_SUMMARY_TURNS") === 6);
+A.check("預設RECENT_FULL_TEXT_TURNS＝3(2026-10-08維持3回合原文)、近況範圍3回合＋6則摘要", g.ev("RECENT_FULL_TEXT_TURNS") === 3 && g.ev("RECENT_CONTEXT_TURNS") === 3 && g.ev("RECENT_SUMMARY_TURNS") === 6);
+for (let i = 0; i < 5; i++) await H.playTurn(g, "讀書");
+{
+  const L0 = logs();
+  await H.playTurn(g, "讀書");
+  const p0 = lastPayload(), n0 = L0.length;
+  A.check("10.14.8補充(2026-10-08) 預設送最近3回合原文、前兩回合沒有併進摘要清單(跟2026.10.05-a相同)",
+    JSON.stringify(p0.recent_turns_full) === JSON.stringify(L0.slice(-3).map(e => e.text))
+    && JSON.stringify(p0.recent_turns_summary || []) === JSON.stringify(L0.slice(-9, -3).map(e => e.sum || e.text)), { n0 });
+}
+// 以下明確指定送1回合原文，檢查縮減寫法(新的一段人生，從頭算)
+g.ev("RECENT_FULL_TEXT_TURNS = 1");
+await H.startNewLife(g);
 
 // 人生剛開始：有幾回合送幾回合
 let L = logs();
@@ -50,7 +62,6 @@ await H.playTurn(g, "讀書");
 p = lastPayload();
 const k = L.length;
 A.check("34.24#21 退路：N-1、N-2為原文，N-3為摘要", JSON.stringify(p.recent_turns_full) === JSON.stringify([L[k - 2].text, L[k - 1].text]) && p.recent_turns_summary.slice(-1)[0] === (L[k - 3].sum || L[k - 3].text));
-g.ev("RECENT_FULL_TEXT_TURNS = 1");
 
 // turn_summary不限40字
 const longSum = "很長的本回合摘要".repeat(10); // 80字
@@ -59,7 +70,7 @@ H.installUpstream(H2);
 await H.playTurn(g, "讀書");
 A.check("34.24#22 turn_summary不受40字截斷(存進日記的是完整80字)", g.ev("state.log[state.log.length-1].turnSummary") === longSum);
 
-A.check("規則說明已改：recent_turns_full只給上一回合原文", /recent_turns_full只會給你上一回合的完整原文/.test(TURN_SYSTEM_PROMPT) && !/recent_turns_full（最近3回合）/.test(TURN_SYSTEM_PROMPT) && !/最近3回合的完整原文/.test(TURN_SYSTEM_PROMPT));
+A.check("規則說明維持「最近3回合原文」(2026-10-08改回，跟2026.10.05-a一致)", /recent_turns_full（最近3回合）/.test(TURN_SYSTEM_PROMPT) && /recent_turns_full只會給你最近3回合的完整原文/.test(TURN_SYSTEM_PROMPT) && !/recent_turns_full只會給你上一回合的完整原文/.test(TURN_SYSTEM_PROMPT));
 A.check("沒有錯誤", g.errors.length === 0, g.errors);
 A.report();
 g.win.close();

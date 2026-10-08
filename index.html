@@ -6754,9 +6754,9 @@ function rollAnnualHealthChecks(s){
 // 四、4.2.1.1（9/19新增）：短期上下文壓縮規則——最近3回合給完整原文，再往前6則只給AI已經產生過的turn_summary壓縮摘要，
 // 更早的完全不送給AI（由4.2履歷/4.1 NPC記憶承接長期記憶），取代原本「recent_log只給最近2則原文、更早整個看不到」的做法
 // 十、10.14.8補充(2026-10-05)近況縮減：最近3回合(RECENT_CONTEXT_TURNS)裡只有最近RECENT_FULL_TEXT_TURNS回合送原文，其餘送turn_summary(沒有摘要的回合送原文)。
-// 定案1(上一回合原文＋前2回合摘要)；退路2(前2回合原文＋前第3回合摘要)；3＝舊做法(3回合原文)。可在測試時改
+// 1＝上一回合原文＋前2回合摘要(2026-10-08未上線)；2＝退路；3＝現行做法(3回合原文)。可在測試時改
 const RECENT_CONTEXT_TURNS = 3; // 【定案,9/19,見4.2.1.1】
-let RECENT_FULL_TEXT_TURNS = 1; // 【定案,10.14.8補充(2026-10-05)】
+let RECENT_FULL_TEXT_TURNS = 3; // 【定案,4.2.1.1】10.14.8補充(2026-10-08)第二輪比對未通過，近況維持3回合原文；縮減程式保留，之後只改這個數字再試
 const RECENT_SUMMARY_TURNS = 6; // 【測試參數,Claude Code判斷,呼應L3履歷摘要同樣抓6則】
 // 一、1.2.9.1（2026-09-23取代原本固定250-350字規則）：敘事字數依這回合monthsCrossed(這回合涵蓋的遊戲內時間長度)分級，
 // 程式直接算好級距+建議字數告訴AI，不讓AI自己換算週期。三個級距的分界(2週=0.5個月/1個月)與各級字數皆為【測試參數,暫定,待驗證】
@@ -8331,7 +8331,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     chronicle_recent: forceEnding ? s.chronicle : s.chronicle.slice(-6),
     // 四、4.2.1.1（9/19新增，取代原本recent_log只給最近2則原文的做法）：
     // 最近3回合給完整原文（保持逐字語感），再往前6則只給壓縮摘要（turn_summary），更早的完全不送
-    // 十、10.14.8補充(2026-10-05)：最近3回合裡改成只有上一回合送原文，前第2、3回合併進摘要清單(依時間順序)
+    // 十、10.14.8補充：RECENT_FULL_TEXT_TURNS小於3時，最近3回合裡較早的回合併進摘要清單(依時間順序)；預設3＝跟2026.10.05-a相同
     recent_turns_full: s.log.slice(-RECENT_FULL_TEXT_TURNS).map(e=>e.text),
     recent_turns_summary: s.log.slice(-(RECENT_CONTEXT_TURNS+RECENT_SUMMARY_TURNS), -RECENT_FULL_TEXT_TURNS).map(e=>e.turnSummary||e.text),
     player_action: actionText,
@@ -8370,10 +8370,10 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.05-b";
+const APP_VERSION = "2026.10.08-a";
 const RELEASE_NOTES = [
-  { version:"2026.10.05-b", date:"2026-10-05", title:"幕後整理", items:[
-    "旁白回顧前幾回合的方式稍微調整，讀起來應該不會有差別；如果覺得劇情前後接不起來，歡迎回報。",
+  { version:"2026.10.08-a", date:"2026-10-08", title:"副業訂單修正", items:[
+    "修正旁白有時把已經交完的訂單寫成還沒做完。",
   ]},
   { version:"2026.10.05-a", date:"2026-10-05", title:"幕後整理", items:[
     "整理了每回合送給旁白的資料，拿掉空白和重複的部分，玩起來不會有差別。",
