@@ -983,6 +983,132 @@ function showWriterToast(text, ms){
   }catch(e){}
 }
 
+// ========== 十、10.15 封測名額與候補（2026-10-04定案）==========
+// 公開招募期間每天限額新玩家：未綁信箱的新玩家在「實際領25點啟程禮」那一刻扣1個名額(伺服器 /entry/claim)；名額滿了可以留信箱候補(＝綁定信箱帳號，名下還沒有人生)，
+// 輪到時寄信通知，位子保留3天。範圍只有正式網址(isOfficialHost)且真實模式；示範模式、本機、預覽、測試網址預設不檢查，測試用旗標 lifegame_entry_quota＝"yes" 打開。連不上伺服器一律放行，不擋玩家。
+const ENTRY_QUOTA_FLAG = "lifegame_entry_quota";
+function entryQuotaOn(){
+  try{ const f = localStorage.getItem(ENTRY_QUOTA_FLAG); if(f==="yes") return true; if(f==="no") return false; }catch(e){}
+  return !USE_MOCK && isOfficialHost(); // 只有正式網址檢查；本機、預覽、測試網址就算用真AI也不佔名額
+}
+const WL_HOLD = ["allocated","notified","send_failed"];
+function deviceHasLifeSave(){
+  for(let i=0;i<MAX_LIFE_SLOTS;i++){ try{ if(localStorage.getItem(HOME_META_PREFIX+i) || localStorage.getItem(STORAGE_KEY+":"+i)) return true; }catch(e){} }
+  return false;
+}
+function deviceGiftClaimed(){
+  try{ const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME); return !!(key && Number(localStorage.getItem(GIFT_CLAIMS_LOCAL_PREFIX+key))>0); }catch(e){ return false; }
+}
+function entryModal(id, html){
+  document.getElementById(id)?.remove();
+  const div = document.createElement("div");
+  div.id = id; div.className = "modal-backdrop";
+  div.innerHTML = `<div class="modal">${html}</div>`;
+  document.body.appendChild(div);
+  return div;
+}
+// 第9／10則：名額已滿／已達檢查點。按鈕〔留下信箱候補〕〔先不用〕，下方「已經有帳號？用信箱登入」與隱私說明
+function showEntryFullModal(reason){
+  const text = reason==="checkpoint"
+    ? `<p>這一階段的封測名額已經發完了。</p><p>留下信箱，下一階段開放時會照順序通知你。</p><p>信箱只用來通知名額、保存進度和找回帳號。</p>`
+    : `<p>撰稿人今天準備的稿紙已經發完了。</p><p>留下信箱，輪到你時會寄信通知，位子會為你保留 3 天。</p><p>信箱只用來通知名額、保存進度和找回帳號。</p>`;
+  const div = entryModal("entry-full-modal", `${text}
+    <button class="primary-btn" id="btn-entry-join">留下信箱候補</button>
+    <button class="ghost-btn" id="btn-entry-skip">先不用</button>
+    <p style="font-size:12.5px;margin:8px 0 0;"><a id="link-entry-login" style="cursor:pointer;text-decoration:underline;">已經有帳號？用信箱登入</a></p>
+    ${privacyLinkHTML()}`);
+  document.getElementById("btn-entry-join").onclick = ()=>{ div.remove(); openAccountFlow("waitlist"); };
+  document.getElementById("btn-entry-skip").onclick = ()=>div.remove();
+  document.getElementById("link-entry-login").onclick = ()=>{ div.remove(); openAccountFlow("login"); };
+}
+// 第11則：候補成功
+function showWaitlistJoinedModal(position){
+  const div = entryModal("entry-joined-modal", `<p>撰稿人把你記在候補名單上了。</p><p>你目前排在第 ${Number(position)||1} 位，輪到時會寄信到你的信箱。</p><button class="primary-btn" id="btn-entry-joined-ok">好的</button>`);
+  document.getElementById("btn-entry-joined-ok").onclick = ()=>div.remove();
+}
+// 排隊中再打開遊戲（短提示）
+function showWaitlistWaitingNote(position){
+  const div = entryModal("entry-waiting-modal", `<p>撰稿人提醒你，你還在候補名單上，目前排在第 ${Number(position)||1} 位。</p><button class="primary-btn" id="btn-entry-waiting-ok">好的</button>`);
+  document.getElementById("btn-entry-waiting-ok").onclick = ()=>div.remove();
+}
+// 第13則：輪到了。當天啟程禮已發滿(30點延後)時第二行不同；〔開始人生〕接著走開始新人生的流程(不再重複檢查)
+function showWaitlistReadyModal(giftFull){
+  const line2 = giftFull ? "啟程禮 25 點已經放進錢包，另外 30 點明天會自動補上。" : "啟程禮 55 點已經放進錢包。";
+  const div = entryModal("entry-ready-modal", `<p>撰稿人為你留的位子準備好了。</p><p>${line2}</p><button class="primary-btn" id="btn-entry-ready-start">開始人生</button>`);
+  document.getElementById("btn-entry-ready-start").onclick = ()=>{ div.remove(); startNewLifeFromHome({ gated:true }); };
+}
+// 第12則：位子過期。當天還有開放名額時〔重新候補〕改為〔開始人生〕，第二行改為「今天還有名額，可以直接開始。」
+function showWaitlistExpiredModal(canDirect){
+  const div = entryModal("entry-expired-modal", `<p>撰稿人為你保留的位子已經過期了。</p><p>${canDirect ? "今天還有名額，可以直接開始。" : "還想玩的話，可以重新候補。"}</p>
+    <button class="primary-btn" id="btn-entry-expired-go">${canDirect ? "開始人生" : "重新候補"}</button>
+    <button class="ghost-btn" id="btn-entry-expired-skip">先不用</button>`);
+  document.getElementById("btn-entry-expired-skip").onclick = ()=>div.remove();
+  document.getElementById("btn-entry-expired-go").onclick = async ()=>{
+    const b = document.getElementById("btn-entry-expired-go"); if(b) b.disabled = true;
+    const r = await acctFetch(canDirect ? "waitlist/direct" : "waitlist/requeue", {});
+    div.remove();
+    if(r.ok){
+      acctSetAccount(r.data.account);
+      if(canDirect) startNewLifeFromHome({ gated:true });
+      else showWaitlistWaitingNote(r.data.account.wl && r.data.account.wl.position);
+    } else if(r.data && (r.data.error==="full" || r.data.error==="checkpoint")){
+      await refreshAcctWl(); showWaitlistExpiredModal(false);
+    } else showWriterToast("撰稿人提醒你：這次沒有成功，請稍後再試一次。");
+  };
+}
+async function refreshAcctWl(){
+  if(!acct || !acctToken()) return;
+  const r = await acctFetch("account/me");
+  if(r.ok){ acctSetAccount(r.data.account); acctApplyEvents(r.data.events); }
+}
+// 候補帳號依狀態顯示對應訊息；回傳true＝已經顯示了訊息(呼叫端不要再往下走)
+async function entryHandleWaitlist(){
+  if(!acct || !acct.wl) return false;
+  await refreshAcctWl();
+  const w = acct.wl; if(!w) return false;
+  if(w.status==="waiting"){ showWaitlistWaitingNote(w.position); return true; }
+  if(WL_HOLD.includes(w.status)){ showWaitlistReadyModal(!!w.gift_full); return true; }
+  if(w.status==="expired"){ showWaitlistExpiredModal(!!w.can_direct); return true; }
+  return false;
+}
+// 按下「開始新人生」那一刻（開場同意頁與角色設定之前）的名額檢查；回傳true＝可以繼續
+async function entryGate(){
+  if(!entryQuotaOn()) return true;
+  if(acct){
+    if(acct.lives && acct.lives.length>0) return true;
+    if(acct.wl) return !(await entryHandleWaitlist());
+    return true;
+  }
+  if(deviceHasLifeSave() || deviceGiftClaimed()) return true; // 已有存檔、或這台裝置領過啟程禮的重開：不佔名額、不檢查
+  const r = await acctFetch("entry/status");
+  if(!r.ok || !r.data || r.data.open!==false) return true; // 連不上放行
+  showEntryFullModal(r.data.reason);
+  return false;
+}
+// 實際發出未綁信箱啟程禮前扣名額；回傳{ok:true}或{ok:false, reason}
+async function entryClaimSlot(key){
+  if(!entryQuotaOn()) return { ok:true };
+  const r = await acctFetch("entry/claim", { key });
+  if(r.ok) return { ok:true };
+  if(r.status===409 && r.data && (r.data.error==="full" || r.data.error==="checkpoint")) return { ok:false, reason:r.data.error };
+  return { ok:true }; // 連不上或其他錯誤放行
+}
+// 開始畫面的名額顯示（非跳窗）；只對「還沒有存檔、沒領過啟程禮、沒登入」的新玩家顯示。排隊中的候補玩家顯示順位
+async function updateHomeEntryLine(){
+  const el = document.getElementById("home-entry"); if(!el || !entryQuotaOn()) return;
+  if(acct){
+    if(!acct.wl || (acct.lives && acct.lives.length)) return;
+    await refreshAcctWl();
+    const w = acct.wl, el2 = document.getElementById("home-entry"); if(!el2 || !w) return;
+    if(w.status==="waiting") el2.textContent = `你在候補名單上，目前排在第 ${w.position||1} 位`;
+    return;
+  }
+  if(deviceHasLifeSave() || deviceGiftClaimed()) return;
+  const r = await acctFetch("entry/status");
+  const el2 = document.getElementById("home-entry"); if(!el2 || !r.ok || !r.data) return;
+  el2.textContent = r.data.open ? `今日封測名額　剩 ${r.data.remaining}／${r.data.total}` : "今日名額已滿，可留信箱候補";
+}
+
 // 每條人生一個id（遙測與免費開場回合判定用），newRoll/世代傳承時換新
 function newLifeId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 function ensureLifeId(s){ if(!s.lifeId) s.lifeId = newLifeId(); return s.lifeId; }
@@ -8370,8 +8496,12 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-a";
+const APP_VERSION = "2026.10.08-b";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-b", date:"2026-10-08", title:"封測名額與候補", items:[
+    "封測期間，新玩家每天有名額限制。名額滿了，可以留下信箱候補，輪到你時會寄信通知，位子保留 3 天。",
+    "候補中再打開遊戲，會看到你目前排第幾位。",
+  ]},
   { version:"2026.10.08-a", date:"2026-10-08", title:"副業訂單修正", items:[
     "旁白不會再把故事裡提過、但已經結束的訂單重新記成新訂單。",
     "如果你的人生是 9/30 以前開始的，故事裡還沒交代完的訂單，可以直接在行動裡寫「把○○的訂單交給她」來收尾。",
@@ -10535,6 +10665,16 @@ function applyResult(r, timeCtx, forceEnding, actionText){
 async function startLife(){
   // 十、10.3.4：全新人生在正式開始這一刻才領新手禮包（開場建角7步不扣點，反覆重骰也不會重複領）
   const ap = ensureAP(state);
+  if(ap.giftPending && acct && acct.wl && !state.acct && !WL_HOLD.includes(acct.wl.status) && acct.wl.status!=="entered" && entryQuotaOn()){
+    // 十、10.15：候補帳號的位子還沒輪到(或已過期)，不能開始；已填的角色設定留在畫面上
+    await entryHandleWaitlist();
+    return;
+  }
+  if(ap.giftPending && !acct && entryQuotaOn() && !deviceGiftClaimed()){
+    // 十、10.15.2：名額在未綁信箱的啟程禮實際發出時才扣；這時名額被別人用完就顯示滿額訊息，已填的角色設定保留
+    const k = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+    if(k){ const q = await entryClaimSlot(k); if(!q.ok){ showEntryFullModal(q.reason); return; } }
+  }
   if(ap.giftPending && acct && !state.acct){
     // 十、10.9.2／10.9.3：登入帳號時開新人生＝帳號的人生(共用錢包)，不領本機的啟程禮；帳號第一次開到第2段人生時，由伺服器發第2份啟程禮(每日發放上限、發滿排隊)
     ap.giftPending = false;
@@ -11322,6 +11462,7 @@ function renderHome(){
       <p class="home-sub">這一次，換你決定要活成什麼樣子</p>
       <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，說書人陪你一路寫到老。</p>
       <button class="primary-btn" id="btn-home-new">開始一段人生</button>
+      <p class="home-note" id="home-entry"></p>
       <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
       ${acct ? `<p class="home-note" id="home-acct">已登入：${escapeHtml(acct.email_masked||"")}　<a id="link-home-logout" style="cursor:pointer;text-decoration:underline;">登出</a></p>`
              : `<button class="ghost-btn" id="btn-home-login">已有帳號？用信箱登入</button>`}
@@ -11377,7 +11518,8 @@ function renderHome(){
   </div>`;
 }
 function bindHome(){
-  document.getElementById("btn-home-new").onclick = startNewLifeFromHome;
+  document.getElementById("btn-home-new").onclick = ()=>startNewLifeFromHome();
+  updateHomeEntryLine();
   const homeLogin = document.getElementById("btn-home-login"); if(homeLogin) homeLogin.onclick = ()=>openAccountFlow("login");
   const homeLogout = document.getElementById("link-home-logout"); if(homeLogout) homeLogout.onclick = async ()=>{ await acctLogout(); showWriterToast("已登出這台裝置。帳號和錢包都還在，用信箱隨時可以再登入。"); };
   const homeCloud = document.getElementById("btn-home-cloud-lives"); if(homeCloud) homeCloud.onclick = ()=>showCloudPicker(acct.recovery_key);
@@ -11428,7 +11570,8 @@ function unboundFullNotice(){
   return used>=1 ? "未綁定信箱時只能同時進行 1 段人生。綁定信箱後可以同時進行 2 段。" : null;
 }
 function newLifeBlockedNotice(){ return acctFullNotice() || unboundFullNotice(); }
-async function startNewLifeFromHome(){
+async function startNewLifeFromHome(opts){
+  if(!(opts && opts.gated) && !(await entryGate())) return; // 十、10.15.2：開始新人生的那一刻先檢查名額(在開場同意頁與角色設定之前)
   const key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
   if(newLifeBlockedNotice() && key){ await showSlotPicker(key, undefined, newLifeBlockedNotice()); return; }
   if(!key){
@@ -13353,7 +13496,7 @@ function closeAccountFlow(){
   acctFlow = null;
   document.getElementById("account-modal")?.remove();
 }
-function acctFlowTitle(f){ return f.mode==="bind" ? "綁定信箱" : f.mode==="login" ? "用信箱登入" : "換綁信箱"; }
+function acctFlowTitle(f){ return f.mode==="bind" ? "綁定信箱" : f.mode==="waitlist" ? "留下信箱候補" : f.mode==="login" ? "用信箱登入" : "換綁信箱"; }
 function renderAccountFlow(){
   const f = acctFlow; if(!f) return;
   const old = document.getElementById("account-modal");
@@ -13371,7 +13514,7 @@ function renderAccountFlow(){
       <button class="ghost-btn" id="btn-acct-cancel">取消</button>`;
   } else if(f.step==="email"){
     body = `
-      <p style="font-size:13.5px;">${f.mode==="login" ? "輸入你綁定過的信箱，會寄一組驗證碼給你。" : f.mode==="change" ? "輸入新的信箱，會寄一組驗證碼給你。" : "輸入要綁定的信箱，會寄一組驗證碼給你。"}</p>
+      <p style="font-size:13.5px;">${f.mode==="login" ? "輸入你綁定過的信箱，會寄一組驗證碼給你。" : f.mode==="change" ? "輸入新的信箱，會寄一組驗證碼給你。" : f.mode==="waitlist" ? "輸入要留下的信箱，會寄一組驗證碼給你。信箱只用來通知名額、保存進度和找回帳號。" : "輸入要綁定的信箱，會寄一組驗證碼給你。"}</p>
       <div class="roll-item"><input id="acct-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com" value="${escapeHtml(f.email)}"
         style="width:100%;border:none;background:transparent;font-size:15px;padding:4px 0;border-bottom:1px solid var(--ink-soft);"></div>
       ${f.mode!=="bind" ? privacyLinkHTML() : ""}
@@ -13470,13 +13613,17 @@ async function acctFlowVerify(){
   const code = String((document.getElementById("acct-code")||{}).value||"").replace(/\s+/g,"");
   if(!/^\d{6}$/.test(code)){ f.error = "請輸入 6 位數的驗證碼。"; renderAccountFlow(); return; }
   f.busy = true; f.error = "";
-  const lives = f.mode==="change" ? [] : collectDeviceLives();
+  const lives = (f.mode==="change" || f.mode==="waitlist") ? [] : collectDeviceLives();
   const liveBody = lives.map(it=>({ lid:it.lid, pool:it.pool }));
   let r;
   if(f.mode==="bind"){
     let key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
     if(!key){ key = generateRecoveryKey(); try{ localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, key); }catch(e){} }
     r = await acctFetch("account/bind", { email:f.email, code, key, lives:liveBody });
+  } else if(f.mode==="waitlist"){
+    let key = localStorage.getItem(RECOVERY_KEY_STORAGE_NAME);
+    if(!key){ key = generateRecoveryKey(); try{ localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, key); }catch(e){} }
+    r = await acctFetch("waitlist/join", { email:f.email, code, key });
   } else if(f.mode==="login"){
     r = await acctFetch("account/login", { email:f.email, code, lives:liveBody });
   } else {
@@ -13487,7 +13634,8 @@ async function acctFlowVerify(){
   if(!r.ok){
     f.error = acctErrText(r.data, r.status, r.network);
     const e = r.data && r.data.error;
-    if(e==="email_exists" && f.mode==="bind") f.offerLogin = true; // 綁到已有帳號的信箱：拒絕，並提供改用登入
+    if(e==="email_exists" && (f.mode==="bind" || f.mode==="waitlist")) f.offerLogin = true; // 綁到已有帳號的信箱：拒絕，並提供改用登入
+    if(e==="not_full" && f.mode==="waitlist"){ closeAccountFlow(); showWriterToast("撰稿人提醒你：今天還有名額，可以直接開始。"); return; }
     if(["code_locked","code_expired","no_code"].includes(e)) f.cooldownUntil = Math.min(f.cooldownUntil, Date.now());
     renderAccountFlow(); return;
   }
@@ -13499,6 +13647,14 @@ async function acctFlowVerify(){
   // 綁定／登入成功：記下登入狀態、把伺服器收下的人生記上帳號
   try{ localStorage.setItem(ACCT_TOKEN_KEY, r.data.token); }catch(e){}
   acctSetAccount(r.data.account);
+  if(f.mode==="waitlist"){ // 十、10.15.4：候補成功(第11則)，回到首頁
+    acctRefreshAskedDate = taipeiDateString();
+    closeAccountFlow();
+    showWaitlistJoinedModal(r.data.result && r.data.result.position);
+    if(!state || state.phase!=="playing") state = { phase:"home" };
+    render();
+    return;
+  }
   if(f.mode==="login" && !localStorage.getItem(RECOVERY_KEY_STORAGE_NAME)) try{ localStorage.setItem(RECOVERY_KEY_STORAGE_NAME, acct.recovery_key); }catch(e){} // 全新裝置：沿用帳號的金鑰
   acctRefreshAskedDate = taipeiDateString();
   const applied = acctApplyAttach(lives, r.data.result);
@@ -13512,6 +13668,8 @@ async function acctFlowVerify(){
     renderBindResultModal("merged", overflow);
   } else if(overflow){
     renderBindResultModal(null, true);
+  } else if(acct && acct.wl && ["waiting","allocated","notified","send_failed","expired"].includes(acct.wl.status) && !(acct.lives && acct.lives.length)){
+    entryHandleWaitlist(); // 十、10.15：候補玩家登入後依狀態顯示第13／12則或排隊中提示
   } else {
     showWriterToast("撰稿人提醒你：已經用信箱登入了。");
   }

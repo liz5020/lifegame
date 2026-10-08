@@ -25,6 +25,14 @@ export function readSetting(env, name, fallback) {
 // 批次1曾用DAILY_SPEND_CAP_TWD這個名字；新名稱DAILY_SPEND_CAP優先，舊名字後台若還留著照樣認得
 export function spendCap(env) { return readSetting(env, "DAILY_SPEND_CAP", readSetting(env, "DAILY_SPEND_CAP_TWD", DEFAULT_DAILY_SPEND_CAP)); }
 export function giftCap(env) { return readSetting(env, "DAILY_GIFT_CAP", DEFAULT_DAILY_GIFT_CAP); }
+// 十、10.15：每日新玩家名額(0＝手動暫停發放，所以可以是0)與累計入場檢查點，只放Cloudflare後台
+export function newPlayerCap(env) {
+  const raw = env && env.DAILY_NEW_PLAYER_CAP;
+  if (raw === undefined || raw === null || String(raw).trim() === "") return 5;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 5;
+}
+export function playerCheckpoint(env) { return readSetting(env, "BETA_PLAYER_CHECKPOINT", 50); }
 export function callCostEstimate(env) { return readSetting(env, "AI_CALL_COST_ESTIMATE", DEFAULT_AI_CALL_COST_ESTIMATE); }
 
 function freshDay(date) { return { date, calls: 0, spent: 0, gifts: 0, queued: 0, notices: {} }; }
@@ -190,7 +198,7 @@ export async function accountsCall(env, payload) {
   const stub = accountStore(env);
   if (!stub) return { ok: false, error: "accounts_unavailable", status: 503 };
   const now = nowMs(env);
-  const full = Object.assign({ now, date: taipeiDateString(now), gift_cap: giftCap(env), verify_cap: readSetting(env, "DAILY_VERIFY_EMAIL_CAP", 80) }, payload);
+  const full = Object.assign({ now, date: taipeiDateString(now), gift_cap: giftCap(env), new_cap: newPlayerCap(env), checkpoint: playerCheckpoint(env), verify_cap: readSetting(env, "DAILY_VERIFY_EMAIL_CAP", 80) }, payload);
   const res = await stub.fetch("https://accounts.internal/op", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(full) });
   return res.json();
 }

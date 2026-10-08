@@ -62,3 +62,27 @@ export function noticeMail(kind, info) {
   if (kind === "gift15") return { subject: "人生草稿：今日啟程禮已發 15 份", text: lines.join("\n") + "\n" };
   return { subject: "人生草稿：今日啟程禮已發滿", text: lines.join("\n") + "\n" };
 }
+
+// 十、10.15.5：候補通知信。保留期限＝寄送成功那一刻＋72小時(台灣時間)，例：「10 月 8 日中午 12:00」。網址只放文字，不做按鈕、不放其他連結
+export function taipeiDeadlineText(ms) {
+  const d = new Date(ms + 8 * 3600 * 1000), h = d.getUTCHours(), m = String(d.getUTCMinutes()).padStart(2, "0");
+  const part = h === 12 ? "中午" : h < 12 ? "上午" : "下午";
+  const hh = h === 12 ? 12 : h % 12;
+  return (d.getUTCMonth() + 1) + " 月 " + d.getUTCDate() + " 日" + part + " " + hh + ":" + m;
+}
+export function waitlistMail(expMs) {
+  return {
+    subject: "人生草稿：輪到你了",
+    text: "你的封測名額已經準備好了，保留到 " + taipeiDeadlineText(expMs) + "。\n" +
+      "請打開 draftmylife.com，用這個信箱登入，就可以開始你的人生。\n" +
+      "這封信是因為你留了信箱候補才寄出的，之後不會再寄其他通知。\n"
+  };
+}
+// 十、10.15.6：累計入場達檢查點的管理通知信
+export function checkpointMail(info) {
+  return {
+    subject: "人生草稿：封測名額已達檢查點",
+    text: ["累計入場人數：" + info.cum + " 人", "目前檢查點：" + info.checkpoint + " 人", "候補排隊人數：" + info.queued + " 人", "時間：" + taipeiTimeText(info.now),
+      "名額已暫停發放，調高檢查點後隔天 00:00 恢復。"].join("\n") + "\n"
+  };
+}

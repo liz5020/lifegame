@@ -10,6 +10,14 @@
 
 ---
 
+### 2026-10-08（開發部）封測名額與候補(十、10.15，2026.10.08-b，尚未上線)
+- 起因：網頁版定案(2026-10-04)交接文件，公開招募前限制每日新玩家人數，滿了可留信箱候補。設計文件已寫入10.15(commit `3cb9208`)。
+- `worker/account.js`：帳號資料庫新增名額帳(`en`)、累計(`cum`)、候補隊伍(`wq`)、持有位子清單(`wh`)與操作`entry_status`／`entry_claim`／`wl_join`／`wl_direct`／`wl_requeue`／`wl_due`／`wl_mail_result`／`entry_stats`／`cp_result`；當天第一次有人碰到就自動做過期收回與分配；`life_add`加候補入場(領25＋30點)；`/account/me`帶`wl`狀態。
+- `worker/entry.js`(新)：每小時排程寄候補通知信(分配當天12:00起、失敗每小時重試最多3次)與檢查點通知信。`mail.js`加兩種信；`gate.js`加兩個設定值(`DAILY_NEW_PLAYER_CAP`可為0、`BETA_PLAYER_CHECKPOINT`)；`account-routes.js`加`/entry/status`、`/entry/claim`、`/waitlist/join|direct|requeue`；`save-admin.js`加`/admin/dashboard-roster`(自動寫存取紀錄)；`worker.js`：`/stats-summary`加`entry`區塊、三個數據網址也接受`SAVE_ADMIN_TOKEN`、`scheduled`分兩個排程；`dashboard.js`加名額卡片與名冊分頁；`wrangler.toml`加排程`0 * * * *`。
+- `index.html`：開始畫面名額顯示、按開始前檢查名額、`startLife()`在未綁啟程禮實際發出前扣名額、第9～13則訊息、留信箱候補流程(帳號流程新模式`waitlist`)；旗標`lifegame_entry_quota`(示範模式預設不檢查)。版本2026.10.08-b。
+- 測試：新增`test-75-entry-quota`(Worker端52項)、`test-76-entry-ui`(前端26項)。詳見QA 34.25。實作判斷十二項記在10.15.11待確認。
+- ⚠️推上線前要問使用者：`worker/wrangler.toml`新增排程(動到部署設定)。不影響舊存檔(沒有改遊戲狀態結構)。
+
 ### 2026-10-08（開發部）近況改回3回合原文、訂單現況以訂單簿為準(十、10.14.8補充第八節；八、8.13.1，2026.10.08-a)
 - 起因：網頁版定案(2026-10-08)，依葉夜第125回合三版比對：-a保留；近況縮減(-b)不上線、不跑退路；訂單前後不一致改補規則，第三輪驗證通過才推。
 - `index.html`：`RECENT_FULL_TEXT_TURNS`預設改回3(送出的近況跟2026.10.05-a相同)，縮減程式保留。

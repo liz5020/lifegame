@@ -128,6 +128,21 @@ export async function handleSaveAdmin(request, env, url, helpers) {
     }));
     return jsonResponse(origin, { success: true, accounts });
   }
+  // 十、10.15.6（2026-10-04）：數據網頁「名冊」分頁——唯讀；不必填who／reason，伺服器自動寫存取紀錄(操作者「管理員（數據網頁）」、原因「網頁查看名冊」)，寫不進去就不回傳名冊
+  if (path === "/admin/dashboard-roster" && method === "GET") {
+    const logged = await accountsCall(env, { op: "admin_log_add", entry: { who: "管理員（數據網頁）", reason: "網頁查看名冊", action: "roster" } });
+    if (!logged.ok) return jsonResponse(origin, { success: false, error: "存取紀錄寫入失敗，未執行" }, 500);
+    const r = await accountsCall(env, { op: "roster" });
+    const { byLid } = await savesByLid();
+    const WL = { waiting: "排隊中", allocated: "排隊中", notified: "已通知", entered: "已入場", expired: "已過期", send_failed: "寄送失敗" };
+    const accounts = (r.accounts || []).map(a => {
+      let last = null;
+      for (const l of a.lives || []) { const v = byLid.has(l.lid) ? byLid.get(l.lid).at : null; if (v && (!last || v > last)) last = v; }
+      return { email: a.email, bound_at: a.created, lives: (a.lives || []).length, last_save: last,
+        wl_status: a.wl ? (WL[a.wl.status] || "") : "", joined_at: a.wl ? a.wl.joinedAt : null, notified_at: a.wl ? a.wl.sentAt : null };
+    });
+    return jsonResponse(origin, { success: true, accounts });
+  }
   if (path === "/admin/saves" && method === "GET") {
     const { all } = await savesByLid();
     const saves = all.map(x => x.info && x.info.lid ? { lid: x.info.lid, last_save: x.at } : { lid: null, code: codeOf(x.loc, x.slot), last_save: x.at });

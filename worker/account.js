@@ -28,6 +28,16 @@ export const GIFT_POINTS = { 1: AP_BIND_BONUS, 2: AP_SECOND_LIFE_GIFT }; // 第1
 export const CARRY_MAX_TOTAL = 120;               // 綁定／併入時，未綁人生帶過來的點數累計上限(封測期間本機點數玩家改得動，這裡只擋離譜的數字)
 const POOL_DAILY_MAX = AP_DAILY_REFILL, POOL_GIFT_MAX = AP_LEGACY_GIFT_MAX;
 const EVENTS_MAX = 30;
+// 十、10.15（2026-10-04封測名額與候補）
+export const DEFAULT_NEW_PLAYER_CAP = 5;          // 10.15.2：每日新玩家名額(DAILY_NEW_PLAYER_CAP，0＝暫停發放)
+export const DEFAULT_PLAYER_CHECKPOINT = 50;      // 10.15.3：累計入場檢查點(BETA_PLAYER_CHECKPOINT)
+export const WL_HOLD_MS = 72 * 3600 * 1000;       // 10.15.4：位子保留3天(72小時)
+export const WL_MAIL_MAX_TRIES = 3;               // 10.15.4：通知信寄送失敗每小時重試，最多3次(含第一次)
+export const WL_MAIL_RETRY_GAP_MS = 55 * 60 * 1000; // 排程每小時整點跑一次，留5分鐘誤差
+export const WL_ENTRY_GIFT = 25;                  // 10.15.4：入場一次領25點(相當於未綁啟程禮)＋第1份綁定啟程禮30點
+export const WL_HOLD_STATUSES = ["allocated", "notified", "send_failed"];
+export const CP_NOTICE_MAX_ATTEMPTS = 3, CP_NOTICE_LEASE_MS = 60 * 1000; // 10.15.6：檢查點通知信，防重複與重試比照10.9.3.1a
+const HOUR_MS = 3600 * 1000;
 
 export function normalizeEmail(raw) {
   return String(raw == null ? "" : raw).trim().toLowerCase();
@@ -106,7 +116,7 @@ export class AccountStore {
     try { body = await request.json(); } catch (e) { return this._json({ ok: false, error: "bad_request" }, 400); }
     const fn = body && OPS[body.op];
     if (!fn) return this._json({ ok: false, error: "unknown_op" }, 400);
-    const run = this._chain.then(async () => { await this._ensureLedgerStart(body.now); return fn.call(this, body); });
+    const run = this._chain.then(async () => { this._b = body; await this._ensureLedgerStart(body.now); return fn.call(this, body); });
     this._chain = run.then(() => {}, () => {});
     try { return this._json(await run); }
     catch (e) { return this._json({ ok: false, error: "internal", message: String(e && e.message || e) }, 500); }
@@ -170,6 +180,7 @@ export class AccountStore {
   // 每次帳號操作開頭：先處理排隊中的啟程禮(午夜後先補發排隊者)，再把這個帳號的錢包依當天第一次使用補點
   async _tick(a, ctx) {
     const flags = { giftChanged: false };
+    if (a && a.wl) await this._entryDay(ctx); // 10.15：候補帳號每次操作順便處理過期與當天分配
     await this._processQueue(ctx, flags);
     if (a) {
       // 排隊補發可能已經改到這個帳號，重新讀一次
@@ -241,8 +252,10 @@ export class AccountStore {
   async _out(a, extra, flags, giftStats) {
     const events = a.events.splice(0, a.events.length);
     await this._putAcct(a);
+    const pub = this._public(a);
+    if (a.wl) pub.wl = await this._wlView(a);
     return Object.assign({
-      ok: true, account: this._public(a), events,
+      ok: true, account: pub, events,
       gift_changed: !!(flags && flags.giftChanged), gift_stats: giftStats || undefined
     }, extra || {});
   }
@@ -495,7 +508,8 @@ export class AccountStore {
       accounts.push({
         aid: a.aid, email: a.email, created: a.created, lives: (a.lives || []).map(l => ({ lid: l.lid, slot: l.slot })),
         gifts: { claimed: ["g1", "g2"].filter(k => a.gifts && a.gifts[k] === "done").length, queued: ["g1", "g2"].filter(k => a.gifts && a.gifts[k] === "queued").length, max: GIFTS_PER_ACCOUNT },
-        purchased: !!a.purchased, consent: a.consent || null
+        purchased: !!a.purchased, consent: a.consent || null,
+        wl: a.wl ? { status: a.wl.status, joinedAt: a.wl.joinedAt || null, sentAt: a.wl.sentAt || null } : null
       });
     }
     accounts.sort((x, y) => y.created - x.created);
@@ -525,13 +539,26 @@ export class AccountStore {
     const have = a.lives.find(l => l.lid === b.lid);
     if (have) return this._out(a, { result: { kind: "life_add", slot: have.slot, existing: true } }, flags, null);
     if (a.lives.length >= ACCOUNT_LIFE_MAX) { await this._putAcct(a); return { ok: false, error: "account_full" }; }
+    // 十、10.15.4：候補帳號名下還沒有人生時，只有位子保留中才能開始(入場一次領25＋30點)
+    let wlEntry = false;
+    if (a.wl && a.lives.length === 0) {
+      if (WL_HOLD_STATUSES.includes(a.wl.status)) wlEntry = true;
+      else if (a.wl.status === "waiting" || a.wl.status === "expired") { await this._putAcct(a); return { ok: false, error: "wl_not_ready" }; }
+    }
     const slot = freeSlot(a);
     a.lives.push({ lid: b.lid, slot });
     noteEverLid(a, b.lid);
-    let gift = null;
-    if (a.lives.length === ACCOUNT_LIFE_MAX && a.gifts.g2 === "none") gift = await this._requestGift(a, 2, ctx, flags);
+    let gift = null, wl_entry = null;
+    if (wlEntry) {
+      a.wl.status = "entered"; a.wl.enteredAt = b.now;
+      await this._whRemove(a.aid);
+      a.wallet.gift += WL_ENTRY_GIFT;
+      pushEvent(a, b.now, "啟程禮", WL_ENTRY_GIFT);
+      gift = await this._requestGift(a, 1, ctx, flags); // 第1份綁定啟程禮30點(發滿時排到隔天，照10.9.3.2)
+      wl_entry = { added: WL_ENTRY_GIFT, gift };
+    } else if (a.lives.length === ACCOUNT_LIFE_MAX && a.gifts.g2 === "none") gift = await this._requestGift(a, 2, ctx, flags);
     await this._putAcct(a);
-    return this._out(a, { result: { kind: "life_add", slot, gift } }, flags, flags.giftChanged ? await this._giftStats(ctx) : null);
+    return this._out(a, { result: { kind: "life_add", slot, gift, wl_entry } }, flags, flags.giftChanged ? await this._giftStats(ctx) : null);
   }
   async opLifeRemove(b) {
     const a = await this._auth(b.token, b.now);
@@ -656,7 +683,215 @@ export class AccountStore {
       new_by_date: newByDate, accounts_bound: pick(bound), lives_started: pick(started)
     };
   }
-  _ctx(b) { return { now: b.now, date: b.date, gift_cap: Number(b.gift_cap) > 0 ? Number(b.gift_cap) : 20 }; }
+  _ctx(b) {
+    const nc = Number(b.new_cap), cp = Number(b.checkpoint);
+    return { now: b.now, date: b.date, gift_cap: Number(b.gift_cap) > 0 ? Number(b.gift_cap) : 20,
+      new_cap: Number.isFinite(nc) && nc >= 0 && b.new_cap !== undefined && b.new_cap !== null ? Math.floor(nc) : DEFAULT_NEW_PLAYER_CAP,
+      checkpoint: Number.isFinite(cp) && cp > 0 ? Math.floor(cp) : DEFAULT_PLAYER_CHECKPOINT };
+  }
+
+  // ==================== 十、10.15 封測名額與候補 ====================
+  // 狀態都放在這個Durable Object(不放KV)：
+  //   en＝今天的名額帳{date, used已用, bonus前一天過期收回加上的名額, frozen當天一開始就已達檢查點(調高檢查點後隔天才恢復)}
+  //   cum＝累計入場人數  carry＝待加進下次分配的收回名額  wq＝候補隊伍(帳號代號，依驗證通過先後)  wh＝持有位子的帳號(已分配／已通知／寄送失敗，還沒入場)
+  //   ec:門牌＝這把金鑰已經佔過名額(重複呼叫不重複扣)  cpn＝檢查點通知信的寄送狀態
+  // 帳號的wl欄：{status: waiting|allocated|notified|send_failed|entered|expired, joinedAt, allocatedAt, allocDate, tries, lastTry, sentAt, exp, enteredAt}
+  async _whRemove(aid) { const wh = (await this._get("wh", [])).filter(x => x !== aid); await this.storage.put("wh", wh); }
+  // 超過保留期的位子收回：狀態改已過期、累計減1、隔天可分配名額加1(帳號保留)
+  async _expireSweep(ctx) {
+    const wh = await this._get("wh", []);
+    if (!wh.length) return;
+    const keep = []; let freed = 0;
+    for (const aid of wh) {
+      const a = await this._acct(aid);
+      if (!a || !a.wl || !WL_HOLD_STATUSES.includes(a.wl.status)) continue;
+      if (a.wl.exp && ctx.now > a.wl.exp) { a.wl.status = "expired"; a.wl.expiredAt = ctx.now; await this._putAcct(a); freed++; }
+      else keep.push(aid);
+    }
+    if (keep.length !== wh.length) await this.storage.put("wh", keep);
+    if (freed) {
+      await this.storage.put("cum", Math.max(0, (await this._get("cum", 0)) - freed));
+      await this.storage.put("carry", (await this._get("carry", 0)) + freed);
+    }
+  }
+  // 今天的名額帳；台灣時間每天第一次有人碰到時才做當天的分配(不用等排程，排程只負責寄信)
+  async _entryDay(ctx) {
+    await this._expireSweep(ctx);
+    let en = await this._get("en", null);
+    if (en && en.date === ctx.date) return en;
+    const cum = await this._get("cum", 0), cap = ctx.new_cap, cp = ctx.checkpoint;
+    const frozen = cum >= cp;
+    let used = 0, bonus = 0;
+    if (cap > 0 && !frozen) {
+      const q = await this._get("wq", []), wh = await this._get("wh", []);
+      bonus = await this._get("carry", 0);
+      const limit = Math.min(cap + bonus, Math.max(0, cp - cum));
+      while (used < limit && q.length) {
+        const aid = q.shift();
+        const a = await this._acct(aid);
+        if (!a || !a.wl || a.wl.status !== "waiting") continue;
+        a.wl.status = "allocated"; a.wl.allocatedAt = ctx.now; a.wl.allocDate = ctx.date; a.wl.tries = 0; a.wl.lastTry = 0;
+        await this._putAcct(a); wh.push(aid); used++;
+      }
+      await this.storage.put("wq", q); await this.storage.put("wh", wh);
+      await this.storage.put("cum", cum + used);
+      await this.storage.put("carry", 0);
+    }
+    en = { date: ctx.date, used, bonus, frozen: frozen || cum + used >= cp }; // 當天一旦碰到檢查點就整天暫停，調高檢查點要等隔天00:00才恢復
+    await this.storage.put("en", en);
+    return en;
+  }
+  // 直接來的新玩家現在能不能入場：{open, reason('full'|'checkpoint'), remaining, total}
+  async _direct(ctx, en) {
+    const cum = await this._get("cum", 0), q = await this._get("wq", []);
+    const total = ctx.new_cap + en.bonus, remaining = total - en.used;
+    if (cum >= ctx.checkpoint || en.frozen) return { open: false, reason: "checkpoint", remaining: 0, total };
+    if (q.length > 0 || remaining <= 0) return { open: false, reason: "full", remaining: Math.max(0, remaining), total };
+    return { open: true, reason: null, remaining, total };
+  }
+  // 檢查點通知信：累計入場達檢查點時交給呼叫端寄一次(每個檢查點數字各一次，防重複與重試比照10.9.3.1a：最多3次、寄送中60秒內不重複交出)
+  async _cpDue(ctx) {
+    const cum = await this._get("cum", 0);
+    if (cum < ctx.checkpoint) return null;
+    let n = await this._get("cpn", null);
+    if (!n || n.cp !== ctx.checkpoint) n = { cp: ctx.checkpoint, sent: false, attempts: 0, lease: 0 };
+    if (n.sent || n.attempts >= CP_NOTICE_MAX_ATTEMPTS || ctx.now < n.lease) return null;
+    n.attempts += 1; n.lease = ctx.now + CP_NOTICE_LEASE_MS;
+    await this.storage.put("cpn", n);
+    return { cum, checkpoint: ctx.checkpoint, queued: (await this._get("wq", [])).length, now: ctx.now };
+  }
+  async opCpResult(b) {
+    const n = await this._get("cpn", null);
+    if (n && n.cp === Number(b.checkpoint)) { if (b.ok) n.sent = true; else n.lease = 0; await this.storage.put("cpn", n); }
+    return { ok: true };
+  }
+  // 給前端／管理端的候補狀態：目前排第幾位、位子保留到什麼時候、過期後現在能不能直接入場
+  async _wlView(a) {
+    const ctx = this._ctx(this._b || {});
+    const w = a.wl;
+    const out = { status: w.status, exp: w.exp || null, position: null, can_direct: false };
+    if (w.status === "waiting") { const q = await this._get("wq", []); const i = q.indexOf(a.aid); out.position = i >= 0 ? i + 1 : null; }
+    if (w.status === "expired") { const en = await this._entryDay(ctx); out.can_direct = (await this._direct(ctx, en)).open; }
+    if (WL_HOLD_STATUSES.includes(w.status)) out.gift_full = (await this._day(ctx.date)).gifts >= ctx.gift_cap; // 第13則：當天啟程禮已發滿，30點排到隔天
+    return out;
+  }
+  _entryView(ctx, en, d, cum) {
+    return { cap: ctx.new_cap, total: d.total, used: en.used, remaining: d.remaining, open: d.open, reason: d.reason, cum, checkpoint: ctx.checkpoint };
+  }
+  // 開始畫面：現在有沒有名額(不扣名額)
+  async opEntryStatus(b) {
+    const ctx = this._ctx(b);
+    const en = await this._entryDay(ctx), d = await this._direct(ctx, en), cum = await this._get("cum", 0);
+    return { ok: true, entry: this._entryView(ctx, en, d, cum), queue: (await this._get("wq", [])).length, notice: await this._cpDue(ctx) };
+  }
+  // 未綁信箱的25點啟程禮實際要發的那一刻：名額夠就扣1(累計加1)，同一把金鑰(門牌)重複呼叫不重複扣；不夠就拒絕
+  async opEntryClaim(b) {
+    const ctx = this._ctx(b);
+    const loc = typeof b.loc === "string" && /^[0-9a-f]{64}$/.test(b.loc) ? b.loc : null;
+    if (!loc) return { ok: false, error: "bad_key" };
+    const en = await this._entryDay(ctx);
+    if (await this._get("ec:" + loc, null)) {
+      const d0 = await this._direct(ctx, en);
+      return { ok: true, repeat: true, entry: this._entryView(ctx, en, d0, await this._get("cum", 0)) };
+    }
+    const d = await this._direct(ctx, en);
+    if (!d.open) return { ok: false, error: d.reason === "checkpoint" ? "checkpoint" : "full", entry: this._entryView(ctx, en, d, await this._get("cum", 0)), notice: await this._cpDue(ctx) };
+    en.used += 1;
+    const cum = (await this._get("cum", 0)) + 1; await this.storage.put("cum", cum);
+    if (cum >= ctx.checkpoint) en.frozen = true;
+    await this.storage.put("en", en);
+    await this.storage.put("ec:" + loc, { at: ctx.now });
+    const d2 = await this._direct(ctx, en);
+    return { ok: true, entry: this._entryView(ctx, en, d2, cum), notice: await this._cpDue(ctx) };
+  }
+  // 留信箱候補：驗證碼通過→建立沒有人生的帳號並排入隊伍(10.15.4)。名額還開著就不用候補(not_full)；信箱已有帳號＝email_exists(沿用現有提示)
+  async opWlJoin(b) {
+    const email = normalizeEmail(b.email);
+    if (!isValidEmail(email)) return { ok: false, error: "invalid_email" };
+    const ctx = this._ctx(b);
+    const chk = await this._checkCode(email, b.code, b.now);
+    if (!chk.ok) return chk;
+    if (await this._get("e:" + email, null)) return { ok: false, error: "email_exists" };
+    const key = typeof b.key === "string" && b.key.length > 0 && b.key.length <= 100 ? b.key : null;
+    const loc = typeof b.loc === "string" && /^[0-9a-f]{64}$/.test(b.loc) ? b.loc : null;
+    if (!key || !loc) return { ok: false, error: "bad_key" };
+    if (await this._get("kl:" + loc, null)) return { ok: false, error: "key_linked" }; // 同綁定：一個信箱一把金鑰，這把金鑰也不能綁兩個信箱
+    if (!(await this._get("loc:off", false)) && await this._get("k:" + key, null)) return { ok: false, error: "key_linked" };
+    const en = await this._entryDay(ctx);
+    if ((await this._direct(ctx, en)).open) return { ok: false, error: "not_full" };
+    const a = { aid: randomHex(8), email, key, created: b.now, purchased: false, wallet: freshWallet(b.date), refillDate: b.date,
+      lives: [], gifts: { g1: "none", g2: "none" }, events: [], sessions: [], carried: 0,
+      wl: { status: "waiting", joinedAt: b.now } };
+    const token = await this._newSession(a, b.now);
+    await this._putAcct(a);
+    await this.storage.put("e:" + email, a.aid);
+    await this.storage.put("kl:" + loc, a.aid);
+    const q = await this._get("wq", []); q.push(a.aid); await this.storage.put("wq", q);
+    return this._out(a, { token, result: { kind: "waitlist", position: q.length } }, null, null);
+  }
+  // 已過期的候補玩家：當天還有開放給直接來的名額＝直接入場(佔一個名額)
+  async opWlDirect(b) {
+    const a = await this._auth(b.token, b.now);
+    if (!a) return { ok: false, error: "unauthorized", status: 401 };
+    const ctx = this._ctx(b);
+    await this._tick(a, ctx);
+    if (!a.wl || a.wl.status !== "expired") return { ok: false, error: "bad_request" };
+    const en = await this._entryDay(ctx), d = await this._direct(ctx, en);
+    if (!d.open) { await this._putAcct(a); return { ok: false, error: d.reason === "checkpoint" ? "checkpoint" : "full" }; }
+    en.used += 1;
+    const cum2 = (await this._get("cum", 0)) + 1; await this.storage.put("cum", cum2);
+    if (cum2 >= ctx.checkpoint) en.frozen = true;
+    await this.storage.put("en", en);
+    a.wl.status = "notified"; a.wl.sentAt = b.now; a.wl.exp = b.now + WL_HOLD_MS; a.wl.direct = true;
+    const wh = await this._get("wh", []); wh.push(a.aid); await this.storage.put("wh", wh);
+    return this._out(a, { notice: await this._cpDue(ctx) }, null, null);
+  }
+  // 已過期的候補玩家按〔重新候補〕：排到隊伍最後，不用重新驗證
+  async opWlRequeue(b) {
+    const a = await this._auth(b.token, b.now);
+    if (!a) return { ok: false, error: "unauthorized", status: 401 };
+    const ctx = this._ctx(b);
+    await this._tick(a, ctx);
+    if (!a.wl || a.wl.status !== "expired") return { ok: false, error: "bad_request" };
+    a.wl.status = "waiting"; a.wl.joinedAt = b.now; a.wl.exp = null;
+    const q = await this._get("wq", []); q.push(a.aid); await this.storage.put("wq", q);
+    return this._out(a, {}, null, null);
+  }
+  // 排程每小時呼叫：①順便做當天分配與過期 ②找出該寄通知信的人(分配當天台灣時間中午12:00起；失敗每小時重試，最多3次) ③檢查點通知信
+  async opWlDue(b) {
+    const ctx = this._ctx(b);
+    await this._entryDay(ctx);
+    const due = [];
+    for (const aid of await this._get("wh", [])) {
+      const a = await this._acct(aid);
+      if (!a || !a.wl || a.wl.status !== "allocated") continue;
+      const noon = Date.parse(a.wl.allocDate + "T12:00:00+08:00");
+      if (ctx.now < noon) continue;
+      if ((a.wl.tries || 0) >= WL_MAIL_MAX_TRIES) continue;
+      if (a.wl.tries > 0 && ctx.now - (a.wl.lastTry || 0) < WL_MAIL_RETRY_GAP_MS) continue;
+      due.push({ aid, email: a.email, tries: a.wl.tries || 0 });
+    }
+    return { ok: true, due, notice: await this._cpDue(ctx) };
+  }
+  // 通知信寄送結果：成功→已通知，保留期從這一刻起算；失敗→記一次，3次都失敗＝寄送失敗，保留期從最後一次嘗試起算
+  async opWlMailResult(b) {
+    const a = await this._acct(b.aid);
+    if (!a || !a.wl || a.wl.status !== "allocated") return { ok: true };
+    a.wl.tries = (a.wl.tries || 0) + 1; a.wl.lastTry = b.now;
+    if (b.ok) { a.wl.status = "notified"; a.wl.sentAt = b.now; a.wl.exp = b.now + WL_HOLD_MS; }
+    else if (a.wl.tries >= WL_MAIL_MAX_TRIES) { a.wl.status = "send_failed"; a.wl.exp = b.now + WL_HOLD_MS; }
+    await this._putAcct(a);
+    return { ok: true, status: a.wl.status, exp: a.wl.exp || null };
+  }
+  // 數據網頁的名額卡片(10.15.6)：只有數字
+  async opEntryStats(b) {
+    const ctx = this._ctx(b);
+    const en = await this._entryDay(ctx);
+    let notified = 0;
+    for (const aid of await this._get("wh", [])) { const a = await this._acct(aid); if (a && a.wl && WL_HOLD_STATUSES.includes(a.wl.status)) notified++; }
+    return { ok: true, used: en.used, cap: ctx.new_cap, bonus: en.bonus, cum: await this._get("cum", 0), checkpoint: ctx.checkpoint,
+      waiting: (await this._get("wq", [])).length, notified };
+  }
 }
 
 const OPS = {
@@ -695,5 +930,14 @@ const OPS = {
   is_purchased: AccountStore.prototype.opIsPurchased,
   stats: AccountStore.prototype.opStats,
   lid_seen: AccountStore.prototype.opLidSeen,
-  player_stats: AccountStore.prototype.opPlayerStats
+  player_stats: AccountStore.prototype.opPlayerStats,
+  entry_status: AccountStore.prototype.opEntryStatus,
+  entry_claim: AccountStore.prototype.opEntryClaim,
+  entry_stats: AccountStore.prototype.opEntryStats,
+  wl_join: AccountStore.prototype.opWlJoin,
+  wl_direct: AccountStore.prototype.opWlDirect,
+  wl_requeue: AccountStore.prototype.opWlRequeue,
+  wl_due: AccountStore.prototype.opWlDue,
+  wl_mail_result: AccountStore.prototype.opWlMailResult,
+  cp_result: AccountStore.prototype.opCpResult
 };

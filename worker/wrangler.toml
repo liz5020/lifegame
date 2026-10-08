@@ -54,4 +54,8 @@ new_sqlite_classes = ["AccountStore"]
 # 可調設定值只放Cloudflare後台Variables(不寫進這個檔案)：STAGE_PACK_RATE_PER_HOUR(預設60，同一來源位址每小時封存包寫入上限)、STAGE_PACK_ORPHAN_DAYS(預設7)。
 # 每次執行後，清理數量寫進Worker執行紀錄(「孤兒封存包清理：檢查N個，刪除M個」)
 [triggers]
-crons = ["0 19 * * *"]
+crons = ["0 19 * * *", "0 * * * *"]
+
+# 十、10.15（2026-10-04封測名額與候補）：上面第二個排程「0 * * * *」＝每小時整點，負責寄候補通知信(分配當天台灣時間中午12:00起，失敗每小時重試最多3次)與檢查點通知信。
+# 名額與候補隊伍的分配不靠排程(台灣時間每天第一次有人碰到就會做)，排程只是確保信準時寄出。
+# 兩個可調數字只放Cloudflare後台Variables(⚠️不要寫進這個檔案)：DAILY_NEW_PLAYER_CAP(每日新玩家名額，預設5，0＝暫停發放)、BETA_PLAYER_CHECKPOINT(累計入場檢查點，預設50)

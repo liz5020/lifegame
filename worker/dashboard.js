@@ -1,4 +1,5 @@
 // 十、10.13.7.8（2026-10-03）：數據網頁(GET /dashboard)。單一HTML，自己用SVG畫圖，不引用任何外部程式庫或外部網站資源。
+// 2026-10-04（10.15.6）：新增名額卡片與唯讀「名冊」分頁；接受兩組密碼——存檔管理密碼可看數字與名冊，用量查詢密碼只能看數字。
 // 密碼只存sessionStorage；資料來自同網址的 /stats-summary 與 /usage-today(同一組USAGE_ADMIN_TOKEN)；10.14.7起逐筆明細從 /usage-detail.csv 下載。所有日期時間以台灣時間呈現。
 export const DASHBOARD_HTML = `<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
@@ -33,6 +34,11 @@ input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(
 #login{max-width:360px;margin:60px auto}
 #tip{position:fixed;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;display:none;z-index:5}
 .spend{margin-top:12px;font-size:14px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button[aria-selected=true]{background:var(--ink);color:var(--paper)}
+table.r{border-collapse:collapse;width:100%;font-size:13px}
+table.r th,table.r td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;white-space:nowrap}
+.scroll{overflow-x:auto}
 </style></head><body><main>
 <div id="login" hidden>
   <h1>人生草稿 數據總覽</h1>
@@ -43,12 +49,17 @@ input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(
 <div id="app" hidden>
   <h1>人生草稿 數據總覽</h1>
   <div class="bar"><span>最後更新：<span id="upd">—</span>（台灣時間）</span><button id="refresh">立即更新</button></div>
+  <div class="tabs" role="tablist"><button id="tabNum" role="tab" aria-selected="true">數字</button><button id="tabRoster" role="tab" aria-selected="false">名冊</button></div>
+  <div id="paneNum">
   <div class="cards" id="cards"></div>
   <div class="cards" id="cards2" style="margin-top:12px"></div>
+  <div class="cards" id="cards3" style="margin-top:12px"></div>
   <div class="panel" id="ai"><h2>AI 實際用量（Anthropic 回報）</h2><div id="aiBody"></div>
     <div class="bar" style="margin:10px 0 0"><button id="dl">下載逐筆明細 CSV</button><span id="dlMsg">最近 7 天、最多 5,000 筆</span></div></div>
   <div class="panel"><h2>近 30 天每日趨勢</h2><div id="trend"></div></div>
   <div class="panel spend" id="spend"></div>
+  </div>
+  <div id="paneRoster" hidden><div class="panel"><h2>名冊（唯讀；每次打開這個分頁，系統會自動留一筆存取紀錄）</h2><div id="rosterBody"></div></div></div>
 </div>
 <div id="tip"></div>
 <script>
@@ -69,6 +80,16 @@ function n2(v){return v==null?"—":Number(v).toLocaleString("zh-TW",{maximumFra
 function sm2(label,v){return label+' <b>'+n2(v)+'</b>'}
 function card2(title,t,unit,note){
   return '<div class="card"><h2>'+title+'</h2><div class="big">'+n2(t.total)+'<span class="unit">'+unit+'</span></div><div class="small">累計'+(note||'')+'</div><div class="small">'+sm2("今天",t.today)+'　'+sm2("近 7 天",t.last7)+'</div></div>'}
+function renderEntry(s){
+  var box=$("cards3"),e=s&&s.entry;
+  if(!e){box.innerHTML='<div class="card"><h2>封測名額</h2><div class="err">'+NA+'</div></div>';return}
+  function c(t,big,sub){return '<div class="card"><h2>'+t+'</h2><div class="big">'+num(big)+'</div><div class="small">'+sub+'</div></div>'}
+  box.innerHTML=
+    c("今日名額",e.used,"已用／上限 <b>"+num(e.cap)+"</b>")+
+    c("累計入場",e.cum,"人數／檢查點 <b>"+num(e.checkpoint)+"</b>")+
+    c("候補排隊中",e.waiting,"人")+
+    c("已通知未入場",e.notified,"人");
+}
 function renderUsage(s){
   var box=$("cards2");
   if(!s||!s.usage){box.innerHTML='<div class="card"><h2>花費與回合</h2><div class="err">'+NA+'</div></div>';return}
@@ -154,12 +175,33 @@ $("dl").addEventListener("click",function(){
 function renderSpend(u){
   $("spend").innerHTML=u?('今日 AI 花費：<b>'+num(u.est_cost_twd)+'</b> ／ 每日上限 <b>'+num(u.daily_spend_cap_twd)+'</b>'):('今日 AI 花費：'+NA);
 }
+function dt(ms){return ms?new Date(ms).toLocaleString("zh-TW",{timeZone:"Asia/Taipei",hour12:false}):""}
+function dd(ms){return ms?new Date(ms).toLocaleDateString("zh-TW",{timeZone:"Asia/Taipei"}):""}
+function loadRoster(){
+  var box=$("rosterBody");box.textContent="載入中…";
+  fetch("/admin/dashboard-roster",{headers:{Authorization:"Bearer "+tok},cache:"no-store"}).then(function(r){
+    if(r.status===401){box.innerHTML='<div class="err">需要用存檔管理密碼登入</div>';return null}
+    if(!r.ok)throw new Error("http "+r.status);return r.json()}).then(function(j){
+    if(!j)return;
+    var a=j.accounts||[];
+    if(!a.length){box.innerHTML='<div class="small">還沒有綁定信箱的玩家</div>';return}
+    box.innerHTML='<div class="scroll"><table class="r"><tr><th>信箱</th><th>綁定日期</th><th>人生數</th><th>最後存檔時間</th><th>候補狀態</th><th>留信箱日期</th><th>通知日期</th></tr>'+
+      a.map(function(x){return '<tr><td>'+esc(x.email)+'</td><td>'+dd(x.bound_at)+'</td><td>'+num(x.lives)+'</td><td>'+dt(x.last_save)+'</td><td>'+esc(x.wl_status||"")+'</td><td>'+dd(x.joined_at)+'</td><td>'+dd(x.notified_at)+'</td></tr>'}).join("")+'</table></div>';
+  }).catch(function(){box.innerHTML='<div class="err">'+NA+'</div>'});
+}
+function showTab(n){
+  $("paneNum").hidden=n!=="num";$("paneRoster").hidden=n!=="roster";
+  $("tabNum").setAttribute("aria-selected",n==="num");$("tabRoster").setAttribute("aria-selected",n==="roster");
+  if(n==="roster")loadRoster();
+}
+$("tabNum").addEventListener("click",function(){showTab("num")});
+$("tabRoster").addEventListener("click",function(){showTab("roster")});
 var busy=false;
 function load(){
   if(busy)return;busy=true;
   return Promise.all([api("/stats-summary").catch(function(e){if(e.auth)throw e;return null}),api("/usage-today").catch(function(e){if(e.auth)throw e;return null})]).then(function(r){
     $("login").hidden=true;$("app").hidden=false;
-    renderCards(r[0]);renderUsage(r[0]);renderAI(r[0]);renderTrend(r[0]);renderSpend(r[1]);
+    renderCards(r[0]);renderEntry(r[0]);renderUsage(r[0]);renderAI(r[0]);renderTrend(r[0]);renderSpend(r[1]);
     $("upd").textContent=new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei",hour12:false});
   }).catch(function(e){
     if(e&&e.auth){try{sessionStorage.removeItem(KEY)}catch(x){} tok="";$("app").hidden=true;$("login").hidden=false;$("loginErr").textContent="密碼錯誤"}

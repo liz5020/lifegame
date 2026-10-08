@@ -94,6 +94,7 @@ import {
 import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
+import { runWaitlistTick } from "./entry.js";
 import { handleSaveAdmin, isAdminPath, indexSaveRecord } from "./save-admin.js";
 import { relocateRequest, locationId, locationSecretOk, isLoc } from "./location.js";
 
@@ -756,7 +757,7 @@ async function buildUsageToday(env) {
   return out;
 }
 async function handleUsageToday(request, env) {
-  const denied = adminDenied(request, env);
+  const denied = adminDenied(request, env, true);
   if (denied) return denied;
   return new Response(JSON.stringify(await buildUsageToday(env), null, 2), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
@@ -978,8 +979,13 @@ async function handleAIProxy(request, env, origin, ctx) {
 }
 
 // 管理密碼檢查：通過回傳null，沒過回傳要送出的錯誤回應
-function adminDenied(request, env) {
+function adminDenied(request, env, allowSave) {
   const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+  // 十、10.15.6：數據網頁用的端點也接受存檔管理密碼(SAVE_ADMIN_TOKEN)，登入後可以多看名冊分頁；allowSave為false的端點仍只認USAGE_ADMIN_TOKEN
+  if (allowSave && env.SAVE_ADMIN_TOKEN) {
+    const a = request.headers.get("Authorization") || "";
+    if (a.startsWith("Bearer ") && safeEqual(a.slice(7), env.SAVE_ADMIN_TOKEN)) return null;
+  }
   if (!env.USAGE_ADMIN_TOKEN) return new Response(JSON.stringify({ success: false, error: "尚未設定USAGE_ADMIN_TOKEN" }), { status: 503, headers });
   const url = new URL(request.url);
   const auth = request.headers.get("Authorization") || "";
@@ -1006,7 +1012,7 @@ function recordLidSeen(env, ctx, lid) {
 // 十、10.13.7.8：GET /stats-summary——玩家與瀏覽人次的加總數字。資料來自帳號資料庫與用量計數器，不碰KV
 async function handleStatsSummary(request, env) {
   const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
-  const denied = adminDenied(request, env);
+  const denied = adminDenied(request, env, true);
   if (denied) return denied;
   const now = nowMs(env), today = taipeiDateString(now);
   const dayAgo = n => taipeiDateString(now - n * 86400000);
@@ -1038,11 +1044,19 @@ async function handleStatsSummary(request, env) {
     pageviews: { today: days[today] || 0, last7, total, since },
     usage, accounts_bound: ps.accounts_bound, lives_started: ps.lives_started,
     ai_usage: await buildAIUsageSummary(env, { today, week_start, turns: pv.turns || {} }),
+    entry: await buildEntrySummary(env), // 十、10.15.6：名額卡片(只有數字，不含信箱或人生代號)
     daily
   };
   return new Response(JSON.stringify(out, null, 2), { headers });
 }
 
+async function buildEntrySummary(env) {
+  try {
+    const e = await accountsCall(env, { op: "entry_stats" });
+    if (!e || !e.ok) return null;
+    return { used: e.used, cap: e.cap + e.bonus, cum: e.cum, checkpoint: e.checkpoint, waiting: e.waiting, notified: e.notified };
+  } catch (err) { return null; }
+}
 // 十、10.14.7（2026-10-04）：伺服器記的AI實際用量(Anthropic回報的token數，依單價算出的美元)
 export const AI_USAGE_KIND_LABELS = { turn: "一般回合", opening: "開場", retry: "失敗重試／重新生成", idle: "放置摘要", chapter: "人生之書章節", review: "回顧這一生" };
 async function buildAIUsageSummary(env, { today, week_start, turns }) {
@@ -1072,7 +1086,7 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
 }
 // GET /usage-detail.csv：逐筆明細(最近7天、最多5,000筆)，欄位比照遊戲裡的逐筆呼叫紀錄，另加匿名人生代號與距同一段人生上一次呼叫的分鐘數
 async function handleUsageDetailCsv(request, env) {
-  const denied = adminDenied(request, env);
+  const denied = adminDenied(request, env, true);
   if (denied) return denied;
   const rows = usageCounterStub(env) ? ((await usageCall(env, "urows", {}, "GET")).rows || []) : [];
   rows.sort((a, b) => a.t - b.t);
@@ -1090,11 +1104,16 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.08-a";
+const WORKER_VERSION = "2026.10.08-b";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
-  async scheduled(event, env, ctx) { ctx.waitUntil(cleanupOrphanStagePacks(env)); },
+  async scheduled(event, env, ctx) {
+    // 兩個排程：每天一次(台灣03:00)清理孤兒封存包；每小時整點寄候補通知信與檢查點通知信(十、10.15)。依event.cron分開，測試沒帶cron時兩個都跑
+    const cron = event && event.cron;
+    if (!cron || cron === "0 19 * * *") ctx.waitUntil(cleanupOrphanStagePacks(env));
+    if (!cron || cron === "0 * * * *") ctx.waitUntil(runWaitlistTick(env, ctx).catch(e => console.warn("候補排程失敗：" + (e && e.message || e))));
+  },
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
     const reqUrl = new URL(request.url);
