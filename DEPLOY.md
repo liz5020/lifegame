@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-08 | 2026.10.08-i（合併請求待使用者合併，合併後隨`master`自動部署；上線後再回來補確認） | 2026.10.08-i（只換版本號，Worker程式沒改） | （合併後補） | index.html（背景色塊CSS）、worker/worker.js（只換`WORKER_VERSION`） | 電腦版首頁背景色塊隨螢幕縮放。2026.10.08-g、-h（職業相關）已合併進`master`但DEPLOY.md尚無上線紀錄，會隨這次一起自動部署 |
 | 2026-10-08 | 2026.10.08-f（隨`master`自動部署，Cloudflare Pages檢查成功；頁面版本號尚未另外在網址上直接確認） | 2026.10.08-f（使用者確認`/version`回傳此版） | `5e1684c` | index.html、worker(prompt.js、worker.js)、tests | 興趣多元化：程式擲骰決定興趣類別與項目（嘗試新的＋自然種子約8%）、已有類別權重減半、興趣卡記項目、副業訂單範例各類輪流舉例；PR分支那次Workers Builds曾顯示失敗，合併後線上Worker已是新版。AI是否真的照指定類別項目寫、自然種子8%手感：未測試（需真實API／實際遊玩） |
 | 2026-10-08 | 2026.10.08-e（隨`master`自動部署，已用`/version`、頁面(兩個網址，`/privacy`顯示版本1.1與新增資料項目)與check-runs確認線上網頁與Worker都是此版；每小時排程清除防濫用紀錄尚未在正式環境觀察） | 2026.10.08-e（同左） | `b11778d` | index.html、terms.html、privacy.html、pricing.html、worker(account.js、account-routes.js、entry.js、worker.js) | 網頁版討論回覆：隱私補寫與版本1.1、防濫用紀錄1小時到期、指定NPC必定登場（未登場退10點）、試看花絮6句改寫、舊存檔反悔換算 |
 | 2026-10-08 | 2026.10.08-d（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；三個說明頁兩個網址都打得開；2026.10.08-c併入此版，沒有單獨上線） | 2026.10.08-d（同左） | `e76dde5` | index.html、terms.html、privacy.html、pricing.html、build-pages.sh、worker(gate.js、worker.js、ap.js、account.js、mail.js、prompt.js) | 付費周邊(十、10.3.13)：反悔5次＋超過每次1點、人生重開丹10點、回顧這一生60點＋程式試看花絮、全站花費改用實際花費(10.9.3.1a補充二)；說明頁面三頁(10.16) |

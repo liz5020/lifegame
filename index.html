@@ -101,11 +101,11 @@
   @keyframes drift1 { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(40px,30px) scale(1.12); } }
   @keyframes drift2 { 0% { transform: translate(0,0) scale(1.05); } 100% { transform: translate(-35px,-25px) scale(.95); } }
   .bg { position: fixed; inset: 0; background: #F7F0E3; overflow: hidden; z-index: -1; pointer-events:none; }
-  .blob { position: absolute; border-radius: 50%; filter: blur(38px); }
-  .blob-1 { width: 270px; height: 270px; left: -50px; top: 15%;  background: #E8604C; animation: drift1 16s ease-in-out infinite alternate; }
-  .blob-2 { width: 290px; height: 290px; left: 33%;   top: 45%;  background: #F0A04B; animation: drift2 19s ease-in-out infinite alternate; }
-  .blob-3 { width: 240px; height: 240px; right: -60px; top: -70px; background: #B9D3EA; animation: drift2 22s ease-in-out infinite alternate; }
-  .blob-4 { width: 260px; height: 260px; left: -70px; bottom: -40px; background: #E3EFC5; animation: drift1 20s ease-in-out infinite alternate; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(max(38px,5vmax)); }
+  .blob-1 { width: max(270px,34vmax); height: max(270px,34vmax); left: -50px; top: 15%;  background: #E8604C; animation: drift1 16s ease-in-out infinite alternate; }
+  .blob-2 { width: max(290px,38vmax); height: max(290px,38vmax); left: 33%;   top: 45%;  background: #F0A04B; animation: drift2 19s ease-in-out infinite alternate; }
+  .blob-3 { width: max(240px,32vmax); height: max(240px,32vmax); right: -60px; top: -70px; background: #B9D3EA; animation: drift2 22s ease-in-out infinite alternate; }
+  .blob-4 { width: max(260px,34vmax); height: max(260px,34vmax); left: -70px; bottom: -40px; background: #E3EFC5; animation: drift1 20s ease-in-out infinite alternate; }
   .grain {
     position: absolute; inset: 0; opacity: .55; mix-blend-mode: overlay; pointer-events: none;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
@@ -8611,8 +8611,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-h";
+const APP_VERSION = "2026.10.08-i";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-i", date:"2026-10-08", title:"電腦版首頁背景更完整", items:[
+    "用電腦或大螢幕開啟時，首頁背景的色塊會跟著螢幕放大、連成一整片暖色暈染，不再是幾顆離得很遠的圓。手機看起來和以前一樣。",
+  ]},
   { version:"2026.10.08-h", date:"2026-10-08", title:"職業更具體", items:[
     "家人、配偶的職業不再只是大方向，會寫出具體的工作，例如工程師、餐飲店老闆、護理人員、警消外勤。",
     "求職時選好方向後，可以從底下的具體職缺裡挑想做的工作；高風險的工作會特別標出來。錄取後你的職稱也會固定下來，劇情裡不會再亂換。",

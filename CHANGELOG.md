@@ -10,6 +10,12 @@
 
 ---
 
+### 2026-10-08（開發部）電腦版首頁背景色塊隨螢幕縮放(2026.10.08-i)
+- 起因：使用者回報電腦開啟時首頁背景變成三顆離很遠的圓。原因：16.1暖陽顆粒背景的四顆色塊是固定像素(240～290px)、位置卻是螢幕百分比，寬螢幕下被拉開。
+- 做法：色塊寬高改`max(原像素, N vmax)`（34／38／32／34vmax），模糊改`max(38px, 5vmax)`；手機維持原本大小附近，電腦會放大到互相重疊。只改CSS，沒動遊戲狀態、存檔、Worker、prompt，舊存檔不受影響。
+- 驗證：1440×900、1920×1000、390×844三種寬度截圖改前改後並排比對（通過，人工目視）；全套`node run-all.mjs`結果見下方回報。動畫與減少動態模式(`prefers-reduced-motion`)未改。實機（真實瀏覽器、深色模式）：未測試。
+
+
 ### 2026-10-08（開發部）共用職業細表(2026.10.08-h，尚未上線)
 - 起因：使用者要求父母與玩家共用一張具體職業細表（方案2），並拍板：高風險併進細表、玩家自己挑具體職缺、具體職業不影響數值。設計文件五、5.2.5／十二、12.3／12.4／三、3.4.3／四、4.9／九、9.2。
 - `index.html`：新增`OCCUPATION_JOBS`（八類共8～4個職業，權重、高風險旗標）與`jobsOfCategory`／`isValidJob`／`jobIsHighRisk`／`rollJobInCategory`／`PARENT_LABEL_CATEGORY`／`backfillOccupationJobs`；移除`HIGH_RISK_JOB_SUBTYPES`與`rollJobRiskSubtype`（高風險改由職業旗標決定，舊的工種名稱加字尾：工地→工地工人等）；家長卡新增`occupationJob`、配偶`spouseOccupationJob`、手足子女`path.job`、玩家`jobTitle`；`resolveJobApplication`／`applyJobHire`／`acceptJobOffer`帶職缺；求職彈窗選類別後列出職缺（高風險標註）、錄取畫面顯示職缺；payload新增`job_title`；「關於我」加職稱；轉職履歷加職稱；舊存檔載入時補擲。版本2026.10.08-h與更新說明。
