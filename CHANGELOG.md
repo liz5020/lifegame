@@ -10,6 +10,15 @@
 
 ---
 
+### 2026-10-08（開發部）網頁版討論回覆實作(2026.10.08-e，尚未上線)
+- 起因：網頁版討論回覆定案(設計文件commit `03e1098`)。
+- `worker/account.js`：新增`purge_abuse`——寄驗證信的IP紀錄(`li:`)、寄信次數紀錄(`le:`)寫入後1小時到期、過期驗證碼紀錄一併清；每小時排程(`entry.js`)先清除、再分配、再寄信；`wallet_spend`加tag=keep(10點)記退還憑證、新增`wallet_refund`(`account-routes.js`的`refund_keep`)，伺服器驗證憑證才退。
+- `index.html`：條款隱私版本1.1；指定NPC候選排除已故與失聯、必定登場(`maybeFireReunionNpc`／`noteReunionAppeared`／`settleReunionNotAppeared`)，整個學生時期沒登場退10點並跳訊息；試看花絮6句改寫；沒有候選時顯示灰色「沒有可以指定的人」。重新產生`terms.html`／`privacy.html`(第二條補4項、第五條補1行)。
+- 設計文件已改：10.3.13／10.15.11／10.16.13判斷轉定案、10.16.14帳號刪除手動清單、10.16.15防濫用紀錄過期、10.16.16另外處理、7.4.3.4、16.7.2.3、10.9.1、`CLAUDE.md`(同意頁版本提醒)；QA 34.28。
+- 測試：新增`test-81`(34項)；`test-78`、`test-80`補項。
+- 全專案搜尋5項舊寫法殘留（奇幻人生已購買標記、首購優惠、月費、玩完一生多少錢、回顧這一生的倍數檢查）：已確認無殘留，命中的都是新規則或已劃掉的舊句。
+- ⚠️推上線前要問使用者：動到`worker/`。
+
 ### 2026-10-08（開發部）說明頁面三頁(十、10.16，2026.10.08-d，尚未上線)
 - 起因：網頁版定案(2026-10-08)三份交接文件的第三份；設計文件已寫入10.16(commit `a3ed913`)。
 - 新增`terms.html`、`privacy.html`、`pricing.html`(根目錄，純靜態)與產生腳本`design-assets/build-legal-pages.py`(從設計文件全文區塊逐字產生)；`build-pages.sh`放進`dist/`；`CLAUDE.md`、`DEPLOY.md`、`WORKFLOW.md`的檔案清單同步。

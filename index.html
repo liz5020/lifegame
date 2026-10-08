@@ -927,8 +927,8 @@ async function walletMockRefund(nonce, lifeId){
   if(r.ok) syncWallet(r.data.wallet);
 }
 // 一次性扣點(放置回溯、mock模式的回顧這一生)：伺服器不夠就回402
-async function walletSpendOnce(n){
-  const r = await acctFetch("account/wallet", { op:"spend", n });
+async function walletSpendOnce(n, tag){
+  const r = await acctFetch("account/wallet", { op:"spend", n, tag });
   if(r.ok){ syncWallet(r.data.wallet); acctApplyEvents(r.data.events); return { ok:true }; }
   if(r.data && r.data.wallet) syncWallet(r.data.wallet);
   return { ok:false, insufficient: r.status===402 };
@@ -940,10 +940,10 @@ async function walletSpendOnce(n){
 const UNDO_FREE_PER_LIFE = 5;      // 【定案,10.3.13】每一世免費反悔5次
 const UNDO_PAID_COST = 1;          // 【定案,10.3.13】第6次起每次1點
 const LIFE_KEEP_COST = 10;         // 【定案,7.4.3.4】人生重開丹
-async function paySinglePoints(s, n, reason){
+async function paySinglePoints(s, n, reason, tag){
   if(totalAP(s) < n) return { ok:false, insufficient:true };
   if(walletActive(s)){
-    const r = await walletSpendOnce(n);
+    const r = await walletSpendOnce(n, tag);
     if(!r.ok) return { ok:false, insufficient: !!r.insufficient };
   } else spendAP(s, n);
   apLogAdd(s, reason, -n);
@@ -1926,12 +1926,12 @@ function buildTidbitMaterials(s, material){
 // 16.7.0試看（2026-10-08改）：程式組句，不呼叫AI。從「開局設定揭曉」類挑（家境、性格傾向），每種開局設定準備數句，固定句型列在設計文件16.7.2.3；
 // 同一段人生固定不變（用人生代號決定用哪一句，結果存進ending.teaser）
 const TEASER_FAMILY_SENTENCES = {
-  清寒: ["你出生的家，日子過得不寬裕，後來很多事，你都比同齡的人早一點學會算。", "你從小就知道錢要省著用，這件事悄悄影響了你後來好幾個決定。"],
-  小康: ["你出生的家，不富也不缺，那份剛剛好的安穩，是你很多選擇的底色。", "你家的日子不算寬裕也不算拮据，這讓你很多時候以為，大家的生活都是這個樣子。"],
-  富裕: ["你出生的家，從來不用為錢煩惱，這讓有些事你做起來比別人輕鬆，也有些事你看得比別人慢。", "你從小不缺什麼，這份不缺，後來成了你某些決定的底氣。"]
+  清寒: ["你出生的家，日子過得不寬裕，那是你人生最初的樣子。", "你從小就在一個錢要省著用的家裡長大。"],
+  小康: ["你出生的家，不富也不缺，那份剛剛好的安穩，是你很多選擇的底色。", "你家的日子不算寬裕也不算拮据，平平穩穩，是你人生的起點。"],
+  富裕: ["你出生的家，從來不用為錢煩惱，那是你人生最初的樣子。", "你從小就在一個不缺什麼的家裡長大。"]
 };
 const TEASER_TRAIT_SENTENCES = {
-  anxiety_high: ["你一開始其實是個很在意別人怎麼看你的人。", "你一開始很怕被丟下，只是從來沒對誰說過。"],
+  anxiety_high: ["你一開始其實是個很在意別人怎麼看你的人。", "你一開始其實很怕被丟下。"],
   avoidance_high: ["你一開始其實是個不太習慣開口求助的人。", "你一開始就習慣自己扛事情，不太讓別人靠近。"],
   peer_low: ["你一開始在同學之間，其實是比較安靜、不太起眼的那一邊。", "你剛進高中的時候，在班上是那種不太會被注意到的人。"],
   peer_high: ["你一開始在同學之間，其實是比較容易被注意到的那一邊。", "你剛進高中的時候，走到哪裡都比較容易有人跟你搭話。"]
@@ -3549,7 +3549,7 @@ setInterval(()=>{
 const CONSENT_VERSION = 2;          // 十、10.16.5（2026-10-08）：同意頁加了服務條款與隱私權政策連結，說明版本號加一版
 const CONSENT_MIN_ACCEPTED = 1;     // ……但已經同意過舊版（1）的玩家不用重新同意、也不跳更新通知（10.16.5，是上方「版本號提高就重新同意」的例外）；之後真的新增資料用途時，把這個數字也調高
 // 十、10.16.2：服務條款與隱私權政策的版本號與最後更新日期，三頁（terms.html／privacy.html／pricing.html）的文字要跟這裡一致（tests/test-80檢查）；之後購買流程要讀這個版本號記進購買紀錄
-const LEGAL_DOCS_VERSION = "1.0";
+const LEGAL_DOCS_VERSION = "1.1"; // 2026-10-08討論回覆：隱私權政策補寫4項資料，條款與隱私共用版本號改1.1
 const LEGAL_DOCS_UPDATED = "2026 年 10 月 8 日";
 const LEGAL_PAGE_LINKS = [["服務條款","/terms"],["隱私權政策","/privacy"]];
 const CONSENT_STORAGE_NAME = "lifegame_consent";
@@ -8532,8 +8532,12 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-d";
+const APP_VERSION = "2026.10.08-e";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-e", date:"2026-10-08", title:"隱私說明補寫與轉世指定的人", items:[
+    "隱私權政策與服務條款更新為 1.1 版，補寫了短暫記錄的防濫用資料、人生代號、存檔索引和同意紀錄。",
+    "轉世時指定的那位舊識，這一世一定會遇到；如果整個學生時期都沒遇上，會退還 10 點。",
+  ]},
   { version:"2026.10.08-d", date:"2026-10-08", title:"說明頁面", items:[
     "新增「收費說明」「服務條款」「隱私權政策」三個說明頁，首頁最下方、點數錢包和開場說明頁都有連結。",
   ]},
@@ -10701,6 +10705,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   // 兩段不重複存：text是全文，sceneAt是新場景在text裡的起點(存檔大小不變)，行動結果＝text.slice(0,sceneAt)
   const fullText = [resultText, sceneText].filter(Boolean).join("\n\n");
   applyItemMoves(s, r.item_moves, fullText); // 一、1.2.13（2026-09-29 A11）：重要物品轉手與提及
+  noteReunionAppeared(s, fullText); // 七、7.4.3.4：轉世指定NPC有沒有在敘事裡登場
   // 二、2.6.2（2026-09-28）：學生時期的數值標記依來源上色——重心帶來的橘色、回應(及其他)帶來的紫色
   const focusMarks = studentTurn ? buildFocusMarks(s, turnFocus, focusChanges) : undefined; // 沒有任何重心變化時也要留空物件：代表這則用來源上色
   s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", settlement:compactSettlementForLog(s.lastSettlement), statChanges, focusMarks, relationshipHints,
@@ -10798,7 +10803,8 @@ function reincarnate(opts){
 const LIFE_KEEP_STAT_LABELS = { knowledge:"才識", network:"人脈" };
 const LIFE_KEEP_REUNION_RELATIONS = ["同學","鄰居","補習班同學","社團同學"];
 function lifeKeepNpcCandidates(s, mode, childName){
-  return (s.characters||[]).filter(c=>c && c.name && !isFamilyCharacter(c) && c.name!==childName && c.romanceStatus!=="married")
+  // 2026-10-08：排除家人、已婚配偶、已故(deceased)與失聯(lost)，依好感度取前8位
+  return (s.characters||[]).filter(c=>c && c.name && !isFamilyCharacter(c) && c.name!==childName && c.romanceStatus!=="married" && c.deceased!==true && c.lost!==true)
     .slice().sort((a,b)=>(b.affinity||0)-(a.affinity||0)).slice(0,8);
 }
 function lifeKeepText(keep, succeed){
@@ -10817,7 +10823,7 @@ function openLifeKeepPanel(mode, childName){
   const btn = (keep, text, extra)=>`<button class="choice-btn" data-keep="${escapeHtml(JSON.stringify(keep))}" ${dis||extra||""}>${escapeHtml(text)}</button>`;
   const interestHtml = cards.length ? cards.map(c=>btn({ type:"interest", category:c.category, label:c.category }, c.category)).join("") : `<p class="rv-note">這一世沒有可以帶的興趣。</p>`;
   const statHtml = ["knowledge","network"].map(k=>btn({ type:"stat", stat:k }, succeed ? (k==="knowledge" ? "才識（家裡的教育資源）" : "人脈（家裡的人脈）") : LIFE_KEEP_STAT_LABELS[k])).join("");
-  const npcHtml = npcs.length ? npcs.map(c=>btn({ type:"npc", name:c.name }, `${c.name}（${c.relation||"認識的人"}）`)).join("") : `<p class="rv-note">這一世沒有可以指定的人。</p>`;
+  const npcHtml = npcs.length ? npcs.map(c=>btn({ type:"npc", name:c.name }, `${c.name}（${c.relation||"認識的人"}）`)).join("") : `<button class="choice-btn" disabled>沒有可以指定的人</button>`;
   const div = entryModal("life-keep-modal", `<h3>人生重開丹</h3>
     <p style="font-size:13.5px;">用 ${LIFE_KEEP_COST} 點，換一份帶到下一世的東西。一次只能選一項。${need}</p>
     <div class="keep-group"><b>${succeed ? "興趣天賦（從小跟著爸媽接觸）" : "興趣天賦"}</b><p class="rv-note">挑一個這一世的興趣，下一世的它一開始就有基礎。</p>${interestHtml}</div>
@@ -10838,7 +10844,7 @@ function openLifeKeepPanel(mode, childName){
       document.getElementById("btn-keep-ok").onclick = async ()=>{
         const okBtn = document.getElementById("btn-keep-ok"); if(okBtn) okBtn.disabled = true;
         const s0 = state;
-        const r = await paySinglePoints(s0, LIFE_KEEP_COST, "人生重開丹");
+        const r = await paySinglePoints(s0, LIFE_KEEP_COST, "人生重開丹", "keep");
         ok.remove();
         if(state!==s0) return;
         if(!r.ok){ showWriterToast(r.insufficient ? "撰稿人提醒你：行動點不夠，這次不能用人生重開丹。" : "撰稿人提醒你：這次沒有成功，請稍後再試一次。"); return; }
@@ -10872,18 +10878,48 @@ function applyLifeKeep(ns, keep, mode, prev){
     }
   }
 }
-// 轉世指定NPC：第一個人生階段內的某一回合新角色登場（建卡＋這回合告訴AI自然安排登場，熟悉感只以敘事呈現）
+// 轉世指定NPC（七、7.4.3.4，2026-10-08改成必定登場）：第6～24回合之間的排定回合建卡並請AI自然安排登場；到第24回合還沒在敘事裡出現，
+// 從下一回合起每回合都給場景指令，直到登場為止；整個第一個人生階段（學生時期）結束仍沒登場：自動退還10點並跳一則撰稿人訊息
+const REUNION_LAST_SCHEDULED_TURN = 24;
 function maybeFireReunionNpc(s){
   s.reunionNow = null;
   const r = s.reunionNpc;
-  if(!r || r.done || s.turnCount < r.triggerTurn) return;
-  if(!s.timeState || s.timeState.stageMode!=="highschool"){ r.done = true; return; } // 錯過第一個人生階段就不再安排
-  let name = r.name;
-  if((s.characters||[]).some(c=>c.name===name)) name = renameForConflict(s, name, r.relation);
-  s.characters.push({ name, relation:r.relation, gender:r.gender, dialogueStyle:rollDialogueStyle(), traits:r.traits||"", style:null,
-    affinity:50, summary:"", lastTurn:s.turnCount, active:true, isChild:false, origin:"新認識的人，卻有種說不上來的熟悉感", age:rnd(15,17) });
-  r.done = true; r.cardName = name;
-  s.reunionNow = { name, relation:r.relation, gender:r.gender };
+  if(!r || r.appeared || r.closed) return;
+  if(!isStudentPhase(s)){ settleReunionNotAppeared(s, r); return; }
+  if(s.turnCount < r.triggerTurn) return;
+  if(!r.done){
+    let name = r.name;
+    if((s.characters||[]).some(c=>c.name===name)) name = renameForConflict(s, name, r.relation);
+    s.characters.push({ name, relation:r.relation, gender:r.gender, dialogueStyle:rollDialogueStyle(), traits:r.traits||"", style:null,
+      affinity:50, summary:"", lastTurn:s.turnCount, active:true, isChild:false, origin:"新認識的人，卻有種說不上來的熟悉感", age:rnd(15,17) });
+    r.done = true; r.cardName = name;
+    r.instructedTurn = s.turnCount;
+    s.reunionNow = { name, relation:r.relation, gender:r.gender };
+    return;
+  }
+  // 排定回合給過一次指令之後：第24回合以前不重複；超過第24回合還沒登場就每回合都給
+  if(s.turnCount > REUNION_LAST_SCHEDULED_TURN) s.reunionNow = { name:r.cardName, relation:r.relation, gender:r.gender };
+}
+// 這回合的敘事裡出現了這個人的名字＝登場了
+function noteReunionAppeared(s, text){
+  const r = s.reunionNpc;
+  if(!r || !r.done || r.appeared || !r.cardName) return;
+  if(String(text||"").includes(r.cardName)) r.appeared = true;
+}
+// 第一個人生階段結束仍沒登場：退還人生重開丹的10點（系統問題補償，不受「扣了不退」限制）
+function settleReunionNotAppeared(s, r){
+  r.closed = true;
+  const done = ()=>{
+    apLogAdd(s, "人生重開丹（退還）", LIFE_KEEP_COST);
+    entryModal("reunion-refund-modal", `<p>上一世你帶來的那位舊識，這一世沒能順利遇上。人生重開丹的 ${LIFE_KEEP_COST} 點已經退還給你。</p><button class="primary-btn" id="btn-reunion-refund-ok">好的</button>`);
+    const b = document.getElementById("btn-reunion-refund-ok"); if(b) b.onclick = ()=>document.getElementById("reunion-refund-modal")?.remove();
+  };
+  if(walletActive(s)){
+    acctFetch("account/wallet", { op:"refund_keep" }).then(res=>{ if(res.ok){ syncWallet(res.data.wallet); acctApplyEvents(res.data.events); done(); render(); } else console.warn("人生重開丹退還失敗", res.status); });
+  } else {
+    ensureAP(s).gift += LIFE_KEEP_COST; // 本機人生：退回永久池（每日池每天重算）
+    done();
+  }
 }
 
 function economicTierForSavingsAmount(savings){

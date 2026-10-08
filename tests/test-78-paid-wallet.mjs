@@ -51,5 +51,16 @@ A.check("錢包 59 點：回顧這一生按鈕變灰、寫「需要 60 點」", 
 setWallet(100); await ev("refreshAccount()"); ev("render()");
 doc.getElementById("btn-review-unlock").click(); await until(() => ev("!!state.ending.review"));
 A.check("錢包 100 點：回顧這一生扣 60 點（伺服器 40）", serverTotal() === 40 && ev("totalAP(state)") === 40, [serverTotal(), ev("totalAP(state)")]);
+// 指定NPC整個第一階段沒登場：帳號人生由伺服器憑證退還10點
+await H.startNewLife(g, { name: "帳號人" });
+ev(`state.acct = acct && { aid: acct.aid, lid: acct.lives[0].lid }`);
+setWallet(50); await ev("refreshAccount()");
+ev(`state.characters.push({name:'阿哲',relation:'同學',gender:'男',affinity:80,active:true,traits:'',summary:'',lastTurn:5,age:30}); state.age=78; state.ending={successionAvailable:true,epitaph:'x',overview:'y',segments:[],transitions:[],teaser:null}; state.phase='ending'; render()`);
+doc.getElementById("btn-reincarnate").click(); await wait(10);
+doc.querySelector('#life-keep-modal [data-keep*="阿哲"]').click(); await wait(5);
+doc.getElementById("btn-keep-ok").click(); await wait(100);
+A.check("(前置) 帳號人生用人生重開丹指定NPC：伺服器50→40", serverTotal() === 40 && ev("state.reunionNpc.name") === "阿哲", serverTotal());
+ev("state.studentStatus = 'graduated'; maybeFireReunionNpc(state)"); await until(() => doc.getElementById("reunion-refund-modal"));
+A.check("帳號人生：整個第一階段沒登場→伺服器憑證退還10點（伺服器50、畫面50），並跳撰稿人訊息", serverTotal() === 50 && ev("totalAP(state)") === 50 && !!doc.getElementById("reunion-refund-modal"), [serverTotal(), ev("totalAP(state)")]);
 A.check("整段沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
 process.exit(A.report() ? 0 : 1);

@@ -148,7 +148,8 @@ export async function handleAccountRoute(request, env, origin, ctx, url) {
       return reply(origin, await accountsCall(env, { op: "wallet_pre", token, nonce: body.nonce, life_id: body.life_id, is_prologue: body.prologue === true }), ctx, env);
     }
     if (body.op === "refund") return reply(origin, await accountsCall(env, { op: "wallet_post", token, nonce: body.nonce, life_id: body.life_id, success: false }), ctx, env);
-    if (body.op === "spend") return reply(origin, await accountsCall(env, { op: "wallet_spend", token, n: body.n }), ctx, env);
+    if (body.op === "spend") return reply(origin, await accountsCall(env, { op: "wallet_spend", token, n: body.n, tag: body.tag }), ctx, env);
+    if (body.op === "refund_keep") return reply(origin, await accountsCall(env, { op: "wallet_refund", token, tag: "keep" }), ctx, env);
     return jsonResponse(origin, { success: false, error: "bad_request" }, 400);
   }
   return null; // 不是帳號路由

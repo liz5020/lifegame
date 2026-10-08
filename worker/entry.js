@@ -22,6 +22,9 @@ export function flushCheckpointNotice(env, ctx, notice) {
 
 // 每小時整點：當天分配(碰到帳號DO時自動做)、寄候補通知信、檢查點通知信。回傳{sent, failed}方便測試
 export async function runWaitlistTick(env, ctx) {
+  // 十、10.16.15：先清掉已到期的防濫用紀錄(IP、寄信次數)；失敗不影響後面的分配與寄信
+  try { await accountsCall(env, { op: "purge_abuse" }); } catch (e) { console.warn("防濫用紀錄清除失敗：" + (e && e.message || e)); }
+  // 十、10.15.11第1項：先分配(wl_due一開始就做當天的過期收回與分配，已做過就略過)，再寄信
   const r = await accountsCall(env, { op: "wl_due" });
   const out = { sent: 0, failed: 0 };
   if (!r || !r.ok) return out;

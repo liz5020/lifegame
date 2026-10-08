@@ -28,7 +28,7 @@ A.check("支援深色模式", Object.values(pages).every(h => /prefers-color-sch
 // ---- 版本與日期 ----
 const g = await H.loadGame({ useMock: true, env: H.makeEnv(), key: "legal0001" });
 const ver = g.ev("LEGAL_DOCS_VERSION"), upd = g.ev("LEGAL_DOCS_UPDATED");
-A.check("條款與隱私的版本號存成設定值（前端 LEGAL_DOCS_VERSION＝1.0、最後更新日期）", ver === "1.0" && upd === "2026 年 10 月 8 日", [ver, upd]);
+A.check("條款與隱私的版本號存成設定值（前端 LEGAL_DOCS_VERSION＝1.1、最後更新日期）", ver === "1.1" && upd === "2026 年 10 月 8 日", [ver, upd]);
 A.check("/terms、/privacy 最上方：「版本 1.0｜最後更新 2026 年 10 月 8 日」，與設定值一致", T("terms").includes(`版本 ${ver}｜最後更新 ${upd}`) && T("privacy").includes(`版本 ${ver}｜最後更新 ${upd}`));
 A.check("/pricing 只標「最後更新 2026 年 10 月 8 日」，不標版本號", T("pricing").includes(`最後更新 ${upd}`) && !/版本 \d/.test(T("pricing")));
 A.check("三頁最上方都有「回到遊戲」連結（連回首頁）", Object.keys(doc).every(k => { const a = doc[k].querySelector(".top a"); return a && a.textContent.includes("回到遊戲") && a.getAttribute("href") === "/"; }));
@@ -47,6 +47,7 @@ for (const [k, sec] of [["terms", "10.16.6"], ["privacy", "10.16.7"], ["pricing"
 A.check("服務條款共十二條，第七條「退款說明」有錨點 id=refund（錢包的「退款說明」連到 /terms#refund）", doc.terms.querySelectorAll("h2").length === 12 && doc.terms.getElementById("refund").textContent === "七、退款說明");
 A.check("條款 1.0 不寫奇幻通行證，也沒有月費方案", !/通行證|月費/.test(T("terms")));
 A.check("條款第一條預告新玩法；加贈點數用「活動加贈」通用寫法", /之後會陸續推出新的玩法與方案/.test(T("terms")) && /活動加贈/.test(T("terms")));
+A.check("隱私權政策第二條共列12項資料（2026-10-08補寫防濫用紀錄、人生代號、存檔索引、同意紀錄）、第五條有「防濫用紀錄：約一小時後自動清除」", doc.privacy.querySelectorAll("h2")[1].nextElementSibling.querySelectorAll("li").length === 12 && ["防濫用紀錄：", "人生代號：", "存檔索引：", "同意紀錄："].every(x => T("privacy").includes(x)) && /防濫用紀錄：約一小時後自動清除。/.test(T("privacy")) && /約一小時後自動清除/.test(T("privacy")));
 A.check("隱私權政策第二條逐項列出收集的資料，並寫明管理員查看存檔、整體統計無法拆出個人", ["信箱：", "復原金鑰與雲端存檔：", "行動點與購買紀錄：", "使用量紀錄：", "回報內容：", "付款資料：", "整體統計："].every(x => T("privacy").includes(x)) && /管理員為了改善遊戲、維護與除錯，可以查看存檔內容/.test(T("privacy")) && /紀錄保留 180 天/.test(T("privacy")));
 
 // ---- 收費說明的出現條件 ----

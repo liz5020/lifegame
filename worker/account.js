@@ -315,10 +315,20 @@ export class AccountStore {
     await this.storage.put("c:" + email, { h: await sha256Hex(email + "|" + code), exp: now + CODE_TTL_MS, tries: 0, sentAt: now });
     return { ok: true, code, email, next_send_in: RESEND_GAP_MS / 1000, expires_in: CODE_TTL_MS / 1000 };
   }
+  // 十、10.16.15(2026-10-08)：IP與寄信次數紀錄寫入後1小時到期。到期後不再計入限制(reserve只算最近一小時)，每小時排程呼叫這裡把已到期的整筆刪掉
+  // (最晚在寫入後2小時內清除)；順便清掉過期還沒用掉的驗證碼紀錄(鍵名含信箱)
+  async opPurgeAbuse(b) {
+    const cut = b.now - 3600 * 1000;
+    let le = 0, li = 0, c = 0;
+    for (const [k, v] of await this.storage.list({ prefix: "le:" })) { const last = Array.isArray(v) && v.length ? v[v.length - 1] : 0; if (last <= cut) { await this.storage.delete(k); le++; } }
+    for (const [k, v] of await this.storage.list({ prefix: "li:" })) { const last = Array.isArray(v) && v.length ? v[v.length - 1] : 0; if (last <= cut) { await this.storage.delete(k); li++; } }
+    for (const [k, v] of await this.storage.list({ prefix: "c:" })) { if (!v || b.now > v.exp) { await this.storage.delete(k); c++; } }
+    return { ok: true, purged: { email_times: le, ip_times: li, codes: c } };
+  }
   async opSendCodeRelease(b) {
     const email = normalizeEmail(b.email), ip = String(b.ip || "unknown").slice(0, 80);
-    const eTimes = await this._get("le:" + email, []); eTimes.pop(); await this.storage.put("le:" + email, eTimes);
-    const iTimes = await this._get("li:" + ip, []); iTimes.pop(); await this.storage.put("li:" + ip, iTimes);
+    const eTimes = await this._get("le:" + email, []); eTimes.pop(); if (eTimes.length) await this.storage.put("le:" + email, eTimes); else await this.storage.delete("le:" + email);
+    const iTimes = await this._get("li:" + ip, []); iTimes.pop(); if (iTimes.length) await this.storage.put("li:" + ip, iTimes); else await this.storage.delete("li:" + ip);
     const day = await this._day(b.date); day.verify = Math.max(0, day.verify - 1); await this._putDay(day);
     await this.storage.delete("c:" + email);
     return { ok: true };
@@ -603,8 +613,20 @@ export class AccountStore {
     if (n <= 0) return { ok: false, error: "bad_amount", status: 400 };
     if (walletTotal(a.wallet) < n) return this._out(a, { ok: false, status: 402, error: { type: "insufficient_action_points", message: "行動點不足" }, wallet: publicWallet(a) }, flags, null);
     spend(a.wallet, n);
+    // 十、7.4.3.4(2026-10-08)：人生重開丹(tag=keep、10點)留一張退還憑證，指定NPC整個第一階段都沒登場時可以憑它退還一次(伺服器驗證，客戶端不能自己加點)
+    if (b.tag === "keep" && n === 10) { a.tickets = a.tickets || {}; a.tickets.keep = (a.tickets.keep || 0) + 1; }
     await this._putAcct(a);
     return this._out(a, { wallet: publicWallet(a) }, flags, null);
+  }
+  async opWalletRefund(b) {
+    const a = await this._auth(b.token, b.now);
+    if (!a) return { ok: false, error: "unauthorized", status: 401 };
+    if (b.tag !== "keep" || !a.tickets || !(a.tickets.keep > 0)) return { ok: false, error: "no_ticket", status: 409 };
+    a.tickets.keep -= 1;
+    a.wallet.gift += 10;
+    pushEvent(a, b.now, "人生重開丹（退還）", 10);
+    await this._putAcct(a);
+    return this._out(a, { wallet: publicWallet(a) }, null, null);
   }
   async opWalletCanAfford(b) {
     const a = await this._auth(b.token, b.now);
@@ -926,6 +948,8 @@ const OPS = {
   wallet_pre: AccountStore.prototype.opWalletPre,
   wallet_post: AccountStore.prototype.opWalletPost,
   wallet_spend: AccountStore.prototype.opWalletSpend,
+  wallet_refund: AccountStore.prototype.opWalletRefund,
+  purge_abuse: AccountStore.prototype.opPurgeAbuse,
   wallet_can_afford: AccountStore.prototype.opWalletCanAfford,
   is_purchased: AccountStore.prototype.opIsPurchased,
   stats: AccountStore.prototype.opStats,
