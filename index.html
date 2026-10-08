@@ -1234,6 +1234,9 @@ function refreshMilestoneLocks(s){
 function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
 function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
 function pick(arr){ return arr[rnd(0,arr.length-1)]; }
+function rollParentOccupation(excludePolitician){ // 5.2.5加權抽職業；排除政治人物時剩餘權重自動重新正規化
+  return weightedPick(PARENT_OCCUPATIONS.filter(o=>!(excludePolitician && o.label==="政治人物")).map(o=>[o,o.weight]));
+}
 
 // ========== 三、3.3 外表成長來源（2026-09-27補上，使用者授權Claude全權判斷，數字皆為【測試參數】） ==========
 // 顏值：先天骰值不變，另加兩項「會回來的」修正（天花板低、不大幅翻轉）：
@@ -4209,15 +4212,16 @@ const PARENTING_STYLES = [
   { label:"情感疏忽",
     parentTrait:"報喜不報憂、情感表達少、常常心不在焉", affinityRange:[25,45] }
 ];
+// 五、5.2.5（2026-10-08使用者確認，【測試參數，待驗證】）：八類依貼近台灣的分布加權抽，不再平均各12.5%；weight合計100
 const PARENT_OCCUPATIONS = [
-  { label:"自營業者", trait:"自己做生意，家裡常聊到生意上的事" },
-  { label:"白領上班族", trait:"朝九晚五，偶爾加班，話題常繞著公司" },
-  { label:"勞力/服務業", trait:"工時不固定，體力活，回家常喊累" },
-  { label:"待業中", trait:"目前沒有固定工作，家裡氣氛偶爾緊繃" },
-  { label:"長期不在身邊", trait:"因工作長期在外地或國外，聚少離多" },
-  { label:"自由接案", trait:"收入不穩定，工作時間彈性但常常在忙" },
-  { label:"軍公教警消", trait:"作息規律，重紀律，偶爾提起工作上的責任" },
-  { label:"政治人物", trait:"公眾人物，家裡常有外人不太自然的關注" }
+  { label:"自營業者", weight:15, trait:"自己做生意，家裡常聊到生意上的事" },
+  { label:"白領上班族", weight:30, trait:"朝九晚五，偶爾加班，話題常繞著公司" },
+  { label:"勞力/服務業", weight:25, trait:"工時不固定，體力活，回家常喊累" },
+  { label:"待業中", weight:5, trait:"目前沒有固定工作，家裡氣氛偶爾緊繃" },
+  { label:"長期不在身邊", weight:5, trait:"因工作長期在外地或國外，聚少離多" },
+  { label:"自由接案", weight:8, trait:"收入不穩定，工作時間彈性但常常在忙" },
+  { label:"軍公教警消", weight:10, trait:"作息規律，重紀律，偶爾提起工作上的責任" },
+  { label:"政治人物", weight:2, trait:"公眾人物，家裡常有外人不太自然的關注" }
 ];
 const SIBLING_TRAITS = ["競爭心強，什麼都要比一下","很罩你，關鍵時刻挺你","各過各的，感情普通但不差","話不多，但需要時找得到人"];
 // bug修正（9/14，人生草稿0914測試.pdf）：原本SIBLING_NAMES混著男女名字、跟SIBLING_RELATIONS各自獨立亂數，
@@ -4491,7 +4495,7 @@ function newRoll(carry, identity){
   const presentParentInfos = []; // 5.5三餐資格判定專用：只收「在場、有能力煮飯」的家長(不含服刑中那位)
 
   function addNormalParent(relationLabel){
-    const occ = pick(PARENT_OCCUPATIONS);
+    const occ = rollParentOccupation(false);
     if(occ.label==="政治人物") isPoliticianChild = true;
     const style = pick(PARENTING_STYLES);
     presentParentStyles.push(style.label);
@@ -4520,7 +4524,7 @@ function newRoll(carry, identity){
   // 【技術判斷，使用者確認】比照離異仍有聯絡那一支骰姓名、職業、教養風格；好感：失聯者風格區間−10、已故者照風格區間，開局即凍結。
   // 失聯期間不進13.5父母健康狀態機(找回後才開始)，已故者不進。不列入presentParentStyles(不影響依附/社交起點)、不抽政治人物
   function addAbsentParent(relationLabel, kind){
-    const occ = pick(PARENT_OCCUPATIONS.filter(o=>o.label!=="政治人物"));
+    const occ = rollParentOccupation(true);
     const style = pick(PARENTING_STYLES);
     const lost = kind==="lost";
     characters.push({
@@ -4538,7 +4542,7 @@ function newRoll(carry, identity){
   }
   function addNonResidentDivorcedParent(relationLabel){
     if(Math.random() >= DIVORCED_PARENT_CONTACT_PROB){ addAbsentParent(relationLabel, "lost"); return; }
-    const occ = pick(PARENT_OCCUPATIONS.filter(o=>o.label!=="政治人物"));
+    const occ = rollParentOccupation(true);
     const style = pick(PARENTING_STYLES);
     characters.push({
       name: relationLabel==="父親" ? "爸爸" : "媽媽",
@@ -8575,8 +8579,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-f";
+const APP_VERSION = "2026.10.08-g";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-g", date:"2026-10-08", title:"家長職業更貼近現實", items:[
+    "開局時爸媽的職業不再八種平均出現：上班族、勞力/服務業、自營業者最常見，政治人物變得很少見（原本每位家長約八分之一，現在約2%）。",
+  ]},
   { version:"2026.10.08-f", date:"2026-10-08", title:"興趣更多元", items:[
     "遇到的新興趣不再老是手作：現在會從藝術、手作、知識、運動、科技、表演、買賣七大類裡輪流出現，每一類還有更具體的項目（例如陶藝、街舞、天文、攝影）。",
     "你已經在經營的類別比較不容易再抽到，想嘗試新的東西時更容易遇到沒碰過的領域。",

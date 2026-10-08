@@ -56,6 +56,13 @@ A.check("4.9.5 未滿18歲不擲出路", !js("state.characters.find(c=>c.name===
 const rolled = js(`(()=>{ const out = { college:0, work:0, politics:0 }; for(let i=0;i<4000;i++){ const c = { relation:'哥哥', age:18 }; updateFamilyPath(c); out[c.path.stage]++; } for(let i=0;i<500;i++){ if(/政治/.test(rollFamilyWorkCategory())) out.politics++; } return out; })()`);
 A.check("4.9.5 讀大學約80%(4000次落在0.77～0.83)", rolled.college / 4000 > 0.77 && rolled.college / 4000 < 0.83, rolled);
 A.check("4.9.5 職業類別不含「政治人物子女(自身從政)」", rolled.politics === 0, rolled);
+// ---------- 5.2.5 家長職業加權（2026-10-08） ----------
+const occDist = js(`(()=>{ const a={}, b={}; for(let i=0;i<10000;i++){ const x=rollParentOccupation(false).label; a[x]=(a[x]||0)+1; const y=rollParentOccupation(true).label; b[y]=(b[y]||0)+1; } return {a,b}; })()`);
+const near = (n, pct, tol) => Math.abs(n / 100 - pct) <= tol;
+A.check("5.2.5 家長職業加權：白領30%、勞力25%、自營15%（10000次，±2.5%）", near(occDist.a["白領上班族"], 30, 2.5) && near(occDist.a["勞力/服務業"], 25, 2.5) && near(occDist.a["自營業者"], 15, 2.5), occDist.a);
+A.check("5.2.5 政治人物約2%（±1%），不再12.5%", near(occDist.a["政治人物"] || 0, 2, 1), occDist.a);
+A.check("5.2.5 排除政治人物時完全不出現，其餘按比例放大", !occDist.b["政治人物"] && near(occDist.b["白領上班族"], 30.6, 2.5), occDist.b);
+A.check("5.2.5 八類權重合計100", ev("PARENT_OCCUPATIONS.reduce((s,o)=>s+o.weight,0)") === 100);
 A.check("4.9.5 開局已22歲以上直接擲職業類別", js(`(()=>{ const c = { relation:'姊姊', age:25 }; updateFamilyPath(c); return c.path.stage; })()`) === "work");
 add({ name: "弟測七", relation: "弟弟", age: 20, affiliation: "休學去當兵" });
 ev("updateFamilyPaths(state)");

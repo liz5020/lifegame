@@ -10,6 +10,11 @@
 
 ---
 
+### 2026-10-08（開發部）家長職業加權(2026.10.08-g，尚未上線)
+- 起因：使用者確認父母職業機率清單；原本`pick()`平均抽，政治人物每位家長12.5%（雙親家庭約23%有政治人物家長，連動鎖定富裕家境）。設計文件五、5.2.5。
+- `index.html`：`PARENT_OCCUPATIONS`每項加`weight`（30/25/15/10/8/5/5/2，測試參數）；新增`rollParentOccupation(excludePolitician)`（用既有`weightedPick`，排除政治人物時其餘按比例放大），三處抽職業（雙親在場、離異不同住／失聯／已故）改用；版本2026.10.08-g與更新說明。不改遊戲狀態結構，舊存檔不受影響；`worker/`沒動。
+- 驗證：`tests/test-56-occupation.mjs`新增4項（10000次比例、政治人物約2%、排除版不出現政治人物、權重合計100）。
+
 ### 2026-10-08（開發部）興趣多元化(2026.10.08-f，尚未上線)
 - 起因：使用者回饋興趣玩幾次都是手作居多；查核程式端沒有任何出現機率，類別全由AI挑，prompt範例也偏手作。設計文件八、8.8.1～8.8.3（claude.ai網頁版定案）。
 - `index.html`：新增`INTEREST_ITEMS`／`rollInterestSeed`／`prepareInterestSeed`／`interestCardLabel`；每回合在timeCtx算一次種子(重新生成沿用)；payload新增`turn_focus.try_new_suggestion`、`interest_seed_now`、`interest_status[].item`；種子回合AI類別不符改回種子並記`interest_event_mismatch`；興趣卡`item`欄位(選填，舊卡無)；興趣面板與人生回顧顯示「類別・項目」；版本2026.10.08-f與更新說明。
