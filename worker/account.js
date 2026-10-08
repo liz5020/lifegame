@@ -316,14 +316,17 @@ export class AccountStore {
     return { ok: true, code, email, next_send_in: RESEND_GAP_MS / 1000, expires_in: CODE_TTL_MS / 1000 };
   }
   // 十、10.16.15(2026-10-08)：IP與寄信次數紀錄寫入後1小時到期。到期後不再計入限制(reserve只算最近一小時)，每小時排程呼叫這裡把已到期的整筆刪掉
-  // (最晚在寫入後2小時內清除)；順便清掉過期還沒用掉的驗證碼紀錄(鍵名含信箱)
+  // (最晚在寫入後2小時內清除)；順便清掉過期還沒用掉的驗證碼紀錄(鍵名含信箱)；2026-10-08補：封存包寫入計數(r:)同樣在這裡清
   async opPurgeAbuse(b) {
     const cut = b.now - 3600 * 1000;
-    let le = 0, li = 0, c = 0;
+    let le = 0, li = 0, c = 0, pr = 0;
+    // 封存包寫入計數(r:小時:來源雜湊)：計數只看當下這一小時，小時早於現在的整筆刪掉(沒人再寫入時也不會留超過2小時)
+    const curHour = new Date(b.now).toISOString().slice(0, 13);
+    for (const [k] of await this.storage.list({ prefix: "r:", end: "r:" + curHour })) { await this.storage.delete(k); pr++; }
     for (const [k, v] of await this.storage.list({ prefix: "le:" })) { const last = Array.isArray(v) && v.length ? v[v.length - 1] : 0; if (last <= cut) { await this.storage.delete(k); le++; } }
     for (const [k, v] of await this.storage.list({ prefix: "li:" })) { const last = Array.isArray(v) && v.length ? v[v.length - 1] : 0; if (last <= cut) { await this.storage.delete(k); li++; } }
     for (const [k, v] of await this.storage.list({ prefix: "c:" })) { if (!v || b.now > v.exp) { await this.storage.delete(k); c++; } }
-    return { ok: true, purged: { email_times: le, ip_times: li, codes: c } };
+    return { ok: true, purged: { email_times: le, ip_times: li, codes: c, pack_rate: pr } };
   }
   async opSendCodeRelease(b) {
     const email = normalizeEmail(b.email), ip = String(b.ip || "unknown").slice(0, 80);

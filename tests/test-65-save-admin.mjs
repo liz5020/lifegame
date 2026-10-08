@@ -123,6 +123,14 @@ A.check("頻率限制：同一來源每小時最多寫入60次，第61次拒絕(
 A.check("頻率限制：換一個來源不受影響；已存在的封存包重送不吃額度", (await post("/stage-pack", { key: "RATEKEY00002", slot: 0, id: "liferatebb", ...pack({}) }, { "CF-Connecting-IP": "9.9.9.8" })).status === 200 && (await post("/stage-pack", { key: "RATEKEY00001", slot: 0, id: "liferate0", ...pack({}) }, ipH)).json.existed === true);
 env.TEST_NOW_MS = String(NOW + 3700 * 1000);
 A.check("頻率限制：過了這個小時就重新計算", (await post("/stage-pack", { key: "RATEKEY00001", slot: 0, id: "liferate60", ...pack({}) }, ipH)).status === 200);
+// 2026-10-08(10.16.15)：封存包寫入計數(來源雜湊)也由每小時排程清除，沒人再寫入時不會留超過2小時
+const { accountsCall } = await import("../worker/gate.js");
+const pu1 = await accountsCall(env, { op: "purge_abuse" });
+A.check("防濫用清除：當下這一小時的封存包寫入計數保留(排程不會誤刪還在計算的小時)", pu1.ok && pu1.purged.pack_rate === 0, pu1);
+env.TEST_NOW_MS = String(NOW + 3 * 3600 * 1000);
+const pu3 = await accountsCall(env, { op: "purge_abuse" });
+A.check("防濫用清除：再過2小時、期間沒人寫入，排程把剩下的封存包計數清掉(沒留超過2小時)", pu3.purged.pack_rate === 1 && (await post("/stage-pack", { key: "RATEKEY00001", slot: 0, id: "liferate0", ...pack({}) }, ipH)).json.existed === true, pu3);
+env.TEST_NOW_MS = String(NOW + 3700 * 1000);
 const envLim = await mk("false"); envLim.STAGE_PACK_RATE_PER_HOUR = "2";
 const lim = []; for (let i = 0; i < 3; i++) lim.push((await post("/stage-pack", { key: "RATEKEY00003", slot: 0, id: "limx" + i, ...pack({}) }, { "CF-Connecting-IP": "9.9.9.7" }, envLim)).status);
 A.check("頻率上限是設定值(STAGE_PACK_RATE_PER_HOUR=2時第3次被擋)，不寫死", lim.join() === "200,200,429", lim);

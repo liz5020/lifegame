@@ -10,6 +10,13 @@
 
 ---
 
+### 2026-10-08（開發部）封存包寫入計數也由每小時排程清除(10.16.15補，2026.10.08-i，尚未上線)
+- 起因：使用者決定（待辦清單一、1）：封存包寫入頻率限制的來源雜湊計數（`r:小時:來源雜湊`）原本只在「同一個DO有新寫入」時順便清舊，沒人寫入時會留超過2小時；改程式、說明頁不動。
+- `worker/account.js`：`opPurgeAbuse`新增清除所有小時早於「現在這一小時」的`r:`計數（回傳`purged.pack_rate`）；每小時排程已會呼叫`purge_abuse`，不用改`entry.js`。計數只在寫入當小時有用，最長保留＝寫入當小時結束＋到下一次整點排程，**不超過2小時**，與10.16.15一致。
+- `worker/worker.js`：`WORKER_VERSION`→2026.10.08-i（網頁版同步-i）。
+- 測試：`test-65`新增3項（當下這一小時保留、兩小時後無人寫入時被清、清掉後同一人生封存包重送仍回existed）。
+- ⚠️推上線前要問使用者：動到`worker/`。
+
 ### 2026-10-08（開發部）共用職業細表(2026.10.08-h，尚未上線)
 - 起因：使用者要求父母與玩家共用一張具體職業細表（方案2），並拍板：高風險併進細表、玩家自己挑具體職缺、具體職業不影響數值。設計文件五、5.2.5／十二、12.3／12.4／三、3.4.3／四、4.9／九、9.2。
 - `index.html`：新增`OCCUPATION_JOBS`（八類共8～4個職業，權重、高風險旗標）與`jobsOfCategory`／`isValidJob`／`jobIsHighRisk`／`rollJobInCategory`／`PARENT_LABEL_CATEGORY`／`backfillOccupationJobs`；移除`HIGH_RISK_JOB_SUBTYPES`與`rollJobRiskSubtype`（高風險改由職業旗標決定，舊的工種名稱加字尾：工地→工地工人等）；家長卡新增`occupationJob`、配偶`spouseOccupationJob`、手足子女`path.job`、玩家`jobTitle`；`resolveJobApplication`／`applyJobHire`／`acceptJobOffer`帶職缺；求職彈窗選類別後列出職缺（高風險標註）、錄取畫面顯示職缺；payload新增`job_title`；「關於我」加職稱；轉職履歷加職稱；舊存檔載入時補擲。版本2026.10.08-h與更新說明。

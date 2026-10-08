@@ -8611,8 +8611,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-h";
+const APP_VERSION = "2026.10.08-i";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-i", date:"2026-10-08", title:"幕後整理", items:[
+    "整理了後台暫存的資料，讓它們更快自動清除，玩起來不會有差別。",
+  ]},
   { version:"2026.10.08-h", date:"2026-10-08", title:"職業更具體", items:[
     "家人、配偶的職業不再只是大方向，會寫出具體的工作，例如工程師、餐飲店老闆、護理人員、警消外勤。",
     "求職時選好方向後，可以從底下的具體職缺裡挑想做的工作；高風險的工作會特別標出來。錄取後你的職稱也會固定下來，劇情裡不會再亂換。",
