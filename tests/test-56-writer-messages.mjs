@@ -89,7 +89,7 @@ const errEntry = ev("state.log[state.log.length-1]");
 A.check("第6則：錯誤那則日記文字＝撰稿人一時沒接上線，這一回合還沒扣點", /撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。/.test(errEntry.text) && errEntry.error === true, errEntry);
 ev("render()");
 const err = doc.querySelector(".narrator-error");
-A.check("第6則：畫面顯示同一段文字，按鈕〔重新送出〕", !!err && /撰稿人一時沒接上線，這一回合還沒扣點/.test(err.textContent) && doc.getElementById("btn-retry-turn")?.textContent === "重新送出", err && err.textContent);
+A.check("第6則：畫面顯示同一段文字，按鈕〔再試一次〕(10.17.2)", !!err && /撰稿人一時沒接上線，這一回合還沒扣點/.test(err.textContent) && doc.getElementById("btn-retry-turn")?.textContent === "再試一次", err && err.textContent);
 A.check("10.12.6：連線失敗不扣點(前後餘額相同)", ev("totalAP(state)") === apBefore, [apBefore, ev("totalAP(state)")]);
 
 // 第8則：每日補點提示，只有實際補到點才出現

@@ -18,8 +18,10 @@ export const AP_SECOND_LIFE_GIFT = 55;
 export const AP_LEGACY_GIFT_MAX = 55;
 export const AP_GIFT_CLAIMS_PER_KEY = 1;
 export const AP_COST_PER_TURN = 1;
-// 同一個turn_nonce最多呼叫幾次AI：第一次＋失敗重試1次＋場景日期違規重新生成1次＋輸出品質不合格重新生成最多2次(一、1.2.9.18，2026-09-29，見index.html takeTurn)
-export const MAX_CALLS_PER_TURN_NONCE = 5;
+// 同一個turn_nonce最多呼叫幾次AI(十、10.17.5，2026-10-08由5改9)：一次送出最多5次(第一次＋失敗重試1次＋場景日期違規重新生成1次＋輸出品質不合格重新生成最多2次，一、1.2.9.18)；
+// 「再試一次」沿用同一個turn_nonce：失敗的那次送出最多用掉2次(第一次＋失敗重試)，之後成功的那次送出最多5次，合計最多7次，再加2次餘裕＝9。
+// 達上限時前端放掉這個turn_nonce(下一次送出換新的)，所以不會卡死
+export const MAX_CALLS_PER_TURN_NONCE = 9;
 // 開場回合(人生正式開始那一回合)不扣點(10.3.1「開場建角不扣點」)。為了避免被拿來無限免費呼叫：
 // 同一個life_id只免費一次，且每個slot每個台灣日最多3次免費開場
 export const FREE_PROLOGUES_PER_SLOT_PER_DAY = 3;
@@ -95,12 +97,14 @@ export async function saveRecord(env, key, slot, rec) {
 }
 
 // 呼叫AI之前：決定這次要不要扣點/能不能呼叫。回傳{ok, status, error, charge(扣掉的點，失敗時要退), freePrologue}
-export function preCharge(rec, { nonce, isPrologue, lifeId }) {
+export function preCharge(rec, { nonce, isPrologue, lifeId, retryOfFailed }) {
   if (rec.lastNonce === nonce) {
     // 同一回合的重試/重新生成
     if (rec.nonceCalls >= MAX_CALLS_PER_TURN_NONCE) return { ok: false, status: 429, error: { type: "regeneration_limit", message: "這一回合重新生成太多次了" } };
     rec.nonceCalls += 1;
-    if (rec.nonceCharged) return { ok: true, charge: null, repeat: true }; // 這回合已經扣過(成功過一次)，重新生成不再扣
+    // 這回合已經扣過(成功過一次)，重新生成不再扣。十、10.17.5：玩家按「再試一次」(retryOfFailed)沿用同一回合編號時，上一次是伺服器已扣點、內容寫好但前端沒收到(例如逾時)——
+    // 這次不重複扣，但這次若又失敗，要把那一筆退掉(postCharge)；上一次已退點(nonceCharged為null)就走下面的正常預扣
+    if (rec.nonceCharged) return { ok: true, charge: null, repeat: true, retryOfFailed: !!retryOfFailed };
   } else {
     rec.lastNonce = nonce; rec.nonceCalls = 1; rec.nonceCharged = null;
   }
@@ -118,6 +122,7 @@ export function postCharge(rec, pre, success, lifeId, today) {
   if (success && today) markAction(rec, today); // 10.6.2（2026-09-27）：有成功的回合就算這天有行動
   if (!success) {
     if (pre.charge) { refund(rec, pre.charge); rec.nonceCharged = null; }
+    else if (pre.repeat && pre.retryOfFailed && rec.nonceCharged) { refund(rec, rec.nonceCharged); rec.nonceCharged = null; } // 10.17.5：「再試一次」又失敗，退掉上一次留下的那一筆
     return;
   }
   if (pre.freePrologue) {

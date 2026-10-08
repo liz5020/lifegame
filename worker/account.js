@@ -588,7 +588,7 @@ export class AccountStore {
     if (typeof b.nonce !== "string" || !/^[a-z0-9]{6,40}$/.test(b.nonce)) return { ok: false, error: "bad_nonce", status: 400 };
     const ctx = this._ctx(b);
     const flags = await this._tick(a, ctx);
-    const pre = preCharge(a.wallet, { nonce: b.nonce, isPrologue: !!b.is_prologue, lifeId: b.life_id });
+    const pre = preCharge(a.wallet, { nonce: b.nonce, isPrologue: !!b.is_prologue, lifeId: b.life_id, retryOfFailed: b.retry === true });
     if (pre.ok) {
       a.wallet.pres[b.nonce] = pre;
       const ks = Object.keys(a.wallet.pres); if (ks.length > 6) delete a.wallet.pres[ks[0]];

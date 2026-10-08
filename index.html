@@ -811,7 +811,31 @@ function acctToken(){ try{ return localStorage.getItem(ACCT_TOKEN_KEY) || ""; }c
 function acctHeaders(){ const h = { "Content-Type":"application/json" }; const t = acctToken(); if(t) h.Authorization = "Bearer "+t; return h; }
 function acctSaveCache(){ try{ if(acct && acctToken()) localStorage.setItem(ACCT_CACHE_KEY, JSON.stringify(acct)); else localStorage.removeItem(ACCT_CACHE_KEY); }catch(e){} }
 function acctSetAccount(account){ if(account && account.aid){ acct = account; acctSaveCache(); } }
-function syncWallet(w){ if(acct && w){ acct.wallet = Object.assign({}, w); acctSaveCache(); } } // 複製一份：spendAP／refundAP會就地改acct.wallet，不能改到呼叫端手上那份伺服器回報
+function syncWallet(w){
+  if(acct && w){
+    if(acctReconcilePending()){ // 十、10.17.6：之前失敗時查不到伺服器餘額、先沿用本機退點——連上伺服器的這一次校正，並在點數明細留一筆紀錄
+      acctSetReconcilePending(false);
+      const diff = (Number(w.total)||0) - (Number(acct.wallet && acct.wallet.total)||0);
+      if(diff!==0 && state && walletActive(state)) apLogAdd(state, "點數校正", diff);
+    }
+    acct.wallet = Object.assign({}, w); acctSaveCache();
+  }
+} // 複製一份：spendAP／refundAP會就地改acct.wallet，不能改到呼叫端手上那份伺服器回報
+const ACCT_RECONCILE_KEY = "life_sim_acct_reconcile"; // 十、10.17.6：帳號錢包失敗退點後沒查到伺服器餘額，下次連上時校正
+function acctReconcilePending(){ try{ return localStorage.getItem(ACCT_RECONCILE_KEY)==="1"; }catch(e){ return false; } }
+function acctSetReconcilePending(on){ try{ if(on) localStorage.setItem(ACCT_RECONCILE_KEY,"1"); else localStorage.removeItem(ACCT_RECONCILE_KEY); }catch(e){} }
+// 十、10.17.6：帳號人生回合失敗或逾時後，先向伺服器查一次最新錢包餘額，畫面照伺服器的數字；查不到(沒網路)就沿用本機退點並記下待校正
+async function acctQueryAfterFailure(){
+  const before = Number(acct && acct.wallet && acct.wallet.total) || 0;
+  const r = await acctFetch("account/me");
+  if(r.ok && r.data && r.data.account){
+    const diff = (Number(r.data.account.wallet && r.data.account.wallet.total)||0) - before;
+    acctSetAccount(r.data.account); acctApplyEvents(r.data.events); acctSetReconcilePending(false);
+    return { ok:true, diff };
+  }
+  acctSetReconcilePending(true);
+  return { ok:false };
+}
 function walletActive(s){ return !!(acct && s && s.acct && s.acct.aid===acct.aid); }
 function newAcctLid(){ return "l" + Date.now().toString(36) + Math.random().toString(36).slice(2,8); } // 小寫英數，跟Worker的格式檢查對得上
 // 每次呼叫Worker的帳號網址：自動帶登入token；401＝登入已失效
@@ -914,8 +938,8 @@ async function acctLifeAdd(s){
   return { ok:false, status:r.status, error:r.data && r.data.error };
 }
 // mock模式沒有AI呼叫，回合的扣點改由這兩個網址做(真實模式在AI代理裡扣，同一套規則)
-async function walletMockCharge(nonce, lifeId){
-  const r = await acctFetch("account/wallet", { op:"charge", nonce, life_id:lifeId });
+async function walletMockCharge(nonce, lifeId, retry){
+  const r = await acctFetch("account/wallet", { op:"charge", nonce, life_id:lifeId, retry: retry || undefined });
   if(r.ok){ syncWallet(r.data.wallet); acctApplyEvents(r.data.events); return; }
   if(r.data && r.data.wallet) syncWallet(r.data.wallet);
   const err = new Error(r.status===402 ? "行動點不足（帳號錢包）" : "帳號錢包扣點失敗");
@@ -3769,12 +3793,17 @@ function cloudSaveTagText(){
   return "雲端存檔：" + (m<1 ? "剛剛" : m<60 ? m+" 分鐘前" : Math.floor(m/60)+" 小時前");
 }
 function cloudSaveTagHTML(){
+  // 十、10.17.4：本機存檔失敗時常駐這一行(任何模式都顯示)，點一下＝手動存檔(重新存一次本機＋雲端)
+  if(localSaveFailed) return `<span class="demo-tag side-tag cloud-save-tag fail" id="local-save-fail-tag" title="點一下重新存檔" tabindex="0" role="button">${icon("cloud")} ${escapeHtml(LOCAL_SAVE_FAIL_TEXT)}</span>`;
   if(USE_MOCK || CLOUD_SAVE_ENABLED) return ``;
   return `<span class="demo-tag side-tag cloud-save-tag${cloudSaveFailed?" fail":""}" id="cloud-save-tag" title="點一下立刻存到雲端" tabindex="0" role="button">${icon("cloud")} ${escapeHtml(cloudSaveTagText())}</span>`;
 }
 function updateCloudSaveTag(){ const w = document.getElementById("cloud-save-tag-wrap"); if(w) w.innerHTML = cloudSaveTagHTML(); }
 setInterval(updateCloudSaveTag, 30*1000);
-document.addEventListener("click", e=>{ if(e.target.closest && e.target.closest("#cloud-save-tag")) manualCloudSave(); });
+document.addEventListener("click", e=>{
+  if(e.target.closest && e.target.closest("#cloud-save-tag")) manualCloudSave();
+  else if(e.target.closest && e.target.closest("#local-save-fail-tag")){ emergencyCloudFailed = false; if(CLOUD_SAVE_ENABLED || USE_MOCK) saveGame(); else manualCloudSave(); } // 10.17.4：手動存檔
+});
 function autoSaveDue(s){
   if(USE_MOCK || CLOUD_SAVE_ENABLED || !s || !hasValidConsent()) return false; // 雲端存檔全面打開時，每次存檔本來就會同步(cloudSyncOnce)
   if(s.phase==="ending") return s.autoSavedEnding!==true;
@@ -4066,7 +4095,42 @@ function saveLocalOnly(){
   const slot = slotRaw!==null ? Number(slotRaw) : null;
   if(state && state.phase && state.phase!=="home"){ const c = getConsent(); if(c) state.consent = c; } // 十、10.13.2：同意紀錄隨存檔一起上傳
   if(state && (state.phase==="playing" || state.phase==="ending")) state.savedAt = Date.now();
-  try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); }catch(e){ console.warn("save failed", e); }
+  writeLocalState(slot);
+}
+// 十、10.17.4（2026-10-08）：本機存檔失敗＝頂部存檔狀態列常駐一行提示，直到下一次本機存檔成功才消失(取代原本「只提示一次」)；
+// 失敗當下立刻補存一次雲端(已同意雲端存檔的玩家；示範模式不補；補存失敗不連續重打，下一次照常依排程存)。雲端暫停或開啟，提示方式相同
+const LOCAL_SAVE_FAIL_TEXT = "這一回合還沒存到，請先不要關閉頁面，可以按手動存檔";
+let localSaveFailed = false, emergencyCloudFailed = false, emergencyCloudRunning = false;
+function writeLocalState(slot){
+  try{
+    localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state));
+    if(localSaveFailed){ localSaveFailed = false; updateCloudSaveTag(); }
+    emergencyCloudFailed = false;
+    return true;
+  }catch(e){
+    console.warn("save failed", e);
+    if(!localSaveFailed){ localSaveFailed = true; updateCloudSaveTag(); }
+    emergencyCloudSave();
+    return false;
+  }
+}
+async function emergencyCloudSave(){
+  const st = state;
+  if(emergencyCloudRunning || emergencyCloudFailed || USE_MOCK || CLOUD_SAVE_ENABLED || !st || (st.phase!=="playing" && st.phase!=="ending") || !hasValidConsent()) return; // CLOUD_SAVE_ENABLED開著時saveGame本來每回合都會同步雲端
+  emergencyCloudRunning = true;
+  let ok = false;
+  const turn = st.turnCount||0;
+  try{
+    const placed = await ensureCloudHome(st);
+    if(placed.home){
+      const up = await cloudUploadState(st, placed.home, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct ? st.acct.lid : undefined });
+      ok = up.ok;
+    }
+  }catch(e){ console.warn("本機存檔失敗後補存雲端失敗", e); }
+  finally{ emergencyCloudRunning = false; }
+  if(!ok){ emergencyCloudFailed = true; return; } // 不連續重打：本機下次存成功才重置
+  st.lastAutoCloudTurn = turn; st.lastAutoCloudAt = Date.now(); cloudSaveFailed = false;
+  updateCloudSaveTag();
 }
 // 讀檔：雲端與本機是同一段人生時，本機一樣新或比較新就用本機(有反悔快照與完整日記)；雲端比較新(換了裝置玩過)就用雲端，
 // 前面封存掉的日記如果本機有，直接補回來，不用下載
@@ -4101,7 +4165,7 @@ function showSaveFailToast(){
   div.innerHTML = `<div>撰稿人剛剛沒能把這一頁收好。</div><div>請確認網路連線後再試一次，已經寫下的內容不會消失。</div><button class="ghost-btn" id="btn-save-retry" style="margin-top:6px;">再試一次</button>`;
   div.onclick = ()=>div.remove();
   document.body.appendChild(div);
-  document.getElementById("btn-save-retry").onclick = (ev)=>{ ev.stopPropagation(); div.remove(); syncFailNotified = false; localSaveFailNotified = false; saveGame(); };
+  document.getElementById("btn-save-retry").onclick = (ev)=>{ ev.stopPropagation(); div.remove(); syncFailNotified = false; saveGame(); };
   setTimeout(()=>div.remove(), 10000);
 }
 function showSyncFailToast(){
@@ -4117,8 +4181,7 @@ async function saveGame(){
   const slot = slotRaw!==null ? Number(slotRaw) : null;
   if(state && state.phase && state.phase!=="home"){ const c = getConsent(); if(c) state.consent = c; } // 十、10.13.2：同意紀錄隨存檔一起上傳
   if(state && (state.phase==="playing" || state.phase==="ending")) state.savedAt = Date.now(); // 十、10.2：同一段人生在兩台裝置玩時，以「最後一次存檔」為準——每次存檔記下時間
-  try{ localStorage.setItem(STORAGE_KEY+(slot!==null?":"+slot:""), JSON.stringify(state)); localSaveFailNotified = false; }
-  catch(e){ console.warn("save failed", e); notifyLocalSaveFailed(); }
+  writeLocalState(slot);
   writeHomeMeta(slot);
   if(!CLOUD_SAVE_ENABLED){ if(autoSaveDue(state)) autoCloudSave(); return; } // 十、10.8：封測期間平常只存本機；十、10.13.3：每10分鐘(回合有推進)與人生結束自動存一次
   // 十、10.1（9/19新增）：本機存完之後，同步存一份到Worker的KV，達成跨裝置存檔。
@@ -4138,13 +4201,7 @@ async function saveGame(){
 }
 let cloudSyncRunning = null, cloudSyncQueued = false;
 // 十、10.8（2026-09-29）：雲端暫停期間本機是唯一的一份，瀏覽器空間不夠存不進去時提示一次(同一段失敗期間不重複)
-let localSaveFailNotified = false;
-function notifyLocalSaveFailed(){
-  if(localSaveFailNotified || CLOUD_SAVE_ENABLED) return;
-  localSaveFailNotified = true;
-  if(!state || (state.phase!=="playing" && state.phase!=="ending")) return;
-  showSaveFailToast(); // 十、10.12.5第5則
-}
+// （2026-10-08由10.17.4取代：本機存檔失敗不再只提示一次，改為writeLocalState的常駐狀態列提示）
 async function cloudSyncOnce(){
   const slotRaw = localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME);
   const slot = slotRaw!==null ? Number(slotRaw) : null;
@@ -8611,8 +8668,13 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-i";
+const APP_VERSION = "2026.10.08-j";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-j", date:"2026-10-08", title:"出錯時更穩", items:[
+    "撰稿人等太久（超過 90 秒）會自動放棄這一次，並把點數還給你；等超過 30 秒會告訴你「撰稿人還在寫」。",
+    "回合失敗後按「再試一次」，不會重複扣點；失敗時角色的狀態會完整回到送出之前。",
+    "瀏覽器存不進這一回合時，畫面上方會一直提醒，並立刻幫你補存一份到雲端。",
+  ]},
   { version:"2026.10.08-i", date:"2026-10-08", title:"幕後整理", items:[
     "整理了後台暫存的資料，讓它們更快自動清除，玩起來不會有差別。",
   ]},
@@ -8810,14 +8872,31 @@ let lastTurnServerInfo = null; // Worker回傳的lifegame欄位(行動點、遙�
 let lastCallServerAP = null;    // 這一次callAI收到的伺服器端行動點(失敗時takeTurn用它校正本機退點)
 let lastCallWallet = null;      // 十、10.9.2：這一次callAI收到的帳號錢包最新狀態
 
+// 十、10.17.2（2026-10-08）：AI逾時與重打間隔(可調整的設定值，測試用ev改)。單次請求超過AI_TIMEOUT_MS視為逾時＝失敗，不自動重打、直接走失敗收尾；
+// 等待超過AI_SLOW_HINT_MS在等待畫面加一句提示；非逾時的錯誤第一次失敗後等AI_RETRY_DELAY_MS再重打一次(原本是立刻重打)
+let AI_TIMEOUT_MS = 90000;
+let AI_SLOW_HINT_MS = 30000;
+let AI_RETRY_DELAY_MS = 2000;
+const AI_SLOW_HINT_TEXT = "撰稿人還在寫，請稍等一下";
 async function callAI(actionText, forceEnding, timeCtx){
   lastCallServerAP = null; lastCallWallet = null;
+  let res;
+  const abortCtl = typeof AbortController!=="undefined" ? new AbortController() : null;
+  let timedOut = false;
+  const timeoutTimer = setTimeout(()=>{ timedOut = true; if(abortCtl) abortCtl.abort(); }, AI_TIMEOUT_MS);
+  const timeoutErr = ()=>{ const err = new Error("AI回應逾時（超過"+Math.round(AI_TIMEOUT_MS/1000)+"秒）"); err.noRetry = true; err.timeout = true; return err; };
+  try{
+    return await callAIInner(actionText, forceEnding, timeCtx, abortCtl, ()=>timedOut, timeoutErr);
+  } finally { clearTimeout(timeoutTimer); }
+}
+async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOut, timeoutErr){
   let res;
   const userMsgStr = buildUserMessage(actionText, forceEnding, timeCtx);
   const callMeta = { kind: callKindFor(state, "turn", timeCtx && timeCtx.turnNonce, forceEnding), inChars: payloadBlockChars(userMsgStr) };
   try{
     res = await fetch(WORKER_URL, {
       method:"POST",
+      signal: abortCtl ? abortCtl.signal : undefined, // 十、10.17.2：逾時就中止
       headers: acctHeaders(), // 十、10.2：登入中就帶token(有購買紀錄的帳號不受花費上限暫停；帳號錢包扣點也靠它)
       // 2026-09-25（十、10.4）：只送messages。model/max_tokens/output_config/tools/tool_choice/system全部改由Worker決定
       // (見worker/prompt.js與worker.js的buildTurnRequest)，前端就算送了也會被忽略
@@ -8831,16 +8910,21 @@ async function callAI(actionText, forceEnding, timeCtx){
         ap_hint: timeCtx && timeCtx.apBefore,
         ap_test_free: apTestFreeOn() || undefined, // 10.3.12：只是請求，Worker只認登記過的測試鑰匙
         wallet: walletActive(state) || undefined,  // 十、10.9.2：這段人生用帳號共用錢包，由Worker在呼叫AI前預扣、失敗退點
+        retry: (timeCtx && timeCtx.isRetry) || undefined, // 十、10.17.5：玩家按「再試一次」沿用同一個turn_nonce，Worker據此不重複扣點、又失敗時退回
         messages: [{ role:"user", content: userMsgStr }]
       })
     });
   }catch(networkErr){
+    if(isTimedOut()) throw timeoutErr();
     throw new Error("網路請求失敗："+networkErr.message);
   }
 
   let text;
   try{ text = await res.text(); }
-  catch(readErr){ throw new Error("讀取回應內容失敗："+readErr.message); }
+  catch(readErr){
+    if(isTimedOut()) throw timeoutErr();
+    throw new Error("讀取回應內容失敗："+readErr.message);
+  }
 
   if(!text || text.trim().length===0){
     const ct = res.headers.get("content-type");
@@ -8868,7 +8952,7 @@ async function callAI(actionText, forceEnding, timeCtx){
   }
   if(res.status===402 || res.status===429){
     const err = new Error(res.status===402 ? "行動點不足（伺服器端）" : "這一回合重新生成次數已達上限");
-    err.noRetry = true; err.apInsufficient = res.status===402;
+    err.noRetry = true; err.apInsufficient = res.status===402; err.regenLimit = res.status===429; // 10.17.5：達上限後「再試一次」要換新的回合編號
     throw err;
   }
   if(!res.ok){
@@ -9239,6 +9323,29 @@ async function mockCallAI(actionText, forceEnding, timeCtx){
   return mockGenerateTurn(actionText, forceEnding, timeCtx);
 }
 
+// 十、10.17.7（2026-10-08）：回合失敗還原範圍——這一回合程式改了什麼，失敗就還原什麼(上次活動日期lastActiveDate例外)。
+// 下面這些欄位以前不在快照裡(回合流程中的擲骰計時、佇列、旗標、事件紀錄、疾病與家庭狀態、重心比例等)；快照另放在snap.extra，
+// 快照當時這個欄位不存在(undefined)的，還原時也把它刪掉，回到真正的「送出前」。同一份快照也用在反悔，補進後反悔也一併還原這些欄位(預期行為)。
+// 新增「回合中會改動」的遊戲狀態欄位時，要加進這份清單；tests/test-84-turn-flow.mjs會掃描漏掉的欄位
+const SNAPSHOT_EXTRA_KEYS = [
+  // 回合流程的擲骰計時、佇列、旗標
+  "bgLastRollTurn","bgYear","newsQueue","pendingInvites","friendOpportunityPending","lastFeedTurn","interestSeedLast",
+  "pregnancy","fertilityAttempts","orderNotice","orderDeliveredLast","pendingExpenseMentions",
+  "halfYearCarry","collegeDelayYearsUsed","pendingBusinessLaunch","inPrepPhaseThisTurn","reunionNow",
+  "pendingConfession","confessionResultNext","pendingBreakup","pendingMajorPurchase","pendingJobSearch","jobSearchPhase","everSearchedJob",
+  "pendingEldercareDecision","pendingParentDeath","pendingFamilyBusinessOffer","eldercareQueue",
+  // 事件紀錄與「這一回合」旗標
+  "partTimeEventLog","fertilityEventLog","universityEventLog","birthNow","graduationEventLog","illnessEventLog","majorIllnessEventLog",
+  "parentHealthEventLog","parentRetirementEventLog","parentDeathEventLog","interestFormedEventLog","breakthroughEventLog",
+  "purchaseEventNow","personalityStyleChangedNow","burnoutSignalNow","interestCostNow","placeCatNow","carryStatChanges","carryPurchaseNote","cashLedger",
+  // 年度與累計計數、里程碑、人格與購物、疾病與家庭
+  "milestones","milestoneChronicled","studentStatus","careerEntryAge","focusRatio","turnsThisYearForHealth","healthyTurnsThisYear","healthyYearStreak",
+  "riskyHobbyScore","lowCashStreak","recentTones","clubIdleStreak","clubEngagement","styleSignals","personalityStyle","temperamentAgeTick",
+  "breakthroughCountByAxis","breakthroughFiredAxes","majorEventJudgedCountByStage","knowledgeMilestoneUsedIds","knowledgeMilestoneCountByStage",
+  "examBelowExpectationStreak","lastExamPerformanceLog","logicAbility","appearanceDesc","groomingBonus","belongings","purchaseCounts","purchaseStageKey",
+  "peerPositionAtSpecial","chronicConditions","acuteRecoveryTurns","majorIllness","majorIllnessCountByBand","majorIllnessTypeByBand","majorIllnessRecoveredCount",
+  "familyHomeValue","familyHomeInherited","lifeTrait","phase","ending"
+];
 function snapshotForUndo(){
   state.undoUnavailableHere = false; // 十、10.7.1：這台裝置開始有自己的反悔快照
   state.snapshot = JSON.parse(JSON.stringify({
@@ -9273,14 +9380,18 @@ function snapshotForUndo(){
     prepTurnsThisTerm: state.prepTurnsThisTerm||0, interestCandidates: state.interestCandidates||[], networkIdleStreak: state.networkIdleStreak||0,
     appearLog: state.appearLog||[], dailyThemeLog: state.dailyThemeLog||[], promises: state.promises||[], promiseSeq: state.promiseSeq||0, keyItems: state.keyItems||[],
     // 十五、人生之書（2026-09-25）：反悔時目前這一章的素材也要回到上一回合；已經收成的章節另外處理(見applySnapshot)
-    bookDraft: state.book ? { draft: state.book.draft||null, chronicleSeen: state.book.chronicleSeen||0 } : null
+    bookDraft: state.book ? { draft: state.book.draft||null, chronicleSeen: state.book.chronicleSeen||0 } : null,
+    extra: Object.fromEntries(SNAPSHOT_EXTRA_KEYS.filter(k=>state[k]!==undefined).map(k=>[k, state[k]])) // 10.17.7：值是undefined的不放，還原時刪掉
   }));
 }
 function applySnapshot(){
   if(!state.snapshot) return;
   const snap = JSON.parse(JSON.stringify(state.snapshot));
   const bookDraft = snap.bookDraft; delete snap.bookDraft;
+  const extra = snap.extra; delete snap.extra;
   Object.assign(state, snap);
+  // 10.17.7：舊存檔裡的快照沒有extra，這些欄位就維持現狀(跟以前一樣)；有extra的，快照當時沒有的欄位刪掉
+  if(extra) SNAPSHOT_EXTRA_KEYS.forEach(k=>{ if(extra[k]!==undefined) state[k] = extra[k]; else delete state[k]; });
   // 七、7.4.3.4：反悔掉的回合剛好是指定NPC登場的那一回合，卡片隨角色名冊回到登場前，要讓它重新排程
   if(state.reunionNpc && state.reunionNpc.done && state.reunionNpc.cardName && !(state.characters||[]).some(c=>c.name===state.reunionNpc.cardName)){ state.reunionNpc.done = false; state.reunionNpc.cardName = null; }
   // 十五：被反悔掉的那一回合如果剛好收成了一章，那一章也撤掉(已經寫好的章節不受影響)
@@ -9332,12 +9443,12 @@ function blockIfTurnBusy(what){
   showWriterToast(`撰稿人還在寫這一回合，寫完才能${what}。`);
   return true;
 }
-async function takeTurn(actionText, cost){
+async function takeTurn(actionText, cost, opts){
   turnsInFlight++;
-  try{ return await takeTurnInner(actionText, cost); }
+  try{ return await takeTurnInner(actionText, cost, opts); }
   finally{ turnsInFlight--; }
 }
-async function takeTurnInner(actionText, cost){
+async function takeTurnInner(actionText, cost, opts){
   if(state.phase!=="playing") return;
   refillDailyIfNeeded(state);
   // 十、10.3.12（2026-09-29）：測試用「不扣行動點」開著時本機不扣點(真實模式實際扣不扣由Worker依測試鑰匙名單決定)，回合數照常+1
@@ -9444,7 +9555,9 @@ async function takeTurnInner(actionText, cost){
   // 一、1.2.8.2（2026-09-24實作）：語氣軌/張力在呼叫AI之前由程式決定，重新生成時沿用同一組，成功套用結果後才計入碎念軌連續次數
   timeCtx.tone = computeToneTrack(state, timeCtx, actionText, forceEnding);
   // 十、10.3.11（2026-09-25）：同一回合(含失敗重試、場景日期重新生成)共用一個turn_nonce，Worker只扣一次點
-  timeCtx.turnNonce = newTurnNonce();
+  // 十、10.17.5（2026-10-08）：玩家按「再試一次」沿用失敗那一回合的turn_nonce(opts.retryNonce)，伺服器認得是同一回合，已扣過點的不重複扣
+  timeCtx.turnNonce = (opts && opts.retryNonce) || newTurnNonce();
+  timeCtx.isRetry = !!(opts && opts.retryNonce);
   timeCtx.apBefore = apBefore;
   // bug修正（9/14，人生草稿0914測試.pdf）：技術錯誤/破碎原始文字絕對不能外洩給玩家；
   // 失敗先重試一次，重試仍失敗才顯示中性容錯敘事，不附帶任何e.message或原始內容
@@ -9452,7 +9565,7 @@ async function takeTurnInner(actionText, cost){
     // 一、1.2.9.16／十六、16.3.8.1（2026-09-28）：AI交回的段落清單先清理，再接成以空行分段的字串，下游沿用原本的字串處理
     const callOnce = async ()=>{
       // 十、10.9.2：mock模式沒有AI呼叫，帳號錢包的回合扣點在這裡向伺服器扣(同一turn_nonce只扣一次)；真實模式由AI代理在呼叫前預扣
-      if(USE_MOCK && apUsed.wallet && apCost>0) await walletMockCharge(timeCtx.turnNonce, ensureLifeId(state));
+      if(USE_MOCK && apUsed.wallet && apCost>0) await walletMockCharge(timeCtx.turnNonce, ensureLifeId(state), timeCtx.isRetry);
       return normalizeTurnResultText(await (USE_MOCK ? mockCallAI(actionText, forceEnding, timeCtx) : callAI(actionText, forceEnding, timeCtx)));
     };
     let result;
@@ -9460,8 +9573,9 @@ async function takeTurnInner(actionText, cost){
     try{
       result = await callOnce();
     }catch(firstErr){
-      if(firstErr && firstErr.noRetry) throw firstErr; // 10.3.11：伺服器端行動點不足/重新生成達上限，重試也沒用
-      console.error("第一次呼叫失敗，重試一次：", firstErr);
+      if(firstErr && firstErr.noRetry) throw firstErr; // 10.3.11：伺服器端行動點不足/重新生成達上限，重試也沒用；10.17.2：逾時也不自動重打
+      console.error("第一次呼叫失敗，等一下再重試一次：", firstErr);
+      if(AI_RETRY_DELAY_MS>0) await new Promise(r=>setTimeout(r, AI_RETRY_DELAY_MS)); // 10.17.2：原本是立刻重打
       result = await callOnce();
     }
     // 一、1.2.9.11.4（2026-09-24新增）：新場景日期檢查——與上一回合同一天或超出本回合範圍視為違規，
@@ -9516,6 +9630,9 @@ async function takeTurnInner(actionText, cost){
     // 10.3.11：真實模式下callAI已經把Worker回傳的伺服器端餘額寫回state.ap，本機退點後再以伺服器端為準
     if(SERVER_AP && lastCallServerAP) syncServerAP(state, lastCallServerAP);
     if(lastCallWallet && walletActive(state)) syncWallet(lastCallWallet); // 帳號錢包同理：以伺服器端最後回報的餘額為準
+    if(walletActive(state)){ // 十、10.17.6：再向伺服器查一次最新餘額(逾時時Worker可能還在處理，lastCallWallet是舊的)，畫面照伺服器；查不到就沿用本機退點、下次連上自動校正並留一筆點數校正紀錄
+      try{ await acctQueryAfterFailure(); }catch(qe){ acctSetReconcilePending(true); }
+    }
     if(e && e.dailyCap){
       // 十、10.9.3.1／10.9.3.3／10.12.5第4則：全站每日花費上限暫停期間送出的行動——不扣點、不算回合(上面applySnapshot已還原)、
       // 輸入框文字保留，恢復後可直接再送出。開場回合沒有輸入框，留一則「重新送出」的說明；不寫點數紀錄(沒有呼叫AI、也沒動到點數)
@@ -9530,7 +9647,8 @@ async function takeTurnInner(actionText, cost){
       saveGame(); render(); renderAPExhaustedModal();
       return;
     }
-    state.log.push({age:state.age, timeLabel:null, text:"（撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。）", error:true, retryAction:actionText, retryCost:cost});
+    // 10.17.5：「再試一次」沿用同一個回合編號；伺服器回報重新生成次數達上限(e.regenLimit)就放掉，下一次送出換新的編號
+    state.log.push({age:state.age, timeLabel:null, text:"（撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。）", error:true, retryAction:actionText, retryCost:cost, retryNonce: (e && e.regenLimit) ? null : timeCtx.turnNonce});
   }
   aiWritingNow = false;
   saveGame();
@@ -11632,20 +11750,31 @@ function setLoadingText(text){
   t.classList.add("fading");
   setTimeout(()=>{ t.textContent = loadingCurrentText; t.classList.remove("fading"); }, reducedMotion() ? 150 : 300);
 }
+let loadingSlowHintOn = false; // 十、10.17.2：等待超過AI_SLOW_HINT_MS，等待畫面加一句提示
 function renderTurnLoading(){
   return `<div class="loading-card glass" id="turn-loading" role="status" aria-live="polite">
     <span class="loading-text">${escapeHtml(loadingCurrentText)}</span>
     <div class="breath" aria-hidden="true"><i></i><i></i><i></i></div>
+    ${loadingSlowHintOn ? `<div class="loading-slow-hint" style="font-size:12.5px;opacity:.75;margin-top:6px;">${AI_SLOW_HINT_TEXT}</div>` : ``}
   </div>`;
+}
+function showSlowHint(){
+  loadingSlowHintOn = true;
+  const card = document.getElementById("turn-loading");
+  if(card && !card.querySelector(".loading-slow-hint")){
+    const d = document.createElement("div"); d.className = "loading-slow-hint"; d.style.cssText = "font-size:12.5px;opacity:.75;margin-top:6px;"; d.textContent = AI_SLOW_HINT_TEXT;
+    card.appendChild(d);
+  }
 }
 function updateLoadingTimer(loadingTurn){
   if(!loadingTurn){
-    loadingStartedAt = null; loadingCurrentText = "";
+    loadingStartedAt = null; loadingCurrentText = ""; loadingSlowHintOn = false;
     loadingTimers.forEach(t=>clearTimeout(t)); loadingTimers = [];
     return;
   }
   if(loadingStartedAt) return; // 同一次等待中再次render(true)，不重新計時
   loadingStartedAt = Date.now();
+  loadingTimers.push(setTimeout(()=>{ if(loadingStartedAt) showSlowHint(); }, AI_SLOW_HINT_MS)); // 10.17.2
   loadingCurrentText = ""; // 前3秒只有三個小點
   const hold = ()=> LOADING_HOLD_MIN_MS + Math.floor(Math.random()*(LOADING_HOLD_MAX_MS-LOADING_HOLD_MIN_MS+1));
   const next = ()=>{
@@ -12450,7 +12579,7 @@ function renderStory(s, loadingTurn){
   // 16.3.6 旁白錯誤(文字依10.12.5第6則)：旁邊加「重新送出」按鈕(只有最新一則、且記得當時的行動才能重試)
   if(last.error){
     return `${renderOldSummaries(log, okIdxs.slice(-OLD_ENTRY_SUMMARY_COUNT), false)}
-    <div class="narrator-error glass"><span>${last.capBlocked ? "撰稿人今天寫得太多，需要休息一下。故事會在台灣時間午夜後恢復。" : "撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。"}</span>${last.retryAction!=null ? `<button class="ghost-btn" id="btn-retry-turn">重新送出</button>` : ``}</div>`;
+    <div class="narrator-error glass"><span>${last.capBlocked ? "撰稿人今天寫得太多，需要休息一下。故事會在台灣時間午夜後恢復。" : "撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。"}</span>${last.retryAction!=null ? `<button class="ghost-btn" id="btn-retry-turn">${last.capBlocked ? "重新送出" : "再試一次"}</button>` : ``}</div>`;
   }
   return `${renderOldSummaries(log, okIdxs.slice(0,-1).slice(-OLD_ENTRY_SUMMARY_COUNT), false)}
   <div class="entry card glass" id="latest-entry" data-log-len="${log.length}">${renderEntryBody(last, true)}</div>
@@ -13270,7 +13399,7 @@ function bindPlaying(){
     const last = state.log[state.log.length-1];
     if(!last || !last.error) return;
     state.log.pop();
-    takeTurn(last.retryAction, last.retryCost!=null ? last.retryCost : AP_COST_PER_TURN);
+    takeTurn(last.retryAction, last.retryCost!=null ? last.retryCost : AP_COST_PER_TURN, last.retryNonce ? { retryNonce: last.retryNonce } : undefined);
   };
   const undoBtn = document.getElementById("btn-undo");
   if(undoBtn) undoBtn.onclick = requestUndo;

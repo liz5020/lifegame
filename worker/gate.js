@@ -159,7 +159,7 @@ UsageCounter.prototype._recordDetail = async function (p, date, now) {
     if (nonce) for (const [, v] of await st.list({ prefix: "ud:", reverse: true, limit: 50 })) if (v.n === nonce) { kind = "retry"; break; }
   }
   const row = { t: now, k: kind, turn: p.get("turn") ? n("turn") : null, life: p.get("life") || null, n: nonce || null,
-    in: n("in"), cw: n("cw"), cr: n("cr"), out: n("out"), usd: Math.round(n("usd") * 1e6) / 1e6 };
+    in: n("in"), cw: n("cw"), cr: n("cr"), out: n("out"), usd: Math.round(n("usd") * 1e6) / 1e6, ms: p.get("ms") ? n("ms") : null };
   const agg = (await st.get("ua:" + date)) || {};
   const b = agg[kind] || (agg[kind] = { calls: 0, in: 0, cw: 0, cr: 0, out: 0, usd: 0 });
   b.calls += 1; b.in += row.in; b.cw += row.cw; b.cr += row.cr; b.out += row.out; b.usd = Math.round((b.usd + row.usd) * 1e6) / 1e6;
@@ -193,6 +193,7 @@ export async function recordAIUsage(env, meta, tokens, usd) {
     if (typeof m.turn === "number" && Number.isFinite(m.turn)) params.turn = String(Math.max(0, Math.floor(m.turn)));
     if (m.lifeId) params.life = await shortHash("life:" + m.lifeId);
     if (m.nonce) params.nonce = await shortHash("nonce:" + m.nonce);
+    if (typeof m.ms === "number" && Number.isFinite(m.ms)) params.ms = String(Math.max(0, Math.round(m.ms))); // 十、10.17.2：耗時(毫秒)
     await usageCall(env, "detail", params);
   } catch (e) { /* 只是紀錄 */ }
 }

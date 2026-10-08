@@ -214,9 +214,18 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
         const h = Object.assign({}, init.headers || {}, { Origin: ORIGIN, "CF-Connecting-IP": "10.0." + Math.floor(Math.random() * 250) + "." + Math.floor(Math.random() * 250) });
         const req = new Request(String(url), { method: init.method || "GET", headers: h, body: init.body });
         const waits = [];
-        const res = await worker.fetch(req, env, { waitUntil: (p) => waits.push(p) });
-        await Promise.all(waits);
-        const text = await res.text();
+        // 十、10.17.2：頁面的AbortController要能中止請求(逾時測試)；中止後Worker那邊照樣跑完(跟真實環境一樣)
+        const work = (async () => { const r = await worker.fetch(req, env, { waitUntil: (p) => waits.push(p) }); await Promise.all(waits); return { r, t: await r.text() }; })();
+        let out;
+        if (init.signal) {
+          const aborted = new Promise((_, rej) => {
+            const fail = () => { const e = new Error("The operation was aborted"); e.name = "AbortError"; rej(e); };
+            if (init.signal.aborted) fail(); else init.signal.addEventListener("abort", fail);
+          });
+          work.catch(() => {}); // 中止後Worker自己跑完，不讓它變成未處理的錯誤
+          out = await Promise.race([work, aborted]);
+        } else out = await work;
+        const res = out.r, text = out.t;
         return { ok: res.status >= 200 && res.status < 300, status: res.status, statusText: "", headers: { get: () => "application/json" }, text: async () => text, json: async () => JSON.parse(text) };
       };
     }

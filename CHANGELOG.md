@@ -10,6 +10,13 @@
 
 ---
 
+### 2026-10-08（開發部）十、10.17回合流程與出錯處理(2026.10.08-j，尚未上線)
+- 起因：使用者貼網頁版定案的「回合流程與出錯處理」，已寫進設計文件10.17（commit `cdee9ba`），這次實作。
+- `index.html`：①`callAI`加`AbortController`逾時(`AI_TIMEOUT_MS`90秒)，逾時不自動重打；等待超過`AI_SLOW_HINT_MS`30秒加一句「撰稿人還在寫，請稍等一下」；非逾時錯誤等`AI_RETRY_DELAY_MS`2秒再重打。②「再試一次」沿用失敗那回合的`turn_nonce`(失敗log帶`retryNonce`，請求帶`retry:true`)，Worker回429(上限)就放掉編號；按鈕文字「再試一次」(每日上限暫停仍是「重新送出」)。③帳號錢包失敗：向`account/me`查最新餘額為準，查不到記待校正、下次收到錢包時記一筆「點數校正」。④本機存檔失敗(`writeLocalState`)：頂部狀態列常駐提示、失敗當下補存一次雲端(`emergencyCloudSave`，補存失敗不連續重打)，取代`notifyLocalSaveFailed`只提示一次。⑤快照新增`extra`(`SNAPSHOT_EXTRA_KEYS`89個欄位，快照當時不存在的還原時刪掉)，反悔一併還原；舊存檔的快照沒有`extra`則維持現狀。版本2026.10.08-j與更新說明。
+- `worker/ap.js`：`MAX_CALLS_PER_TURN_NONCE`5→9；`preCharge`／`postCharge`認`retryOfFailed`(上一次已扣點的再試不重複扣、又失敗退回那一筆)。`worker/worker.js`、`account.js`、`account-routes.js`：傳遞`retry`旗標；`callAnthropic`量耗時，`gate.js`逐筆明細新增`ms`，`/usage-detail.csv`新增`elapsed_ms`欄。`worker/prompt.js`：每回合補防護句，章節／放置摘要／回顧這一生補改寫版防護句。`WORKER_VERSION`→2026.10.08-j。
+- 測試：新增`tests/test-84-turn-flow.mjs`(41項，含逾時、慢提示、重打間隔、再試一次與伺服器扣退點、上限9次、耗時欄位、本機存檔失敗提示與補存、180次失敗還原比對、帳號錢包校正、防護句)；`harness.mjs`的fetch改成認`AbortSignal`；`test-2`／`test-58`上限5→9、`test-56`按鈕文字。全套測試通過(87檔，Node 20)。**未測試(需真實API／實機)**：真實Anthropic的實際耗時與90秒是否合適(先用起點，累積耗時資料再調)、慢提示與常駐存檔提示在手機版的排版、瀏覽器空間真的滿了的情況。
+- ⚠️這次改了遊戲狀態結構(快照多一個`extra`)與`worker/`，推上線前要問使用者。舊存檔可繼續玩，不需清空。
+
 ### 2026-10-08（開發部）封存包寫入計數也由每小時排程清除(10.16.15補，2026.10.08-i，尚未上線)
 - 起因：使用者決定（待辦清單一、1）：封存包寫入頻率限制的來源雜湊計數（`r:小時:來源雜湊`）原本只在「同一個DO有新寫入」時順便清舊，沒人寫入時會留超過2小時；改程式、說明頁不動。
 - `worker/account.js`：`opPurgeAbuse`新增清除所有小時早於「現在這一小時」的`r:`計數（回傳`purged.pack_rate`）；每小時排程已會呼叫`purge_abuse`，不用改`entry.js`。計數只在寫入當小時有用，最長保留＝寫入當小時結束＋到下一次整點排程，**不超過2小時**，與10.16.15一致。

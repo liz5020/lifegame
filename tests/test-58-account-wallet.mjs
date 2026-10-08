@@ -136,11 +136,11 @@ await aiTurn(tPay);
 A.check("(被擋時Anthropic沒有被呼叫)", fakeAI.calls.length === callsBefore);
 r = await post("/", { wallet: true, turn_nonce: "wn0000000zz", life_id: "lifepay01", messages: [{ role: "user", content: turnPayload() }] }, auth("x".repeat(64)));
 A.check("token不對→401，不呼叫AI", r.status === 401 && fakeAI.calls.length === callsBefore, r.status);
-// 重新生成上限：同一個nonce最多5次
+// 重新生成上限：同一個nonce最多9次(10.17.5，2026-10-08由5改9)
 setNow(8 * DAY); await me(tPay);
 const nn = "payregen001"; let lastSt = 0;
-for (let i = 0; i < 6; i++) lastSt = (await aiTurn(tPay, { nonce: nn })).status;
-A.check("同一回合最多呼叫5次AI，第6次→429", lastSt === 429, lastSt);
+for (let i = 0; i < 10; i++) lastSt = (await aiTurn(tPay, { nonce: nn })).status;
+A.check("同一回合最多呼叫9次AI，第10次→429", lastSt === 429, lastSt);
 // 回顧這一生60點(2026-10-08付費周邊，取代原本的5點)
 setNow(9 * DAY); r = await me(tPay); await aiTurn(tPay); // 補到5點後扣1點＝4點
 const reviewMsg = JSON.stringify({ stages: [{ stage: "a", stage_label: "高中" }], tidbits: [] });

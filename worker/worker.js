@@ -766,6 +766,7 @@ async function handleUsageToday(request, env) {
 // 十、10.14.7（2026-10-04）：meta有值時，回應成功後在背景把Anthropic回報的實際用量記進用量計數器(不影響回應速度與內容)
 async function callAnthropic(env, upstreamBody, ctx, meta) {
   let res;
+  const startedAt = Date.now(); // 十、10.17.2：Worker呼叫Anthropic到收到回應的耗時(毫秒)，記進逐筆紀錄
   try {
     res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -780,12 +781,13 @@ async function callAnthropic(env, upstreamBody, ctx, meta) {
     await countAICall(env, ctx); // 連線失敗也算一次呼叫(2026-10-02定案A3：每日花費上限是內部成本帳，所有呼叫含失敗的都計入)；沒有回報用量，照預估計入(10.9.3.1a補充二)；玩家端照舊不扣點、不算回合
     throw e;
   }
+  const elapsedMs = Date.now() - startedAt;
   // 十、10.9.3.1／10.9.3.3／10.9.3.1a補充二(2026-10-08)：每次AI呼叫記一筆花費——有回報用量的記實際花費(美元×匯率)，沒有的(失敗呼叫)照預估；達80%／上限時寄管理通知信
   let usage = null;
   if (res.ok) { try { const d = await res.clone().json(); if (d && d.usage) usage = extractUsage(d.usage); } catch (e) { usage = null; } }
   await countAICall(env, ctx, usage ? costUSD(usage) * USD_TO_TWD : undefined);
   if (meta && usage) {
-    const job = recordAIUsage(env, meta, usage, costUSD(usage)).catch(() => {});
+    const job = recordAIUsage(env, Object.assign({}, meta, { ms: elapsedMs }), usage, costUSD(usage)).catch(() => {});
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
   }
   // 十、10.9.4（2026-09-30）：固定規則(system prompt＋工具定義)的字數，給前端逐筆成本紀錄當比例參考(不換算token)
@@ -848,7 +850,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
   if (wallet && isTurn) {
     if (!isValidNonce(body.turn_nonce)) return jsonResponse(origin, { error: { type: "invalid_request", message: "缺少turn_nonce" } }, 400);
     const isPrologue = !!(check.payload.time_context && check.payload.time_context.is_prologue === true);
-    const r = await acctCall({ op: "wallet_pre", nonce: body.turn_nonce, life_id: safeLifeId, is_prologue: isPrologue });
+    const r = await acctCall({ op: "wallet_pre", nonce: body.turn_nonce, life_id: safeLifeId, is_prologue: isPrologue, retry: body.retry === true });
     if (!r.ok) return walletFail(r);
     walletPre = r.pre;
   } else if (wallet && body.kind === "life_review") {
@@ -931,7 +933,7 @@ async function handleAIProxy(request, env, origin, ctx) {
   // 十、10.3.12（2026-09-29）：測試用「不扣行動點」——前端開關只是請求，Worker只認secret AP_TEST_KEYS登記的金鑰；
   // 生效時完全不動行動點紀錄(不預扣、不退點、不記nonce)，回合數、章節額度、最後行動日、用量遙測照常
   const apTestFree = body.ap_test_free === true && isApTestKey(env, key);
-  const pre = apTestFree ? { ok: true, charge: null, testFree: true } : preCharge(rec, { nonce, isPrologue, lifeId: safeLifeId });
+  const pre = apTestFree ? { ok: true, charge: null, testFree: true } : preCharge(rec, { nonce, isPrologue, lifeId: safeLifeId, retryOfFailed: body.retry === true });
   if (!pre.ok) {
     await saveRecord(env, key, slot, rec);
     return jsonResponse(origin, { error: pre.error, lifegame: { ap: publicAP(rec) } }, pre.status);
@@ -1092,11 +1094,11 @@ async function handleUsageDetailCsv(request, env) {
   rows.sort((a, b) => a.t - b.t);
   const lastByLife = {};
   const tw = (t) => new Date(t + 8 * 3600000).toISOString().replace("T", " ").slice(0, 19);
-  const lines = ["time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd"];
+  const lines = ["time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms"];
   for (const r of rows) {
     const gap = r.life && lastByLife[r.life] ? Math.round((r.t - lastByLife[r.life]) / 6000) / 10 : "";
     if (r.life) lastByLife[r.life] = r.t;
-    lines.push([tw(r.t), r.turn == null ? "" : r.turn, AI_USAGE_KIND_LABELS[r.k] || r.k, r.life || "", gap, r.in, r.cw, r.cr, r.out, r.usd].join(","));
+    lines.push([tw(r.t), r.turn == null ? "" : r.turn, AI_USAGE_KIND_LABELS[r.k] || r.k, r.life || "", gap, r.in, r.cw, r.cr, r.out, r.usd, r.ms == null ? "" : r.ms].join(","));
   }
   const name = "AI用量明細_" + tw(nowMs(env)).replace(/[- :]/g, "").slice(0, 12) + ".csv";
   return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",
@@ -1104,7 +1106,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.08-i";
+const WORKER_VERSION = "2026.10.08-j";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
