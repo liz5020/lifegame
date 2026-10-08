@@ -10,6 +10,17 @@
 
 ---
 
+### 2026-10-09（開發部）prompt稽核修正（2026.10.09-a，尚未上線）
+- 起因：使用者執行`/claude-api prompt-audit`，稽核`worker/prompt.js`、`worker/worker.js`請求組裝與根目錄`CLAUDE.md`，使用者同意後依序處理。
+- `worker/prompt.js`：①必填欄位清單補上`location`（原本與工具定義的`required`不一致）；②拿掉七處「務必遵守」「絕對不能」等加重語氣；③清掉十一處新舊版本對照說明（「取代原本」「已移除」「不再」等，含`job_change`、`happiness_delta`、`ending_title`、`scene_category`的沿革句）；④姓名性別一致性改寫、刪掉「柏勳」事件紀錄；⑤`achievement_health_cost_multiplier`改成「參考輕重」，不再要AI自己乘；⑥章節成書補一句說明：段落清單那條規則不適用，章節用`\\n\\n`分段；⑦刪除「不要用純文字回覆、不要自己寫JSON」（請求本來就強制用工具）；⑧`turn_summary`、`attachment_shift`、`peer_position_shift`、`conscientiousness_shift`補上`description`；另補一個漏掉的句號。
+- `worker/worker.js`：`WORKER_VERSION`→2026.10.09-a（prompt有改，**需重新部署Worker**才生效）；`index.html`：`APP_VERSION`同步→2026.10.09-a並加一筆玩家看得懂的更新說明（test-54要求兩邊版本一致）。
+- `CLAUDE.md`：舊的掃描紀錄搬到`qa/QA_34附錄_歷史封存.md`新章節；清掉兩處刪除線殘留；部署說明改成與`build-pages.sh`一致（og.png、lunar.min.js由腳本放進`dist/`）。
+- 測試：`test-48`拿掉已刪句「不要再回報scene_category」的比對（仍檢查欄位已停用）；`test-71`更新CSV表頭（上一版加了`elapsed_ms`欄時沒跟著改，與這次修改無關，先前就失敗）。
+- 未測試（需真實API）：prompt修改後AI實際寫出的敘事品質、`location`是否每回合都回報、章節分段是否正常。
+- 稽核提醒、未動：`max_tokens: 3000`是否偏緊（建議先看線上`stop_reason`紀錄）；若日後換成Sonnet 5.5，四處強制`tool_choice`會400，要改寫。
+
+---
+
 ### 2026-10-08（開發部）十、10.17回合流程與出錯處理(2026.10.08-j，尚未上線)
 - 起因：使用者貼網頁版定案的「回合流程與出錯處理」，已寫進設計文件10.17（commit `cdee9ba`），這次實作。
 - `index.html`：①`callAI`加`AbortController`逾時(`AI_TIMEOUT_MS`90秒)，逾時不自動重打；等待超過`AI_SLOW_HINT_MS`30秒加一句「撰稿人還在寫，請稍等一下」；非逾時錯誤等`AI_RETRY_DELAY_MS`2秒再重打。②「再試一次」沿用失敗那回合的`turn_nonce`(失敗log帶`retryNonce`，請求帶`retry:true`)，Worker回429(上限)就放掉編號；按鈕文字「再試一次」(每日上限暫停仍是「重新送出」)。③帳號錢包失敗：向`account/me`查最新餘額為準，查不到記待校正、下次收到錢包時記一筆「點數校正」。④本機存檔失敗(`writeLocalState`)：頂部狀態列常駐提示、失敗當下補存一次雲端(`emergencyCloudSave`，補存失敗不連續重打)，取代`notifyLocalSaveFailed`只提示一次。⑤快照新增`extra`(`SNAPSHOT_EXTRA_KEYS`89個欄位，快照當時不存在的還原時刪掉)，反悔一併還原；舊存檔的快照沒有`extra`則維持現狀。版本2026.10.08-j與更新說明。

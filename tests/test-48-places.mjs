@@ -88,6 +88,6 @@ A.check("16.16 副業面板概況：據點(做副業時去最多的地方)與一
 
 // ---------- prompt ----------
 const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
-A.check("prompt：地點名單規則(location必填、location_new、place_updates、places_recent、gig_partner_add)，scene_category欄位已停用", ["places_recent", "location_new", "place_updates", "gig_partner_add", "不要再回報scene_category"].every(k => prompt.includes(k)) && !/scene_category:\s*\{/.test(prompt));
+A.check("prompt：地點名單規則(location必填、location_new、place_updates、places_recent、gig_partner_add)，scene_category欄位已停用", ["places_recent", "location_new", "place_updates", "gig_partner_add"].every(k => prompt.includes(k)) && !/scene_category:\s*\{/.test(prompt));
 A.check("沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
 process.exit(A.report() ? 0 : 1);

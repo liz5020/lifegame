@@ -51,7 +51,7 @@ A.check("沒有密碼：/stats-summary與CSV都回401", (await get("/stats-summa
 // ---- CSV ----
 let c = await get("/usage-detail.csv", ADMIN);
 const lines = c.text.replace(/^﻿/, "").trim().split("\n");
-A.check("CSV：表頭＋6筆，依時間排序，台灣時間", lines.length === 7 && lines[0] === "time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd" && lines[1].startsWith("2026-10-04 11:00:"), lines.slice(0, 3));
+A.check("CSV：表頭＋6筆，依時間排序，台灣時間", lines.length === 7 && lines[0] === "time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms" && lines[1].startsWith("2026-10-04 11:00:"), lines.slice(0, 3));
 A.check("CSV：類型用中文、距同一段人生上一次呼叫的分鐘數", lines[1].split(",")[2] === "開場" && lines[2].split(",")[2] === "失敗重試／重新生成" && lines[3].split(",")[4] === "2" && lines[4].split(",")[4] === "7" && lines[1].split(",")[4] === "" && lines[5].split(",")[4] === "", lines.slice(1, 6));
 {
   const worker = await H.loadWorker();

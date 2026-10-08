@@ -8668,8 +8668,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-j";
+const APP_VERSION = "2026.10.09-a";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-a", date:"2026-10-09", title:"敘事更穩定", items:[
+    "調整了撰稿人的寫作說明，減少地點、人名這類細節前後不一致的情況。",
+  ]},
   { version:"2026.10.08-j", date:"2026-10-08", title:"出錯時更穩", items:[
     "撰稿人等太久（超過 90 秒）會自動放棄這一次，並把點數還給你；等超過 30 秒會告訴你「撰稿人還在寫」。",
     "回合失敗後按「再試一次」，不會重複扣點；失敗時角色的狀態會完整回到送出之前。",
