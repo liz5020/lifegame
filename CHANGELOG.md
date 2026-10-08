@@ -10,6 +10,13 @@
 
 ---
 
+### 2026-10-09（開發部）首頁背景色塊隨螢幕縮放（2026.10.09-b）
+- `index.html` 16.1暖陽顆粒背景：`.blob`模糊改`blur(max(38px,5vmax))`，四顆色塊寬高改`max(原px, 32～38vmax)`；手機維持原樣，電腦放大到互相重疊。只改CSS與版本號，不動遊戲狀態、存檔、Worker程式。
+- `WORKER_VERSION`同步→2026.10.09-b（Worker程式本身沒改，test-54要求兩邊一致）。已取代PR #19（分支`claude/landing-bg-desktop`）的做法，PR關閉不合併。
+- 測試：見回報。
+
+---
+
 ### 2026-10-09（開發部）prompt稽核修正（2026.10.09-a，尚未上線）
 - 起因：使用者執行`/claude-api prompt-audit`，稽核`worker/prompt.js`、`worker/worker.js`請求組裝與根目錄`CLAUDE.md`，使用者同意後依序處理。
 - `worker/prompt.js`：①必填欄位清單補上`location`（原本與工具定義的`required`不一致）；②拿掉七處「務必遵守」「絕對不能」等加重語氣；③清掉十一處新舊版本對照說明（「取代原本」「已移除」「不再」等，含`job_change`、`happiness_delta`、`ending_title`、`scene_category`的沿革句）；④姓名性別一致性改寫、刪掉「柏勳」事件紀錄；⑤`achievement_health_cost_multiplier`改成「參考輕重」，不再要AI自己乘；⑥章節成書補一句說明：段落清單那條規則不適用，章節用`\\n\\n`分段；⑦刪除「不要用純文字回覆、不要自己寫JSON」（請求本來就強制用工具）；⑧`turn_summary`、`attachment_shift`、`peer_position_shift`、`conscientiousness_shift`補上`description`；另補一個漏掉的句號。
