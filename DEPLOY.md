@@ -37,7 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| 2026-10-08 | 2026.10.08-b（**尚未上線**：本機完成，等推送前使用者確認Worker部署設定——新增每小時排程） | 2026.10.08-b（同左） | — | index.html、worker(account.js、account-routes.js、entry.js、mail.js、gate.js、save-admin.js、dashboard.js、worker.js、wrangler.toml) | 封測名額與候補(十、10.15，2026-10-04定案) |
+| 2026-10-08 | 2026.10.08-b（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；Worker新增每小時排程`0 * * * *`，排程實際執行尚未觀察） | 2026.10.08-b（同左） | `54b9b19` | index.html、worker(account.js、account-routes.js、entry.js、mail.js、gate.js、save-admin.js、dashboard.js、worker.js、wrangler.toml) | 封測名額與候補(十、10.15，2026-10-04定案) |
 | 2026-10-08 | 2026.10.08-a（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.08-a（同左） | `ac02aad` | index.html、worker(prompt.js、worker.js) | 訂單現況以訂單簿為準(八、8.13.1，2026-10-08)；近況維持3回合原文；第三輪驗證條件②通過、條件①判定為舊存檔問題(10.14.8補充第八節) |
 | 2026-10-05 | 2026.10.05-b（**沒有上線**：10.14.8補充第二輪比對未通過，2026-10-08改回3回合原文，併入2026.10.08-a） | — | `43b2676` | — | 近況縮減(10.14.8補充) |
 | 2026-10-05 | 2026.10.05-a（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.05-a（同左） | `750c4e7`、`060fb1b` | index.html、worker(prompt.js、worker.js) | 每回合費用再降(10.14.8)：空值欄位不送、刪重複、C類摘要40字 |
