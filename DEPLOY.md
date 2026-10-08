@@ -37,7 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| 2026-10-08 | 2026.10.08-e（**尚未上線**：本機完成，推送前先問使用者——動到`worker/`的防濫用紀錄清除與錢包退還憑證） | 2026.10.08-e（同左） | — | index.html、terms.html、privacy.html、pricing.html、worker(account.js、account-routes.js、entry.js、worker.js) | 網頁版討論回覆：隱私補寫與版本1.1、防濫用紀錄1小時到期、指定NPC必定登場（未登場退10點）、試看花絮6句改寫、舊存檔反悔換算 |
+| 2026-10-08 | 2026.10.08-e（隨`master`自動部署，已用`/version`、頁面(兩個網址，`/privacy`顯示版本1.1與新增資料項目)與check-runs確認線上網頁與Worker都是此版；每小時排程清除防濫用紀錄尚未在正式環境觀察） | 2026.10.08-e（同左） | `b11778d` | index.html、terms.html、privacy.html、pricing.html、worker(account.js、account-routes.js、entry.js、worker.js) | 網頁版討論回覆：隱私補寫與版本1.1、防濫用紀錄1小時到期、指定NPC必定登場（未登場退10點）、試看花絮6句改寫、舊存檔反悔換算 |
 | 2026-10-08 | 2026.10.08-d（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；三個說明頁兩個網址都打得開；2026.10.08-c併入此版，沒有單獨上線） | 2026.10.08-d（同左） | `e76dde5` | index.html、terms.html、privacy.html、pricing.html、build-pages.sh、worker(gate.js、worker.js、ap.js、account.js、mail.js、prompt.js) | 付費周邊(十、10.3.13)：反悔5次＋超過每次1點、人生重開丹10點、回顧這一生60點＋程式試看花絮、全站花費改用實際花費(10.9.3.1a補充二)；說明頁面三頁(10.16) |
 | 2026-10-08 | 2026.10.08-b（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版；Worker新增每小時排程`0 * * * *`，排程實際執行尚未觀察） | 2026.10.08-b（同左） | `54b9b19` | index.html、worker(account.js、account-routes.js、entry.js、mail.js、gate.js、save-admin.js、dashboard.js、worker.js、wrangler.toml) | 封測名額與候補(十、10.15，2026-10-04定案) |
 | 2026-10-08 | 2026.10.08-a（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.08-a（同左） | `ac02aad` | index.html、worker(prompt.js、worker.js) | 訂單現況以訂單簿為準(八、8.13.1，2026-10-08)；近況維持3回合原文；第三輪驗證條件②通過、條件①判定為舊存檔問題(10.14.8補充第八節) |
