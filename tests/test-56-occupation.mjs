@@ -46,7 +46,7 @@ withRandom(0.1, "updateFamilyPath(state.characters.find(c=>c.name==='哥測四')
 withRandom(0.95, "updateFamilyPath(state.characters.find(c=>c.name==='哥測五'))");
 A.check("4.9.5 滿18歲擲到讀大學：顯示「讀大學」", label("哥測四") === "讀大學", js("state.characters.find(c=>c.name==='哥測四').path"));
 const p5 = js("state.characters.find(c=>c.name==='哥測五').path");
-A.check("4.9.5 擲到工作：同時擲職業類別、顯示4.9.4名稱", p5 && p5.stage === "work" && label("哥測五") === ev(`occupationDisplayName(${JSON.stringify(p5.category)})`), [p5, label("哥測五")]);
+A.check("4.9.5 擲到工作：同時擲職業類別與具體職業、顯示具體職業(2026-10-08)", p5 && p5.stage === "work" && !!p5.job && label("哥測五") === p5.job, [p5, label("哥測五")]);
 ev("(()=>{ const c = state.characters.find(c=>c.name==='哥測四'); c.age = 22; updateFamilyPath(c); })()");
 const p4 = js("state.characters.find(c=>c.name==='哥測四').path");
 A.check("4.9.5 讀大學的滿22歲畢業，擲職業類別", p4 && p4.stage === "work" && !!p4.category && label("哥測四") !== "讀大學", p4);
