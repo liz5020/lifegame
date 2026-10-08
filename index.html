@@ -8373,7 +8373,8 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 const APP_VERSION = "2026.10.08-a";
 const RELEASE_NOTES = [
   { version:"2026.10.08-a", date:"2026-10-08", title:"副業訂單修正", items:[
-    "修正旁白有時把已經交完的訂單寫成還沒做完。",
+    "旁白不會再把故事裡提過、但已經結束的訂單重新記成新訂單。",
+    "如果你的人生是 9/30 以前開始的，故事裡還沒交代完的訂單，可以直接在行動裡寫「把○○的訂單交給她」來收尾。",
   ]},
   { version:"2026.10.05-a", date:"2026-10-05", title:"幕後整理", items:[
     "整理了每回合送給旁白的資料，拿掉空白和重複的部分，玩起來不會有差別。",
