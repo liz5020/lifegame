@@ -425,10 +425,15 @@
   .home-hero.has-lives{min-height:0;padding-top:28px;} /* 有進行中的人生時，讓存檔卡片在第一個畫面就露出來 */
   .home-hero .stamp{margin-bottom:18px;}
   .home-hero h1{font-family:var(--serif);font-size:36px;letter-spacing:6px;margin:6px 0 4px;}
-  .home-sub{font-size:15px;color:var(--stamp);margin:0 0 20px;letter-spacing:1px;}
+  /* 16.10.10斷句與對比度(2026-10-09)：置中短句balance、內文pretty；.nb＝以逗號頓號為界的不可拆詞組(inline-block，單段比螢幕寬時才在段內換行)；
+     首頁三處小字改深色(色碼見設計文件16.10.10)，其餘文字不動 */
+  .home-sub{font-size:15px;color:#3E1912;margin:0 0 20px;letter-spacing:1px;text-wrap:balance;}
+  .home .nb{display:inline-block;max-width:100%;}
+  .home-lead,.home-foot p{text-wrap:balance;}
+  .home-sec p,.faq p,.home-steps .step p{text-wrap:pretty;}
   .home-lead{font-size:14.5px;line-height:2;margin:0 0 22px;}
   .home-hero .primary-btn,.home-hero .ghost-btn{width:100%;max-width:300px;}
-  .home-note{font-size:12px;color:var(--ink-soft);margin-top:16px;line-height:1.7;max-width:320px;}
+  .home-note{font-size:12px;color:#4D3E35;margin-top:16px;line-height:1.7;max-width:320px;text-wrap:balance;}
   .home-sec{margin:34px 0;}
   .home-sec h2{font-family:var(--serif);font-size:19px;margin:0 0 14px;letter-spacing:1px;}
   .home-sec p{font-size:15px;line-height:1.95;margin:0 0 12px;}
@@ -11895,7 +11900,7 @@ const HOME_FAQ = [
   ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", ()=>CLOUD_SAVE_ENABLED ? "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。" : "封測期間，進度只存在這台裝置的瀏覽器裡。換了手機、換了瀏覽器，或清除瀏覽器資料，就接不回來了。"]],
   ["一段人生要玩多久？", ["看你想過多快。可以一個晚上走完整個高中，也可以一個月只過一個寒假。", "隨時關掉都沒關係，它會停在你離開的那一頁。"]],
   ["可以同時過好幾段人生嗎？", ["還沒綁定信箱時，同時只能過一段人生；綁定信箱後，可以同時過兩段。"]],
-  ["什麼路都能走嗎？", ["幾乎都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "唯一走不通的是超能力。這裡的世界，跟外面那個一樣講道理。"]],
+  ["什麼路都能走嗎？", ["大多數都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "走不通的有兩種。一種是超能力，這裡的世界，跟外面那個一樣講道理。另一種是違法的事，故事不一定會照你寫的走。"]],
   ["一生走完之後呢？", ["這一生會留下一頁回顧：走過的路、陪過你的人，最後蓋上一枚印章。", "然後，你可以轉世重來，或者把故事交給下一代。"]],
   ["可以反悔嗎？", ["每一世可以免費反悔 5 次，轉世或傳承後重新計算。用完之後還想反悔，每次扣 1 點。"]]
 ];
@@ -11907,7 +11912,7 @@ function renderHome(){
       <div class="stamp big restamp" id="home-stamp"><b>15</b>歲・起稿</div>
       <h1>人生草稿</h1>
       <p class="home-sub">這一次，換你決定要活成什麼樣子</p>
-      <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，說書人陪你一路寫到老。</p>
+      <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，撰稿人陪你一路寫到老。</p>
       <button class="primary-btn" id="btn-home-new">開始一段人生</button>
       <p class="home-note" id="home-entry"></p>
       <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
@@ -11932,7 +11937,7 @@ function renderHome(){
     <section class="home-sec">
       <h2>這是什麼：一段沒有劇本的人生</h2>
       <p class="serif">《人生草稿》是一款 AI 文字人生模擬，打開網頁就能玩，手機、電腦都行。故事從高一開學前、暑假的最後一天開始。之後一路升學、畢業、出社會，直到老去。</p>
-      <p class="serif">故事沒有寫好的劇本。說書人讀完你這一步，才寫下一步；同一個開局，兩個人會活成完全不一樣的人。</p>
+      <p class="serif">故事沒有寫好的劇本。撰稿人讀完你這一步，才寫下一步；同一個開局，兩個人會活成完全不一樣的人。</p>
       <p class="serif">一段人生可以慢慢過。今天停在高二的期中考前，下次回來，它還在那裡等你。</p>
     </section>
     <section class="home-sec">
@@ -11966,7 +11971,21 @@ function renderHome(){
     </footer>
   </div>`;
 }
+// 16.10.10斷句：文字內容不變，只把每個文字節點依「，、；。？！」切成不可拆的詞組(後面緊跟的」』）留在同一組)
+function wrapHomeText(root){
+  const re = /[^，、；。？！]*[，、；。？！]+[」』）]*|[^，、；。？！]+$/g;
+  root.querySelectorAll(".home-lead,.home-sec p.serif,.faq p,.home-foot p.serif").forEach(el=>{
+    [...el.childNodes].forEach(n=>{
+      if(n.nodeType!==3 || !n.nodeValue.trim()) return;
+      const parts = n.nodeValue.match(re); if(!parts || parts.length<2) return;
+      const frag = document.createDocumentFragment();
+      parts.forEach(t=>{ const sp = document.createElement("span"); sp.className = "nb"; sp.textContent = t; frag.appendChild(sp); });
+      n.replaceWith(frag);
+    });
+  });
+}
 function bindHome(){
+  wrapHomeText(document.getElementById("home"));
   document.getElementById("btn-home-new").onclick = ()=>startNewLifeFromHome();
   updateHomeEntryLine();
   const homeLogin = document.getElementById("btn-home-login"); if(homeLogin) homeLogin.onclick = ()=>openAccountFlow("login");

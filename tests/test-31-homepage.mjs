@@ -23,7 +23,7 @@ A.check("16.10.0（2026-10-01取消）：進站不再有年齡確認視窗，首
 const homeText = doc.getElementById("home").textContent;
 A.check("16.10.1 印章「15歲・起稿」", /15歲・起稿/.test(doc.getElementById("home-stamp").textContent), doc.getElementById("home-stamp").textContent);
 A.check("16.10.1 標題、副標、主視覺三行(開局年齡修正版)", /人生草稿/.test(homeText) && /這一次，換你決定要活成什麼樣子/.test(homeText)
-  && /住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。/.test(homeText) && /直到十五歲那年夏天，有人問你：「那你自己怎麼想？」/.test(homeText) && /從那天起，答案由你來寫，說書人陪你一路寫到老。/.test(homeText));
+  && /住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。/.test(homeText) && /直到十五歲那年夏天，有人問你：「那你自己怎麼想？」/.test(homeText) && /從那天起，答案由你來寫，撰稿人陪你一路寫到老。/.test(homeText));
 A.check("16.10.1 已移除舊文案「從出生那天起」「求學、工作、戀愛、理財」", !/從出生那天起/.test(homeText) && !/求學、工作、戀愛、理財/.test(homeText) && !/0歲/.test(homeText));
 A.check("16.10.1 兩顆按鈕與下方說明", /開始一段人生/.test(homeText) && /切換其他人生/.test(homeText) && /免註冊，進度自動存在這台裝置。換了手機，用「復原金鑰」接回你的人生。/.test(homeText));
 A.check("16.10.3 介紹第一段(從高一開學前開始)", /故事從高一開學前、暑假的最後一天開始。之後一路升學、畢業、出社會，直到老去。/.test(homeText) && !/你從出生開始/.test(homeText));
@@ -34,6 +34,9 @@ A.check("16.10.6 常見問題不出現年齡題", ![...doc.querySelectorAll(".fa
 A.check("16.10.6(2026-10-08改) 反悔：每一世免費 5 次，用完每次扣 1 點", /每一世可以免費反悔 5 次，轉世或傳承後重新計算。用完之後還想反悔，每次扣 1 點。/.test(homeText));
 A.check("16.10.7 頁尾：讀完了、翻回第一頁、字樣、版權", /這一頁讀完了，下一頁還空著。/.test(homeText) && !!doc.getElementById("btn-home-top") && /© 2026 人生草稿/.test(homeText));
 const foot = doc.querySelector(".home-foot").textContent;
+A.check("16.10.6(2026-10-09改) 「什麼路都能走嗎？」新答案：大多數都能、走不通的有兩種(超能力、違法的事)，舊句不在", /大多數都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。/.test(homeText) && /走不通的有兩種。一種是超能力，這裡的世界，跟外面那個一樣講道理。另一種是違法的事，故事不一定會照你寫的走。/.test(homeText) && !/幾乎都能/.test(homeText) && !/唯一走不通/.test(homeText));
+A.check("16.10.10 用詞統一：首頁沒有「說書人」，兩處都是「撰稿人」", !/說書人/.test(homeText) && /撰稿人陪你一路寫到老/.test(homeText) && /撰稿人讀完你這一步，才寫下一步/.test(homeText));
+A.check("16.10.10 斷句：文字切成不可拆詞組(.nb)但內容不變，「那你自己怎麼想？」」整句在同一組", doc.querySelectorAll("#home .nb").length > 20 && [...doc.querySelectorAll("#home .nb")].some(e=>e.textContent.endsWith("「那你自己怎麼想？」")) && [...doc.querySelectorAll("#home .nb")].some(e=>e.textContent==="以前都是大人說了算。"));
 A.check("16.10.7 年齡提醒不放在頁尾", !/十八歲/.test(foot));
 A.check("16.10.9 不宣傳電郵登入、加購訂閱、放置代活", !/電郵|email|訂閱|加購|放置|掛機/.test(homeText));
 A.check("首頁沒有顯示復原金鑰", !homeText.includes("homekey01"));
