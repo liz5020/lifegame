@@ -10,6 +10,13 @@
 
 ---
 
+### 2026-10-08（開發部）興趣多元化(2026.10.08-f，尚未上線)
+- 起因：使用者回饋興趣玩幾次都是手作居多；查核程式端沒有任何出現機率，類別全由AI挑，prompt範例也偏手作。設計文件八、8.8.1～8.8.3（claude.ai網頁版定案）。
+- `index.html`：新增`INTEREST_ITEMS`／`rollInterestSeed`／`prepareInterestSeed`／`interestCardLabel`；每回合在timeCtx算一次種子(重新生成沿用)；payload新增`turn_focus.try_new_suggestion`、`interest_seed_now`、`interest_status[].item`；種子回合AI類別不符改回種子並記`interest_event_mismatch`；興趣卡`item`欄位(選填，舊卡無)；興趣面板與人生回顧顯示「類別・項目」；版本2026.10.08-f與更新說明。
+- `worker/prompt.js`：要求照種子的類別與項目寫、沒種子不自己發明類別、訂單範例各類輪流舉例；`worker/worker.js`：WORKER_VERSION 2026.10.08-f（prompt有改，需重新部署Worker）。
+- 設計文件：`08-興趣系統.md`新增8.8.1～8.8.3、8.1補註，`00-總覽.md`日誌一行。
+- 驗證：新增`tests/test-82-interest-seed.mjs`(35項：抽選比例、已有類別減半、七類恢復均等、5000次無連續同類、已有類別改抽其他項目、何時擲／不擲、嘗試新的與自然種子接進回合、類別不符處理、項目不覆蓋、舊存檔相容)，全部通過；全套85檔中只有test-54-version一項未通過(DEPLOY.md還沒有2026.10.08-f的上線紀錄，上線後依慣例補一行)。**未測試(需真實API)**：AI是否真的照指定類別與項目寫、範例改後是否更多元、自然種子8%的手感。不改既有欄位，舊存檔可直接繼續玩。
+
 ### 2026-10-08（開發部）網頁版討論回覆實作(2026.10.08-e，尚未上線)
 - 起因：網頁版討論回覆定案(設計文件commit `03e1098`)。
 - `worker/account.js`：新增`purge_abuse`——寄驗證信的IP紀錄(`li:`)、寄信次數紀錄(`le:`)寫入後1小時到期、過期驗證碼紀錄一併清；每小時排程(`entry.js`)先清除、再分配、再寄信；`wallet_spend`加tag=keep(10點)記退還憑證、新增`wallet_refund`(`account-routes.js`的`refund_keep`)，伺服器驗證憑證才退。

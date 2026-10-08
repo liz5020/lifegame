@@ -2204,6 +2204,47 @@ const SELF_DISCIPLINE_INTEREST_STREAK_2 = 6; // 【定案,3.7.2】連續6次持�
 function findInterestCard(s, category){
   return (s.interestCandidates||[]).find(c=>c.category===category);
 }
+// 八、8.8.1～8.8.3（2026-10-08）：興趣的類別與項目由程式擲出，AI只照寫並回報reaction（改善「手作工藝居多」）
+const INTEREST_ITEMS = {
+  藝術創作:["繪畫","樂器","歌唱","寫作","攝影","影像剪輯","書法","插畫設計"],
+  手作工藝:["烘焙","飾品","木工","縫紉","陶藝","編織","皮革","手工皂"],
+  知識研究:["語言學習","閱讀","歷史","心理學","天文","棋藝","科普","哲學"],
+  體能競技:["球類運動","游泳","跑步","舞蹈","健身","登山","武術","騎單車"],
+  科技邏輯:["程式","電玩製作","模型製作","機械維修","機器人","桌遊設計","電子電路","數位繪圖工具"],
+  社交表演:["直播","主持","社群經營","劇團","街舞","即興喜劇","樂團演出","魔術"],
+  商業交易:["代購","二手轉賣","投資操作","擺攤","電商小店","收藏買賣"]
+};
+const INTEREST_SEED_NATURAL_PROB = 0.08; // 【測試參數,待驗證】重心不是「興趣」的回合，劇情自然帶出興趣種子的機率
+const INTEREST_SEED_HAVE_CARD_WEIGHT = 0.5; // 【測試參數】已有正式興趣卡(active)的類別，抽選權重減半；7類都有卡時恢復均等
+// 擲出一個興趣種子{category,item}：7類均等、已有active卡的類別減半、不連續兩次同類；該類已有卡時項目改抽其他項目(投入仍記在原卡)
+function rollInterestSeed(s, rng){
+  rng = rng || Math.random;
+  const haveActive = new Set((s.interestCandidates||[]).filter(c=>c.status==="active").map(c=>c.category));
+  const allHave = INTEREST_CATEGORIES.every(c=>haveActive.has(c));
+  let cats = INTEREST_CATEGORIES.filter(c=>c!==s.interestSeedLast);
+  if(!cats.length) cats = INTEREST_CATEGORIES.slice();
+  const weightOf = c => (!allHave && haveActive.has(c)) ? INTEREST_SEED_HAVE_CARD_WEIGHT : 1;
+  const total = cats.reduce((n,c)=>n+weightOf(c),0);
+  let r = rng()*total, category = cats[cats.length-1];
+  for(const c of cats){ r -= weightOf(c); if(r<0){ category = c; break; } }
+  const card = findInterestCard(s, category);
+  let items = INTEREST_ITEMS[category];
+  if(card && card.item && items.length>1) items = items.filter(i=>i!==card.item);
+  return { category, item: items[Math.min(items.length-1, Math.floor(rng()*items.length))] };
+}
+// 每回合呼叫AI之前算一次(重新生成沿用同一組)：重心有「嘗試新的」→try_new；重心沒有興趣→8%自然種子；重心指定了興趣卡不擲
+function prepareInterestSeed(s, turnFocus, opts){
+  if(opts && (opts.prologue || opts.skip || opts.ending)) return null;
+  const items = focusItems(turnFocus);
+  let kind = null;
+  if(items.some(it=>it.key==="interest" && !it.interestCategory)) kind = "try_new";
+  else if(!items.some(it=>(it.key==="interest" && it.interestCategory) || (it.key==="work" && it.gigCategory)) && Math.random() < INTEREST_SEED_NATURAL_PROB) kind = "natural";
+  if(!kind) return null;
+  const seed = rollInterestSeed(s);
+  s.interestSeedLast = seed.category;
+  return { kind, category: seed.category, item: seed.item };
+}
+function interestCardLabel(c){ return c.item ? `${c.category}・${c.item}` : c.category; }
 // 八、8.9（2026-09-27新增）興趣類別對應職業類別：每類只列1～2個，同列不分主次；刻意不對應不穩定/待業類、政治人物子女、長期不在身邊類
 const INTEREST_OCCUPATION_MATCH = {
   藝術創作: ["自由/創作類"],
@@ -2264,7 +2305,7 @@ function applyInterestEvent(s, interestEvent, scale){ // scale：投入份量倍
   let card = findInterestCard(s, category);
   if(!card){
     card = {
-      id: category+"_"+s.turnCount, createdTurn: s.turnCount, category, status:"candidate", investment:0, positiveStreak:0, candidateProgress:0,
+      id: category+"_"+s.turnCount, createdTurn: s.turnCount, category, item: interestEvent.item || null, status:"candidate", investment:0, positiveStreak:0, candidateProgress:0,
       lastEngagedRound: s.turnCount, sideBusinessOffered:false, sideBusinessStatus:null,
       selfDisciplineAwarded3:false, selfDisciplineAwarded6:false
     };
@@ -8383,7 +8424,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     max_affordable_home_monthly_payment: Math.floor(s.cash/60), // 七、7.5.3買房頭期款門檻：頭期款=月付×240×0.25=月付×60，現金/60=這個現金水位能負擔的最高月付房貸(呼應20年期/8成貸款成數假設)
     home_purchase_min_down_payment_pct: 20,
     milestone_status: MILESTONE_DEFS.map(def=>({ id:def.id, label:def.label, status:s.milestones[def.id] })),
-    interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, status:c.status, investment:Math.round(c.investment), side_business: c.sideBusinessStatus||null })),
+    interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, item:c.item||null, status:c.status, investment:Math.round(c.investment), side_business: c.sideBusinessStatus||null })),
+    interest_seed_now: (timeCtx && timeCtx.interestSeed && timeCtx.interestSeed.kind==="natural") ? { category: timeCtx.interestSeed.category, item: timeCtx.interestSeed.item } : null, // 八、8.8.2：劇情自然帶出的興趣種子
     side_business_event_now: s.sideBusinessEventLog || null, // 8.7（2026-09-27）：玩家剛在副業彈窗做的選擇
     // 八、8.13（2026-09-30）：副業訂單簿(接單量與上限、每筆進度)、程式判定的交件／逾期／取消通知、新詢問；旁白只用order_new登記、order_target指名，價格交期與交件由程式決定
     side_gig_orders: orderPayload(s),
@@ -8428,6 +8470,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     turn_focus: timeCtx && timeCtx.focus ? {
       key: timeCtx.focus.key, label: focusItemLabel(timeCtx.focus),
       interest_category: timeCtx.focus.key==="interest" ? (timeCtx.focus.interestCategory||"嘗試新的") : undefined,
+      try_new_suggestion: (timeCtx.interestSeed && timeCtx.interestSeed.kind==="try_new") ? { category: timeCtx.interestSeed.category, item: timeCtx.interestSeed.item } : undefined, // 八、8.8.2：嘗試新的由程式擲出
       family_targets: timeCtx.focus.familyTargets || undefined,
       part_time: focusPartTimeRatio(timeCtx.focus) ? (s.partTimeEventLog||null) : undefined,
       gig_category: timeCtx.focus.gigCategory || undefined, // 八、8.13：重心是「工作：副業X」
@@ -8532,8 +8575,13 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 // 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
-const APP_VERSION = "2026.10.08-e";
+const APP_VERSION = "2026.10.08-f";
 const RELEASE_NOTES = [
+  { version:"2026.10.08-f", date:"2026-10-08", title:"興趣更多元", items:[
+    "遇到的新興趣不再老是手作：現在會從藝術、手作、知識、運動、科技、表演、買賣七大類裡輪流出現，每一類還有更具體的項目（例如陶藝、街舞、天文、攝影）。",
+    "你已經在經營的類別比較不容易再抽到，想嘗試新的東西時更容易遇到沒碰過的領域。",
+    "興趣面板的卡片會寫出具體項目，例如「手作工藝・陶藝」；以前的興趣卡照舊顯示類別。",
+  ]},
   { version:"2026.10.08-e", date:"2026-10-08", title:"隱私說明補寫與轉世指定的人", items:[
     "隱私權政策與服務條款更新為 1.1 版，補寫了短暫記錄的防濫用資料、人生代號、存檔索引和同意紀錄。",
     "轉世時指定的那位舊識，這一世一定會遇到；如果整個學生時期都沒遇上，會退還 10 點。",
@@ -9331,6 +9379,7 @@ async function takeTurnInner(actionText, cost){
   timeCtx.friendOpportunity = wasPrologue ? null : takeFriendOpportunity(state); // 三、3.5.5：朋友帶來的機會
   timeCtx.deviation = rollChoiceDeviation(state, { prologue: wasPrologue, fromChoice, whitelist: !!adv.examTriggered || !!programEventNow(state) || !!(timeCtx.scenePlan && timeCtx.scenePlan.mode==="override" && timeCtx.scenePlan.reason!=="player_named") }); // 一、1.2.17
   timeCtx.relationScene = wasPrologue ? null : prepareRelationScene(state, actionText); // 四、4.8：上一回合告白的回應／擲骰結果、玩家提分手、排定的分手場面(deviation要先擲，才看得到待回應的告白)
+  timeCtx.interestSeed = prepareInterestSeed(state, turnFocus, { prologue: wasPrologue, skip: !!adv.bigJump, ending: !!adv.deathTriggered }); // 八、8.8.2（2026-10-08）
   timeCtx.expenseMentions = state.pendingExpenseMentions || []; state.pendingExpenseMentions = []; // 一、1.2.15
   // 十八、18.12（2026-09-29 A7）：這回合指定為主角日常場景時，取代18.2「跟重心相關／換到別處」的擲骰(考試、事件等覆寫仍優先)
   if(timeCtx.rhythm.daily_scene_now && timeCtx.scenePlan && timeCtx.scenePlan.mode!=="override")
@@ -10304,6 +10353,12 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   const interestHandledByFocus = focusItems(turnFocus).some(it=>(it.key==="interest" && it.interestCategory) || (it.key==="work" && it.gigCategory));
   // 一、1.2.18（2026-09-30）：interest_event有reaction時必須附category(重心為「興趣:X」由程式記錄的回合除外)，缺少就寫入錯誤紀錄
   if(!interestHandledByFocus && r.interest_event && r.interest_event.reaction && !r.interest_event.category) addReviewFlag(s, "interest_event_no_category", "interest_event有reaction卻沒有category");
+  // 八、8.8.2（2026-10-08）：本回合有程式擲出的興趣種子時，類別以種子為準；AI回報不同類別就改回種子並寫入錯誤紀錄
+  const seed = timeCtx && timeCtx.interestSeed;
+  if(!interestHandledByFocus && seed && r.interest_event && r.interest_event.reaction){
+    if(r.interest_event.category && r.interest_event.category!==seed.category) addReviewFlag(s, "interest_event_mismatch", `interest_event類別「${r.interest_event.category}」與程式指定的「${seed.category}」不同`);
+    r.interest_event = { ...r.interest_event, category: seed.category, item: seed.item };
+  }
   if(!interestHandledByFocus){
     applyInterestEvent(s, r.interest_event);
     applyInterestCost(s, r.interest_event); // 8.4（2026-09-27）：興趣的代價
@@ -12534,7 +12589,7 @@ function gigNeedsAttention(s){ return sideGigCards(s).some(c=>activeOrders(c).so
 function newCharacterLastTurn(s){ const last = (s.appearLog||[]).slice(-1)[0]; return !!(last && last.turn===s.turnCount && (s.newCharTurns||[]).includes(s.turnCount)); }
 function drawerInterestInfo(s){
   const cards = interestCardsForPanel(s).slice().sort((a,b)=>(b.lastEngagedRound||0)-(a.lastEngagedRound||0));
-  return cards.length ? `${escapeHtml(cards[0].category)}・${interestLevelName(Math.round(cards[0].investment||0))}` : "還沒有";
+  return cards.length ? `${escapeHtml(interestCardLabel(cards[0]))}・${interestLevelName(Math.round(cards[0].investment||0))}` : "還沒有";
 }
 function renderDrawer(s){
   const gig = sideGigCards(s);
@@ -13360,7 +13415,7 @@ function renderInterestCardHtml(c){
   const idx = interestLevelIndex(v);
   const next = INTEREST_LEVELS[idx+1];
   return `<div class="interest-card${c.status==="dormant"?" dormant":""}">
-    <div class="ic-head"><b>${escapeHtml(c.category)}</b><span class="ic-level">${interestLevelName(v)}${c.status==="dormant" ? "（久未投入）" : ""}</span></div>
+    <div class="ic-head"><b>${escapeHtml(interestCardLabel(c))}</b><span class="ic-level">${interestLevelName(v)}${c.status==="dormant" ? "（久未投入）" : ""}</span></div>
     <div class="ic-track" aria-label="${prog==null ? "已到頂" : "距離下一級（"+next[0]+"）"}"><span class="ic-fill" style="width:${prog==null ? 100 : Math.round(prog*100)}%"></span></div>
     <div class="ic-sub">${prog==null ? "已到頂" : `距離「${next[0]}」`}　副業：${interestSideStatusLabel(c)}</div>
   </div>`;
