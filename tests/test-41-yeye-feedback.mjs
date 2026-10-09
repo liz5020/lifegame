@@ -73,7 +73,7 @@ ev("render()");
 A.check("B5 畫面上選擇行旁邊顯示重心", /重心：工作：打工/.test(g.win.document.querySelector("#latest-entry .choice-line").textContent));
 A.check("B5 下載故事的選擇紀錄含重心", /→ .*（重心：工作：打工）/.test(ev("buildStoryExport(state)")));
 A.check("A4 打工收入固定1份(1份＝每回合平均零用錢；2026-10-09由2份改1份)", lastE.focusMarks && (lastE.focusMarks.extra || []).some(t => t === `存款 +${Math.round(1 * ev("incomeShareUnit(state)"))}`), lastE.focusMarks);
-A.check("A4 學生1份＝月零用錢×12÷54", Math.abs(ev("incomeShareUnit(state)") - ev("state.monthlyIncome") * 12 / 54) < 1e-9);
+A.check("A4 學生1份＝月零用錢×12÷44", Math.abs(ev("incomeShareUnit(state)") - ev("state.monthlyIncome") * 12 / 44) < 1e-9);
 
 // B1：生日跨過那天年齡+1，家人一起長一歲
 ev("state.age=15; state.birthday={m:12,d:10}; state.birthYear=2010; state.timeState.cal.ageDay=calDateToAbs(2026,12,1)");

@@ -5176,10 +5176,12 @@ const SEMESTER_PHASES = [
   { key:"期末考", budget:1, isExam:true, examType:"期末考" },
   { key:"假期", budget:8, isExam:false }
 ];
+// 二、2.3（2026-10-09 beta）：寒假約1個月、暑假約2個月，回合數依長短各自設定(寒假2、暑假4)，不再兩者都8回合
+const VACATION_BUDGET = { "上學期":2, "下學期":4 }; // 上學期的假期段＝寒假，下學期的假期段＝暑假
 const YEAR_SEGMENTS = [
   ...SEMESTER_PHASES.map(p=>({ ...p, half:"上學期" })),
   ...SEMESTER_PHASES.map(p=>({ ...p, half:"下學期" }))
-]; // 14段：上學期7段+下學期7段（假期段落分別代表寒假/暑假），一學期預算上限27回合、一學年54回合
+].map(p=>p.key==="假期" ? { ...p, budget:VACATION_BUDGET[p.half] } : p); // 14段：上學期7段+下學期7段（假期段落分別代表寒假/暑假），一學年44回合(19+2+19+4)
 // 一、1.2.9.1（2026-09-23修正,發現monthsCrossed校準bug）：學生時期每回合的monthsCrossed原本寫死1.5，
 // 54回合(一整年)累加起來等於81個月(6.75年)，跟「54回合＝年齡+1歲」的既有結構(見advanceStageYear)完全對不上——
 // 已用Node vm模擬驗證：55回合(含開場段落)跑滿一整年，累加monthsCrossed=81，不是預期的12。
@@ -5468,8 +5470,8 @@ function addReviewFlag(s, kind, detail){
 // 二、2.5（9/16新增，9/16-v2.1下修數字+年齡帶改左閉右開）：22歲以後加速曲線，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
 // 邊界採10年一段、左閉右開（以生日為界，22-29歲＝22歲起滿30歲生日前），取代v2.1之前22-30/31-40等不對稱分段
 const LIFE_STAGE_ROUND_BUDGET = [
-  { minAge:22, maxAge:29, roundsPerYear:32 }, // 找方向期
-  { minAge:30, maxAge:39, roundsPerYear:28 },
+  { minAge:22, maxAge:29, roundsPerYear:28 }, // 找方向期（2026-10-09 beta：32→28）
+  { minAge:30, maxAge:39, roundsPerYear:24 }, // （2026-10-09 beta：28→24）
   { minAge:40, maxAge:49, roundsPerYear:15 },
   { minAge:50, maxAge:59, roundsPerYear:12 },
   { minAge:60, maxAge:69, roundsPerYear:10 },
@@ -6475,7 +6477,7 @@ function maybeRollBackgroundEvents(s, adv){
   if(s.idleMode || s.timeState.prologue) return false;
   let mode = null;
   if(isStudentPhase(s)){ // 2026-10-04：重心延續到出社會後，這裡仍只看學生時期(學期背景事件)
-    if(adv && adv.holiday && (s.turnCount - (s.bgLastRollTurn ?? -99)) >= 12) mode = "student"; // 一個假期最長8回合，兩個假期相隔至少19回合
+    if(adv && adv.holiday && (s.turnCount - (s.bgLastRollTurn ?? -99)) >= 12) mode = "student"; // 一個假期最長4回合，兩個假期相隔至少19回合
   } else if(adv && adv.window){
     const y = calAbsToDate(adv.window.start).y;
     if(s.bgYear==null) s.bgYear = y;
@@ -9028,8 +9030,12 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-l";
+const APP_VERSION = "2026.10.09-m";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-m", date:"2026-10-09", title:"假期與人生節奏微調", items:[
+    "寒假和暑假的長度更貼近現實，不再像學期中那樣一個假期塞滿一堆回合。",
+    "二、三十歲這段日子走得稍微快一點，整段人生的長度也縮短了一些。",
+  ]},
   { version:"2026.10.09-l", date:"2026-10-09", title:"花費不再無預警冒出來", items:[
     "學生時期要自己掏錢的場合，現在都有前因才會出現，不會憑空跳出來。",
   ]},
