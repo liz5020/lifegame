@@ -94,7 +94,8 @@ ev("state.focus='interest'; state.focusInterestId='new'");
 await H.playTurn(g, "嗯");
 const flags1 = js("(state.reviewFlags||[]).filter(f=>f.kind==='interest_event_mismatch').length");
 A.check("類別相符：不寫錯誤紀錄", flags1 === flags0, [flags0, flags1]);
-A.check("連續兩回合嘗試新的：兩次種子類別不同(不連續同類)", lastPayload.turn_focus.try_new_suggestion.category !== cards1[0].category, [lastPayload.turn_focus.try_new_suggestion.category, cards1[0].category]);
+A.check("連續兩回合嘗試新的(8.8.5 2026-10-09)：上一個項目還是候選→延續同一項目，不擲新種子", lastPayload.turn_focus.try_new_suggestion.item === firstItem && lastPayload.turn_focus.try_new_suggestion.continued === true, [lastPayload.turn_focus.try_new_suggestion, firstItem]);
+ev("state.tryNewCont=null"); // 之後的8.8.4測試從沒有延續的狀態開始
 
 // ---------- 8.8.4 每個項目各自成卡（2026-10-09） ----------
 const card0 = (id, category, item, extra = "") => `{id:'${id}',category:'${category}',item:${item ? `'${item}'` : "null"},status:'active',investment:30,positiveStreak:0,candidateProgress:3,lastEngagedRound:state.turnCount-1,sideBusinessOffered:false${extra}}`;

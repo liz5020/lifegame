@@ -17,7 +17,7 @@ A.check("16.8.5 校名清單12所，避開「台」「國立」", ev("SCHOOL_NAM
 // 2. 選系畫面
 ev("state.age = 18; renderMajorSelectionModal()");
 const m = doc.getElementById("major-selection-modal");
-A.check("16.8.1 標題「18歲・大學入學」「選擇你的科系」", /18歲・大學入學/.test(m.textContent) && /選擇你的科系/.test(m.textContent));
+A.check("16.8.1(9.10改) 標題「18歲・選填志願」「選擇你的科系」", /18歲・選填志願/.test(m.textContent) && /選擇你的科系/.test(m.textContent));
 A.check("16.8.1 八個學群按鈕(含圖示)", m.querySelectorAll(".mp-group").length === 8 && [...m.querySelectorAll(".mp-group")].every(b => b.querySelector("svg path, svg rect, svg circle")));
 A.check("16.8.1 提示文字與底部按鈕", /點學生證可以翻面，看看畢業後的方向/.test(m.textContent) && doc.getElementById("btn-major-confirm").textContent === "就讀這個科系");
 const front = () => m.querySelector(".sid-front").textContent.replace(/\s+/g, " ");

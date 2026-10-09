@@ -2557,9 +2557,29 @@ function prepareInterestSeed(s, turnFocus, opts){
   if(items.some(it=>it.key==="interest" && !it.interestCategory)) kind = "try_new";
   else if(!items.some(it=>(it.key==="interest" && it.interestCategory) || (it.key==="work" && it.gigCategory)) && Math.random() < INTEREST_SEED_NATURAL_PROB) kind = "natural";
   if(!kind) return null;
+  // 八、8.8.5（2026-10-09）：「嘗試新的」連點時，上一個項目還是候選就延續同一項目，不擲新種子
+  const cont = kind==="try_new" ? tryNewContinuation(s) : null;
+  if(cont) return { kind, category: cont.category, item: cont.item, continued:true };
   const seed = rollInterestSeed(s);
   s.interestSeedLast = seed.category;
   return { kind, category: seed.category, item: seed.item };
+}
+// 八、8.8.5：最近一次用「嘗試新的」接觸到的項目(存檔s.tryNewCont={category,item,conts,lastReaction})。
+// 仍可延續：項目還沒成為正式興趣卡、最近一次反應不是明顯負向、已延續的回合數還沒滿4。回傳{category,item}或null
+const TRY_NEW_MAX_CONTINUE = 4;
+function tryNewContinuation(s){
+  const c = s.tryNewCont;
+  if(!c || !c.category || !c.item) return null;
+  if(c.lastReaction==="negative" || (c.conts||0)>=TRY_NEW_MAX_CONTINUE) return null;
+  const card = findInterestCard(s, c.category, c.item);
+  if(card && (card.status==="active" || card.status==="dormant")) return null; // 已成為正式興趣卡，之後點它自己的按鈕
+  return { category:c.category, item:c.item };
+}
+// 回合結算後記下這次「嘗試新的」接觸的項目與反應(玩家點名了別的興趣、種子作廢的回合不記)
+function recordTryNewContact(s, seed, ev){
+  if(!seed || seed.kind!=="try_new" || !ev || !ev.reaction) return;
+  const same = s.tryNewCont && s.tryNewCont.category===seed.category && s.tryNewCont.item===seed.item;
+  s.tryNewCont = { category:seed.category, item:seed.item, conts: (same && seed.continued) ? (s.tryNewCont.conts||0)+1 : 0, lastReaction:ev.reaction };
 }
 function interestCardLabel(c){ return c.item ? `${c.category}・${c.item}` : c.category; }
 // 八、8.9（2026-09-27新增）興趣類別對應職業類別：每類只列1～2個，同列不分主次；刻意不對應不穩定/待業類、政治人物子女、長期不在身邊類
@@ -5620,6 +5640,22 @@ function enrollInDepartment(s, groupKey, dept){
   s.studentDepartment = dept;
   s.studentCard = { school: pick(SCHOOL_NAMES), studentId: makeStudentId(s), groupKey, groupLabel: cat.label, dept, entryAge: s.age, years: five?5:4 };
 }
+// 九、9.10（2026-10-09）：高三下學期5月第一回合先選科系。條件：高中最後一年的下學期、這回合日期已到5月、還沒選過系
+// （放暑假、跳過指令跨過5月也算；舊存檔已過5月沒選系的，下一回合補跳）。adv＝advanceStructuredTime的回傳
+function majorSelectionDue(s, adv){
+  if(s.studentMajorGroup || s.pendingMajorSelection) return false;
+  const ts = s.timeState;
+  if(!ts || ts.prologue || ts.stageMode!=="highschool" || ts.yearInStage!==3) return false;
+  if(!adv || !adv.window || adv.half!=="下學期") return false;
+  if(ts.segmentIndex < SEMESTER_PHASES.length) return false; // 這回合結束時已經換到新學年的上學期(剛好跨年的最後一個暑假回合)＝上一年級的事，不算
+  return calAbsToDate(adv.window.start).m >= 5;
+}
+// 9.10：高三5月選完系到9月開學前＝「已錄取」，還不是大學生
+function majorAdmittedNotEnrolled(s){ return !!s.studentMajorGroup && s.studentStatus!=="enrolled" && s.timeState && s.timeState.stageMode==="highschool"; }
+// 雙主修可選的系：任何學群，不能與主修同系，5年制系別（醫學、牙醫、獸醫）不能當雙主修
+function dualMajorDeptChoices(s, groupKey){
+  return (MAJOR_DEPARTMENTS[groupKey]||[]).filter(d=>!FIVE_YEAR_DEPARTMENTS.includes(d) && d!==s.studentDepartment);
+}
 
 // 9.3 下游伏筆權重表（高/中/低相對排序，9/16 ChatGPT開發審閱建議改用「共同基準機率×類別倍率」，
 // 具體絕對機率仍是【待補充,測試組】，這裡的BASE/MULTIPLIER都是實作階段自訂的【測試參數】，非正式定案數字）
@@ -5807,6 +5843,12 @@ function segmentLabel(seg, isFirstHalf, halfYearCarry){
   }
   return seg.half+"・"+seg.key;
 }
+// 九、9.10（2026-10-09）：高中最後一年的暑假(下學期之後的假期)標籤改為「準大一」
+function highSchoolYearLabel(ts, idx){
+  const y = clamp(ts.yearInStage,1,3);
+  if(y===3 && idx>=SEMESTER_PHASES.length && YEAR_SEGMENTS[idx].key==="假期") return "準大一";
+  return ["高一","高二","高三"][y-1];
+}
 function computeTimeLabel(s){
   // 二、2.2（2026-09-23新增）：開場段落，整局只會出現這一次
   if(s.timeState.prologue) return "高一開學前・暑假最後一天";
@@ -5818,7 +5860,7 @@ function computeTimeLabel(s){
     const idx = s.timeState.segmentIndex % YEAR_SEGMENTS.length;
     const seg = YEAR_SEGMENTS[idx];
     const yr = mode==="highschool"
-      ? ["高一","高二","高三"][clamp(s.timeState.yearInStage,1,3)-1]
+      ? highSchoolYearLabel(s.timeState, idx)
       : collegeYearLabel(s);
     let label = yr+"・"+segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry);
     if(mode==="college" && s.timeState.yearInStage>=(s.collegeYearsRequired||4) && idx>=SEMESTER_PHASES.length) label += "（畢業倒數）";
@@ -5843,14 +5885,16 @@ function computeMonthTitle(s){
   const ts = s.timeState, cal = ts && ts.cal;
   if(!ts || !cal || ts.prologue || cal.lastRoundEnd==null) return null;
   const a = cal.lastWinStart!=null ? cal.lastWinStart : cal.lastRoundEnd;
-  const mid = Math.floor((a + cal.lastRoundEnd)/2);
+  // 葉夜第1世B6(2026-10-09)：旁白寫完後以新場景的日期為準(標題寫10月、正文卻是9月30日)；還沒寫完或日期不在本回合範圍時才取範圍中點
+  const sd = cal.lastSceneDay;
+  const mid = (sd!=null && sd>=a && sd<=cal.lastRoundEnd) ? sd : Math.floor((a + cal.lastRoundEnd)/2);
   const month = calAbsToDate(mid).m+"月";
   const mode = ts.stageMode;
   if(mode==="college" && s.leaveStatus==="onLeave") return null;
   if(mode==="highschool" || mode==="college"){
     const idx = ts.segmentIndex % YEAR_SEGMENTS.length;
     const seg = YEAR_SEGMENTS[idx];
-    const yr = mode==="highschool" ? ["高一","高二","高三"][clamp(ts.yearInStage,1,3)-1] : collegeYearLabel(s);
+    const yr = mode==="highschool" ? highSchoolYearLabel(ts, idx) : collegeYearLabel(s);
     const term = seg.key==="假期" ? segmentLabel(seg, idx<SEMESTER_PHASES.length, s.halfYearCarry) : seg.half;
     return `${yr}・${term}・${month}`;
   }
@@ -6010,6 +6054,11 @@ function advanceStructuredTime(actionText, focusKey){
       s.timeState.turnsInSegment = t+1;
       if(s.timeState.turnsInSegment >= currentSeg.budget){
         if(currentSeg.isExam) examType = currentSeg.examType;
+        // 九、9.10（2026-10-09）：高中畢業典禮在高三下學期期末考那一回合(6月)，不再等到9月進大一
+        if(mode==="highschool" && s.timeState.yearInStage===3 && currentSeg.half==="下學期" && examType==="期末考" && s.milestones.graduation_highschool!=="completed"){
+          s.milestones.graduation_highschool = "completed";
+          s.graduationEventLog = { type:"highschool" };
+        }
         s.timeState.turnsInSegment = 0;
         const toGlobalIdx = fromGlobalIdx + 1;
         s.timeState.segmentIndex = toGlobalIdx % YEAR_SEGMENTS.length;
@@ -6103,9 +6152,14 @@ function advanceStageYear(s, mode, yearsToAdd){
   s.timeState.yearInStage += yearsToAdd;
   if(mode==="highschool" && s.timeState.yearInStage>3){
     s.timeState.stageMode="college"; s.timeState.yearInStage=1;
-    s.milestones.graduation_highschool = "completed"; // 4.3事件狀態機制：客戶端結構化判斷，不假手AI
-    s.graduationEventLog = { type:"highschool" }; // 一、1.2.8.6（2026-09-24拍板）：畢業事件log，這回合語氣軌套用回望軌
-    s.studentStatus = "enrolled"; s.pendingMajorSelection = true; // 九、9.1：進大學觸發選科系流程
+    // 九、9.10（2026-10-09）：畢業事件改在高三下學期期末考那一回合送出(見advanceStructuredTime)；舊存檔還沒送過的在這裡補送
+    if(s.milestones.graduation_highschool!=="completed"){
+      s.milestones.graduation_highschool = "completed"; // 4.3事件狀態機制：客戶端結構化判斷，不假手AI
+      s.graduationEventLog = { type:"highschool" }; // 一、1.2.8.6（2026-09-24拍板）：畢業事件log，這回合語氣軌套用回望軌
+    }
+    s.studentStatus = "enrolled";
+    if(s.studentMajorGroup){ if(s.studentCard) s.studentCard.entryAge = s.age; } // 9.10：5月已選好系，9月開學直接入學
+    else s.pendingMajorSelection = true; // 九、9.1：還沒選過系(舊存檔、跳過指令跨過5月)才在這裡補跳選科系
   } else if(mode==="college" && s.timeState.yearInStage>(s.collegeYearsRequired||4)){
     // 9.8.1（2026-09-22修正）：畢業判定改為只看科系基礎修業年限，不疊加delay_years——
     // 延畢的時間延長已經由「休學學期重跑」自然反映在真實經過的回合數裡，不需要在這裡再加一次
@@ -6332,6 +6386,7 @@ function rosterLine(s, c){
   let status = st==="normal" ? "一般" : CHARACTER_STATE_LABELS[st];
   if(st==="fading") status += `（重逢時：${reunionTone(c)}）`;
   if(c.left_circle) status += "（已離開主角的日常生活圈）"; // 四、4.7.3【距】
+  if(c.cohabiting && st!=="deceased") status += "（同住）"; // 葉夜第1世C2：名單附住處，旁白才不會把住家裡的弟弟寫成在工作室上班
   return [c.name, c.gender||"未記錄", rel, intro || "—", status].join("｜");
 }
 const ROSTER_MAX = 80;
@@ -6466,7 +6521,7 @@ function bgLabelNow(s){
   const mode = s.timeState.stageMode;
   if(mode==="highschool" || mode==="college"){
     const idx = s.timeState.segmentIndex % YEAR_SEGMENTS.length;
-    const yr = mode==="highschool" ? ["高一","高二","高三"][clamp(s.timeState.yearInStage,1,3)-1] : collegeYearLabel(s);
+    const yr = mode==="highschool" ? highSchoolYearLabel(s.timeState, idx) : collegeYearLabel(s);
     return yr + (idx<SEMESTER_PHASES.length ? "寒假" : "暑假");
   }
   return `${s.age}歲`;
@@ -7489,6 +7544,108 @@ function detectOutputQualityIssues(r){
   });
   return Array.from(new Set(issues)).slice(0, 6);
 }
+// ===== 十八、18.10.7／第三節A～C（2026-10-09，葉夜第1世第147～193回合回饋）：正文完整性檢查 =====
+// 回傳{ retry:[…], advisory:[…] }：retry走1.2.9.18自動重新產生(最多2次)；advisory只寫入錯誤紀錄、不重寫(語意判斷程式抓不準)
+let NARRATIVE_INTEGRITY_CHECK = true; // 測試用開關：一般測試的假上游文字很短，harness預設關掉
+const NARR_MIN_ACTION_CHARS = 100;  // 回應段下限約200字的一半
+const NARR_MIN_SCENE_CHARS = 130;   // 新場景下限(1.2.9.1最短級距扣掉回應段約270字)的一半；實測普遍只有目標一半，門檻不設更嚴(18.10.7)
+const WEEKDAY_NUM = { 日:0, 天:0, 一:1, 二:2, 三:3, 四:4, 五:5, 六:6 };
+const WEEKDAY_ANCHOR_RE = /(?<![上下這这那每前後后本])(?:週|周|星期|禮拜|礼拜)([一二三四五六日天])(?:的)?(?=早上|早晨|上午|中午|下午|傍晚|晚上|夜晚|夜裡|深夜|凌晨|放學|午休)/g;
+const SELF_COMMENT_RE = /[「『“][^」』”]{1,8}[」』”]這(?:個)?(?:詞|字|兩個字|說法|形容)|(?:這個|這)(?:詞|字眼)用在這裡|用在這裡(?:好像|似乎)?(?:太|有點|誇張)/;
+function cjkLen(text){ const m = String(text||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "$1").match(/[\u4e00-\u9fff]/g); return m ? m.length : 0; }
+function ngramSet(text, n){ const t = String(text||"").replace(/[^\u4e00-\u9fff]/g, ""); const out = new Set(); for(let i=0;i+n<=t.length;i++) out.add(t.slice(i,i+n)); return out; }
+function weekdayOfAbs(abs){ return calAbsToDate(abs).dow; }
+function weekdayName(dow){ return "日一二三四五六"[dow]; }
+function detectNarrativeIntegrity(r, s, ctx){
+  const retry = [], advisory = [];
+  if(!r || typeof r!=="object") return { retry, advisory };
+  ctx = ctx || {};
+  const prologue = !!ctx.prologue;
+  const act = String(r.action_result||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」");
+  const nar = String(r.narrative||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」");
+  const needAction = !prologue && !ctx.jump && !ctx.ending;
+  // 18.10.7第3點：少一段
+  if(needAction && !act.trim()) retry.push("回應段缺漏（要先寫玩家這回合選的動作實際發生了什麼，再接新場景）");
+  if(!nar.trim()) retry.push("新場景缺漏");
+  // 第4點：字數低於各自下限的一半
+  if(needAction && act.trim() && cjkLen(act) < NARR_MIN_ACTION_CHARS) retry.push(`回應段太短（只有${cjkLen(act)}字，要約200字以上，把玩家選的動作演完）`);
+  if(nar.trim() && cjkLen(nar) < NARR_MIN_SCENE_CHARS) retry.push(`新場景太短（只有${cjkLen(nar)}字，要寫成完整的場景）`);
+  // 第1點：回應段沒有寫到玩家選的動作(粗略：玩家文字的兩字詞一個都沒出現)
+  const actionText = String(ctx.actionText||"").trim();
+  if(needAction && actionText.length>=4 && cjkLen(act)>=NARR_MIN_ACTION_CHARS){
+    const grams = ngramSet(actionText, 2);
+    if(grams.size>=3 && ![...grams].some(g=>act.includes(g))) retry.push(`回應段沒有寫到玩家這回合選的動作「${actionText.slice(0,20)}」`);
+  }
+  // 旁白不評論自己的用字
+  if(SELF_COMMENT_RE.test(act) || SELF_COMMENT_RE.test(nar)) retry.push("正文裡旁白在評論自己用的字詞，刪掉，只寫故事本身");
+  // C4：台詞裡的劇本式舞台指示「（憋笑）」
+  if(/「[^」]*（[^）」]{1,10}）[^」]*」/.test(act+nar)) retry.push("台詞裡出現「（憋笑）」這種劇本式舞台指示，動作與表情要寫成敘事句，不放進引號");
+  // A7：選項不足4個
+  if(Array.isArray(r.choices) && r.choices.length>0 && r.choices.length<4 && !ctx.ending) retry.push(`選項只有${r.choices.length}個，要給4個`);
+  // B：日期星期。回應段發生在上一回合新場景的同一時間點(cal.lastSceneDay)，新場景在本回合範圍內(window)
+  const win = ctx.window, cal = s && s.timeState && s.timeState.cal;
+  if(win && cal && !prologue){
+    const lastDay = cal.lastSceneDay;
+    const check = (where, text, fromAbs, toAbs)=>{
+      WEEKDAY_ANCHOR_RE.lastIndex = 0; let m;
+      while((m = WEEKDAY_ANCHOR_RE.exec(text))){
+        const dow = WEEKDAY_NUM[m[1]]; let ok = false;
+        for(let a=fromAbs;a<=toAbs;a++) if(weekdayOfAbs(a)===dow){ ok = true; break; }
+        if(!ok){ retry.push(`${where}寫了「星期${m[1]}」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）沒有星期${m[1]}，星期要照time_context給的日期`); break; }
+      }
+      // B3(葉夜第1世第187～189回合連停在大年初二)：「大年初N」「除夕」要真的落在這段時間裡
+      const cny = (calLunarDates(calAbsToDate(toAbs).y) || {}).cny;
+      if(cny!=null){
+        const NUMC = { 一:1, 二:2, 三:3, 四:4, 五:5, 六:6, 七:7, 1:1, 2:2, 3:3, 4:4, 5:5, 6:6, 7:7 };
+        const cm = /大年初([一二三四五六七1-7])/.exec(text);
+        if(cm){ const a = cny + NUMC[cm[1]] - 1; if(a<fromAbs || a>toAbs) retry.push(`${where}寫了「大年初${cm[1]}」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）不是，節日要照time_context給的日期`); }
+        else if(/(?<![年次回前每])除夕/.test(text)){ const a = cny - 1; if(a<fromAbs || a>toAbs) retry.push(`${where}寫了「除夕」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）不是除夕`); }
+      }
+      // 具體日期M月D日／M/D：只攔附近20天內的過去日期(編造「已讀，9/15」)；未來的約定、考試日不管
+      const dre = /(\d{1,2})\s*(?:月\s*(\d{1,2})\s*[日號号]|\/\s*(\d{1,2})(?!\d))/g; let dm;
+      while((dm = dre.exec(text))){
+        const mo = +dm[1], da = +(dm[2]||dm[3]);
+        if(mo<1||mo>12||da<1||da>31) continue;
+        const y = calAbsToDate(fromAbs).y;
+        for(const yy of [y-1,y,y+1]){
+          const abs = calDateToAbs(yy,mo,da);
+          if(abs<fromAbs && abs>=fromAbs-20 && !(abs>=lastDay-0 && abs<=toAbs)){
+            retry.push(`${where}寫了「${mo}/${da}」，但這個日期早於現在（${calFormatMdw(fromAbs)}），不要自己編日期`); return;
+          }
+        }
+      }
+    };
+    check("回應段", act, lastDay, lastDay+1);
+    check("新場景", nar, win.start, win.end);
+    // B5：考前超過7天不寫具體倒數(「段考剩兩禮拜」)
+    const cd = /(?:段考|考試|期中考?|期末考?|大考|學測|指考)[^。！？\n]{0,8}(?:剩|還有|只剩|倒數|再)([0-9一二兩三四五六七八九十]+)\s*(?:個)?(天|週|周|禮拜|星期)/.exec(act+"\n"+nar)
+      || /(?:剩|還有|只剩|再)([0-9一二兩三四五六七八九十]+)\s*(?:個)?(天|週|周|禮拜|星期)[^。！？\n]{0,6}(?:就|要)?(?:段考|考試|期中|期末|大考)/.exec(act+"\n"+nar);
+    if(cd){
+      const NUM = { 一:1, 二:2, 兩:2, 三:3, 四:4, 五:5, 六:6, 七:7, 八:8, 九:9, 十:10 };
+      const n = /^\d+$/.test(cd[1]) ? +cd[1] : (NUM[cd[1]]||(cd[1].length===2&&cd[1][0]==="十"?10+(NUM[cd[1][1]]||0):0));
+      const days = n * (cd[2]==="天" ? 1 : 7);
+      if(days>7) retry.push(`寫了離考試還有「${cd[0]}」，考前超過7天不寫具體倒數，只能說「越來越近」這類模糊說法`);
+    }
+  }
+  // 十八、18.13(2026-10-09，葉夜第1世F1)：到期的約定這回合必須交代結果；不得寫成主角忘了約定
+  if(win && !prologue && s && Array.isArray(s.promises)){
+    const due = s.promises.filter(p=>p.status==="open" && p.dueAbs <= win.end);
+    const reported = new Set((Array.isArray(r.promise_results) ? r.promise_results : []).map(x=>x && x.id));
+    due.filter(p=>!reported.has(p.id)).slice(0,2).forEach(p=>retry.push(`與${p.character}的約定「${p.content}」到期了，這回合要交代結果（去了、延期、取消都可以，取消要寫出原因），並用promise_results回報`));
+    if(due.length && /忘(?:了|記了|掉了)[^。！？\n]{0,10}(?:約|答應|說好)/.test(act+nar)) retry.push("約定到期的這回合不能寫成主角忘了約定，要寫出實際怎麼了（去了、延期或取消的原因）");
+  }
+  // 第2、5點(需要語意判斷，只寫錯誤紀錄)：兩段高度重複的句子；新場景開頭重演回應段的開頭
+  if(act.trim() && nar.trim()){
+    const sents = t=>t.split(/[。！？\n]/).map(x=>x.trim()).filter(x=>cjkLen(x)>=10);
+    const aS = sents(act), nS = sents(nar);
+    const dup = nS.find(ns=>{ const g = ngramSet(ns,3); if(g.size<6) return false; return aS.some(as=>{ const h = ngramSet(as,3); let hit=0; g.forEach(x=>{ if(h.has(x)) hit++; }); return hit/g.size>=0.6; }); });
+    if(dup) advisory.push(`同一件事在回應段和新場景各寫一次：「${dup.slice(0,24)}」`);
+    const g1 = ngramSet(nar.slice(0,60), 4), g2 = ngramSet(act.slice(0,120), 4);
+    let hit = 0; g1.forEach(x=>{ if(g2.has(x)) hit++; });
+    if(g1.size>=8 && hit/g1.size>=0.4) advisory.push("新場景開頭疑似倒回回應段之前，重演回應段已經做完的事");
+  }
+  return { retry: Array.from(new Set(retry)).slice(0,6), advisory };
+}
 // 十七、17.3.6.6／八、8.8.2「寫了才算數」（2026-10-09）：程式交代的事(玩家剛決定花掉的錢、指定的新興趣項目)沒寫進正文，視同不合格重新產生。
 // 字眼放寬(寧可放過也不要誤殺，重新產生要花錢)：事件名稱或任一相關字眼出現就算寫到
 const EXPENSE_MENTION_WORDS = {
@@ -7988,7 +8145,7 @@ function buildScenePlan(s, ctx){
   const streak = s.sceneStreak || { cat:null, n:0 };
   const playerNamed = !!ctx.seek || PLAYER_PLACE_RE.test(ctx.actionText||"");
   let override = null;
-  if(ctx.examTriggered) override = { reason:"fixed", note:`${ctx.examType||"考試"}，在學校` };
+  if(ctx.examTriggered) override = { reason:"fixed", note:`${ctx.examType||"考試"}，在學校` + (s.graduationEventLog ? "；考完之後辦畢業典禮，兩件事都要寫到" : "") };
   else if(s.graduationEventLog) override = { reason:"fixed", note:"畢業典禮" };
   else if(ctx.segKey==="開學初" && ctx.segTurn===0 && ctx.half==="上學期") override = { reason:"fixed", note:"開學典禮，在學校" };
   else if(programEventNow(s)) override = { reason:"program_event", note: programEventNow(s)+"事件，地點依事件本身決定" };
@@ -8874,6 +9031,8 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     home_purchase_min_down_payment_pct: 20,
     milestone_status: MILESTONE_DEFS.map(def=>({ id:def.id, label:def.label, status:s.milestones[def.id] })),
     interest_status: (s.interestCandidates||[]).map(c=>({ category:c.category, item:c.item||null, status:c.status, investment:Math.round(c.investment), side_business: c.sideBusinessStatus||null })),
+    // 八、8.8.5：玩家以前接觸過的興趣(候選與正式卡)，玩家打字點名其中之一時以玩家為準
+    known_interests: (timeCtx && timeCtx.interestSeed) ? (s.interestCandidates||[]).filter(c=>c.item).map(c=>({ category:c.category, item:c.item })) : undefined,
     interest_seed_now: (timeCtx && timeCtx.interestSeed && timeCtx.interestSeed.kind==="natural") ? { category: timeCtx.interestSeed.category, item: timeCtx.interestSeed.item } : null, // 八、8.8.2：劇情自然帶出的興趣種子
     side_business_event_now: s.sideBusinessEventLog || null, // 8.7（2026-09-27）：玩家剛在副業彈窗做的選擇
     // 八、8.13（2026-09-30）：副業訂單簿(接單量與上限、每筆進度)、程式判定的交件／逾期／取消通知、新詢問；旁白只用order_new登記、order_target指名，價格交期與交件由程式決定
@@ -8920,7 +9079,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
       key: timeCtx.focus.key, label: focusItemLabel(timeCtx.focus),
       interest_category: timeCtx.focus.key==="interest" ? (timeCtx.focus.interestCategory||"嘗試新的") : undefined,
       interest_item: timeCtx.focus.key==="interest" && timeCtx.focus.interestCardId ? ((s.interestCandidates||[]).find(c=>c.id===timeCtx.focus.interestCardId)||{}).item || undefined : undefined, // 8.8.4：選的是哪個項目
-      try_new_suggestion: (timeCtx.interestSeed && timeCtx.interestSeed.kind==="try_new") ? { category: timeCtx.interestSeed.category, item: timeCtx.interestSeed.item } : undefined, // 八、8.8.2：嘗試新的由程式擲出
+      try_new_suggestion: (timeCtx.interestSeed && timeCtx.interestSeed.kind==="try_new") ? { category: timeCtx.interestSeed.category, item: timeCtx.interestSeed.item, continued: timeCtx.interestSeed.continued || undefined } : undefined, // 八、8.8.2：嘗試新的由程式擲出
       family_targets: timeCtx.focus.familyTargets || undefined,
       part_time: focusPartTimeRatio(timeCtx.focus) ? (s.partTimeEventLog||null) : undefined,
       gig_category: timeCtx.focus.gigLabel || timeCtx.focus.gigCategory || undefined, // 八、8.13：重心是「工作：副業X」
@@ -8952,7 +9111,12 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     study_count_this_term: (timeCtx && timeCtx.examTriggered) ? (timeCtx.studyCountAtExam||0) : (s.studyCountThisTerm||0),
     interest_count_this_term: (timeCtx && timeCtx.examTriggered) ? (timeCtx.interestCountAtExam||0) : (s.interestCountThisTerm||0),
     // 九、大學科系系統（9/16新增）：這些欄位只給你當敘事參考，候選是否成立/狀態轉換一律由系統計算，你不用也不能自己判斷
-    university_status: s.studentStatus!=="enrolled" ? null : {
+    // 九、9.10（2026-10-09）：以主修系名為主、學群為輔；雙主修只當次要背景；高三5月選完到9月開學前＝已錄取(admitted)，還不是大學生
+    university_status: s.studentStatus!=="enrolled" ? (majorAdmittedNotEnrolled(s) ? {
+      admitted: true, major_department: deptWithXi(s.studentDepartment||""), major_group: findMajorCategory(s.studentMajorGroup)?.label || null,
+      note: "已錄取，9月才開學；可以寫錄取通知、準備入學，不寫成已經在上大學的課"
+    } : null) : {
+      major_department: s.studentDepartment ? deptWithXi(s.studentDepartment) : null,
       major_group: s.studentMajorGroup ? findMajorCategory(s.studentMajorGroup)?.label : null,
       program_year: collegeYearLabel(s),
       dual_major_status: s.dualMajorStatus,
@@ -8967,6 +9131,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     marriage_crisis_event_now: s.marriageCrisisEventLog, // 七、7.6.2（2026-09-20新增）：{choice,spouseName}，玩家剛在婚姻危機彈窗做了選擇(repair/maintain/divorce)
     divorce_event_now: s.divorceEventLog, // 七、7.6.3（2026-09-20新增）：{spouseName,playerCashSharePct,propertyChoice,custody}，離婚結算剛完成，數字僅供敘事參考不用你計算
     cohabitation_event_now: s.cohabitationEventLog, // 七、7.6.1.1（2026-09-22新增）：{choice,partnerName}，玩家剛在「要不要一起住」彈窗做了選擇(move_in/stay_separate)
+    residence: (isStudentPhase(s) || s.studentStatus==='enrolled') ? "住家裡" : undefined, // 一、1.2.22（2026-10-09）：主角住處是遊戲狀態，旁白不得自行改變；目前沒有住處欄位，學生時期一律視為住家裡
     family_structure: s.familyStructure,
     family_background: s.family,
     attachment_axes: { anxiety: s.anxiety, avoidance: s.avoidance },
@@ -9029,8 +9194,16 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.10-a";
+const APP_VERSION = "2026.10.10-b";
 const RELEASE_NOTES = [
+  { version:"2026.10.10-b", date:"2026-10-10", title:"選科系時機、故事更完整", items:[
+    "選科系的時間提前到高三下學期，畢業典禮也跟著調整，畢業後的暑假改稱「準大一」。選完到開學之間，故事會當成已經錄取、準備入學。",
+    "申請雙主修之後，可以自己挑要念哪一個系。",
+    "「嘗試新的」可以連著試同一件事，按鈕下方會提示這次接著試什麼；自己打字提到以前接觸過的興趣時，會以你寫的為準。",
+    "健康下降時，會在數值旁標上原因。",
+    "調整了故事的寫法：對話更完整、日期與星期更貼近實際、約定的後續更有交代，也減少前後對不上的地方。",
+    "修正偶爾混進簡體字與半形逗號的問題。",
+  ]},
   { version:"2026.10.10-a", date:"2026-10-10", title:"雲端存檔更早開始", items:[
     "新的人生玩了一分鐘左右，就會先存一份到雲端，之後照舊定期存檔。",
   ]},
@@ -9756,7 +9929,7 @@ async function mockCallAI(actionText, forceEnding, timeCtx){
 // 新增「回合中會改動」的遊戲狀態欄位時，要加進這份清單；tests/test-84-turn-flow.mjs會掃描漏掉的欄位
 const SNAPSHOT_EXTRA_KEYS = [
   // 回合流程的擲骰計時、佇列、旗標
-  "bgLastRollTurn","bgYear","newsQueue","pendingInvites","friendOpportunityPending","lastFeedTurn","interestSeedLast",
+  "bgLastRollTurn","bgYear","newsQueue","pendingInvites","friendOpportunityPending","lastFeedTurn","interestSeedLast","tryNewCont",
   "pregnancy","fertilityAttempts","orderNotice","orderDeliveredLast","pendingExpenseMentions",
   "halfYearCarry","collegeDelayYearsUsed","pendingBusinessLaunch","inPrepPhaseThisTurn","reunionNow",
   "pendingConfession","confessionResultNext","pendingBreakup","pendingMajorPurchase","pendingJobSearch","jobSearchPhase","everSearchedJob",
@@ -9972,6 +10145,7 @@ async function takeTurnInner(actionText, cost, opts){
   // 十八、18.12（2026-09-29 A7）：這回合指定為主角日常場景時，取代18.2「跟重心相關／換到別處」的擲骰(考試、事件等覆寫仍優先)
   if(timeCtx.rhythm.daily_scene_now && timeCtx.scenePlan && timeCtx.scenePlan.mode!=="override")
     timeCtx.scenePlan = { mode:"daily", theme: timeCtx.rhythm.daily_scene_now.theme, period: timeCtx.scenePlan.period, banned_category: timeCtx.scenePlan.banned_category||null };
+  if(!wasPrologue && majorSelectionDue(state, adv)) await askMajorSelectionFirst(state); // 九、9.10（2026-10-09）：高三5月先選科系再寫這一回合
   if(timeCtx.studentExpense) await askStudentExpenseFirst(state, timeCtx.studentExpense); // 十七、17.3.6（2026-10-09）：先選完再寫
   aiWritingNow = true;
   render(true);
@@ -10029,7 +10203,8 @@ async function takeTurnInner(actionText, cost, opts){
     }
     // 一、1.2.9.18（2026-09-29 A14）：正文最後一個引號沒關、段落以冒號/逗號/沒寫完的句子結尾、出現{ } "key": 這類資料格式符號時，
     // 自動重新產生，最多2次(同一個turn_nonce，不扣行動點)；2次後仍不合格就保留最後一次結果，寫入錯誤紀錄(待確認清單)
-    const qualityOf = r=>detectOutputQualityIssues(r).concat(USE_MOCK ? [] : detectMissingRequiredMentions(r, state, timeCtx)); // 示範模式的假正文固定，不檢查「寫了才算數」
+    const integrityCtx = ()=>({ prologue: wasPrologue, jump: !!adv.bigJump, ending: forceEnding, actionText, window: timeCtx.window });
+    const qualityOf = r=>detectOutputQualityIssues(r).concat(USE_MOCK ? [] : detectMissingRequiredMentions(r, state, timeCtx).concat(NARRATIVE_INTEGRITY_CHECK ? detectNarrativeIntegrity(r, state, integrityCtx()).retry : [])); // 示範模式的假正文固定，不檢查「寫了才算數」與完整性(18.10.7)
     let quality = qualityOf(result);
     for(let q=0; q<OUTPUT_QUALITY_MAX_RETRIES && quality.length; q++){
       console.warn("[輸出品質] 自動重新產生：", quality.join("；"));
@@ -10039,6 +10214,7 @@ async function takeTurnInner(actionText, cost, opts){
       catch(qErr){ console.error("重新產生失敗，沿用上一次的結果：", qErr); break; }
     }
     timeCtx.retryNote = null;
+    if(!USE_MOCK && NARRATIVE_INTEGRITY_CHECK){ const adv2 = detectNarrativeIntegrity(result, state, integrityCtx()).advisory; if(adv2.length) addReviewFlag(state, "narrative_integrity_advisory", adv2.join("；")); } // 18.10.7：語意判斷抓不準的只記錄、不重寫
     if(quality.length){
       console.warn("[輸出品質] 重新產生後仍不合格，保留最後一次結果：", quality.join("；"));
       addReviewFlag(state, "output_quality_unresolved", quality.join("；"));
@@ -10342,6 +10518,7 @@ function simulateIdleRound(s, index){
   s.turnCount += 1;
   const studyBefore = s.studyCountThisTerm||0, interestBefore = s.interestCountThisTerm||0, prepBefore = s.prepTurnsThisTerm||0;
   const adv = advanceStructuredTime("（放置中）");
+  if(majorSelectionDue(s, adv)) s.pendingMajorSelection = true; // 九、9.10：放置期間到了高三5月，由下面的彈窗代選
   record.label = adv.currentLabel || computeTimeLabel(s);
   if(adv.examTriggered && adv.examType==="期末考"){
     // 10.6.3【定案】明牌節點也依性格代選，照樣擲骰，結果寫進摘要
@@ -10810,6 +10987,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   s.interestFormedEventLog = null;
   s.renameNotices = [];
   s.purchaseEventNow = null; // 十七：上一個彈窗的購物結果只給AI看這一回合
+  const sxResultNow = s.studentExpense && s.studentExpense.resultNow; // E2：下面擋重複扣款要用，清掉之前先留著
   if(s.studentExpense) s.studentExpense.resultNow = null; // 十七、17.3.6：同上
   // 可見數值變化顯示（9/15新增）：先記錄這回合開始前的可見數值，最後跟結算一起顯示變化量
   const beforeVisibleStats = { health:s.stats.health, knowledge:s.stats.knowledge, network:s.stats.network, expression:s.stats.expression, appearance:s.appearance };
@@ -10957,9 +11135,16 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   if(!interestHandledByFocus && r.interest_event && r.interest_event.reaction && !r.interest_event.category) addReviewFlag(s, "interest_event_no_category", "interest_event有reaction卻沒有category");
   // 八、8.8.2（2026-10-08）：本回合有程式擲出的興趣種子時，類別以種子為準；AI回報不同類別就改回種子並寫入錯誤紀錄
   const seed = timeCtx && timeCtx.interestSeed;
-  if(!interestHandledByFocus && seed && r.interest_event && r.interest_event.reaction){
+  // 八、8.8.5（2026-10-09）：玩家自己打字點名了以前接觸過的興趣(旁白判斷並回報player_named＋該項目，項目要對得上手上的興趣卡)，
+  // 這回合寫那個興趣、投入記到那張卡，種子作廢
+  const named = !interestHandledByFocus && seed && r.interest_event && r.interest_event.reaction && r.interest_event.player_named===true && r.interest_event.item
+    && (s.interestCandidates||[]).find(c=>c.item===r.interest_event.item); // 以項目名稱對手上的卡(旁白填的類別不一定對)
+  if(named){
+    r.interest_event = { ...r.interest_event, cardId: named.id, item: named.item, category: named.category, fromSeed: false };
+  } else if(!interestHandledByFocus && seed && r.interest_event && r.interest_event.reaction){
     if(r.interest_event.category && r.interest_event.category!==seed.category) addReviewFlag(s, "interest_event_mismatch", `interest_event類別「${r.interest_event.category}」與程式指定的「${seed.category}」不同`);
     r.interest_event = { ...r.interest_event, category: seed.category, item: seed.item, fromSeed: true };
+    recordTryNewContact(s, seed, r.interest_event);
   }
   if(!interestHandledByFocus){
     applyInterestEvent(s, r.interest_event);
@@ -11027,7 +11212,16 @@ function applyResult(r, timeCtx, forceEnding, actionText){
     }
     return true;
   });
-  const cappedTx = capWindfallTransactions(txNoCareer, windfallCap);
+  // 葉夜第1世E2(2026-10-09)：玩家剛在學生期花費彈窗決定花的錢，系統已經扣了；AI又把同一件事當一次性支出回報會扣第二次(社團活動−90又加寫生小旅行−4)，同一類字眼的支出不入帳
+  const sxRes = sxResultNow;
+  const sxWords = (sxRes && sxRes.bought===true) ? (EXPENSE_MENTION_WORDS[sxRes.event]||[]).concat([sxRes.event], sxRes.event==="社團活動" ? ["旅","寫生","遊","營"] : sxRes.event==="出遊" ? ["旅","玩","遊"] : []) : [];
+  const txNoDup = txNoCareer.filter(tx=>{
+    if(sxWords.length && tx && typeof tx.amount==="number" && tx.amount<0 && sxWords.some(w=>String(tx.label||"").includes(w))){
+      addReviewFlag(s, "student_expense_duplicate", `AI另外回報「${tx.label}」${tx.amount}，與玩家剛決定的「${sxRes.event}」重複，未入帳`); return false;
+    }
+    return true;
+  });
+  const cappedTx = capWindfallTransactions(txNoDup, windfallCap);
   if(cappedTx.blocked>0) addReviewFlag(s, "windfall_capped", `一次性收入超過本回合上限${windfallCap}，${Math.round(cappedTx.blocked)}未入帳`);
   cappedTx.txs.forEach(tx=>{
     if(!tx || typeof tx.amount !== "number") return;
@@ -11365,7 +11559,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   noteReunionAppeared(s, fullText); // 七、7.4.3.4：轉世指定NPC有沒有在敘事裡登場
   // 二、2.6.2（2026-09-28）：學生時期的數值標記依來源上色——重心帶來的橘色、回應(及其他)帶來的紫色
   const focusMarks = studentTurn ? buildFocusMarks(s, turnFocus, focusChanges) : undefined; // 沒有任何重心變化時也要留空物件：代表這則用來源上色
-  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", supportFlag: r.support_flag===true || undefined, settlement:compactSettlementForLog(s.lastSettlement), statChanges, focusMarks, relationshipHints,
+  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", supportFlag: r.support_flag===true || undefined, settlement:compactSettlementForLog(s.lastSettlement), statChanges, healthReason: (statChanges.health<0 && typeof r.health_reason==='string' && r.health_reason.trim()) ? r.health_reason.trim().slice(0,10) : undefined, focusMarks, relationshipHints,
     /* B5（2026-09-29）：這回合的重心也記在日記上(選擇紀錄、下載故事) */ focusLabel: turnFocus ? focusLogLabel(turnFocus) : undefined, focusNote: s.focusYearNote || undefined,
     /* 二、2.4.2（A2）：分數組成在公布時攤開 */ examNote: (timeCtx && timeCtx.examCheck) ? `${timeCtx.examCheck.examType}：${examBreakdownText(timeCtx.examCheck)}` : undefined, purchaseNote: purchaseNotes.join("；")||undefined, levelNotes: interestLevelNote||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
@@ -13028,7 +13222,7 @@ function renderEntryBody(e, withTag){
     ? `${resultText ? renderParagraphs(resultText, true) : ``}${resultText && sceneText ? `<hr class="turn-divider" aria-hidden="true">` : ``}${renderParagraphs(sceneText, true)}`
     : renderParagraphs(text, true);
   return `${e.action ? `<div class="choice-line">→ ${escapeHtml(e.action)}${e.focusLabel ? `<span class="focus-note">　重心：${escapeHtml(e.focusLabel)}</span>` : ``}</div>` : ``}${withTag ? `<div class="age-tag">${renderEntryTag(e)}</div>` : ``}${story}${e.supportFlag ? `<p class="support-note">${SUPPORT_NOTE_TEXT}</p>` : ``}
-    <div class="entry-meta">${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}${e.focusNote ? `<p class="small-line late">${escapeHtml(e.focusNote)}</p>` : ``}</div>`;
+    <div class="entry-meta">${renderStatChanges(e.statChanges, e.focusMarks, e.healthReason)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}${e.focusNote ? `<p class="small-line late">${escapeHtml(e.focusNote)}</p>` : ``}</div>`;
 }
 // 16.3.2（2026-09-28改定）：最新一回合完整卡片之上，保留更早的3個回合，各收合成一行摘要，點開展開(展開後同樣套用16.3.8.2排版)
 const OLD_ENTRY_SUMMARY_COUNT = 3;
@@ -13175,7 +13369,10 @@ function renderFocusBar(s, disabled){
       ${gigCards.map(c=>`<button class="focus-btn${workGig && workGig.id===c.id?" on":""}" data-work-pick="${escapeHtml(c.id)}">${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}：${escapeHtml(interestCardLabel(c))}</button>`).join("")}`}${removeBtn("work")}
     </div>` : ``;
   let hint;
-  if(key==="interest" && !chosenCard) hint = "主要給興趣投入，下個場景可能在嘗試新的事物";
+  if(key==="interest" && !chosenCard){
+    const cont = tryNewContinuation(s); // 八、8.8.5：連點延續時，點之前就知道這回合會寫什麼
+    hint = cont ? `繼續試試：${cont.item}` : "主要給興趣投入，下個場景可能在嘗試新的事物";
+  }
   else if(key==="work" && workGig) hint = "主要推進手上的訂單（也算一半興趣投入），下個場景可能在處理訂單的地方";
   else if(adult && key==="work" && adultWork) hint = adultWork.id==="part" ? FOCUS_HINTS.work : ADULT_FOCUS_HINTS[adultWork.id];
   else if(adult && key==="study") hint = ADULT_FOCUS_HINTS.study;
@@ -13700,11 +13897,12 @@ function ledgerRow(label,val){
   // 不影響計算精度，但呈現層要四捨五入成整數再顯示，不能把25.130356487721這種原始浮點數丟給玩家看
   return `<div class="ledger-row"><span class="lbl">${label}</span><span class="dots"></span><span class="val">${Math.round(val)}</span></div>`;
 }
-function renderStatChanges(statChanges, focusMarks){
+function renderStatChanges(statChanges, focusMarks, healthReason){
   // 可見數值變化顯示（9/15新增）：只在真的有變化時才顯示。十六、16.3.2（2026-09-28）：改為膠囊標籤，增加淡綠、減少淡珊瑚
   // 二、2.6.2（2026-09-28）：學生時期依來源上色——重心帶來的橘色，回應(及其他)帶來的珊瑚色(增加)／灰棕色(減少，2026-09-30由紫色改)；不加小標題
   if(!statChanges && !focusMarks) return ``;
-  const cap = (cls, label, v)=>`<span class="cap ${cls}">${label} ${v>0?'+':''}${v}</span>`;
+  // 一、1.2.21（2026-10-09）：健康下降時，旁白回報的原因(10字內)接在後面，例「健康 -2（感冒）」
+  const cap = (cls, label, v)=>`<span class="cap ${cls}">${label} ${v>0?'+':''}${v}${label===VISIBLE_STAT_LABELS.health && v<0 && healthReason ? `（${escapeHtml(healthReason)}）` : ''}</span>`;
   const parts = [];
   Object.keys(VISIBLE_STAT_LABELS).forEach(k=>{
     const v = (statChanges||{})[k]||0;
@@ -13798,9 +13996,13 @@ function fillOmittedTurnFields(r){
 function normalizeTurnResultText(r){
   if(!r || typeof r!=="object") return r;
   fillOmittedTurnFields(r);
-  r.action_result = narrativeParagraphs(r.action_result).join("\n\n");
-  r.narrative = narrativeParagraphs(r.narrative).join("\n\n");
+  r.action_result = fixHalfWidthPunct(narrativeParagraphs(r.action_result).join("\n\n"));
+  r.narrative = fixHalfWidthPunct(narrativeParagraphs(r.narrative).join("\n\n"));
   return r;
+}
+// 葉夜第1世D2(2026-10-09)：中文字後面的半形逗號一律改成全形「，」(數字千分位、英文句子不受影響)
+function fixHalfWidthPunct(text){
+  return String(text==null ? "" : text).replace(/([\u4e00-\u9fff」』）】”])\s*,\s*/g, "$1，");
 }
 function renderPlainParagraphs(text, linkNames){
   // 1.2.8.4.2防呆：舊日記或沒被處理到的{{名字|台詞}}標記，一律當成「台詞」顯示
@@ -14877,42 +15079,51 @@ function renderStudentCardFaces(card, name){
     </div>
   </div>`;
 }
-function renderMajorSelectionModal(){
+// opts.mode："main"(預設，選主修，建立學生證)／"dual"(9.10雙主修自己選系，不能選主修同系與5年制系別)；opts.onDone：選完、動畫結束後呼叫
+function renderMajorSelectionModal(opts){
+  opts = opts || {};
+  const dual = opts.mode==="dual";
   const s = state;
   const div = document.createElement("div");
   div.id = "major-selection-modal";
   div.className = "modal-backdrop";
-  // 校名、學號入學時才決定；選的過程先抽好一組，確認入學時照這組寫進狀態
-  const preview = { school: pick(SCHOOL_NAMES), studentId: makeStudentId(s), entryAge: s.age };
-  let groupKey = MAJOR_CATEGORIES[0].key, deptIdx = 0, flipped = false, busy = false;
+  // 校名、學號入學時才決定；選的過程先抽好一組，確認入學時照這組寫進狀態。雙主修沿用同一張學生證的校名學號
+  const preview = dual && s.studentCard
+    ? { school: s.studentCard.school, studentId: s.studentCard.studentId, entryAge: s.studentCard.entryAge }
+    : { school: pick(SCHOOL_NAMES), studentId: makeStudentId(s), entryAge: s.age };
+  const listOf = key => dual ? dualMajorDeptChoices(s, key) : MAJOR_DEPARTMENTS[key];
+  const groups = MAJOR_CATEGORIES.filter(m=>listOf(m.key).length>0);
+  let groupKey = groups[0].key, deptIdx = 0, flipped = false, busy = false;
   div.innerHTML = `
     <div class="modal major-pick">
-      <div class="mp-title">${escapeHtml(String(s.age))}歲・大學入學</div>
-      <h3>選擇你的科系</h3>
-      <div class="mp-groups">${MAJOR_CATEGORIES.map(m=>`<button class="mp-group major-btn" data-key="${m.key}" aria-pressed="false">${majorIconSvg(m.key)}<span>${escapeHtml(m.label.replace(/類$/,""))}</span></button>`).join("")}</div>
+      <div class="mp-title">${escapeHtml(String(s.age))}歲・${dual ? "申請雙主修" : "選填志願"}</div>
+      <h3>${dual ? "選擇雙主修的系" : "選擇你的科系"}</h3>
+      <div class="mp-groups">${groups.map(m=>`<button class="mp-group major-btn" data-key="${m.key}" aria-pressed="false">${majorIconSvg(m.key)}<span>${escapeHtml(m.label.replace(/類$/,""))}</span></button>`).join("")}</div>
       <div class="sid-card" id="sid-card" role="button" tabindex="0" aria-label="學生證，點一下翻面"></div>
       <div class="mp-nav"><button class="round-btn" id="btn-dept-prev" aria-label="上一個科系">‹</button><span id="dept-counter"></span><button class="round-btn" id="btn-dept-next" aria-label="下一個科系">›</button></div>
       <p class="mp-hint">點學生證可以翻面，看看畢業後的方向</p>
-      <button class="primary-btn" id="btn-major-confirm">就讀這個科系</button>
+      <button class="primary-btn" id="btn-major-confirm">${dual ? "就讀這個雙主修" : "就讀這個科系"}</button>
     </div>`;
   document.body.appendChild(div);
   const cardEl = div.querySelector("#sid-card");
-  const current = ()=>{ const cat = findMajorCategory(groupKey); const list = MAJOR_DEPARTMENTS[groupKey]; return { ...preview, groupKey, groupLabel:cat.label, dept:list[deptIdx] }; };
+  const current = ()=>{ const cat = findMajorCategory(groupKey); const list = listOf(groupKey); return { ...preview, groupKey, groupLabel:cat.label, dept:list[deptIdx] }; };
   function draw(){
-    const list = MAJOR_DEPARTMENTS[groupKey];
+    const list = listOf(groupKey);
     cardEl.innerHTML = renderStudentCardFaces(current(), s.name);
     cardEl.classList.toggle("flipped", flipped);
     div.querySelector("#dept-counter").textContent = `${deptIdx+1}/${list.length}`;
     div.querySelectorAll(".mp-group").forEach(b=>{ const on = b.dataset.key===groupKey; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on?"true":"false"); });
   }
   div.querySelectorAll(".mp-group").forEach(btn=>{ btn.onclick = ()=>{ if(busy) return; groupKey = btn.dataset.key; deptIdx = 0; draw(); }; });
-  div.querySelector("#btn-dept-prev").onclick = ()=>{ if(busy) return; const n = MAJOR_DEPARTMENTS[groupKey].length; deptIdx = (deptIdx-1+n)%n; draw(); };
-  div.querySelector("#btn-dept-next").onclick = ()=>{ if(busy) return; const n = MAJOR_DEPARTMENTS[groupKey].length; deptIdx = (deptIdx+1)%n; draw(); };
+  div.querySelector("#btn-dept-prev").onclick = ()=>{ if(busy) return; const n = listOf(groupKey).length; deptIdx = (deptIdx-1+n)%n; draw(); };
+  div.querySelector("#btn-dept-next").onclick = ()=>{ if(busy) return; const n = listOf(groupKey).length; deptIdx = (deptIdx+1)%n; draw(); };
   cardEl.onclick = ()=>{ if(busy) return; flipped = !flipped; cardEl.classList.toggle("flipped", flipped); };
   div.querySelector("#btn-major-confirm").onclick = ()=>{
     if(busy) return;
     busy = true;
     const c = current();
+    const finish = ()=>{ div.remove(); saveGame(); render(); if(opts.onDone) opts.onDone(c); };
+    if(dual){ resolveDualMajorOffer(s, "apply", c.dept); finish(); return; }
     enrollInDepartment(s, c.groupKey, c.dept);
     s.studentCard.school = preview.school; s.studentCard.studentId = preview.studentId; // 畫面上看到的那組就是正式的
     // 16.8.4：學生證翻回正面，蓋上「入學」印章(放大淡入蓋下，約400ms)
@@ -14921,10 +15132,14 @@ function renderMajorSelectionModal(){
     setTimeout(()=>{
       const st = cardEl.querySelector(".enroll-stamp");
       if(st) st.classList.add("shown");
-      setTimeout(()=>{ div.remove(); saveGame(); render(); }, rm ? 500 : 1100);
+      setTimeout(finish, rm ? 500 : 1100);
     }, rm ? 0 : 450);
   };
   draw();
+}
+// 九、9.10：高三5月先選完科系再寫這一回合(比照askStudentExpenseFirst)；不佔回合、不扣行動點
+function askMajorSelectionFirst(s){
+  return new Promise(resolve=>{ renderMajorSelectionModal({ onDone: ()=>resolve() }); });
 }
 // 16.8.4：學生證收在選單裡，當作大學時期的紀念
 function renderStudentCardModal(){
@@ -15094,19 +15309,21 @@ function renderDualMajorOfferModal(){
     btn.onclick = ()=>{ chosen = btn.dataset.key; div.querySelectorAll(".dual-major-btn").forEach(b=>{ b.style.background=""; b.style.color=""; }); btn.style.background="var(--ink)"; btn.style.color="var(--paper)"; };
   });
   document.getElementById("btn-dual-major-confirm").onclick = ()=>{
-    resolveDualMajorOffer(s, chosen);
     div.remove();
+    if(chosen==="apply"){ renderMajorSelectionModal({ mode:"dual" }); return; } // 九、9.10：選「申請雙主修」後接著自己選系
+    resolveDualMajorOffer(s, chosen);
     saveGame(); render();
   };
 }
 // 9.5.2 雙主修候選決定：choice = "apply"/"decline"
-function resolveDualMajorOffer(s, choice){
+function resolveDualMajorOffer(s, choice, pickedDept){
   // 9.5.2【定案】zero-cost：不論選哪邊都不動collegeDelayYearsUsed
   s.dualMajorStatus = choice==="apply" ? "active" : null; // decline時歸零而非設abandoned，abandoned專指「進行中才放棄」
   if(choice==="apply"){
     // 十六、16.8（2026-09-28定案）：雙主修加蓋「雙主修○○系」章；雙主修原本沒有選科系，由程式從其他學群的系別清單(9.2)代選
+    // 九、9.10（2026-10-09）：玩家自己選系(pickedDept)；放置期間代選沒有選的人，才由程式從其他學群的4年制系別代選
     const other = pick(MAJOR_CATEGORIES.filter(m=>m.key!==s.studentMajorGroup));
-    const dept = pick((MAJOR_DEPARTMENTS[other.key]||[]).filter(d=>!FIVE_YEAR_DEPARTMENTS.includes(d))) || other.label;
+    const dept = pickedDept || pick((MAJOR_DEPARTMENTS[other.key]||[]).filter(d=>!FIVE_YEAR_DEPARTMENTS.includes(d))) || other.label;
     s.dualMajorDepartment = dept;
     addStudentCardStamp(s, `雙主修${deptWithXi(dept)}`, "dual");
   }
@@ -16122,7 +16339,7 @@ function buildStoryExport(s){
     const res = storyExportParagraphs(resultText), scene = storyExportParagraphs(sceneText);
     if(res.length){ out.push(res.join("\n\n"), "", "---", ""); }
     if(scene.length) out.push(scene.join("\n\n"), "");
-    const caps = Object.keys(VISIBLE_STAT_LABELS).filter(k=>e.statChanges && e.statChanges[k]).map(k=>`${VISIBLE_STAT_LABELS[k]} ${e.statChanges[k]>0?"+":""}${e.statChanges[k]}`);
+    const caps = Object.keys(VISIBLE_STAT_LABELS).filter(k=>e.statChanges && e.statChanges[k]).map(k=>`${VISIBLE_STAT_LABELS[k]} ${e.statChanges[k]>0?"+":""}${e.statChanges[k]}${k==="health" && e.statChanges[k]<0 && e.healthReason ? `（${e.healthReason}）` : ""}`);
     if(caps.length) out.push(`數值變化：${caps.join("、")}`, "");
     (e.relationshipHints||[]).forEach(h=>out.push(`關係：${h}`, ""));
     if(e.purchaseNote) out.push(`購物：${e.purchaseNote}`, "");
@@ -16142,7 +16359,7 @@ function buildStoryExport(s){
     }
   });
   if((s.devAiLog||[]).length){
-    out.push("## 附錄：旁白回傳的完整資料（最近10回合，不含正文）", "");
+    out.push("## 附錄：旁白回傳的完整資料（有開測試工具時記錄的回合，不含正文）", "");
     s.devAiLog.forEach(x=>out.push(`### 第${x.turn}回合｜${x.label}`, "", "```json", JSON.stringify(x.data, null, 2), "```", ""));
   }
   if(s.ending){

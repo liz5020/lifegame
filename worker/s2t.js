@@ -14,8 +14,12 @@ const BIG5 = new Set(Array.from(BIG5_HAN_CHARS));
 const HAN = /\p{Script=Han}/u;
 const converter = OpenCC.Converter({ from: "cn", to: "twp" });
 
+// 葉夜第1世第183、187回合回饋(2026-10-09)：這份Big5字集其實連「气、么、机、确、赶」這類簡體字都收了，
+// 原本「不在字集＝簡體」的判斷漏掉它們(語气、怎么、手机、确认、赶完)。下面這些字在正常繁體文字裡不會出現，一律當簡體處理；
+// 刻意不放簡繁都常見的字(里、后、干、台、于、占、庄、凄、几、宁…)，那些靠TW_VOCAB的詞彙對照表處理
+const FORCE_SIMPLIFIED = new Set(Array.from("儿么气机网体优价种极构确赶适惊据离圣异怀扰听坏愿岭怜触蜡复与"));
 function isSimplifiedOnly(ch) {
-  return HAN.test(ch) && !BIG5.has(ch);
+  return HAN.test(ch) && (!BIG5.has(ch) || FORCE_SIMPLIFIED.has(ch));
 }
 
 export function toTraditional(text) {
@@ -26,7 +30,7 @@ export function toTraditional(text) {
     if (!orig.some(isSimplifiedOnly)) return seg;
     const conv = Array.from(converter(seg));
     if (conv.length === orig.length) {
-      return conv.map((ch, i) => (BIG5.has(orig[i]) ? orig[i] : ch)).join("");
+      return conv.map((ch, i) => (BIG5.has(orig[i]) && !FORCE_SIMPLIFIED.has(orig[i]) ? orig[i] : ch)).join("");
     }
     // 詞彙轉換讓字數變了，無法逐字對齊：退回逐字轉換，只動非Big5的字
     return orig.map((ch) => (isSimplifiedOnly(ch) ? Array.from(converter(ch))[0] || ch : ch)).join("");
@@ -43,7 +47,10 @@ export const TW_VOCAB = [
   ["信息", "訊息"],
   ["质量", "品質"], ["質量", "品質"],
   ["网络", "網路"], ["網絡", "網路"],
-  ["屏幕", "螢幕"]
+  ["屏幕", "螢幕"],
+  // 「里」是簡繁同形字(裡／里)，只在這些常見組合轉成「裡」；里長、鄰里、公里不受影響
+  ["手里", "手裡"], ["这里", "這裡"], ["這里", "這裡"], ["那里", "那裡"], ["哪里", "哪裡"], ["心里", "心裡"], ["家里", "家裡"],
+  ["里面", "裡面"], ["里头", "裡頭"], ["里邊", "裡邊"], ["脑子里", "腦子裡"], ["腦子里", "腦子裡"], ["眼里", "眼裡"], ["嘴里", "嘴裡"]
 ];
 export function applyTwVocab(text) {
   if (typeof text !== "string" || !text) return text;

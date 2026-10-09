@@ -177,7 +177,7 @@ export async function callWorker(env, { method = "POST", path: p = "/", body, or
 }
 
 // 載入遊戲頁面。useMock=false時前端走真實路徑(callAI→Worker→假上游)
-export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, consent = true, intro = true, storage = null, host = "lifegamepage.smile80275.workers.dev" } = {}) {
+export async function loadGame({ useMock = true, env, key = "testkey123", slot = 0, dev = false, query = "", cloud = true, consent = true, intro = true, storage = null, host = "lifegamepage.smile80275.workers.dev", integrity = false } = {}) {
   // 二、2.7（2026-09-29）：index.html用<script src="lunar.min.js">載入農曆套件，jsdom不抓外部檔，這裡直接內嵌
   const lunarSrc = fs.readFileSync(path.join(ROOT, "lunar.min.js"), "utf8");
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8")
@@ -232,12 +232,20 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
   });
   const win = dom.window;
   // 十七、17.3.6（2026-10-09改「先選完再寫」）：學生期花費彈窗會擋住回合，一般測試自動按〔不花〕；要測彈窗的測試設 win.__sxManual = true 自己按
+  // 九、9.10（2026-10-09）：高三5月選科系也是「先選完再寫」的彈窗，一般測試自動按〔就讀這個科系〕；要測彈窗的測試設 win.__majorManual = true 自己按
+  new win.MutationObserver(() => {
+    if (win.__majorManual) return;
+    const ok = win.document.getElementById("btn-major-confirm");
+    if (ok && !ok.__auto) { ok.__auto = true; setTimeout(() => ok.click(), 0); }
+  }).observe(win.document.body, { childList: true, subtree: true });
   new win.MutationObserver(() => {
     if (win.__sxManual) return;
     const no = win.document.getElementById("btn-sx-no");
     if (no && !no.__auto) { no.__auto = true; setTimeout(() => no.click(), 0); }
   }).observe(win.document.body, { childList: true, subtree: true });
   await new Promise(r => setTimeout(r, 30));
+  // 十八、18.10.7（2026-10-09）：正文完整性檢查(字數下限、缺段…)一般測試的假上游文字很短，預設關掉；要測它的測試傳 integrity:true
+  if (!integrity) win.eval("NARRATIVE_INTEGRITY_CHECK = false");
   return { dom, win, errors, ev: (code) => win.eval(code) };
 }
 

@@ -10,6 +10,16 @@
 
 ---
 
+## 2026-10-10 開發部：葉夜第1世第150～193回合回饋實作（版本2026.10.10-b，分支feedback-yeye-150-193）
+- 依：設計文件九、9.10、八、8.8.5、十八、18.10.7／18.13、一、1.2.21／1.2.22與交接文件第三節（A～F）。**遊戲狀態新增欄位`tryNewCont`；依定案舊存檔不需清空。**
+- 九、9.10：`index.html`新增`majorSelectionDue()`（高三下學期、日期到5月、還沒選系，放暑假或跳過指令跨過5月也算）；`takeTurnInner`在呼叫AI前`askMajorSelectionFirst()`先彈選科系（標題「○歲・選填志願」）；`advanceStageYear`進大一時已選過系就不再跳（學生證入學年齡改為實際年齡），沒選過才補跳；高中畢業事件改在高三下學期期末考那一回合送出；暑假標籤「準大一・暑假」（`highSchoolYearLabel`）；給旁白的`university_status`以主修系名為主、5～9月帶`admitted`；雙主修選「申請」後自己選系（`renderMajorSelectionModal({mode:"dual"})`，不能選主修同系與5年制系別）。
+- 八、8.8.5：`tryNewContinuation()`／`recordTryNewContact()`，按鈕小字「繼續試試：○○」；旁白回報`player_named`＋`item`時以玩家為準、種子作廢；payload加`known_interests`。
+- 十八、18.10.7與第三節A～C：新增`detectNarrativeIntegrity()`（回應段／新場景缺漏與過短、沒寫到玩家動作、舞台指示、選項不足4個、星期與日期對不上、大年初N、考前倒數、約定到期沒交代、旁白評論自己用字→走1.2.9.18重新產生；兩段重複、倒回只記`narrative_integrity_advisory`）；`worker/prompt.js`補對話講完、約500字、不發明病症、不改住處、不忘約定等規則，新增`health_reason`欄位（健康下降時顯示「健康 -2（感冒）」）；payload加`residence`；名冊標「（同住）」。
+- D1：`worker/s2t.js`新增`FORCE_SIMPLIFIED`（Big5字集其實收了「气么机确赶」等簡體字，原判斷漏轉）與「手里／这里」等詞彙對照。D2：`fixHalfWidthPunct()`，中文字後的半形逗號轉全形。
+- B6：回合標題月份改以新場景日期為準。E2：玩家剛決定的學生期花費，AI另外回報的同類支出不入帳。F2：下載檔附錄標題改為「有開測試工具時記錄的回合」。
+- 查明不改程式：E3（社交表演24回合沒有案子）＝8.13設計如此，學生時期只有重心選到那張副業卡的回合才擲詢問；B3（連停大年初二）＝程式的日期本來就往後走，是旁白自己寫錯，已加大年初N檢查；E1＝2026.10.09-l已有「沒寫到就重寫」。
+- 測試：新增`tests/test-88-yeye-150-193.mjs`（85項）；`harness.mjs`自動按選科系、完整性檢查預設關（`loadGame({integrity:true})`開）；改`test-33`（標題）、`test-82`（連點延續）。全套結果見回報。
+
 ## 2026-10-10 開發部／整理：清理雲端測試存檔、第一次雲端存檔提早、數據網頁加一格（版本2026.10.10-a）
 - 整理（使用者同意）：用管理端`POST /admin/save/delete`刪除5筆舊格式測試存檔(勞爾、尤力、小豬、容×2，皆15歲；who＝Claude Code，已寫存取紀錄)；保留葉夜(第1世)與3段已綁信箱的人生。
 - `index.html`：10.13.3新增`AUTO_SAVE_FIRST_MS`(1分鐘)——這段人生還沒成功存過雲端(`lastAutoCloudAt`沒有值)時，`autoSaveDue()`的門檻用1分鐘，之後照舊10分鐘。
