@@ -426,10 +426,15 @@
   .home-hero.has-lives{min-height:0;padding-top:28px;} /* 有進行中的人生時，讓存檔卡片在第一個畫面就露出來 */
   .home-hero .stamp{margin-bottom:18px;}
   .home-hero h1{font-family:var(--serif);font-size:36px;letter-spacing:6px;margin:6px 0 4px;}
-  .home-sub{font-size:15px;color:var(--stamp);margin:0 0 20px;letter-spacing:1px;}
+  /* 16.10.10斷句與對比度(2026-10-09)：置中短句balance、內文pretty；.nb＝以逗號頓號為界的不可拆詞組(inline-block，單段比螢幕寬時才在段內換行)；
+     首頁三處小字改深色(色碼見設計文件16.10.10)，其餘文字不動 */
+  .home-sub{font-size:15px;color:#3E1912;margin:0 0 20px;letter-spacing:1px;text-wrap:balance;}
+  .home .nb{display:inline-block;max-width:100%;}
+  .home-lead,.home-foot p{text-wrap:balance;}
+  .home-sec p,.faq p,.home-steps .step p{text-wrap:pretty;}
   .home-lead{font-size:14.5px;line-height:2;margin:0 0 22px;}
   .home-hero .primary-btn,.home-hero .ghost-btn{width:100%;max-width:300px;}
-  .home-note{font-size:12px;color:var(--ink-soft);margin-top:16px;line-height:1.7;max-width:320px;}
+  .home-note{font-size:12px;color:#4D3E35;margin-top:16px;line-height:1.7;max-width:320px;text-wrap:balance;}
   .home-sec{margin:34px 0;}
   .home-sec h2{font-family:var(--serif);font-size:19px;margin:0 0 14px;letter-spacing:1px;}
   .home-sec p{font-size:15px;line-height:1.95;margin:0 0 12px;}
@@ -8673,8 +8678,12 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-c";
+const APP_VERSION = "2026.10.09-d";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-d", date:"2026-10-09", title:"首頁文字與求助資訊", items:[
+    "首頁的文字讀起來更順，手機上的斷行也整理過。",
+    "故事寫到角色心情特別低落的時候，旁白下方會附上求助專線的資訊。",
+  ]},
   { version:"2026.10.09-c", date:"2026-10-09", title:"更新紀錄整理", items:[
     "更新紀錄的說明文字整理得更精簡，只寫畫面上看得到的變化。",
   ]},
@@ -11908,7 +11917,7 @@ function renderHome(){
       <div class="stamp big restamp" id="home-stamp"><b>15</b>歲・起稿</div>
       <h1>人生草稿</h1>
       <p class="home-sub">這一次，換你決定要活成什麼樣子</p>
-      <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，說書人陪你一路寫到老。</p>
+      <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，撰稿人陪你一路寫到老。</p>
       <button class="primary-btn" id="btn-home-new">開始一段人生</button>
       <p class="home-note" id="home-entry"></p>
       <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
@@ -11933,7 +11942,7 @@ function renderHome(){
     <section class="home-sec">
       <h2>這是什麼：一段沒有劇本的人生</h2>
       <p class="serif">《人生草稿》是一款 AI 文字人生模擬，打開網頁就能玩，手機、電腦都行。故事從高一開學前、暑假的最後一天開始。之後一路升學、畢業、出社會，直到老去。</p>
-      <p class="serif">故事沒有寫好的劇本。說書人讀完你這一步，才寫下一步；同一個開局，兩個人會活成完全不一樣的人。</p>
+      <p class="serif">故事沒有寫好的劇本。撰稿人讀完你這一步，才寫下一步；同一個開局，兩個人會活成完全不一樣的人。</p>
       <p class="serif">一段人生可以慢慢過。今天停在高二的期中考前，下次回來，它還在那裡等你。</p>
     </section>
     <section class="home-sec">
@@ -11967,7 +11976,21 @@ function renderHome(){
     </footer>
   </div>`;
 }
+// 16.10.10斷句：文字內容不變，只把每個文字節點依「，、；。？！」切成不可拆的詞組(後面緊跟的」』）留在同一組)
+function wrapHomeText(root){
+  const re = /[^，、；。？！]*[，、；。？！]+[」』）]*|[^，、；。？！]+$/g;
+  root.querySelectorAll(".home-lead,.home-sec p.serif,.faq p,.home-foot p.serif").forEach(el=>{
+    [...el.childNodes].forEach(n=>{
+      if(n.nodeType!==3 || !n.nodeValue.trim()) return;
+      const parts = n.nodeValue.match(re); if(!parts || parts.length<2) return;
+      const frag = document.createDocumentFragment();
+      parts.forEach(t=>{ const sp = document.createElement("span"); sp.className = "nb"; sp.textContent = t; frag.appendChild(sp); });
+      n.replaceWith(frag);
+    });
+  });
+}
 function bindHome(){
+  wrapHomeText(document.getElementById("home"));
   document.getElementById("btn-home-new").onclick = ()=>startNewLifeFromHome();
   updateHomeEntryLine();
   const homeLogin = document.getElementById("btn-home-login"); if(homeLogin) homeLogin.onclick = ()=>openAccountFlow("login");
@@ -12554,7 +12577,7 @@ function renderEntryBody(e, withTag){
     ? `${resultText ? renderParagraphs(resultText, true) : ``}${resultText && sceneText ? `<hr class="turn-divider" aria-hidden="true">` : ``}${renderParagraphs(sceneText, true)}`
     : renderParagraphs(text, true);
   return `${e.action ? `<div class="choice-line">→ ${escapeHtml(e.action)}${e.focusLabel ? `<span class="focus-note">　重心：${escapeHtml(e.focusLabel)}</span>` : ``}</div>` : ``}${withTag ? `<div class="age-tag">${renderEntryTag(e)}</div>` : ``}${story}${e.supportFlag ? `<p class="support-note">${SUPPORT_NOTE_TEXT}</p>` : ``}
-    <div class="entry-meta">${(withTag && e.genMs!=null && devToolsOn()) ? `<p class="small-line dev-gen-time">${icon("timer")} AI生成 ${(e.genMs/1000).toFixed(1)} 秒（測試模式）</p>` : ``}${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}${e.focusNote ? `<p class="small-line late">${escapeHtml(e.focusNote)}</p>` : ``}</div>`;
+    <div class="entry-meta">${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}${e.focusNote ? `<p class="small-line late">${escapeHtml(e.focusNote)}</p>` : ``}</div>`;
 }
 // 16.3.2（2026-09-28改定）：最新一回合完整卡片之上，保留更早的3個回合，各收合成一行摘要，點開展開(展開後同樣套用16.3.8.2排版)
 const OLD_ENTRY_SUMMARY_COUNT = 3;
