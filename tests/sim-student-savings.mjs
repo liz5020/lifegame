@@ -36,7 +36,7 @@ for (const [playName, play] of PLAYS) for (const tier of TIERS) for (const [mode
       const text = ev("(state.choices&&state.choices[0])||'繼續過日子'");
       g.win.__sxManual = true;
       const pr = g.ev(`takeTurn(${JSON.stringify(text)}, AP_COST_PER_TURN)`); turns++;
-      for (let w = 0; w < 4000; w++) { // 回合進行中若跳出花費彈窗(先選完再寫)，在這裡決定；回合寫完就結束等待
+      for (let w = 0; ; w++) { // 回合進行中若跳出花費彈窗(先選完再寫)，在這裡決定；回合寫完就結束等待
         await new Promise(r => setTimeout(r, 1));
         const sx = doc.getElementById("student-expense-modal");
         if (sx) {

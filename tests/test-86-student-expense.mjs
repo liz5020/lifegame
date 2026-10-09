@@ -14,16 +14,17 @@ const doc = g.win.document;
 const js = (x) => { const r = ev(`JSON.stringify(${x})`); return r === undefined ? undefined : JSON.parse(r); };
 
 // ---------- 提出條件（用假的狀態＋固定亂數） ----------
-const prep = (sOverrides, seq, ctx = {}, half = "上學期") => js(`(()=>{ const o=Math.random; const q=${JSON.stringify(seq)}; let i=0; Math.random=()=>i<q.length?q[i++]:0.5;
+const prep = (sOverrides, seq, ctx0 = {}, half = "上學期") => { const ctx = Object.assign({ holiday: true, segKey: "期中準備期", segTurn: 2 }, ctx0); return prep0(sOverrides, seq, ctx, half); };
+const prep0 = (sOverrides, seq, ctx, half) => js(`(()=>{ const o=Math.random; const q=${JSON.stringify(seq)}; let i=0; Math.random=()=>i<q.length?q[i++]:0.5;
   try{ const s=Object.assign({studentStatus:"enrolled",family:"小康",cash:500,age:16,turnCount:20,idleMode:false,
-    characters:[{name:"小明",relation:"同學",affinity:50,romanceStatus:null}], timeState:{cal:{v:2,semIdx:0}}}, ${sOverrides});
+    focusKeyLog:["study","study","study","rest","social","study"], clubEngagement:20, characters:[{name:"小明",relation:"同學",affinity:55,romanceStatus:null}], timeState:{cal:{v:2,semIdx:0}}}, ${sOverrides});
     return prepareStudentExpense(s, ${JSON.stringify(ctx)}, ${JSON.stringify(half)}); } finally { Math.random=o; } })()`);
 {
   const p = prep("{}", [0.99, 0.01, 0.01]); // 家裡沒擲中(0.99>=0.10)；一般擲中；類別friend
   A.check("朋友與戀愛：小康0.5個月＝30，對象是同學小明，事件在三種之內", p && p.kind === "friend" && p.amount === 30 && p.target === "小明" && ["朋友小聚", "小禮物"].includes(p.event), p);
   const q = prep("{family:'清寒'}", [0.99, 0.01, 0.6]); // 家裡沒擲中、一般擲中、類別trip
   A.check("想要的大件(出遊／演唱會／社團)：清寒1.5個月＝45", q && q.kind === "trip" && q.amount === 45 && STR(q.event), q);
-  const r = prep("{family:'富裕'}", [0.01, 0.8]); // 富裕：第一個亂數就是「一般」；類別gadget
+  const r = prep("{family:'富裕',turnCount:50}", [0.01, 0.8]); // 富裕：第一個亂數就是「一般」；類別gadget
   A.check("手機或電腦升級：富裕2個月＝240；富裕不判定家裡出不起", r && r.kind === "gadget" && r.amount === 240, r);
   const l = prep("{age:18}", [0.99, 0.01, 0.95]);
   A.check("考駕照：滿18歲、沒考過→1個月(小康60)", l && l.kind === "license" && l.amount === 60 && l.event === "考駕照", l);
@@ -57,6 +58,37 @@ function STR(x) { return typeof x === "string" && ["出遊", "演唱會", "社�
     && prep("{idleMode:true}", [0.99, 0.01, 0.1]) === null && prep("{pendingMajorPurchase:{amount:1}}", [0.99, 0.01, 0.1]) === null && prep("{pendingJobSearch:{}}", [0.99, 0.01, 0.1]) === null
     && prep("{studentStatus:'graduated'}", [0.99, 0.01, 0.1]) === null);
 }
+
+// ---------- 17.3.6.9 每種事件的觸發條件 ----------
+{
+  const ev0 = (e) => (e || {}).event;
+  const fam = (extra, ctx) => prep(`{family:'清寒',${extra || ""}}`, [0.05, 0.5, 0.5, 0.5], ctx); // 家裡擲中，事件在合格清單內挑
+  A.check("補習或參考書費用：最近6回合讀書≥3且在準備期→可以出現", ev0(fam("", {})) === "補習或參考書費用", fam("", {}));
+  A.check("補習或參考書費用：最近讀書不到3回合→不出現(只剩學費差額／電腦壞了才可能)", ev0(fam("focusKeyLog:['rest','social','study','rest','social','rest'],turnCount:20", {})) == null, fam("focusKeyLog:['rest','study']", {}));
+  A.check("補習或參考書費用：不在準備期(假期)→不出現", ev0(fam("turnCount:20", { segKey: "假期" })) == null);
+  A.check("電腦壞了：距離上次升級不到40回合→不出現；滿40回合可以", ev0(fam("focusKeyLog:[],studentExpense:{lastGadgetTurn:5,termKey:'',termWant:0,yearKey:'',yearFamily:0,license:false,pending:null,resultNow:null},turnCount:30", {})) == null
+    && ev0(fam("focusKeyLog:[],studentExpense:{lastGadgetTurn:5,termKey:'',termWant:0,yearKey:'',yearFamily:0,license:false,pending:null,resultNow:null},turnCount:50", {})) === "電腦壞了");
+  A.check("學費差額：只在新學期第一回合(開學初第0回合)", ev0(fam("focusKeyLog:[],turnCount:20", { segKey: "開學初", segTurn: 0 })) === "學費差額" && ev0(fam("focusKeyLog:[],turnCount:20", { segKey: "開學初", segTurn: 1 })) == null);
+  A.check("家裡類沒有任何事件合格→不提出，也不用別的事件補上", fam("focusKeyLog:[],turnCount:20", { segKey: "期中準備期" }) === null);
+  const gad = (extra, ctx) => prep(`{family:'富裕',${extra || ""}}`, [0.01, 0.8], ctx); // 一般擲中、類別gadget
+  A.check("手機或電腦升級：沒升級過，要到第40回合才出現", gad("turnCount:30") === null && ev0(gad("turnCount:45")) === "手機或電腦升級");
+  A.check("手機或電腦升級：上次升級後不到40回合→不出現", gad("turnCount:60,studentExpense:{lastGadgetTurn:40,termKey:'',termWant:0,yearKey:'',yearFamily:0,license:false,pending:null,resultNow:null}") === null);
+  const trip = (extra, ctx, seqPick) => prep(`{${extra || ""}}`, [0.99, 0.01, 0.6, seqPick == null ? 0.0 : seqPick], ctx);
+  A.check("出遊：寒暑假且有好感≥50的朋友→同行者是那位朋友", ev0(trip("", {}, 0.0)) === "出遊" && trip("", {}, 0.0).target === "小明", trip("", {}, 0.0));
+  A.check("出遊：不在寒暑假→不會出遊(其他兩種事件也不合格時整個不提出)", trip("clubEngagement:0,characters:[{name:'小明',relation:'同學',affinity:30}]", { holiday: false }) === null);
+  A.check("出遊：朋友好感不到50→不出遊", ev0(trip("characters:[{name:'小明',relation:'同學',affinity:45}]", {}, 0.0)) !== "出遊");
+  A.check("社團活動：沒參加社團(參與度0)→不出現", [0.0, 0.5, 0.99].every(x => ev0(trip("clubEngagement:0,characters:[]", {}, x)) !== "社團活動"));
+  A.check("社團活動：有參加社團→可以出現", [0.0, 0.5, 0.99].some(x => ev0(trip("clubEngagement:30,characters:[]", {}, x)) === "社團活動"));
+  A.check("演唱會：沒朋友也沒表演類興趣→不出現；有社交表演的正式興趣卡→可以", [0.0, 0.5, 0.99].every(x => ev0(trip("clubEngagement:0,characters:[]", {}, x)) !== "演唱會")
+    && [0.0, 0.5, 0.99].some(x => ev0(trip("clubEngagement:0,characters:[],interestCandidates:[{category:'社交表演',status:'active'}]", {}, x)) === "演唱會"));
+  A.check("考駕照：滿18歲、沒考過，但不在寒暑假→併入朋友小聚(不出現考駕照)", ev0(prep("{age:18}", [0.99, 0.01, 0.95], { holiday: false })) !== "考駕照" && ev0(prep("{age:18}", [0.99, 0.01, 0.95], { holiday: true })) === "考駕照");
+  A.check("朋友小聚：好感不到40的朋友不會被約出來(沒有合格朋友→不提出)", prep("{characters:[{name:'小明',relation:'同學',affinity:35}]}", [0.99, 0.01, 0.1]) === null);
+  A.check("彈窗情境句：出遊／演唱會／家裡幾種寫法", js(`[studentExpenseSceneLine({kind:'trip',event:'出遊',target:'小明'}),studentExpenseSceneLine({kind:'trip',event:'演唱會',target:'小明'}),studentExpenseSceneLine({kind:'family',event:'學費差額'}),studentExpenseSceneLine({kind:'family',event:'電腦壞了'})]`).join("|")
+    === "小明約你假期出去玩。|小明約你去演唱會。|家裡提到這學期學費差額的事。|家裡的電腦壞了。");
+}
+// 實際回合會記重心代號
+await H.playTurn(g);
+A.check("每回合記下重心代號(最近6回合)，且進快照清單", Array.isArray(js("state.focusKeyLog")) && js("state.focusKeyLog").length >= 1 && js("state.focusKeyLog").length <= 6 && js("SNAPSHOT_EXTRA_KEYS").includes("focusKeyLog"), js("state.focusKeyLog"));
 
 // ---------- 價位換算：政治世家(零用錢150)用家境表(富裕120)，不用150 ----------
 A.check("價位以家境的月零用錢為單位(清寒30、小康60、富裕120)", js("[studentExpenseUnit({family:'清寒'}),studentExpenseUnit({family:'小康'}),studentExpenseUnit({family:'富裕',monthlyIncome:150})]").join() === "30,60,120");
@@ -123,15 +155,15 @@ unplan();
 A.check("出遊選花：扣90(明細有「出遊 −90」)", JSON.stringify(ev("state.lastSettlement.extras")).includes('["出遊",-90'), ev("state.lastSettlement.extras"));
 
 // 家裡出不起
-ev(planJs("family", "補習班費用", 80, 40, null));
+ev(planJs("family", "補習或參考書費用", 80, 40, null));
 const c3 = ev("state.cash");
 const r3 = await runTurn("放學", "btn-sx-yes", () => {
   const m = doc.getElementById("student-expense-modal").textContent;
-  A.check("家裡類彈窗：情境句、顯示總價80與負擔40、〔出一半〕〔這次先不用〕", /家裡提到補習班費用的費用。/.test(m) && /補習班費用，家裡這次需要你出一半/.test(m) && /總共大約 80/.test(m) && /約 40/.test(m)
+  A.check("家裡類彈窗：情境句、顯示總價80與負擔40、〔出一半〕〔這次先不用〕", /家裡提到補習或參考書費用。/.test(m) && /補習或參考書費用，家裡這次需要你出一半/.test(m) && /總共大約 80/.test(m) && /約 40/.test(m)
     && doc.getElementById("btn-sx-yes").textContent === "出一半" && doc.getElementById("btn-sx-no").textContent === "這次先不用");
 });
 unplan();
-A.check("出一半：扣40，同一回合旁白收到結果", JSON.stringify(ev("state.lastSettlement.extras")).includes('["補習班費用",-40') && r3.payload.student_expense_result_now.bought === true && r3.payload.student_expense_result_now.spent === 40);
+A.check("出一半：扣40，同一回合旁白收到結果", JSON.stringify(ev("state.lastSettlement.extras")).includes('["補習或參考書費用",-40') && r3.payload.student_expense_result_now.bought === true && r3.payload.student_expense_result_now.spent === 40);
 ev(planJs("family", "電腦壞了", 100, 50, null));
 const c4 = ev("state.cash");
 const r4 = await runTurn("放學", "btn-sx-no");
@@ -164,7 +196,7 @@ await H.playTurn(g);
   A.check("花了手機電腦、正文沒提→判不合格", chk({ action_result: "妳去了學校。", narrative: "下課後走回家。" }, bought, null).length === 1);
   A.check("正文寫到新手機→合格", chk({ action_result: "妳拆開新手機的盒子。", narrative: "螢幕比舊的亮很多。" }, bought, null).length === 0);
   A.check("沒花(declined)→不檢查", chk({ action_result: "沒事。", narrative: "沒事。" }, { event: "出遊", bought: false, reason: "declined" }, null).length === 0);
-  A.check("補習班費用：出一半卻整段沒提補習→不合格；提到補習→合格", chk({ narrative: "妳回家吃飯。" }, { event: "補習班費用", bought: true, spent: 40 }, null).length === 1 && chk({ narrative: "補習班的費用妳出了一半。" }, { event: "補習班費用", bought: true, spent: 40 }, null).length === 0);
+  A.check("補習或參考書費用：出一半卻整段沒提補習→不合格；提到補習→合格", chk({ narrative: "妳回家吃飯。" }, { event: "補習或參考書費用", bought: true, spent: 40 }, null).length === 1 && chk({ narrative: "補習班的費用妳出了一半。" }, { event: "補習或參考書費用", bought: true, spent: 40 }, null).length === 0);
   const seed = { kind: "try_new", category: "藝術創作", item: "影像剪輯" };
   const ie = { reaction: "neutral", category: "藝術創作" };
   A.check("指定興趣項目沒寫進正文→不合格(剪輯不在正文)", chk({ action_result: "媽媽說補習費。", narrative: "妳剝橘子。", interest_event: ie }, null, seed).length === 1);

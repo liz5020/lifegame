@@ -1444,9 +1444,16 @@ const STUDENT_EXPENSE_CATEGORY_WEIGHTS = [["friend",50],["trip",25],["gadget",15
 const STUDENT_EXPENSE_MONTHS = { friend:0.5, trip:1.5, gadget:2, license:1 }; // 價位＝幾個月零用錢
 const STUDENT_EXPENSE_TRIP_EVENTS = ["出遊","演唱會","社團活動"];
 const STUDENT_EXPENSE_FRIEND_EVENTS = [["朋友小聚",50],["小禮物",25],["約會",25]];
-const STUDENT_EXPENSE_FAMILY_EVENTS = ["補習班費用","電腦壞了","學費差額"];
+const STUDENT_EXPENSE_FAMILY_EVENTS = ["補習或參考書費用","電腦壞了","學費差額"];
+// 十七、17.3.6.9（2026-10-09）：每種事件要有遊戲裡已存在的前因才進候選【測試參數，待驗證】
+const SX_FRIEND_MIN_AFFINITY = 40;      // 朋友小聚、小禮物、演唱會同行：好感下限
+const SX_TRIP_MIN_AFFINITY = 50;        // 出遊同行：好感下限
+const SX_GADGET_MIN_GAP = 40;           // 手機或電腦升級、電腦壞了：距離上一次升級至少幾回合
+const SX_STUDY_RECENT_WINDOW = 6;       // 補習或參考書費用：看最近幾回合的重心
+const SX_STUDY_RECENT_MIN = 3;          // 其中至少幾回合是讀書
 const STUDENT_EXPENSE_FAVOR = 2;                // 好感＋2，同人同階段第二次減半(比照禮物)
 const STUDENT_EXPENSE_LICENSE_AGE = 18;
+const SX_PERFORMANCE_INTERESTS = ["社交表演","藝術創作"]; // 演唱會的另一個前因：有這兩類的正式興趣卡
 const STUDENT_EXPENSE_KIND_LABEL = { friend:"朋友與戀愛", trip:"想要的大件", gadget:"想要的大件", license:"想要的大件", family:"家裡出不起" };
 // 同一回合已有別的彈窗時不提出（含回合結算後才設定的）
 const STUDENT_EXPENSE_BLOCKING_PENDING = ["pendingMajorPurchase","pendingJobSearch","pendingJobOffer","pendingDivorceSettlement","pendingMajorSelection",
@@ -1454,7 +1461,7 @@ const STUDENT_EXPENSE_BLOCKING_PENDING = ["pendingMajorPurchase","pendingJobSear
   "pendingRelationshipInvestment","pendingDivorceRecovery","pendingCohabitationOffer","pendingPromotionOffer","pendingCareerForkOffer","pendingBusinessLaunch",
   "pendingFamilyBusinessOffer","pendingBusinessContinuation","pendingRetirementOffer","pendingEldercareDecision","pendingSideBusinessCardId","mealJustUnlocked"];
 function studentExpenseState(s){
-  if(!s.studentExpense) s.studentExpense = { lastFriendTurn:null, termKey:"", termWant:0, yearKey:"", yearFamily:0, license:false, pending:null, resultNow:null };
+  if(!s.studentExpense) s.studentExpense = { lastFriendTurn:null, lastGadgetTurn:null, termKey:"", termWant:0, yearKey:"", yearFamily:0, license:false, pending:null, resultNow:null };
   return s.studentExpense;
 }
 function hasOtherPendingModal(s){ return STUDENT_EXPENSE_BLOCKING_PENDING.some(k=>!!s[k]); }
@@ -1475,27 +1482,50 @@ function prepareStudentExpense(s, ctx, half){
   const yearFamily = st.yearKey===keys.year ? st.yearFamily : 0;
   const termWant = st.termKey===keys.term ? st.termWant : 0;
   const cap = STUDENT_EXPENSE_FAMILY_YEAR_CAP[s.family];
+  const gadgetGapOk = (s.turnCount - (st.lastGadgetTurn ?? 0)) >= SX_GADGET_MIN_GAP; // 沒升級過就從第40回合起算
+  const friendsAll = (s.characters||[]).filter(c=>!c.deceased && !c.lost && !c.left_circle && !c.isChild && !isFamilyCharacter(c) && c.nameKnown!==false);
+  const closeFriends = minAff => friendsAll.filter(c=>(c.affinity||0)>=minAff);
   if(cap && yearFamily < cap && Math.random() < STUDENT_EXPENSE_FAMILY_PROB){
+    // 17.3.6.9：家裡類事件各有前因；沒有任何事件通過條件就不提出，也不用別的事件補上
+    const recentStudy = (s.focusKeyLog||[]).slice(-SX_STUDY_RECENT_WINDOW).filter(k=>k==="study").length;
+    const eligible = STUDENT_EXPENSE_FAMILY_EVENTS.filter(e=>
+      e==="補習或參考書費用" ? (recentStudy>=SX_STUDY_RECENT_MIN && /準備期/.test(ctx.segKey||"")) :
+      e==="電腦壞了" ? gadgetGapOk :
+      /* 學費差額 */ (ctx.segKey==="開學初" && ctx.segTurn===0));
+    if(!eligible.length) return null;
     const total = rnd(STUDENT_EXPENSE_FAMILY_PRICE_RANGE[0], STUDENT_EXPENSE_FAMILY_PRICE_RANGE[1]);
     const burden = Math.round(total/2);
     if(s.cash < burden) return null; // 付不起（以負擔金額判斷）：不提出，也不往下判定別類
-    return { kind:"family", event:pick(STUDENT_EXPENSE_FAMILY_EVENTS), total, amount:burden, target:null, keys };
+    return { kind:"family", event:pick(eligible), total, amount:burden, target:null, keys };
   }
   if(Math.random() >= STUDENT_EXPENSE_PROB) return null;
   let kind = weightedPick(STUDENT_EXPENSE_CATEGORY_WEIGHTS);
-  if(kind==="license" && (s.age < STUDENT_EXPENSE_LICENSE_AGE || st.license)) kind = "friend"; // 不符合考駕照條件：併入朋友小聚等
+  if(kind==="license" && (s.age < STUDENT_EXPENSE_LICENSE_AGE || st.license || !ctx.holiday)) kind = "friend"; // 不符合考駕照條件(未滿18、已考過、不在寒暑假)：併入朋友小聚等
   const unit = studentExpenseUnit(s);
   let event, target = null;
   if(kind==="friend"){
     if(st.lastFriendTurn!=null && s.turnCount - st.lastFriendTurn < STUDENT_EXPENSE_FRIEND_MIN_GAP) return null;
-    const friends = (s.characters||[]).filter(c=>!c.deceased && !c.lost && !c.isChild && !isFamilyCharacter(c) && c.nameKnown!==false);
-    if(!friends.length) return null;
-    const lovers = friends.filter(c=>["ambiguous","dating","stable"].includes(c.romanceStatus));
-    event = weightedPick(STUDENT_EXPENSE_FRIEND_EVENTS.filter(([e])=>e!=="約會" || lovers.length));
+    const friends = closeFriends(SX_FRIEND_MIN_AFFINITY);
+    const lovers = friendsAll.filter(c=>["ambiguous","dating","stable"].includes(c.romanceStatus));
+    const events = STUDENT_EXPENSE_FRIEND_EVENTS.filter(([e])=>e!=="約會" ? friends.length : lovers.length);
+    if(!events.length) return null;
+    event = weightedPick(events);
     target = (event==="約會" ? pick(lovers) : pick(friends)).name;
   } else {
     if(termWant >= STUDENT_EXPENSE_WANT_TERM_CAP) return null;
-    event = kind==="trip" ? pick(STUDENT_EXPENSE_TRIP_EVENTS) : kind==="gadget" ? "手機或電腦升級" : "考駕照";
+    if(kind==="trip"){
+      const buddies = closeFriends(SX_TRIP_MIN_AFFINITY), fans = closeFriends(SX_FRIEND_MIN_AFFINITY);
+      const hasPerfInterest = (s.interestCandidates||[]).some(c=>c.status==="active" && SX_PERFORMANCE_INTERESTS.includes(c.category));
+      const events = STUDENT_EXPENSE_TRIP_EVENTS.filter(e=>
+        e==="出遊" ? (ctx.holiday && buddies.length) : e==="演唱會" ? (fans.length || hasPerfInterest) : (s.clubEngagement||0) > 0);
+      if(!events.length) return null;
+      event = pick(events);
+      if(event==="出遊") target = pick(buddies).name;
+      else if(event==="演唱會" && fans.length) target = pick(fans).name;
+    } else if(kind==="gadget"){
+      if(!gadgetGapOk) return null;
+      event = "手機或電腦升級";
+    } else event = "考駕照";
   }
   const amount = Math.round(unit * STUDENT_EXPENSE_MONTHS[kind]);
   if(s.cash < amount) return null;
@@ -1531,7 +1561,8 @@ function askStudentExpenseFirst(s, plan){
 }
 // 彈窗最前面的一句固定情境(程式組，不呼叫AI)：玩家看不到前情，要知道是哪件事
 function studentExpenseSceneLine(p){
-  if(p.kind==="family") return `家裡提到${p.event}的費用。`;
+  if(p.kind==="family") return p.event==="學費差額" ? "家裡提到這學期學費差額的事。" : p.event==="電腦壞了" ? "家裡的電腦壞了。" : `家裡提到${p.event}。`;
+  if(p.kind==="trip" && p.target) return p.event==="出遊" ? `${p.target}約你假期出去玩。` : `${p.target}約你去${p.event}。`;
   if(p.kind==="friend" && p.target){
     if(p.event==="約會") return `${p.target}想跟你約會。`;
     if(p.event==="小禮物") return `你想買個小禮物給${p.target}。`;
@@ -1561,6 +1592,7 @@ function resolveStudentExpense(s, accept){
       }
     }
     if(p.event==="考駕照") st.license = true;
+    if(p.event==="手機或電腦升級" || p.event==="電腦壞了") st.lastGadgetTurn = s.turnCount; // 17.3.6.9：換過就從這回合重新計間隔
     s.carryPurchaseNote = `${p.event} −${p.amount.toLocaleString()}`;
   } else if(accept){
     out.reason = "cash";
@@ -7462,7 +7494,7 @@ const EXPENSE_MENTION_WORDS = {
   "朋友小聚":["小聚","聚","吃","喝","逛","一起"], "小禮物":["禮物","送"], "約會":["約會","電影","散步","約"],
   "出遊":["出遊","旅","玩","車票","出去"], "演唱會":["演唱會","票","現場","舞台"], "社團活動":["社團","活動","營"],
   "手機或電腦升級":["手機","電腦","筆電","平板","新機"], "考駕照":["駕照","考照","駕訓","路考","考場"],
-  "補習班費用":["補習"], "電腦壞了":["電腦","筆電"], "學費差額":["學費","註冊","繳費"]
+  "補習或參考書費用":["補習","參考書","講義","書"], "電腦壞了":["電腦","筆電"], "學費差額":["學費","註冊","繳費"]
 };
 function detectMissingRequiredMentions(r, s, ctx){
   if(!r || typeof r!=="object") return [];
@@ -8996,8 +9028,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-k";
+const APP_VERSION = "2026.10.09-l";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-l", date:"2026-10-09", title:"花費不再無預警冒出來", items:[
+    "學生時期要自己掏錢的場合，現在都有前因才會出現，不會憑空跳出來。",
+  ]},
   { version:"2026.10.09-k", date:"2026-10-09", title:"興趣分項目經營", items:[
     "興趣現在會分到具體項目：同一類的不同興趣可以分開經營，興趣的按鈕與選單也會顯示項目名稱。",
   ]},
@@ -9703,7 +9738,7 @@ const SNAPSHOT_EXTRA_KEYS = [
   // 事件紀錄與「這一回合」旗標
   "partTimeEventLog","fertilityEventLog","universityEventLog","birthNow","graduationEventLog","illnessEventLog","majorIllnessEventLog",
   "parentHealthEventLog","parentRetirementEventLog","parentDeathEventLog","interestFormedEventLog","breakthroughEventLog",
-  "purchaseEventNow","studentExpense","sideIncomeLog","mealHint","personalityStyleChangedNow","burnoutSignalNow","interestCostNow","placeCatNow","carryStatChanges","carryPurchaseNote","cashLedger",
+  "purchaseEventNow","studentExpense","focusKeyLog","sideIncomeLog","mealHint","personalityStyleChangedNow","burnoutSignalNow","interestCostNow","placeCatNow","carryStatChanges","carryPurchaseNote","cashLedger",
   // 年度與累計計數、里程碑、人格與購物、疾病與家庭
   "milestones","milestoneChronicled","studentStatus","careerEntryAge","focusRatio","turnsThisYearForHealth","healthyTurnsThisYear","healthyYearStreak",
   "riskyHobbyScore","lowCashStreak","recentTones","clubIdleStreak","clubEngagement","styleSignals","personalityStyle","temperamentAgeTick",
@@ -9868,6 +9903,7 @@ async function takeTurnInner(actionText, cost, opts){
   }
   // 二、2.6（2026-09-28）：學生時期這回合的重心(開場那一回合由程式自動產生，沒有重心)
   const turnFocus = wasPrologue ? null : resolveTurnFocus(state, actionText);
+  if(turnFocus) state.focusKeyLog = (state.focusKeyLog||[]).concat([focusItems(turnFocus)[0] ? focusItems(turnFocus)[0].key : turnFocus.key]).slice(-SX_STUDY_RECENT_WINDOW); // 17.3.6.9：只存最近幾回合的重心代號
   // 二、2.5（9/16新增）：22歲以後改採加速曲線回合預算，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
   // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
   const adv = advanceStructuredTime(actionText, turnFocus && turnFocus.key);
@@ -9904,7 +9940,7 @@ async function takeTurnInner(actionText, cost, opts){
   timeCtx.deviation = rollChoiceDeviation(state, { prologue: wasPrologue, fromChoice, whitelist: !!adv.examTriggered || !!programEventNow(state) || !!(timeCtx.scenePlan && timeCtx.scenePlan.mode==="override" && timeCtx.scenePlan.reason!=="player_named") }); // 一、1.2.17
   timeCtx.relationScene = wasPrologue ? null : prepareRelationScene(state, actionText); // 四、4.8：上一回合告白的回應／擲骰結果、玩家提分手、排定的分手場面(deviation要先擲，才看得到待回應的告白)
   timeCtx.interestSeed = prepareInterestSeed(state, turnFocus, { prologue: wasPrologue, skip: !!adv.bigJump, ending: !!adv.deathTriggered }); // 八、8.8.2（2026-10-08）
-  timeCtx.studentExpense = prepareStudentExpense(state, { prologue: wasPrologue, skip: !!adv.bigJump, ending: !!adv.deathTriggered, exam: !!adv.examTriggered }, adv.half); // 十七、17.3.6（2026-10-09）
+  timeCtx.studentExpense = prepareStudentExpense(state, { prologue: wasPrologue, skip: !!adv.bigJump, ending: !!adv.deathTriggered, exam: !!adv.examTriggered, segKey: adv.segKey, segTurn: adv.segTurn, holiday: !!adv.holiday }, adv.half); // 十七、17.3.6（2026-10-09）
   timeCtx.mealHint = prepareMealHint(state, { prologue: wasPrologue, skip: !!adv.bigJump, ending: !!adv.deathTriggered, exam: !!adv.examTriggered, popupThisTurn: !!timeCtx.studentExpense }); // 五、5.5.4.1（2026-10-09）
   timeCtx.expenseMentions = state.pendingExpenseMentions || []; state.pendingExpenseMentions = []; // 一、1.2.15
   // 十八、18.12（2026-09-29 A7）：這回合指定為主角日常場景時，取代18.2「跟重心相關／換到別處」的擲骰(考試、事件等覆寫仍優先)
