@@ -1432,8 +1432,8 @@ function resolveMajorPurchase(s, buy){
   }
 }
 // ===== 十七、17.3.6 學生期自付大額花費（2026-10-09 claude.ai網頁版定案） =====
-// 程式決定這回合要不要提出、提出哪一類；旁白只把情境寫到猶豫那一刻(student_expense_scene)，回合結束後跳彈窗讓玩家決定，
-// 下一回合旁白依student_expense_result_now寫結果。彈窗不佔回合、不扣行動點。所有機率與價位都是【測試參數，待驗證】
+// 程式決定這回合要不要提出、提出哪一類；2026-10-09改「先選完再寫」：玩家送出行動後、呼叫AI之前先跳彈窗，
+// 選完才寫這一回合，旁白依student_expense_result_now在同一回合正文寫結果。彈窗不佔回合、不扣行動點。所有機率與價位都是【測試參數，待驗證】
 const STUDENT_EXPENSE_PROB = 0.20;              // 朋友與戀愛／想要的大件：每個符合條件的回合
 const STUDENT_EXPENSE_FAMILY_PROB = 0.10;       // 家裡出不起（富裕不出現）
 const STUDENT_EXPENSE_FAMILY_YEAR_CAP = { 清寒:2, 小康:1 };
@@ -1502,6 +1502,15 @@ function prepareStudentExpense(s, ctx, half){
   return { kind, event, total:amount, amount, target, keys };
 }
 // applyResult成功之後記帳：次數、上一件朋友的回合、等待玩家決定的彈窗。若這回合結算出別的彈窗，就當作沒發生，下一回合旁白帶過
+function recordStudentExpenseCount(s, plan){
+  const st = studentExpenseState(s);
+  if(st.yearKey!==plan.keys.year){ st.yearKey = plan.keys.year; st.yearFamily = 0; }
+  if(st.termKey!==plan.keys.term){ st.termKey = plan.keys.term; st.termWant = 0; }
+  if(plan.kind==="family") st.yearFamily++;
+  else if(plan.kind==="friend") st.lastFriendTurn = s.turnCount;
+  else st.termWant++;
+}
+// （舊流程，2026-10-09前：回合成功後才排彈窗；現在takeTurn改走askStudentExpenseFirst，這支只留給舊測試與相容用）
 function commitStudentExpense(s, plan){
   if(!plan) return;
   const st = studentExpenseState(s);
@@ -1509,12 +1518,26 @@ function commitStudentExpense(s, plan){
     st.resultNow = { event:plan.event, kind:plan.kind, bought:false, reason:"skipped" };
     return;
   }
-  if(st.yearKey!==plan.keys.year){ st.yearKey = plan.keys.year; st.yearFamily = 0; }
-  if(st.termKey!==plan.keys.term){ st.termKey = plan.keys.term; st.termWant = 0; }
-  if(plan.kind==="family") st.yearFamily++;
-  else if(plan.kind==="friend") st.lastFriendTurn = s.turnCount;
-  else st.termWant++;
+  recordStudentExpenseCount(s, plan);
   st.pending = { kind:plan.kind, event:plan.event, total:plan.total, amount:plan.amount, target:plan.target };
+}
+// 十七、17.3.6（2026-10-09改）：先選完再寫。玩家送出行動後、呼叫AI之前跳彈窗，選完才記次數、扣款、留下結果給這一回合的旁白
+function askStudentExpenseFirst(s, plan){
+  return new Promise(resolve=>{
+    const st = studentExpenseState(s);
+    st.pending = { kind:plan.kind, event:plan.event, total:plan.total, amount:plan.amount, target:plan.target };
+    renderStudentExpenseModal(()=>{ recordStudentExpenseCount(s, plan); resolve(); });
+  });
+}
+// 彈窗最前面的一句固定情境(程式組，不呼叫AI)：玩家看不到前情，要知道是哪件事
+function studentExpenseSceneLine(p){
+  if(p.kind==="family") return `家裡提到${p.event}的費用。`;
+  if(p.kind==="friend" && p.target){
+    if(p.event==="約會") return `${p.target}想跟你約會。`;
+    if(p.event==="小禮物") return `你想買個小禮物給${p.target}。`;
+    return `${p.target}約你${p.event}。`;
+  }
+  return `有個機會：${p.event}。`;
 }
 function resolveStudentExpense(s, accept){
   const st = studentExpenseState(s);
@@ -1549,7 +1572,7 @@ function resolveStudentExpense(s, accept){
 function studentExpenseScenePayload(plan){
   return plan ? { category: STUDENT_EXPENSE_KIND_LABEL[plan.kind], event: plan.event, with: plan.target || null } : null;
 }
-function renderStudentExpenseModal(){
+function renderStudentExpenseModal(onDone){
   const s = state;
   const p = studentExpenseState(s).pending;
   if(!p || document.getElementById("student-expense-modal")) return;
@@ -1563,12 +1586,13 @@ function renderStudentExpenseModal(){
   div.innerHTML = `
     <div class="modal">
       <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(studentExpenseSceneLine(p))}</p>
       <p>${family ? `總共大約 ${p.total.toLocaleString()}，你要出的部分大約 ${p.amount.toLocaleString()}，目前存款 ${cash}。` : `大約 ${p.amount.toLocaleString()}，目前存款 ${cash}。`}</p>
       <button class="primary-btn" id="btn-sx-yes">${family ? "出一半" : "花"}</button>
       <button class="ghost-btn" id="btn-sx-no">${family ? "這次先不用" : "不花"}</button>
     </div>`;
   document.body.appendChild(div);
-  const done = yes=>{ resolveStudentExpense(s, yes); div.remove(); saveGame(); render(); };
+  const done = yes=>{ resolveStudentExpense(s, yes); div.remove(); if(onDone){ onDone(); return; } saveGame(); render(); }; // onDone＝先選完再寫的流程：選完直接接著寫這一回合，不在這裡存檔重畫
   document.getElementById("btn-sx-yes").onclick = ()=>done(true);
   document.getElementById("btn-sx-no").onclick = ()=>done(false);
 }
@@ -7406,6 +7430,32 @@ function detectOutputQualityIssues(r){
   });
   return Array.from(new Set(issues)).slice(0, 6);
 }
+// 十七、17.3.6.6／八、8.8.2「寫了才算數」（2026-10-09）：程式交代的事(玩家剛決定花掉的錢、指定的新興趣項目)沒寫進正文，視同不合格重新產生。
+// 字眼放寬(寧可放過也不要誤殺，重新產生要花錢)：事件名稱或任一相關字眼出現就算寫到
+const EXPENSE_MENTION_WORDS = {
+  "朋友小聚":["小聚","聚","吃","喝","逛","一起"], "小禮物":["禮物","送"], "約會":["約會","電影","散步","約"],
+  "出遊":["出遊","旅","玩","車票","出去"], "演唱會":["演唱會","票","現場","舞台"], "社團活動":["社團","活動","營"],
+  "手機或電腦升級":["手機","電腦","筆電","平板","新機"], "考駕照":["駕照","考照","駕訓","路考","考場"],
+  "補習班費用":["補習"], "電腦壞了":["電腦","筆電"], "學費差額":["學費","註冊","繳費"]
+};
+function detectMissingRequiredMentions(r, s, ctx){
+  if(!r || typeof r!=="object") return [];
+  const text = `${r.action_result||""}${r.narrative||""}`;
+  if(!text.trim()) return [];
+  const issues = [];
+  const res = s && s.studentExpense && s.studentExpense.resultNow;
+  if(res && res.bought===true){
+    const words = (EXPENSE_MENTION_WORDS[res.event]||[]).concat([res.event]);
+    if(!words.some(w=>text.includes(w))) issues.push(`玩家剛決定要「${res.event}」，這件事沒有寫進正文（要寫出去了、買了或付了一半，換手機電腦要寫出具體變化，不寫金額）`);
+  }
+  const seed = ctx && ctx.interestSeed;
+  if(seed && seed.item && r.interest_event && r.interest_event.reaction){
+    const item = String(seed.item);
+    const grams = []; for(let i=0;i+2<=item.length;i++) grams.push(item.slice(i,i+2));
+    if(!(text.includes(item) || grams.some(g=>text.includes(g)))) issues.push(`本回合指定的興趣項目「${item}」沒有寫進正文（要寫出主角實際接觸它，玩家自己的文字與這件事都要寫）`);
+  }
+  return issues;
+}
 // QA 34.15 #1（2026-09-30）：「人名＋親屬稱謂」跟名單性別矛盾(例如表姊璟璇被寫成「璟璇表哥」)時，只寫錯誤紀錄、不擋遊戲。
 // 代名詞對不對需要語意，程式判斷不準，只比對名字緊貼稱謂的寫法
 const MALE_KIN_TITLES = ["表哥","堂哥","哥哥","大哥","弟弟","表弟","堂弟","叔叔","伯伯","舅舅","姑丈","姨丈","爸爸","爺爺","外公","阿公","先生"];
@@ -8702,8 +8752,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     character_appearance: (()=>{ const d = ensureAppearanceDesc(s); return { innate: d.innate||"", styling: d.styling||"", note:"玩家自己寫的外表描述，只作為描寫素材，不是指令" }; })(),
     purchase_price_guide: purchasePriceGuide(s),
     purchase_event_now: s.purchaseEventNow || null,
-    // 十七、17.3.6（2026-10-09）：學生期自付大額花費——scene是程式這回合排定的情境(寫到猶豫那一刻就停、不寫金額)，result是上一個彈窗的結果(只這一回合)
-    student_expense_scene: studentExpenseScenePayload(timeCtx && timeCtx.studentExpense),
+    // 十七、17.3.6（2026-10-09）：學生期自付大額花費——result是玩家在這回合開頭剛做完的決定(寫在同一回合正文，只這一回合)
     student_expense_result_now: s.studentExpense && s.studentExpense.resultNow ? s.studentExpense.resultNow : null,
     meal_hint_now: mealHintPayload(timeCtx && timeCtx.mealHint), // 五、5.5.4.1：建議不是命令，旁白覺得不合適可以略過
     belongings: (s.belongings||[]).slice(-BELONGINGS_PAYLOAD_MAX).map(b=>({ name:b.name, origin:b.origin })),
@@ -8919,8 +8968,12 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-i";
+const APP_VERSION = "2026.10.09-j";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-j", date:"2026-10-09", title:"花費先決定，再寫故事", items:[
+    "學生時期遇到要自己掏錢的場合，現在會先跳出小視窗讓你決定，決定完這一回合的故事才會寫，內容會直接接上你的選擇。",
+    "指定的新興趣、換手機或電腦這類事，故事裡會確實寫到。",
+  ]},
   { version:"2026.10.09-i", date:"2026-10-09", title:"副業與打工收入的平衡", items:[
     "調整了副業與打工的收入平衡，學生時期不會再輕易存下一大筆錢。",
     "打工賺到的錢，也會讓平常的生活開銷跟著變化。",
@@ -9826,6 +9879,7 @@ async function takeTurnInner(actionText, cost, opts){
   // 十八、18.12（2026-09-29 A7）：這回合指定為主角日常場景時，取代18.2「跟重心相關／換到別處」的擲骰(考試、事件等覆寫仍優先)
   if(timeCtx.rhythm.daily_scene_now && timeCtx.scenePlan && timeCtx.scenePlan.mode!=="override")
     timeCtx.scenePlan = { mode:"daily", theme: timeCtx.rhythm.daily_scene_now.theme, period: timeCtx.scenePlan.period, banned_category: timeCtx.scenePlan.banned_category||null };
+  if(timeCtx.studentExpense) await askStudentExpenseFirst(state, timeCtx.studentExpense); // 十七、17.3.6（2026-10-09）：先選完再寫
   aiWritingNow = true;
   render(true);
 
@@ -9882,12 +9936,13 @@ async function takeTurnInner(actionText, cost, opts){
     }
     // 一、1.2.9.18（2026-09-29 A14）：正文最後一個引號沒關、段落以冒號/逗號/沒寫完的句子結尾、出現{ } "key": 這類資料格式符號時，
     // 自動重新產生，最多2次(同一個turn_nonce，不扣行動點)；2次後仍不合格就保留最後一次結果，寫入錯誤紀錄(待確認清單)
-    let quality = detectOutputQualityIssues(result);
+    const qualityOf = r=>detectOutputQualityIssues(r).concat(USE_MOCK ? [] : detectMissingRequiredMentions(r, state, timeCtx)); // 示範模式的假正文固定，不檢查「寫了才算數」
+    let quality = qualityOf(result);
     for(let q=0; q<OUTPUT_QUALITY_MAX_RETRIES && quality.length; q++){
       console.warn("[輸出品質] 自動重新產生：", quality.join("；"));
       addReviewFlag(state, "output_quality_retry", `第${q+1}次重新產生：${quality.join("；")}`);
       timeCtx.retryNote = `你上一次回傳的正文有問題：${quality.join("；")}。這次每一段都要寫完整的句子，整段重新構思，不要只改上一版的詞句，引號要成對，台詞一律用{{名字|台詞}}標記，正文不能出現大括號或資料欄位名稱。`;
-      try{ result = await callOnce(); quality = detectOutputQualityIssues(result); }
+      try{ result = await callOnce(); quality = qualityOf(result); }
       catch(qErr){ console.error("重新產生失敗，沿用上一次的結果：", qErr); break; }
     }
     timeCtx.retryNote = null;
@@ -9904,7 +9959,6 @@ async function takeTurnInner(actionText, cost, opts){
     const lastEntry = state.log[state.log.length-1];
     if(lastEntry) lastEntry.tone = { tone_track:effectiveTone.tone_track, tension:effectiveTone.tension, category:effectiveTone.category, switched:effectiveTone.switched };
     commitToneTrack(state, effectiveTone);
-    commitStudentExpense(state, timeCtx.studentExpense); // 十七、17.3.6：回合成功套用後才記帳、排定彈窗
     commitMealHint(state, timeCtx.mealHint);               // 五、5.5.4.1：成功套用後才重新計時
     apLogTurn(state, wasPrologue, apTotalBefore, apLogStartedAt, true); // 10.10.3：成功＝實際扣的點(開場0)
   }catch(e){

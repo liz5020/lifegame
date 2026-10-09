@@ -231,6 +231,12 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
     }
   });
   const win = dom.window;
+  // 十七、17.3.6（2026-10-09改「先選完再寫」）：學生期花費彈窗會擋住回合，一般測試自動按〔不花〕；要測彈窗的測試設 win.__sxManual = true 自己按
+  new win.MutationObserver(() => {
+    if (win.__sxManual) return;
+    const no = win.document.getElementById("btn-sx-no");
+    if (no && !no.__auto) { no.__auto = true; setTimeout(() => no.click(), 0); }
+  }).observe(win.document.body, { childList: true, subtree: true });
   await new Promise(r => setTimeout(r, 30));
   return { dom, win, errors, ev: (code) => win.eval(code) };
 }

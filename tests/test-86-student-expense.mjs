@@ -8,6 +8,7 @@ const env = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env, key: "sx00000001" });
 await H.startNewLife(g);
 const ev = g.ev;
+g.win.__sxManual = true; // 這個測試自己按彈窗按鈕
 { const k = `ap:${H.loc("sx00000001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 const doc = g.win.document;
 const js = (x) => { const r = ev(`JSON.stringify(${x})`); return r === undefined ? undefined : JSON.parse(r); };
@@ -60,86 +61,114 @@ function STR(x) { return typeof x === "string" && ["出遊", "演唱會", "社�
 // ---------- 價位換算：政治世家(零用錢150)用家境表(富裕120)，不用150 ----------
 A.check("價位以家境的月零用錢為單位(清寒30、小康60、富裕120)", js("[studentExpenseUnit({family:'清寒'}),studentExpenseUnit({family:'小康'}),studentExpenseUnit({family:'富裕',monthlyIncome:150})]").join() === "30,60,120");
 
-// ---------- 實際回合：排定→跳彈窗→花／不花→下一回合旁白收到結果 ----------
+// ---------- 實際回合：玩家送出行動→先跳彈窗→花／不花→同一回合旁白收到結果（2026-10-09 先選完再寫） ----------
 await H.playTurn(g); // 先把開場跑完
 ev("state.family='小康'; state.cash=500; state.monthlyIncome=60; state.studentStatus='enrolled'");
 ev(`state.characters.push({name:"阿森", relation:"同學", affinity:50, active:true, lastTurn:0, gender:"男", traits:["外向"], summary:"同班同學"})`);
 const planJs = (kind, event, total, amount, target) => `window.__origPrep = window.__origPrep || prepareStudentExpense; prepareStudentExpense = ()=>({kind:${JSON.stringify(kind)},event:${JSON.stringify(event)},total:${total},amount:${amount},target:${JSON.stringify(target)},keys:studentExpenseKeys(state,"上學期")});`;
 const unplan = () => ev("window.__origPrep = window.__origPrep || prepareStudentExpense; prepareStudentExpense = ()=>null;"); // 之後的回合固定不排定，避免隨機事件干擾
 const aff = () => ev(`state.characters.find(c=>c.name==="阿森").affinity`);
+const waitModal = async () => { for (let i = 0; i < 400 && !doc.getElementById("student-expense-modal"); i++) await new Promise(r => setTimeout(r, 5)); };
+// 送出行動→等彈窗出現→(檢查)→按鈕→等回合寫完。回傳這回合送給AI的payload
+const runTurn = async (action, btn, check) => {
+  payload = null;
+  const pr = g.ev(`takeTurn(${JSON.stringify(action)}, AP_COST_PER_TURN)`);
+  await waitModal();
+  const sawPayloadBefore = payload;
+  if (check) check();
+  doc.getElementById(btn).click();
+  await pr;
+  return { before: sawPayloadBefore, payload };
+};
 unplan();
 const apBefore = ev("totalAP(state)");
 ev(planJs("friend", "朋友小聚", 30, 30, "阿森"));
-await g.ev(`takeTurn("跟同學聊聊天", AP_COST_PER_TURN)`);
-A.check("排定的回合：旁白收到情境(類別、事件、對象)，沒有金額", payload.student_expense_scene && payload.student_expense_scene.event === "朋友小聚" && payload.student_expense_scene.category === "朋友與戀愛" && payload.student_expense_scene.with === "阿森" && !/amount|total|price/.test(JSON.stringify(payload.student_expense_scene)), payload.student_expense_scene);
-A.check("回合結束：留下等待決定的彈窗，並跳出視窗", !!ev("state.studentExpense.pending") && !!doc.getElementById("student-expense-modal"));
-A.check("彈窗內容：標題、金額與存款、〔花〕〔不花〕", /要跟朋友小聚嗎/.test(doc.getElementById("student-expense-modal").textContent) && /大約 30/.test(doc.getElementById("student-expense-modal").textContent) && doc.getElementById("btn-sx-yes").textContent === "花" && doc.getElementById("btn-sx-no").textContent === "不花");
-A.check("彈窗不佔回合、不扣行動點(只有那一回合的1點)", apBefore - ev("totalAP(state)") === 1, [apBefore, ev("totalAP(state)")]);
-// 重新整理(重畫)後仍會再跳出
-doc.getElementById("student-expense-modal").remove(); ev("render()");
-A.check("重新整理後未決定的彈窗再跳出", !!doc.getElementById("student-expense-modal"));
-unplan();
 const c0 = ev("state.cash"), a0 = aff();
-doc.getElementById("btn-sx-yes").click();
-A.check("按〔花〕：扣30、對象好感+2、彈窗收掉、pending清除", c0 - ev("state.cash") === 30 && aff() - a0 === 2 && !doc.getElementById("student-expense-modal") && !ev("state.studentExpense.pending"), [c0, ev("state.cash"), a0, aff()]);
-A.check("按〔花〕：記進明細名稱「朋友小聚」、日記小字", JSON.stringify(ev("state.cashLedger")).includes("朋友小聚") && /朋友小聚/.test(ev("state.carryPurchaseNote")||""), ev("state.cashLedger"));
-await H.playTurn(g);
-A.check("下一回合旁白收到結果bought=true，只這一回合", payload.student_expense_result_now && payload.student_expense_result_now.bought === true && payload.student_expense_result_now.event === "朋友小聚" && ev("state.studentExpense.resultNow") === null, payload.student_expense_result_now);
-A.check("下一回合結算明細列出「朋友小聚 −30」", JSON.stringify(js("state.log[state.log.length-1].settlement||null")).includes("朋友小聚") || JSON.stringify(js("state.lastSettlement||null")).includes("朋友小聚"), js("state.lastSettlement"));
+unplan(); ev(planJs("friend", "朋友小聚", 30, 30, "阿森")); // runTurn內只會呼叫一次prepare
+let r1 = await runTurn("跟同學聊聊天", "btn-sx-yes", () => {
+  A.check("送出行動後、AI還沒呼叫前就跳彈窗(此時還沒有payload)", !!doc.getElementById("student-expense-modal") && payload === null);
+  const m = doc.getElementById("student-expense-modal").textContent;
+  A.check("彈窗內容：情境句「阿森約你朋友小聚。」、標題、金額與存款、〔花〕〔不花〕", /阿森約你朋友小聚。/.test(m) && /要跟朋友小聚嗎/.test(m) && /大約 30/.test(m) && doc.getElementById("btn-sx-yes").textContent === "花" && doc.getElementById("btn-sx-no").textContent === "不花");
+  A.check("彈窗時還沒扣款、行動點也沒因彈窗多扣", ev("state.cash") === c0);
+});
+unplan();
+A.check("按〔花〕：同一回合就扣30、對象好感+2、彈窗收掉、pending清除", JSON.stringify(ev("state.lastSettlement.extras")).includes('["朋友小聚",-30') && aff() - a0 === 2 && !doc.getElementById("student-expense-modal") && !ev("state.studentExpense.pending"), [c0, ev("state.cash"), a0, aff()]);
+A.check("同一回合旁白收到結果bought=true、event、spent，沒有舊的scene欄位", r1.payload.student_expense_result_now && r1.payload.student_expense_result_now.bought === true && r1.payload.student_expense_result_now.event === "朋友小聚" && r1.payload.student_expense_result_now.spent === 30 && !("student_expense_scene" in r1.payload), r1.payload.student_expense_result_now);
+A.check("回合結束後結果已清掉(只給這一回合)", ev("state.studentExpense.resultNow") === null);
+A.check("只多扣這一回合的1點行動點，彈窗不另外扣", apBefore - ev("totalAP(state)") === 1, [apBefore, ev("totalAP(state)")]);
+A.check("記進明細名稱「朋友小聚」", JSON.stringify(ev("state.cashLedger")).includes("朋友小聚") || JSON.stringify(js("state.lastSettlement||null")).includes("朋友小聚"), ev("state.cashLedger"));
+A.check("次數記帳：上一件朋友的回合有記下", ev("state.studentExpense.lastFriendTurn") != null);
 A.check("再下一回合結果已清掉", (await H.playTurn(g), payload.student_expense_result_now == null));
 
 // 同一人同階段第二次好感減半
 ev(planJs("friend", "小禮物", 30, 30, "阿森"));
-await g.ev(`takeTurn("再約一次", AP_COST_PER_TURN)`);
-unplan(); const a1 = aff(); doc.getElementById("btn-sx-yes").click();
+const a1 = aff();
+await runTurn("再約一次", "btn-sx-yes", () => A.check("小禮物的情境句", /你想買個小禮物給阿森。/.test(doc.getElementById("student-expense-modal").textContent)));
+unplan();
 A.check("同一個人同一階段第二次：好感只+1", aff() - a1 === 1, [a1, aff()]);
-await H.playTurn(g);
 
 // 不花
 ev(planJs("trip", "演唱會", 90, 90, null));
-await g.ev(`takeTurn("週末", AP_COST_PER_TURN)`);
-unplan();
-A.check("出遊類彈窗：標題「要去演唱會嗎？」", /要去演唱會嗎/.test(doc.getElementById("student-expense-modal").textContent));
 const c1 = ev("state.cash"), a2 = aff();
-doc.getElementById("btn-sx-no").click();
-A.check("按〔不花〕：不扣款、不動數值、旁白下一回合收到declined", c1 === ev("state.cash") && a2 === aff() && ev("state.studentExpense.resultNow.reason") === "declined");
-await H.playTurn(g);
-A.check("不花：payload bought=false reason=declined", payload.student_expense_result_now && payload.student_expense_result_now.bought === false && payload.student_expense_result_now.reason === "declined");
-await H.playTurn(g);
+const r2 = await runTurn("週末", "btn-sx-no", () => A.check("出遊類彈窗：標題「要去演唱會嗎？」、情境句", /要去演唱會嗎/.test(doc.getElementById("student-expense-modal").textContent) && /有個機會：演唱會。/.test(doc.getElementById("student-expense-modal").textContent)));
+unplan();
+A.check("按〔不花〕：不扣款(只有生活結算)、不動好感、同一回合旁白收到declined", ev("state.cash") >= c1 - 20 && a2 === aff() && r2.payload.student_expense_result_now && r2.payload.student_expense_result_now.bought === false && r2.payload.student_expense_result_now.reason === "declined", r2.payload.student_expense_result_now);
 
 // 出遊(選花)：只扣錢、不加任何數值
 ev(planJs("trip", "出遊", 90, 90, null));
-await g.ev(`takeTurn("週末", AP_COST_PER_TURN)`);
+await runTurn("週末", "btn-sx-yes");
 unplan();
-const st0 = js("state.stats"), c2 = ev("state.cash"), h0 = ev("state.happiness");
-doc.getElementById("btn-sx-yes").click();
-A.check("出遊選花：扣90，核心數值與好感都沒變", c2 - ev("state.cash") === 90 && JSON.stringify(js("state.stats")) === JSON.stringify(st0), [c2, ev("state.cash")]);
-await H.playTurn(g);
+A.check("出遊選花：扣90(明細有「出遊 −90」)", JSON.stringify(ev("state.lastSettlement.extras")).includes('["出遊",-90'), ev("state.lastSettlement.extras"));
 
 // 家裡出不起
 ev(planJs("family", "補習班費用", 80, 40, null));
-await g.ev(`takeTurn("放學", AP_COST_PER_TURN)`);
-unplan();
-A.check("家裡類彈窗：顯示總價80與負擔40、〔出一半〕〔這次先不用〕", /補習班費用，家裡這次需要你出一半/.test(doc.getElementById("student-expense-modal").textContent) && /總共大約 80/.test(doc.getElementById("student-expense-modal").textContent) && /約 40/.test(doc.getElementById("student-expense-modal").textContent)
-  && doc.getElementById("btn-sx-yes").textContent === "出一半" && doc.getElementById("btn-sx-no").textContent === "這次先不用");
 const c3 = ev("state.cash");
-doc.getElementById("btn-sx-yes").click();
-A.check("出一半：扣40", c3 - ev("state.cash") === 40);
-await H.playTurn(g);
-ev(planJs("family", "電腦壞了", 100, 50, null));
-await g.ev(`takeTurn("放學", AP_COST_PER_TURN)`);
+const r3 = await runTurn("放學", "btn-sx-yes", () => {
+  const m = doc.getElementById("student-expense-modal").textContent;
+  A.check("家裡類彈窗：情境句、顯示總價80與負擔40、〔出一半〕〔這次先不用〕", /家裡提到補習班費用的費用。/.test(m) && /補習班費用，家裡這次需要你出一半/.test(m) && /總共大約 80/.test(m) && /約 40/.test(m)
+    && doc.getElementById("btn-sx-yes").textContent === "出一半" && doc.getElementById("btn-sx-no").textContent === "這次先不用");
+});
 unplan();
-const c4 = ev("state.cash"); doc.getElementById("btn-sx-no").click();
-A.check("這次先不用：不扣錢、旁白收到cheaper_or_later", c4 === ev("state.cash") && ev("state.studentExpense.resultNow.reason") === "cheaper_or_later");
-await H.playTurn(g);
+A.check("出一半：扣40，同一回合旁白收到結果", JSON.stringify(ev("state.lastSettlement.extras")).includes('["補習班費用",-40') && r3.payload.student_expense_result_now.bought === true && r3.payload.student_expense_result_now.spent === 40);
+ev(planJs("family", "電腦壞了", 100, 50, null));
+const c4 = ev("state.cash");
+const r4 = await runTurn("放學", "btn-sx-no");
+unplan();
+A.check("這次先不用：不扣錢、旁白收到cheaper_or_later", c4 - ev("state.cash") < 50 && r4.payload.student_expense_result_now.reason === "cheaper_or_later", r4.payload.student_expense_result_now);
 
 // 考駕照
 ev("state.age=18; state.studentExpense.license=false");
 ev(planJs("license", "考駕照", 60, 60, null));
-await g.ev(`takeTurn("放學", AP_COST_PER_TURN)`);
-unplan(); doc.getElementById("btn-sx-yes").click();
+await runTurn("放學", "btn-sx-yes");
+unplan();
 A.check("考駕照選花：記下已考過，之後不再出現", ev("state.studentExpense.license") === true);
 await H.playTurn(g);
+
+// 回合失敗要還原：彈窗花了錢，AI失敗→錢與次數都還原
+{
+  ev("state.age=16"); const cash5 = ev("state.cash"), want5 = ev("state.studentExpense.termWant");
+  ev(planJs("trip", "出遊", 90, 90, null));
+  const bad = H.installUpstreamOnce ? null : null; // 見下：改用callAI直接丟錯
+  ev("window.__origCallAI = window.__origCallAI || callAI; callAI = async ()=>{ const e = new Error('boom'); e.noRetry = true; throw e; }; window.__origMock = window.__origMock || mockCallAI;");
+  const pr = g.ev(`takeTurn("週末", AP_COST_PER_TURN)`); await waitModal(); doc.getElementById("btn-sx-yes").click(); await pr;
+  ev("callAI = window.__origCallAI"); unplan();
+  A.check("AI失敗還原：花的錢與次數都回到送出前", ev("state.cash") === cash5 && ev("state.studentExpense.termWant") === want5 && !ev("state.studentExpense.pending"), [cash5, ev("state.cash")]);
+}
+
+// ---------- 寫了才算數（17.3.6.6／8.8.2） ----------
+{
+  const chk = (r, resultNow, seed) => js(`(()=>{ const s={studentExpense:{resultNow:${JSON.stringify(resultNow)}}}; return detectMissingRequiredMentions(${JSON.stringify(r)}, s, ${JSON.stringify({ interestSeed: seed })}); })()`);
+  const bought = { event: "手機或電腦升級", kind: "gadget", bought: true, spent: 120 };
+  A.check("花了手機電腦、正文沒提→判不合格", chk({ action_result: "妳去了學校。", narrative: "下課後走回家。" }, bought, null).length === 1);
+  A.check("正文寫到新手機→合格", chk({ action_result: "妳拆開新手機的盒子。", narrative: "螢幕比舊的亮很多。" }, bought, null).length === 0);
+  A.check("沒花(declined)→不檢查", chk({ action_result: "沒事。", narrative: "沒事。" }, { event: "出遊", bought: false, reason: "declined" }, null).length === 0);
+  A.check("補習班費用：出一半卻整段沒提補習→不合格；提到補習→合格", chk({ narrative: "妳回家吃飯。" }, { event: "補習班費用", bought: true, spent: 40 }, null).length === 1 && chk({ narrative: "補習班的費用妳出了一半。" }, { event: "補習班費用", bought: true, spent: 40 }, null).length === 0);
+  const seed = { kind: "try_new", category: "藝術創作", item: "影像剪輯" };
+  const ie = { reaction: "neutral", category: "藝術創作" };
+  A.check("指定興趣項目沒寫進正文→不合格(剪輯不在正文)", chk({ action_result: "媽媽說補習費。", narrative: "妳剝橘子。", interest_event: ie }, null, seed).length === 1);
+  A.check("正文有「剪輯」或相關兩字詞→合格", chk({ action_result: "妳用手機剪輯一段影片。", narrative: "轉場卡住。", interest_event: ie }, null, seed).length === 0);
+  A.check("種子回合AI沒回報interest_event(種子作廢)→不檢查", chk({ action_result: "沒事。", narrative: "沒事。" }, null, seed).length === 0);
+}
 
 // 彈窗出現後的次數記帳(用真的commit)
 ev(`state.studentExpense = null; state.turnCount = 40;`);

@@ -34,15 +34,22 @@ for (const [playName, play] of PLAYS) for (const tier of TIERS) for (const [mode
       const exam = ev(`(()=>{ const s=state; const idx=((s.timeState.yearInStage-1)*YEAR_SEGMENTS.length + s.timeState.segmentIndex)%YEAR_SEGMENTS.length; const seg=YEAR_SEGMENTS[idx]; return !!seg.isExam && (s.timeState.turnsInSegment||0)+1 >= seg.budget; })()`);
       ev(`ensureAP(state).daily=99; state.focus=${exam ? "'study'" : "'work'"}; state.focusWorkId=${play === "gig" ? "'hc'" : "null"};`);
       const text = ev("(state.choices&&state.choices[0])||'繼續過日子'");
-      await g.ev(`takeTurn(${JSON.stringify(text)}, AP_COST_PER_TURN)`); turns++;
-      const sx = doc.getElementById("student-expense-modal");
-      if (sx) {
-        offered++;
-        const yes = Math.random() < acceptP;
-        const before = ev("state.cash");
-        doc.getElementById(yes ? "btn-sx-yes" : "btn-sx-no").click();
-        if (yes) { accepted++; spent += before - ev("state.cash"); }
+      g.win.__sxManual = true;
+      const pr = g.ev(`takeTurn(${JSON.stringify(text)}, AP_COST_PER_TURN)`); turns++;
+      for (let w = 0; w < 4000; w++) { // 回合進行中若跳出花費彈窗(先選完再寫)，在這裡決定；回合寫完就結束等待
+        await new Promise(r => setTimeout(r, 1));
+        const sx = doc.getElementById("student-expense-modal");
+        if (sx) {
+          offered++;
+          const yes = Math.random() < acceptP;
+          const before = ev("state.cash");
+          doc.getElementById(yes ? "btn-sx-yes" : "btn-sx-no").click();
+          if (yes) { accepted++; spent += before - ev("state.cash"); }
+          break;
+        }
+        if (ev("turnsInFlight") === 0) break;
       }
+      await pr;
       H.clickModals(g.win);
       byAge[ev("state.age")] = ev("state.cash");
     }
