@@ -3866,7 +3866,7 @@ function renderManualCloudSaveModal(ok, key, errText){
       <h3>已存到雲端</h3>
       <p style="font-size:13px;">請記下你的復原金鑰：</p>
       <div class="roll-item" style="text-align:center;margin:10px 0;"><div class="v" style="font-size:16px;letter-spacing:2px;">${escapeHtml(key)}</div></div>
-      <p style="font-size:12px;">換裝置時，在首頁「切換其他人生」輸入這組金鑰，就能拿回存到雲端的進度。遊戲也會每 10 回合自動存一次，想馬上存，可以再按一次。</p>
+      <p style="font-size:12px;">換裝置時，在首頁「切換其他人生」輸入這組金鑰，就能拿回存到雲端的進度。遊戲也會每隔約 10 分鐘自動存一次（這段時間有玩新的回合才會存），想馬上存，可以再按一次。</p>
       <button class="ghost-btn" id="btn-manual-save-close" style="margin-top:14px;">關閉</button>
     </div>` : `
     <div class="modal">
@@ -8678,8 +8678,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-d";
+const APP_VERSION = "2026.10.09-e";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-e", date:"2026-10-09", title:"存檔說明文字", items:[
+    "首頁與常見問題的存檔說明改得和實際一致：進度存在這台裝置，也會定期備份到雲端。",
+  ]},
   { version:"2026.10.09-d", date:"2026-10-09", title:"首頁文字與求助資訊", items:[
     "首頁的文字讀起來更順，手機上的斷行也整理過。",
     "故事寫到角色心情特別低落的時候，旁白下方會附上求助專線的資訊。",
@@ -11902,7 +11905,7 @@ function relativeTimeText(ts){
 }
 const HOME_FAQ = [
   ["開始之前，需要準備什麼嗎？", ["什麼都不用。不用註冊，也不用下載，打開網頁就能開始。", ()=>`每過一回合會用掉 1 個行動點。新的人生會先附上 ${AP_UNBOUND_GIFT} 點啟程禮，大約夠你走到高一的寒假；綁定信箱可以再領 ${AP_BIND_BONUS} 點，大約走到高一結束。之後每天午夜，再替你補滿 ${AP_DAILY_REFILL} 點。就跟日子一樣，昨天沒用完的，不會留到今天。`]],
-  ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", ()=>CLOUD_SAVE_ENABLED ? "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。" : "封測期間，進度只存在這台裝置的瀏覽器裡。換了手機、換了瀏覽器，或清除瀏覽器資料，就接不回來了。"]],
+  ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", ()=>CLOUD_SAVE_ENABLED ? "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。" : "遊戲也會每隔約 10 分鐘把進度備份到雲端。要換手機，請先到選單的「我的復原金鑰」把金鑰抄下來，換裝置後在首頁「切換其他人生」輸入，就能接回；綁定信箱的話，也可以用信箱登入拿回。金鑰一旦弄丟就找不回來了，請像收好重要的東西那樣收好。"]],
   ["一段人生要玩多久？", ["看你想過多快。可以一個晚上走完整個高中，也可以一個月只過一個寒假。", "隨時關掉都沒關係，它會停在你離開的那一頁。"]],
   ["可以同時過好幾段人生嗎？", ["還沒綁定信箱時，同時只能過一段人生；綁定信箱後，可以同時過兩段。"]],
   ["什麼路都能走嗎？", ["幾乎都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "唯一走不通的是超能力。這裡的世界，跟外面那個一樣講道理。"]],
@@ -11924,7 +11927,7 @@ function renderHome(){
       ${acct ? `<p class="home-note" id="home-acct">已登入：${escapeHtml(acct.email_masked||"")}　<a id="link-home-logout" style="cursor:pointer;text-decoration:underline;">登出</a></p>`
              : `<button class="ghost-btn" id="btn-home-login">已有帳號？用信箱登入</button>`}
       ${acct && acctMissingLives()>0 ? `<button class="ghost-btn" id="btn-home-cloud-lives">${icon("cloud")} 帳號有 ${acctMissingLives()} 段人生存在雲端，拿回這台裝置</button>` : ``}
-      <p class="home-note">免註冊，進度自動存在這台裝置。${CLOUD_SAVE_ENABLED ? "換了手機，用「復原金鑰」接回你的人生。" : ""}</p>
+      <p class="home-note">免註冊，進度自動存在這台裝置，也會定期備份到雲端。換了手機，用「復原金鑰」接回你的人生。</p>
     </section>
     ${lives.length ? `
     <section class="home-sec">
