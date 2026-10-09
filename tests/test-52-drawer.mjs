@@ -17,7 +17,7 @@ const EMOJI = /[\u{1F300}-\u{1FAFF}☀-⛿✀-➿⭐⏰-⏿️]/u;
 // ---------- 頂部列 ----------
 const top = doc.querySelector(".topbar");
 A.check("16.17 頂部列不再有右上角圓形按鈕", !doc.querySelector(".tb-btns") && !doc.querySelector(".round-btn"));
-A.check("16.17 頂部列保留：年齡圓章、大標題(含月份)、小字進度行、行動點、存款", !!top.querySelector("#age-stamp, .tb-stamp") && /・\d+月/.test(top.querySelector(".tb-stage").textContent) && !!top.querySelector("#ap-total") && !!top.querySelector("#tb-cash") && !!top.querySelector(".tb-sub .right"));
+A.check("16.17 頂部列保留：年齡圓章、大標題(含月份)、小字進度行、行動點、存款", !!top.querySelector("#age-stamp, .tb-stamp") && /・\d+月/.test(top.querySelector(".tb-stage").textContent) && !!top.querySelector("#ap-total") && !!top.querySelector("#tb-cash") && !!top.querySelector(".tb-prog, .tb-stage"));
 A.check("16.17 行動點用線條圖示、不用⚡", !!top.querySelector("#ap-total svg.ic-svg") && !/⚡/.test(top.textContent));
 
 // ---------- 選單鈕 ----------

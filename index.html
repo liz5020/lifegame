@@ -177,6 +177,11 @@
   .tb-stage{font-size:14px;font-weight:700;letter-spacing:.2px;line-height:1.35;}
   .tb-meta{font-size:11px;color:var(--ink-soft);line-height:1.5;margin-top:2px;}
   .tb-meta span{white-space:nowrap;}
+  /* 16.3.1(2026-10-09排版調整)：頭像右邊三排，總高與頭像(60px)同高；進度小灰字接在階段標題後；行動點與存款同粗細 */
+  .tb-mid{display:flex;flex-direction:column;justify-content:center;min-height:60px;}
+  .tb-mid .tb-meta{margin-top:0;}
+  .tb-prog{font-size:11px;font-weight:400;color:var(--ink-soft);margin-left:6px;font-variant-numeric:tabular-nums;}
+  .tb-money{font-variant-numeric:tabular-nums;}
   .tb-btns{display:flex;gap:6px;}
   .round-btn{width:36px;height:36px;border-radius:50%;border:1px solid rgba(74,46,31,.15);background:rgba(255,255,255,.55);
     color:var(--ink);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
@@ -214,7 +219,7 @@
   .dev-fab{position:fixed;top:10px;right:10px;z-index:310;box-shadow:0 2px 8px rgba(0,0,0,.25);}
   #panel-test .menu-note{word-break:break-all;}
   .tb-sub{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px;color:var(--ink-soft);gap:4px 8px;} /* QA 34.13#17：標籤太多時換行，存款不凸出卡片 */
-  .tb-sub .right{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .tb-sub:not(:has(.demo-tag)){display:none;} /* 沒有示範模式／未同步標籤時整排不佔位 */
   .demo-tag{font-size:10.5px;color:var(--stamp);border:1px solid rgba(200,85,61,.45);border-radius:999px;padding:0 8px;white-space:nowrap;}
   .demo-tag.side-tag{color:var(--ink-soft);border-color:rgba(74,46,31,.3);margin-left:4px;}
   .demo-tag.sync-tag{cursor:pointer;opacity:.75;}
@@ -428,15 +433,25 @@
   .home-hero.has-lives{min-height:0;padding-top:28px;} /* 有進行中的人生時，讓存檔卡片在第一個畫面就露出來 */
   .home-hero + .home-sec{margin-top:8px;} /* 露頭那個區塊的上方留白調小，56pt內看得到標題 */
   .home-hero .stamp{margin-bottom:clamp(8px,2.2svh,18px);}
-  .home-hero h1{font-family:var(--serif);font-size:36px;letter-spacing:6px;margin:6px 0 4px;}
+  .home-hero h1{font-family:var(--serif);font-size:36px;letter-spacing:6px;margin:6px 0 0;}
   /* 16.10.10斷句與對比度(2026-10-09)：置中短句balance、內文pretty；.nb＝以逗號頓號為界的不可拆詞組(inline-block，單段比螢幕寬時才在段內換行)；
      首頁三處小字改深色(色碼見設計文件16.10.10)，其餘文字不動 */
-  .home-sub{font-size:15px;color:#3E1912;margin:0 0 20px;letter-spacing:1px;text-wrap:balance;}
+  .home-sub{font-size:15px;color:#3E1912;margin:0 0 28px;letter-spacing:1px;text-wrap:balance;}
   .home .nb{display:inline-block;max-width:100%;}
   .home-lead,.home-foot p{text-wrap:balance;}
   .home-sec p,.faq p,.home-steps .step p{text-wrap:pretty;}
   .home-lead{font-size:14.5px;line-height:2;margin:0 0 clamp(10px,2.6svh,22px);}
   .home-hero .primary-btn,.home-hero .ghost-btn{width:100%;max-width:300px;}
+  /* 16.10.12(2026-10-09)：說明文字三段、每行不折行；三顆按鈕同一組，間距一律用 --home-btn-gap(12px)，高度同為 --home-btn-h */
+  .home{--home-btn-gap:12px;--home-btn-h:46px;}
+  .home-lead{white-space:nowrap;}
+  .home-lead:has(+ .home-lead){margin-bottom:12px;}
+  .home-btns{display:flex;flex-direction:column;align-items:center;gap:var(--home-btn-gap);width:100%;margin-top:10px;}
+  .home-btns > button{margin:0;width:100%;max-width:300px;min-height:var(--home-btn-h);display:flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;}
+  .home-btns .cloud-lives{font-size:13px;line-height:1.25;padding:5px 16px;text-align:center;}
+  .home-btns .cloud-lives > span{text-wrap:balance;}
+  .home-btns .cloud-lives .cl-part{display:inline-block;}
+  .home-hero .home-note.home-acct{margin-top:6px;}
   .home-note{font-size:12px;color:#4D3E35;margin-top:16px;line-height:1.7;max-width:320px;text-wrap:balance;}
   /* 16.10.N.5 名額行在主按鈕上方；三顆按鈕與名額行之間統一10px(＝按鈕的margin-top)，名額行上方沿用原本段落到主按鈕的距離；沒有名額行時不佔位 */
   .home-hero .home-note.home-entry{margin:10px 0 0;}
@@ -8697,8 +8712,12 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-f";
+const APP_VERSION = "2026.10.09-g";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-g", date:"2026-10-09", title:"頂部與首頁排版", items:[
+    "遊戲頂部改成三排整齊排在頭像右邊，整體變矮一些。",
+    "首頁說明文字分成三段，每行不再被切斷，三顆按鈕的間距也固定了。",
+  ]},
   { version:"2026.10.09-f", date:"2026-10-09", title:"首頁往下翻提示", items:[
     "首頁第一屏的底部多了「往下翻翻看」的小提示，下面的內容也會輕輕浮現。",
     "頂部不再顯示副業標籤；選到副業項目時，狀態會顯示在選單下方的說明文字上面。",
@@ -11944,14 +11963,18 @@ function renderHome(){
       <div class="stamp big restamp" id="home-stamp"><b>15</b>歲・起稿</div>
       <h1>人生草稿</h1>
       <p class="home-sub">這一次，換你決定要活成什麼樣子</p>
-      <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，撰稿人陪你一路寫到老。</p>
+      <p class="home-lead serif">住在哪裡、念哪所學校、<br>晚餐吃什麼，以前都是大人說了算。</p>
+      <p class="home-lead serif">直到十五歲那年夏天，<br>有人問你：「那你自己怎麼想？」</p>
+      <p class="home-lead serif">從那天起，答案由你來寫，<br>撰稿人陪你一路寫到老。</p>
       <p class="home-note home-entry" id="home-entry"></p>
-      <button class="primary-btn" id="btn-home-new">開始一段人生</button>
-      <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
-      ${acct ? `<p class="home-note" id="home-acct">已登入：${escapeHtml(acct.email_masked||"")}　<a id="link-home-logout" style="cursor:pointer;text-decoration:underline;">登出</a></p>`
-             : `<button class="ghost-btn" id="btn-home-login">已有帳號？用信箱登入</button>`}
-      ${acct && acctMissingLives()>0 ? `<button class="ghost-btn" id="btn-home-cloud-lives">${icon("cloud")} 帳號有 ${acctMissingLives()} 段人生存在雲端，拿回這台裝置</button>` : ``}
+      <div class="home-btns" id="home-btns">
+        <button class="primary-btn" id="btn-home-new">開始一段人生</button>
+        <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
+        ${acct ? `` : `<button class="ghost-btn" id="btn-home-login">已有帳號？用信箱登入</button>`}
+        ${acct && acctMissingLives()>0 ? `<button class="ghost-btn cloud-lives" id="btn-home-cloud-lives">${icon("cloud")}<span><span class="cl-part">帳號有 ${acctMissingLives()} 段人生存在雲端，</span> <span class="cl-part">拿回這台裝置</span></span></button>` : ``}
+      </div>
       <p class="home-note">免註冊，進度自動存在這台裝置，也會定期備份到雲端。換了手機，用「復原金鑰」接回你的人生。</p>
+      ${acct ? `<p class="home-note home-acct" id="home-acct">已登入：${escapeHtml(acct.email_masked||"")}　<a id="link-home-logout" style="cursor:pointer;text-decoration:underline;">登出</a></p>` : ``}
       <button class="home-more" id="home-more" type="button" aria-label="往下捲動，看更多內容"><span>往下翻翻看</span><span class="hm-arrow" aria-hidden="true">↓</span></button>
     </section>
     ${lives.length ? `
@@ -12010,7 +12033,7 @@ function wrapHomeText(root){
   root.querySelectorAll(".home-lead,.home-sec p.serif,.faq p,.home-foot p.serif").forEach(el=>{
     [...el.childNodes].forEach(n=>{
       if(n.nodeType!==3 || !n.nodeValue.trim()) return;
-      const parts = n.nodeValue.match(re); if(!parts || parts.length<2) return;
+      const parts = n.nodeValue.match(re); if(!parts || (parts.length<2 && !el.classList.contains("home-lead"))) return; // 說明文字每行是獨立文字節點，單組也要包(16.10.12)
       const frag = document.createDocumentFragment();
       parts.forEach(t=>{ const sp = document.createElement("span"); sp.className = "nb"; sp.textContent = t; frag.appendChild(sp); });
       n.replaceWith(frag);
@@ -12691,14 +12714,14 @@ function renderPlaying(loadingTurn){
     <div class="tb-main">
       ${renderAgeStamp(s.age, stageLabelForStamp(s), "tb-stamp")}
       <div class="tb-mid">
-        <div class="tb-stage">${escapeHtml(timeLabel)}<span id="cloud-save-tag-wrap">${cloudSaveTagHTML()}</span></div>
-        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span id="ap-total" role="button" tabindex="0" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）｜點一下開啟行動點錢包" : "點一下開啟行動點錢包"}">${icon("zap")} 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>第${s.turnCount}回合</span></div>
+        <div class="tb-stage">${escapeHtml(timeLabel)}${progress ? `<span class="tb-prog">${progress.current}/${progress.total}</span>` : ``}<span id="cloud-save-tag-wrap">${cloudSaveTagHTML()}</span></div>
+        <div class="tb-meta"><span>${escapeHtml(s.name)}・第${s.reincarnations+1}世</span>　<span>第${s.turnCount}回合</span></div>
+        <div class="tb-meta tb-money"><span id="ap-total" role="button" tabindex="0" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;" title="${apTestFreeActive() ? "測試：不扣行動點（開發用）｜點一下開啟行動點錢包" : "點一下開啟行動點錢包"}">${icon("zap")} 行動點 ${apTestFreeActive() ? "∞ 測試中" : totalAP(s)}</span>　<span>存款 <span id="tb-cash">${s.cash.toLocaleString()}</span></span></div>
       </div>
     </div>
     <div class="tb-sub">
       ${USE_MOCK ? `<span class="demo-tag" title="目前用規則模擬旁白，不是真的AI生成">示範模式</span>` : ``}
       <span id="sync-tag-wrap">${syncTagHTML()}</span>
-      <span class="right">${progress ? `${escapeHtml(progress.shortLabel||progress.label)} ${progress.current}/${progress.total}　` : ``}存款 <b id="tb-cash">${s.cash.toLocaleString()}</b></span>
     </div>
   </header>
   <main class="journal">${renderStory(s, loadingTurn)}</main>
