@@ -101,6 +101,8 @@ export class UsageCounter {
     let dirty = false;
     if (op === "add" && request.method === "POST") {
       cur.calls += 1;
+      const fail = p.get("fail"); // 2026-10-09：AI呼叫失敗的錯誤類型(狀態碼／network)，每天分類計次，只有數字不含內容
+      if (fail) { cur.fails = cur.fails || {}; cur.fails[fail] = (cur.fails[fail] || 0) + 1; }
       const cost = Number(p.get("cost"));
       const c = p.has("cost") && Number.isFinite(cost) && cost >= 0 ? cost : (await this._estimate(date, estFallback, minCalls)).twd; // 沒有回報用量(失敗呼叫)：照預估計入
       cur.spent += c;
@@ -247,11 +249,13 @@ export function flushNotices(env, ctx, due) {
 
 // 每次AI呼叫記一筆花費；達80%／上限時通知。計數失敗絕不能影響回合。
 // 十、10.9.3.1a補充二(2026-10-08)：伺服器有回報用量的呼叫記實際花費(台幣)；沒有回報用量的(失敗呼叫、連線失敗)照這次預估計入(預估由計數器算：近7天平均，資料不足用固定估價)
-export async function countAICall(env, ctx, actualTwd) {
+export async function countAICall(env, ctx, actualTwd, fail) {
   try {
     if (!usageCounterStub(env)) return;
     const hasActual = Number.isFinite(actualTwd) && actualTwd >= 0;
-    const r = await usageCall(env, "add", hasActual ? { cost: String(actualTwd) } : {});
+    const params = hasActual ? { cost: String(actualTwd) } : {};
+    if (fail) params.fail = String(fail).replace(/[^A-Za-z0-9_:.-]/g, "").slice(0, 40); // 失敗類型(例：529:overloaded_error、network)
+    const r = await usageCall(env, "add", params);
     const j = flushNotices(env, ctx, r && r.due);
     if (j) await j;
   } catch (e) { /* 只是紀錄 */ }

@@ -46,12 +46,24 @@ A.check("8天後：舊資料超過7天不算，近7天呼叫次數少於門檻�
 // 4. 失敗的呼叫（伺服器沒回報用量）照這次預估計入
 env = await mk({ DAILY_SPEND_CAP: "500", SPEND_ESTIMATE_MIN_CALLS: "3" });
 for (let i = 0; i < 3; i++) await turn(env);   // 實際平均2元
+const warns = [], origWarn = console.warn;
+console.warn = (...a) => { warns.push(a.join(" ")); };
 fail = true; await turn(env); fail = false;
+console.warn = origWarn;
 t = await today(env);
 A.check("失敗呼叫照預估計入：3次成功6元＋1次失敗按近7天平均2元＝8元", t.calls === 4 && t.est_cost_twd === 8, t);
+// 2026-10-09：失敗依錯誤類型計次，原因寫進Workers Logs(不含玩家內容)
+A.check("/usage-today的failures記下今天失敗的錯誤類型與次數", t.failures && t.failures["529"] === 1 && Object.keys(t.failures).length === 1, t.failures);
+const w = warns.find(x => x.includes("AI呼叫失敗"));
+A.check("失敗時寫一行紀錄：狀態碼、錯誤訊息、呼叫類型與回合", !!w && w.includes("狀態 529") && w.includes("fake upstream error") && w.includes("第2回合"), w);
+A.check("失敗紀錄不含玩家送出的內容", !!w && !w.includes("讀書"), w);
+env = await mk({ DAILY_SPEND_CAP: "500" }); await turn(env);
+t = await today(env);
+A.check("沒有失敗時failures是空的", t.failures && Object.keys(t.failures).length === 0, t.failures);
 
 // 5. 設定值放後台、不寫進wrangler.toml；通知信的金額取兩位小數
 const toml = fs.readFileSync(new URL("../worker/wrangler.toml", import.meta.url), "utf8");
+A.check("wrangler.toml打開Workers Logs(部署才不會蓋掉後台的開關)", /^\[observability\]\s*\nenabled\s*=\s*true/m.test(toml));
 A.check("SPEND_ESTIMATE_MIN_CALLS 只放Cloudflare後台，沒有寫進wrangler.toml的設定值", !/^\s*SPEND_ESTIMATE_MIN_CALLS\s*=/m.test(toml));
 const { noticeMail } = await import("../worker/mail.js");
 A.check("通知信金額不會出現一長串小數", /今日估計花費：10\.33 元/.test(noticeMail("spend80", { spent: 10.3333333, cap: 12, now: T0 }).text), noticeMail("spend80", { spent: 10.3333333, cap: 12, now: T0 }).text);

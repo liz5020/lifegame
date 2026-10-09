@@ -9028,8 +9028,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-m";
+const APP_VERSION = "2026.10.09-n";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-n", date:"2026-10-09", title:"幕後的穩定性調整", items:[
+    "改善了故事寫不出來時的排查方式，遊玩內容沒有變化。",
+  ]},
   { version:"2026.10.09-m", date:"2026-10-09", title:"小地方的整理", items:[
     "整理了一些畫面上不常用到的地方，遊玩內容沒有變化。",
   ]},
@@ -9312,7 +9315,7 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
         turn_nonce: timeCtx && timeCtx.turnNonce,
         life_id: ensureLifeId(state),
         ap_hint: timeCtx && timeCtx.apBefore,
-        ap_test_free: apTestFreeOn() || undefined, // 10.3.12：只是請求，Worker只認登記過的測試鑰匙
+        ap_test_free: apTestFreeOn() || undefined, // 10.3.12：只是請求，Worker只認登記過的測試鑰匙(帳號錢包：測試帳號名單)
         wallet: walletActive(state) || undefined,  // 十、10.9.2：這段人生用帳號共用錢包，由Worker在呼叫AI前預扣、失敗退點
         retry: (timeCtx && timeCtx.isRetry) || undefined, // 十、10.17.5：玩家按「再試一次」沿用同一個turn_nonce，Worker據此不重複扣點、又失敗時退回
         messages: [{ role:"user", content: userMsgStr }]
@@ -9349,7 +9352,7 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
   if(res.status===401 && walletActive(state)){ const err = new Error("登入已失效"); err.noRetry = true; err.unauthorized = true; acctSessionLost(); throw err; }
   if(res.ok) clearDailyCapNote(); // 呼叫成功＝額度恢復了
   if(data && data.lifegame) lastTurnServerInfo = data.lifegame;
-  if(data && data.lifegame && apTestFreeOn()) apTestFreeRefused = data.lifegame.ap_test_free !== true; // 10.3.12：不是測試鑰匙→開關無效
+  if(data && data.lifegame && apTestFreeOn() && ("ap_test_free" in data.lifegame)) apTestFreeRefused = data.lifegame.ap_test_free !== true; // 10.3.12：不是測試鑰匙／測試帳號→開關無效(只看有回報這一欄的路徑)
   if(data && data.lifegame && data.lifegame.usage){
     callMeta.outChars = outputBlockChars(data);
     addDevUsage(state, Object.assign({}, data.lifegame.usage, { sys_chars: data.lifegame.sys_chars||0 }), callMeta); // 測試選單：這一世累計用量＋10.9.4逐筆紀錄
@@ -15935,7 +15938,10 @@ let apTestFreeRefused = false;
 function apTestFreeOn(){
   try{ return devToolsOn() && localStorage.getItem(AP_TEST_FREE_KEY)==="yes"; }catch(e){ return false; }
 }
-function apTestFreeActive(){ return apTestFreeOn() && (!SERVER_AP || !apTestFreeRefused) && !(!USE_MOCK && walletActive(state)); } // 十、10.9.2：真實模式的帳號錢包由伺服器扣，開關無效 // 10.8：點數在本機時，開關直接在本機生效
+// 10.8：點數在本機時，開關直接在本機生效；伺服器管點數時(雲端打開、或真實模式的帳號錢包)看伺服器認不認
+// （2026-10-09：帳號錢包原本一律無效，改為伺服器測試帳號名單AP_TEST_ACCOUNTS上的帳號有效）
+function apTestFreeServerDecides(){ return SERVER_AP || (!USE_MOCK && walletActive(state)); }
+function apTestFreeActive(){ return apTestFreeOn() && (!apTestFreeServerDecides() || !apTestFreeRefused); }
 function setApTestFree(on){
   try{ if(on) localStorage.setItem(AP_TEST_FREE_KEY, "yes"); else localStorage.removeItem(AP_TEST_FREE_KEY); }catch(e){}
   apTestFreeRefused = false;
@@ -16059,7 +16065,7 @@ function renderTestMenuBody(s){
     <a class="menu-item" id="dev-toggle-api">${USE_MOCK ? "切換成真實API" : "切回模擬模式"}</a>
     <div class="menu-sec">行動點</div>
     <a class="menu-item" id="dev-toggle-ap-free">${apTestFreeOn() ? "☑" : "☐"} 測試：不扣行動點</a>
-    ${apTestFreeOn() && SERVER_AP && apTestFreeRefused ? `<div class="menu-note">伺服器不認這把金鑰是測試鑰匙，開關無效（照常扣點）</div>` : ``}
+    ${apTestFreeOn() && apTestFreeServerDecides() && apTestFreeRefused ? `<div class="menu-note">${!USE_MOCK && walletActive(s) ? "這個帳號不是測試帳號，開關無效（照常扣點）" : "伺服器不認這把金鑰是測試鑰匙，開關無效（照常扣點）"}</div>` : ``}
     <div class="menu-sec">用量</div>
     <div class="menu-note" id="dev-usage-last">${escapeHtml(devUsageText())}</div>
     <div class="menu-note" id="dev-usage-total">${escapeHtml(devUsageTotalText(s))}</div>

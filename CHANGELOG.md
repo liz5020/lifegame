@@ -10,6 +10,12 @@
 
 ---
 
+## 2026-10-09 開發部：「不扣行動點」測試開關擴及帳號錢包（版本2026.10.09-m）
+- 依設計文件10.3.12（2026-10-09使用者同意）：原本登入帳號用帳號錢包玩時，開關一律無效、選單也沒提示。
+- `worker/worker.js`：新增`apTestAccounts(env)`讀secret `AP_TEST_ACCOUNTS`(逗號分隔信箱)；錢包路徑的`wallet_pre`在前端送`ap_test_free`時一併轉名單，回應帶`lifegame.ap_test_free`。`worker/account.js`：`opWalletPre`帳號信箱在名單上就不預扣、不記nonce(`wallet_post`找不到預扣紀錄就不動錢包)。
+- `index.html`：新增`apTestFreeServerDecides()`(雲端打開或真實模式帳號錢包＝伺服器決定)；`apTestFreeRefused`只依有回報`ap_test_free`欄位的回應更新；測試選單在帳號錢包被拒時顯示「這個帳號不是測試帳號，開關無效（照常扣點）」。
+- 新增`tests/test-87-ap-test-account.mjs`(10/10通過)。上線前要在Cloudflare設`AP_TEST_ACCOUNTS`。
+
 ## 2026-10-09 開發部：版本號連點5下打開測試選單（版本2026.10.09-m）
 - 起因：從手機桌面圖示打開的遊戲沒有網址列，不能加`?dev=1`；iPhone桌面圖示的資料又跟Safari分開，Safari開了也看不到桌面圖示那邊的成本紀錄。
 - `index.html`：首頁底部版本號(`#home-ver`)、遊戲中「更新紀錄」裡的版本行(`#updates-ver`)標`data-dev-tap`，連點5下(每下間隔1.5秒內)＝寫入`DEV_TOOLS_KEY`，效果同`?dev=1`；文字改為「已打開測試選單」並重畫(遊戲中保留輸入框的字，AI寫作中不重畫)。關閉照舊用`?dev=0`或測試選單。更新紀錄只寫一句籠統說明，不對玩家公開這個開關。

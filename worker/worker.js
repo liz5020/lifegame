@@ -148,6 +148,12 @@ function isAllowedOrigin(origin) {
 function isValidKey(key) {
   return typeof key === "string" && key.length > 0 && key.length <= MAX_KEY_LENGTH;
 }
+// 十、10.3.12（2026-10-09）：測試帳號名單＝secret AP_TEST_ACCOUNTS(逗號分隔的帳號信箱)；沒設定就沒有任何帳號有效(回傳null)
+function apTestAccounts(env) {
+  if (!env || typeof env.AP_TEST_ACCOUNTS !== "string") return null;
+  const list = env.AP_TEST_ACCOUNTS.split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+  return list.length ? list : null;
+}
 // 十、10.3.12（2026-09-29）：測試鑰匙名單＝secret AP_TEST_KEYS(逗號分隔)；沒設定就沒有任何人有效
 // 十、10.8.2（2026-10-04定案）：名單改為只存門牌(64碼十六進位)；這裡收到的key已經是請求入口換好的門牌，直接比對
 function isApTestKey(env, key) {
@@ -747,6 +753,7 @@ async function buildUsageToday(env) {
     out.pct_of_cap = Math.round(out.est_cost_twd / cap * 1000) / 10;
     out.paused_for_never_purchased = !!d.capped; // 10.9.3.1：「當日花費＋這次預估」達上限＝暫停從未購買過的帳號(10.9.3.1a補充二)
     if (d.estimate_twd !== undefined) { out.est_cost_per_call_twd = d.estimate_twd; out.estimate_source = d.estimate_source; out.recent_7d_calls = d.recent_calls; }
+    out.failures = d.fails || {}; // 2026-10-09：今天AI呼叫失敗依錯誤類型計次
     out.gifts = { issued: d.gifts || 0, queued: d.queued || 0, cap: out.daily_gift_cap };
     out.notices = {};
     for (const [k, v] of Object.entries(d.notices || {})) out.notices[k] = { sent: !!v.sent, attempts: v.attempts || 0 };
@@ -763,6 +770,11 @@ async function handleUsageToday(request, env) {
   return new Response(JSON.stringify(await buildUsageToday(env), null, 2), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
 
+// 2026-10-09：AI呼叫失敗的紀錄附上呼叫類型、是否開場、回合編號與耗時(不含人生代號與內容)
+function aiFailMetaText(meta, ms) {
+  if (!meta) return "（耗時" + ms + "毫秒）";
+  return "（類型" + (meta.kind || "turn") + (meta.prologue ? "，開場" : "") + (meta.turn !== undefined && meta.turn !== null ? "，第" + meta.turn + "回合" : "") + "，耗時" + ms + "毫秒）";
+}
 // 十、10.14.7（2026-10-04）：meta有值時，回應成功後在背景把Anthropic回報的實際用量記進用量計數器(不影響回應速度與內容)
 async function callAnthropic(env, upstreamBody, ctx, meta) {
   let res;
@@ -778,14 +790,22 @@ async function callAnthropic(env, upstreamBody, ctx, meta) {
       body: JSON.stringify(upstreamBody)
     });
   } catch (e) {
-    await countAICall(env, ctx); // 連線失敗也算一次呼叫(2026-10-02定案A3：每日花費上限是內部成本帳，所有呼叫含失敗的都計入)；沒有回報用量，照預估計入(10.9.3.1a補充二)；玩家端照舊不扣點、不算回合
+    console.warn("AI呼叫失敗：連線錯誤 " + String(e && e.message || e).slice(0, 300) + aiFailMetaText(meta, Date.now() - startedAt)); // 2026-10-09：寫進Workers Logs查原因
+    await countAICall(env, ctx, undefined, "network"); // 連線失敗也算一次呼叫(2026-10-02定案A3：每日花費上限是內部成本帳，所有呼叫含失敗的都計入)；沒有回報用量，照預估計入(10.9.3.1a補充二)；玩家端照舊不扣點、不算回合
     throw e;
   }
   const elapsedMs = Date.now() - startedAt;
   // 十、10.9.3.1／10.9.3.3／10.9.3.1a補充二(2026-10-08)：每次AI呼叫記一筆花費——有回報用量的記實際花費(美元×匯率)，沒有的(失敗呼叫)照預估；達80%／上限時寄管理通知信
   let usage = null;
   if (res.ok) { try { const d = await res.clone().json(); if (d && d.usage) usage = extractUsage(d.usage); } catch (e) { usage = null; } }
-  await countAICall(env, ctx, usage ? costUSD(usage) * USD_TO_TWD : undefined);
+  let fail;
+  if (!res.ok) { // 2026-10-09：AI回錯誤時把狀態碼、錯誤類型與訊息寫進Workers Logs(不含玩家內容)，並按類型計次(/usage-today的failures)
+    let type = "", msg = "";
+    try { const t = await res.clone().text(); try { const j = JSON.parse(t); type = (j && j.error && j.error.type) || ""; msg = (j && j.error && j.error.message) || ""; } catch (e) { msg = t; } } catch (e) { /* 讀不到內容就只記狀態碼 */ }
+    fail = res.status + (type ? ":" + type : "");
+    console.warn("AI呼叫失敗：狀態 " + res.status + (type ? " " + type : "") + " " + String(msg).slice(0, 300) + aiFailMetaText(meta, elapsedMs));
+  }
+  await countAICall(env, ctx, usage ? costUSD(usage) * USD_TO_TWD : undefined, fail);
   if (meta && usage) {
     const job = recordAIUsage(env, Object.assign({}, meta, { ms: elapsedMs }), usage, costUSD(usage)).catch(() => {});
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
@@ -850,7 +870,9 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
   if (wallet && isTurn) {
     if (!isValidNonce(body.turn_nonce)) return jsonResponse(origin, { error: { type: "invalid_request", message: "缺少turn_nonce" } }, 400);
     const isPrologue = !!(check.payload.time_context && check.payload.time_context.is_prologue === true);
-    const r = await acctCall({ op: "wallet_pre", nonce: body.turn_nonce, life_id: safeLifeId, is_prologue: isPrologue, retry: body.retry === true });
+    const testAccts = body.ap_test_free === true ? apTestAccounts(env) : null; // 10.3.12（2026-10-09）：測試帳號名單
+    const r = await acctCall(Object.assign({ op: "wallet_pre", nonce: body.turn_nonce, life_id: safeLifeId, is_prologue: isPrologue, retry: body.retry === true },
+      testAccts ? { ap_test_free: true, test_accounts: testAccts } : {}));
     if (!r.ok) return walletFail(r);
     walletPre = r.pre;
   } else if (wallet && body.kind === "life_review") {
@@ -874,6 +896,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
   else if (wallet && body.kind === "life_review" && usable) await acctCall({ op: "wallet_spend", n: LIFE_REVIEW_COST });
   const lifegame = { usable, cloud_disabled: true };
   if (wallet) { lifegame.wallet = walletInfo; lifegame.wallet_events = walletEvents; lifegame.charged = !!(walletPre && walletPre.charged && usable); }
+  if (wallet && isTurn && body.ap_test_free === true) lifegame.ap_test_free = !!(walletPre && walletPre.test_free); // 10.3.12：前端據此顯示開關有沒有效
   if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
@@ -1114,7 +1137,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.09-m";
+const WORKER_VERSION = "2026.10.09-n";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

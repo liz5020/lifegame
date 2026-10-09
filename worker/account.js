@@ -588,6 +588,12 @@ export class AccountStore {
     if (typeof b.nonce !== "string" || !/^[a-z0-9]{6,40}$/.test(b.nonce)) return { ok: false, error: "bad_nonce", status: 400 };
     const ctx = this._ctx(b);
     const flags = await this._tick(a, ctx);
+    // 十、10.3.12（2026-10-09）：測試用「不扣行動點」——Worker轉來測試帳號名單(secret AP_TEST_ACCOUNTS)，本帳號信箱在名單上才不扣點；
+    // 不預扣、不記nonce，wallet_post找不到預扣紀錄就不動錢包
+    if (b.ap_test_free === true && Array.isArray(b.test_accounts) && a.email && b.test_accounts.includes(normalizeEmail(a.email))) {
+      await this._putAcct(a);
+      return this._out(a, { wallet: publicWallet(a), pre: { charged: false, free_prologue: false, repeat: false, test_free: true } }, flags, flags.giftChanged ? await this._giftStats(ctx) : null);
+    }
     const pre = preCharge(a.wallet, { nonce: b.nonce, isPrologue: !!b.is_prologue, lifeId: b.life_id, retryOfFailed: b.retry === true });
     if (pre.ok) {
       a.wallet.pres[b.nonce] = pre;

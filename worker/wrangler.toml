@@ -4,6 +4,11 @@ main = "worker.js"
 compatibility_date = "2025-06-01"
 keep_vars = true              # 保留Cloudflare後台既有的變數設定
 
+# 2026-10-09：打開Workers Logs(後台Worker頁面的Logs分頁)，AI呼叫失敗時的狀態碼與錯誤訊息會寫在這裡。
+# 寫在設定檔裡，部署時才不會把後台打開的開關蓋掉
+[observability]
+enabled = true
+
 # 跨裝置存檔用的KV(程式碼裡的env.SAVES)。⚠️第一次部署前要把id換成實際值：
 #   npx wrangler kv namespace list   → 找到目前綁定在這個Worker上的那個namespace(例如life-game-saves)，複製它的id
 # 不填或填錯，部署後存檔/讀檔/行動點功能會壞掉
