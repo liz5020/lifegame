@@ -96,7 +96,7 @@ A.check("P3 防護句不跟「玩家選擇一定先執行」「超現實內容�
   gate.release(); await sleep(30); // 放行卡住的那次(Worker那邊其實已經寫好了)
   bodies.length = 0;
   doc.getElementById("btn-retry-turn").click();
-  await waitFor(() => ev("state.turnCount") === turn0 + 1 && !ev("aiWritingNow"));
+  await waitFor(() => bodies.length >= 1 && ev("state.turnCount") === turn0 + 1 && !ev("aiWritingNow"));
   H.clickModals(g.win);
   A.check("C6 按再試一次：沿用同一個回合編號、帶retry旗標、同一個行動", bodies.length >= 1 && bodies[0].turn_nonce === ll.retryNonce && bodies[0].retry === true && ev("state.log[state.log.length-1].action") === "去圖書館", { b: bodies.map(x => [x.turn_nonce, x.retry]) });
   A.check("C7 成功後只扣1點、回合+1", ev("totalAP(state)") === ap0 - 1 && ev("state.turnCount") === turn0 + 1);
@@ -106,7 +106,7 @@ A.check("P3 防護句不跟「玩家選擇一定先執行」「超現實內容�
 
   // --- 非逾時錯誤：等一下再重打 ---
   ev("AI_RETRY_DELAY_MS = 250"); failFirst = 1; upTimes.length = 0;
-  await H.playTurn(g, "喝杯茶");
+  await H.playTurn(g, "喝杯茶"); await waitFor(() => upTimes.length >= 2 && !ev("aiWritingNow"));
   A.check("C9 非逾時錯誤：第一次失敗後等了約250毫秒才重打，第二次成功", upTimes.length === 2 && upTimes[1] - upTimes[0] >= 240 && !ev("state.log[state.log.length-1].error"), { gap: upTimes[1] - upTimes[0], n: upTimes.length });
   ev("AI_RETRY_DELAY_MS = 0");
 
