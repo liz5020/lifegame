@@ -8,7 +8,11 @@ H.installUpstream(H.makeFakeAnthropic({ turnOverride: (p) => { lastBody = JSON.s
 const g = await H.loadGame({ useMock: false, env: H.makeEnv(), key: "jobtable001" });
 const ev = g.ev, doc = g.win.document;
 const js = (x) => JSON.parse(ev(`JSON.stringify(${x})`));
-await H.startNewLife(g);
+// 開局家庭隨機，隔代教養沒有父母卡，家長那幾項會沒得測：重抽到有父母卡的開局(2026-10-10修正偶發失敗)
+for (let i = 0; i < 30; i++) {
+  await H.startNewLife(g);
+  if (ev("state.characters.some(c=>c.origin==='父母，從出生起' && c.occupation)")) break;
+}
 await H.playTurn(g);
 
 // ---------- 細表本身 ----------
