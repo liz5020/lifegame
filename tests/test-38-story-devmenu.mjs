@@ -93,6 +93,21 @@ A.check("沒有?dev=1：頂部列沒有🧪、沒有測試面板", !m.win.docume
 A.check("mock：開場回合交段落清單也正常顯示", !!m.win.document.getElementById("latest-entry"));
 await H.playTurn(m); await H.waitIdle(m, 900);
 A.check("沒有?dev=1：不留旁白完整資料", !m.ev("state.devAiLog"));
+// 2026-10-09：桌面圖示沒有網址列——版本號連點5下打開測試選單
+m.win.document.getElementById("link-updates").click();
+const verEl = () => m.win.document.getElementById("updates-ver");
+for (let i = 0; i < 4; i++) verEl().click();
+A.check("更新紀錄版本號點4下：還沒打開", !m.ev("devToolsOn()") && !m.win.document.getElementById("tile-test"));
+verEl().click();
+A.check("點第5下：打開測試選單、抽屜多「測試」、提示文字", m.ev("devToolsOn()") && !!m.win.document.querySelector("#drawer #tile-test") && verEl().textContent === "已打開測試選單");
+const h3 = await H.loadGame({ useMock: true, env: H.makeEnv(), key: "storykey04" });
+h3.ev("state = {phase:'home'}; render()");
+A.check("首頁沒有dev旗標：沒有🧪", !h3.win.document.getElementById("dev-fab"));
+h3.ev("devTapAt = Date.now() - 5000; devTapN = 4");
+h3.win.document.getElementById("home-ver").click();
+A.check("間隔超過1.5秒重新計算", !h3.ev("devToolsOn()"));
+for (let i = 0; i < 4; i++) h3.win.document.getElementById("home-ver").click();
+A.check("首頁底部版本號連點5下：右上角出現🧪", h3.ev("devToolsOn()") && !!h3.win.document.getElementById("dev-fab"));
 // 首頁(有dev旗標)：右上角浮動鈕
 const h2 = await H.loadGame({ useMock: true, env: H.makeEnv(), key: "storykey03", dev: true });
 h2.ev("state = {phase:'home'}; render()");

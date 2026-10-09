@@ -9028,8 +9028,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-l";
+const APP_VERSION = "2026.10.09-m";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-m", date:"2026-10-09", title:"小地方的整理", items:[
+    "整理了一些畫面上不常用到的地方，遊玩內容沒有變化。",
+  ]},
   { version:"2026.10.09-l", date:"2026-10-09", title:"花費不再無預警冒出來", items:[
     "學生時期要自己掏錢的場合，現在都有前因才會出現，不會憑空跳出來。",
   ]},
@@ -9252,7 +9255,7 @@ function renderUpdatesModal(){
   div.innerHTML = `
     <div class="modal legend" style="max-width:520px;width:92vw;max-height:82vh;display:flex;flex-direction:column;">
       <h3>更新紀錄</h3>
-      <p id="updates-ver" style="font-size:12.5px;opacity:.75;margin:0 0 8px;">目前版本 ${escapeHtml(APP_VERSION)}（${escapeHtml(cur.date)}）${USE_MOCK ? "・測試模式" : "・伺服器版本查詢中…"}</p>
+      <p id="updates-ver" data-dev-tap style="font-size:12.5px;opacity:.75;margin:0 0 8px;">目前版本 ${escapeHtml(APP_VERSION)}（${escapeHtml(cur.date)}）${USE_MOCK ? "・測試模式" : "・伺服器版本查詢中…"}</p>
       <div style="overflow-y:auto;flex:1;">
         ${RELEASE_NOTES.map(r=>`<h4>${escapeHtml(r.date)}　${escapeHtml(r.title)}</h4><ul style="margin:4px 0 12px 18px;padding:0;text-align:left;">${r.items.map(x=>`<li>${escapeHtml(x)}</li>`).join("")}</ul>`).join("")}
       </div>
@@ -9409,6 +9412,22 @@ const DEV_TOOLS_KEY = "lifegame_dev_tools";
     if(dev==="0"){ localStorage.removeItem(DEV_TOOLS_KEY); localStorage.removeItem(FORCE_REAL_API_KEY); }
   }catch(e){}
 })();
+// 2026-10-09：從手機桌面圖示打開的遊戲沒有網址列、不能加?dev=1(iPhone桌面圖示的資料也跟Safari分開)：
+// 版本號(首頁底部、更新紀錄裡那一行，標data-dev-tap)連點5下(每下間隔1.5秒內)＝打開測試選單，效果同?dev=1
+const DEV_TAP_COUNT = 5, DEV_TAP_GAP_MS = 1500;
+let devTapN = 0, devTapAt = 0;
+document.addEventListener("click", e=>{
+  const el = e.target.closest && e.target.closest("[data-dev-tap]"); if(!el) return;
+  const now = Date.now();
+  devTapN = now-devTapAt <= DEV_TAP_GAP_MS ? devTapN+1 : 1; devTapAt = now;
+  if(devTapN < DEV_TAP_COUNT) return;
+  devTapN = 0;
+  try{ localStorage.setItem(DEV_TOOLS_KEY, "yes"); }catch(e){ return; }
+  el.textContent = "已打開測試選單";
+  if(state && state.phase==="playing"){ if(!aiWritingNow) keepDraftAndRender(); } // 遊戲中重畫選單才會出現「測試」(輸入框的字留著)；AI寫作中不重畫，等這回合畫完自然出現
+  else render();
+  ensureDebugUI();
+});
 // 2026-09-30(第三批，使用者同意)：正式網址(玩家用的lifegame-6an.pages.dev)預設用真AI，讓封測玩家直接玩；其他網址(本機、預覽、測試)仍預設示範模式。
 // 旗標優先：lifegame_force_real_api＝"yes"強制真AI、"no"強制示範；沒有旗標才看網址。費用提醒：正式網址每個玩家的回合都是真AI呼叫，靠10.9.3.1每日花費上限與Anthropic後台每月上限控管
 const OFFICIAL_HOSTS = ["draftmylife.com", "lifegame-6an.pages.dev"]; // 2026-10-04加入正式網域draftmylife.com；舊Pages網址照舊算正式網址
@@ -12367,7 +12386,7 @@ function renderHome(){
       <p class="serif">這一頁讀完了，下一頁還空著。</p>
       <button class="ghost-btn" id="btn-home-top">↑ 翻回第一頁</button>
       <div class="foot-mark">人生草稿</div>
-      <div class="foot-copy">© 2026 人生草稿・版本 ${escapeHtml(APP_VERSION)}（${escapeHtml(currentRelease().date)}）</div>
+      <div class="foot-copy" id="home-ver" data-dev-tap>© 2026 人生草稿・版本 ${escapeHtml(APP_VERSION)}（${escapeHtml(currentRelease().date)}）</div>
       <div class="foot-copy" id="home-soon">奇幻人生，即將推出</div>
       <div class="foot-copy" id="home-legal"><a href="/pricing" target="_blank" rel="noopener">收費說明</a>｜<a href="/terms" target="_blank" rel="noopener">服務條款</a>｜<a href="/privacy" target="_blank" rel="noopener">隱私權政策</a></div>
     </footer>
