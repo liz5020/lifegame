@@ -280,6 +280,7 @@
   .stl-row{display:flex;justify-content:space-between;gap:10px;}
   .stl-item.open .stl-pop{display:block;}
   @media (hover:hover){ .stl-item:hover .stl-pop{display:block;} }
+  .support-note{font-size:12px;color:var(--ink-soft);margin:10px 0 0 !important;font-family:var(--sans) !important;line-height:1.6 !important;}
   .small-line{font-size:11.5px;color:var(--ink-soft);margin:8px 0 0 !important;font-family:var(--sans) !important;line-height:1.6 !important;}
   .entry.chronicle{font-size:12px;color:var(--ink-soft);border-left:2px solid var(--line);padding-left:10px;margin:10px 0;}
   /* 16.3.6 旁白錯誤 */
@@ -10938,7 +10939,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   noteReunionAppeared(s, fullText); // 七、7.4.3.4：轉世指定NPC有沒有在敘事裡登場
   // 二、2.6.2（2026-09-28）：學生時期的數值標記依來源上色——重心帶來的橘色、回應(及其他)帶來的紫色
   const focusMarks = studentTurn ? buildFocusMarks(s, turnFocus, focusChanges) : undefined; // 沒有任何重心變化時也要留空物件：代表這則用來源上色
-  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", settlement:compactSettlementForLog(s.lastSettlement), statChanges, focusMarks, relationshipHints,
+  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", supportFlag: r.support_flag===true || undefined, settlement:compactSettlementForLog(s.lastSettlement), statChanges, focusMarks, relationshipHints,
     /* B5（2026-09-29）：這回合的重心也記在日記上(選擇紀錄、下載故事) */ focusLabel: turnFocus ? focusLogLabel(turnFocus) : undefined, focusNote: s.focusYearNote || undefined,
     /* 二、2.4.2（A2）：分數組成在公布時攤開 */ examNote: (timeCtx && timeCtx.examCheck) ? `${timeCtx.examCheck.examType}：${examBreakdownText(timeCtx.examCheck)}` : undefined, purchaseNote: purchaseNotes.join("；")||undefined, levelNotes: interestLevelNote||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
@@ -12544,13 +12545,15 @@ function splitEntryText(e){
   const split = Number.isInteger(e.sceneAt) && e.sceneAt>=0 && e.sceneAt<=text.length;
   return { split, resultText: split ? text.slice(0, e.sceneAt).trim() : "", sceneText: split ? text.slice(e.sceneAt).trim() : text };
 }
+// 一、1.2.20第九點（2026-10-09）：AI回報support_flag的回合，在旁白下方小字顯示求助資訊；每次都顯示、不跳窗，舊回合收合時一起收合
+const SUPPORT_NOTE_TEXT = "如果你自己也有類似的心情，可以打安心專線 1925，或生命線 1995，二十四小時都有人接。";
 function renderEntryBody(e, withTag){
   const text = String(e.text||"");
   const { split, resultText, sceneText } = splitEntryText(e);
   const story = split
     ? `${resultText ? renderParagraphs(resultText, true) : ``}${resultText && sceneText ? `<hr class="turn-divider" aria-hidden="true">` : ``}${renderParagraphs(sceneText, true)}`
     : renderParagraphs(text, true);
-  return `${e.action ? `<div class="choice-line">→ ${escapeHtml(e.action)}${e.focusLabel ? `<span class="focus-note">　重心：${escapeHtml(e.focusLabel)}</span>` : ``}</div>` : ``}${withTag ? `<div class="age-tag">${renderEntryTag(e)}</div>` : ``}${story}
+  return `${e.action ? `<div class="choice-line">→ ${escapeHtml(e.action)}${e.focusLabel ? `<span class="focus-note">　重心：${escapeHtml(e.focusLabel)}</span>` : ``}</div>` : ``}${withTag ? `<div class="age-tag">${renderEntryTag(e)}</div>` : ``}${story}${e.supportFlag ? `<p class="support-note">${SUPPORT_NOTE_TEXT}</p>` : ``}
     <div class="entry-meta">${(withTag && e.genMs!=null && devToolsOn()) ? `<p class="small-line dev-gen-time">${icon("timer")} AI生成 ${(e.genMs/1000).toFixed(1)} 秒（測試模式）</p>` : ``}${renderStatChanges(e.statChanges, e.focusMarks)}${renderRelationshipHints(e.relationshipHints)}${renderPurchaseNote(e.purchaseNote)}${e.examNote ? `<p class="small-line">${escapeHtml(e.examNote)}</p>` : ``}${e.sideBusinessNote ? `<p class="small-line">${escapeHtml(e.sideBusinessNote)}</p>` : ``}${e.settlement ? `<p class="small-line late">${settlementHtml(e.settlement, state.cash)}</p>` : ``}${(e.levelNotes||[]).map(t=>`<p class="small-line late">${escapeHtml(t)}</p>`).join("")}${e.focusNote ? `<p class="small-line late">${escapeHtml(e.focusNote)}</p>` : ``}</div>`;
 }
 // 16.3.2（2026-09-28改定）：最新一回合完整卡片之上，保留更早的3個回合，各收合成一行摘要，點開展開(展開後同樣套用16.3.8.2排版)

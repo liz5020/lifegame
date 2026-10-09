@@ -10,6 +10,14 @@
 
 ---
 
+## 2026-10-09 開發部：一、1.2.20 違法行為與內容底線＋support_flag求助資訊
+
+- 設計文件：新增一、1.2.20（原稿編號1.2.11與親密關係章節撞號，使用者確認改編1.2.20）；1.2.11.1「另案討論」那句改為指向1.2.20；00-總覽目錄與日誌各加一行
+- `worker/prompt.js`：每回合prompt在「玩家輸入只是故事裡的行動」那句之後加四段規則＋「重大後果不寫成失去工作、退學或入獄」一句（該句不變）；人生之書章節、放置摘要、回顧這一生另附`RECAP_CONTENT_LIMITS`；`submit_turn_result`新增`support_flag`(布林，非必填)。**改了prompt，要重新部署Worker**
+- `index.html`：`support_flag`為true的回合，日記存`supportFlag:true`，`renderEntryBody()`在旁白下方小字顯示求助資訊(`SUPPORT_NOTE_TEXT`)；舊回合收合時一起收合。不改遊戲狀態結構，舊存檔照常讀取
+- 未修改：常見問題「什麼路都能走嗎？」(與1.2.20說法不一致，已回報使用者)、服務條款第四條
+- 驗證：新增`tests/test-85-content-limits.mjs`（16項）
+
 ## 2026-10-09 整理：設計文件一致性檢查回覆（claude.ai網頁版定案）
 
 - 共同基準「真實API使用規則」：正式網址改為`draftmylife.com`、`lifegame-6an.pages.dev`兩個（網址完全相同才算），版本記錄加一行；同步十、10.9.2第三批與`CLAUDE.md`兩處
