@@ -261,6 +261,7 @@
   .focus-rank{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;margin-right:4px;border-radius:999px;background:var(--focus-fg);color:#fff;font-size:11px;font-weight:700;line-height:1;}
   .focus-btn:disabled{opacity:.45;cursor:default;}
   .focus-hint{font-size:11.5px;color:var(--ink-soft);margin:2px 2px 8px;}
+  .focus-hint.focus-side{opacity:.8;margin-bottom:0;} /* 副業狀態行：同字級、顏色略淡一階 */
   .focus-hint.focus-title{margin:0 2px 4px;} /* 二、2.6.3（2026-10-04）：重心按鈕列上方的小標題 */
   .interest-pick{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px;padding:8px;border-radius:12px;background:rgba(255,255,255,.5);}
   .seek-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px;border-radius:999px;background:var(--resp-bg);color:var(--resp-fg);margin:0 0 6px;}
@@ -422,9 +423,11 @@
 
   /* 十六、16.10 首頁 */
   .home{padding:0 20px 28px;}
-  .home-hero{min-height:92vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 0 24px;}
+  /* 16.10.N 第一屏高度＝可視高度扣56，讓下一區塊上緣露頭(svh不隨工具列伸縮，不支援時退回vh)；內容放不下時照實際高度長高，上下間距隨螢幕高度縮小；底部留位置給「往下翻翻看」 */
+  .home-hero{position:relative;min-height:calc(100vh - 56px);min-height:calc(100svh - 56px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:clamp(16px,5vh,40px) 0 52px;padding-top:clamp(16px,5svh,40px);}
   .home-hero.has-lives{min-height:0;padding-top:28px;} /* 有進行中的人生時，讓存檔卡片在第一個畫面就露出來 */
-  .home-hero .stamp{margin-bottom:18px;}
+  .home-hero + .home-sec{margin-top:8px;} /* 露頭那個區塊的上方留白調小，56pt內看得到標題 */
+  .home-hero .stamp{margin-bottom:clamp(8px,2.2svh,18px);}
   .home-hero h1{font-family:var(--serif);font-size:36px;letter-spacing:6px;margin:6px 0 4px;}
   /* 16.10.10斷句與對比度(2026-10-09)：置中短句balance、內文pretty；.nb＝以逗號頓號為界的不可拆詞組(inline-block，單段比螢幕寬時才在段內換行)；
      首頁三處小字改深色(色碼見設計文件16.10.10)，其餘文字不動 */
@@ -432,9 +435,25 @@
   .home .nb{display:inline-block;max-width:100%;}
   .home-lead,.home-foot p{text-wrap:balance;}
   .home-sec p,.faq p,.home-steps .step p{text-wrap:pretty;}
-  .home-lead{font-size:14.5px;line-height:2;margin:0 0 22px;}
+  .home-lead{font-size:14.5px;line-height:2;margin:0 0 clamp(10px,2.6svh,22px);}
   .home-hero .primary-btn,.home-hero .ghost-btn{width:100%;max-width:300px;}
   .home-note{font-size:12px;color:#4D3E35;margin-top:16px;line-height:1.7;max-width:320px;text-wrap:balance;}
+  /* 16.10.N.5 名額行在主按鈕上方；三顆按鈕與名額行之間統一10px(＝按鈕的margin-top)，名額行上方沿用原本段落到主按鈕的距離；沒有名額行時不佔位 */
+  .home-hero .home-note.home-entry{margin:10px 0 0;}
+  .home-hero .home-note.home-entry:empty{display:none;}
+  /* 16.10.N.2／N.3 往下翻提示：淡色小箭頭＋文字，浮動一輪1.6秒；往下滑約40pt淡出 */
+  .home-more{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);background:none;border:none;font-family:var(--sans);font-size:12px;color:#4D3E35;opacity:.6;cursor:pointer;padding:6px 14px;display:flex;flex-direction:column;align-items:center;gap:0;line-height:1.5;transition:opacity .3s ease,visibility 0s linear 0s;}
+  .home-more .hm-arrow{display:block;font-size:16px;animation:home-bob 1.6s ease-in-out infinite;}
+  .home-more.gone{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .3s ease,visibility 0s linear .3s;}
+  .home-more.off{display:none;}
+  @keyframes home-bob{0%,100%{transform:translateY(0);}50%{transform:translateY(6px);}}
+  /* 16.10.N.4 第一屏以下淡入：「先隱藏」只有程式啟動後(.home.fx)才套用，程式沒跑時內容照常顯示 */
+  .home.fx .reveal{opacity:0;transform:translateY(12px);}
+  .home.fx .reveal.in{opacity:1;transform:none;transition:opacity .4s ease,transform .4s ease;}
+  @media (prefers-reduced-motion: reduce){
+    .home-more .hm-arrow{animation:none;}
+    .home.fx .reveal{opacity:1 !important;transform:none !important;}
+  }
   .home-sec{margin:34px 0;}
   .home-sec h2{font-family:var(--serif);font-size:19px;margin:0 0 14px;letter-spacing:1px;}
   .home-sec p{font-size:15px;line-height:1.95;margin:0 0 12px;}
@@ -8678,8 +8697,13 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-e";
+const APP_VERSION = "2026.10.09-f";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-f", date:"2026-10-09", title:"首頁往下翻提示", items:[
+    "首頁第一屏的底部多了「往下翻翻看」的小提示，下面的內容也會輕輕浮現。",
+    "頂部不再顯示副業標籤；選到副業項目時，狀態會顯示在選單下方的說明文字上面。",
+    "「今日封測名額」移到「開始一段人生」上方，三顆按鈕的間距也一致了。",
+  ]},
   { version:"2026.10.09-e", date:"2026-10-09", title:"存檔說明文字", items:[
     "首頁與常見問題的存檔說明改得和實際一致：進度存在這台裝置，也會定期備份到雲端。",
   ]},
@@ -11921,13 +11945,14 @@ function renderHome(){
       <h1>人生草稿</h1>
       <p class="home-sub">這一次，換你決定要活成什麼樣子</p>
       <p class="home-lead serif">住在哪裡、念哪所學校、晚餐吃什麼，以前都是大人說了算。<br>直到十五歲那年夏天，有人問你：「那你自己怎麼想？」<br>從那天起，答案由你來寫，撰稿人陪你一路寫到老。</p>
+      <p class="home-note home-entry" id="home-entry"></p>
       <button class="primary-btn" id="btn-home-new">開始一段人生</button>
-      <p class="home-note" id="home-entry"></p>
       <button class="ghost-btn" id="btn-home-switch">切換其他人生</button>
       ${acct ? `<p class="home-note" id="home-acct">已登入：${escapeHtml(acct.email_masked||"")}　<a id="link-home-logout" style="cursor:pointer;text-decoration:underline;">登出</a></p>`
              : `<button class="ghost-btn" id="btn-home-login">已有帳號？用信箱登入</button>`}
       ${acct && acctMissingLives()>0 ? `<button class="ghost-btn" id="btn-home-cloud-lives">${icon("cloud")} 帳號有 ${acctMissingLives()} 段人生存在雲端，拿回這台裝置</button>` : ``}
       <p class="home-note">免註冊，進度自動存在這台裝置，也會定期備份到雲端。換了手機，用「復原金鑰」接回你的人生。</p>
+      <button class="home-more" id="home-more" type="button" aria-label="往下捲動，看更多內容"><span>往下翻翻看</span><span class="hm-arrow" aria-hidden="true">↓</span></button>
     </section>
     ${lives.length ? `
     <section class="home-sec">
@@ -12013,6 +12038,34 @@ function bindHome(){
     };
   });
   document.getElementById("btn-home-top").onclick = ()=>smoothScrollTop(600);
+  setupHomeScrollHint();
+}
+// 16.10.N 往下翻提示與淡入。不存任何資料；每次畫出首頁就重置(DOM重建)
+let homeScrollCleanup = null;
+function setupHomeScrollHint(){
+  if(homeScrollCleanup){ homeScrollCleanup(); homeScrollCleanup = null; }
+  const home = document.getElementById("home"), more = document.getElementById("home-more");
+  if(!home || !more) return;
+  const next = home.querySelector(".home-hero + .home-sec") || home.querySelector(".home-foot");
+  const reduce = reducedMotion();
+  more.onclick = ()=>{ if(next) next.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block:"start" }); };
+  const root = document.documentElement;
+  const canScroll = ()=> root.scrollHeight - window.innerHeight > 4; // 只看頁面能不能捲動
+  const onScroll = ()=>{ if(window.scrollY > 40) more.classList.add("gone"); };
+  const onResize = ()=>{ more.classList.toggle("off", !canScroll()); };
+  onResize();
+  window.addEventListener("scroll", onScroll, { passive:true });
+  window.addEventListener("resize", onResize);
+  let io = null;
+  if(!reduce && typeof IntersectionObserver === "function"){
+    const targets = [...home.querySelectorAll(".home-sec, .home-foot")].filter(el=>el!==next && el.offsetHeight*0.15 <= window.innerHeight);
+    io = new IntersectionObserver(entries=>{
+      entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); } });
+    }, { threshold:0.15 });
+    targets.forEach(el=>{ el.classList.add("reveal"); io.observe(el); });
+    home.classList.add("fx");
+  }
+  homeScrollCleanup = ()=>{ window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onResize); if(io) io.disconnect(); };
 }
 // 16.10.7：翻回第一頁，時長用16.4.1的「慢」(600ms)；減少動態模式直接跳回頂端
 function smoothScrollTop(duration){
@@ -12645,7 +12698,6 @@ function renderPlaying(loadingTurn){
     <div class="tb-sub">
       ${USE_MOCK ? `<span class="demo-tag" title="目前用規則模擬旁白，不是真的AI生成">示範模式</span>` : ``}
       <span id="sync-tag-wrap">${syncTagHTML()}</span>
-      ${(()=>{ const cards = (s.interestCandidates||[]).filter(c=>(c.status==="active"||c.status==="dormant") && SIDE_BUSINESS_LABELS[c.sideBusinessStatus]); return cards.map(c=>`<span class="demo-tag side-tag">副業：${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}${cards.length>1||c.status==="dormant" ? "（"+escapeHtml(c.category)+(c.status==="dormant" ? "・久未投入" : "")+"）" : ""}</span>`).join(""); })()}
       <span class="right">${progress ? `${escapeHtml(progress.shortLabel||progress.label)} ${progress.current}/${progress.total}　` : ``}存款 <b id="tb-cash">${s.cash.toLocaleString()}</b></span>
     </div>
   </header>
@@ -12734,8 +12786,12 @@ function renderFocusBar(s, disabled){
   else if(adult && key==="study") hint = ADULT_FOCUS_HINTS.study;
   else if(key==="family" && care) hint = `陪伴照顧，和${careTitle(care)}更親近`;
   else hint = FOCUS_HINTS[key];
+  // 2026-10-09 副業狀態提示：頂部不再放副業膠囊；只有玩家選到副業項目時，在提示行上面多一行「項目名稱：狀態」，其他時候不顯示
+  const sideCard = key==="interest" ? chosenCard : key==="work" ? workGig : null;
+  const sideNote = (sideCard && SIDE_BUSINESS_LABELS[sideCard.sideBusinessStatus])
+    ? `<div class="focus-hint focus-side">${escapeHtml(sideCard.category)}：${SIDE_BUSINESS_LABELS[sideCard.sideBusinessStatus]}${sideCard.status==="dormant" ? "，久未投入" : ""}</div>` : ``;
   const rankNote = ranked ? `<div class="focus-hint">依序點選最多三個，排越前面越常發生；再點一次可以拿掉。</div>` : ``;
-  return `<div class="focus-hint focus-title">這段時間的重心</div><div class="focus-row" ${ranked ? `role="group"` : `role="radiogroup"`} aria-label="這段時間的重心">${keys.map(btn).join("")}</div>${picker}${workPicker}${rankNote}<div class="focus-hint">${escapeHtml(hint||"")}</div>`;
+  return `<div class="focus-hint focus-title">這段時間的重心</div><div class="focus-row" ${ranked ? `role="group"` : `role="radiogroup"`} aria-label="這段時間的重心">${keys.map(btn).join("")}</div>${picker}${workPicker}${rankNote}${sideNote}<div class="focus-hint">${escapeHtml(hint||"")}</div>`;
 }
 function sheetHead(title){
   return `<div class="sheet-grip"></div><div class="sheet-head"><h3>${title}</h3><button class="sheet-close" aria-label="關閉">×</button></div>`;

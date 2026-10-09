@@ -158,7 +158,20 @@ g.win.document.getElementById("btn-side-business-confirm").click();
 const card = js(g, "state.interestCandidates[0]");
 A.check("A3 當回合顯示一句說明(依主角性別用妳)", /^妳決定偶爾接點「手作工藝」的案子。接下來會開始有人找上門。$/.test(js(g, "state.log.filter(e=>!e.error).slice(-1)[0].sideBusinessNote")));
 ev("render()");
-A.check("A3 狀態標籤列顯示「副業：偶爾接案」", /副業：偶爾接案/.test(g.win.document.querySelector(".tb-sub").textContent));
+A.check("16 頂部不再有副業膠囊(2026-10-09)", !/副業：/.test(g.win.document.querySelector(".tb-sub").textContent) && !g.win.document.querySelector(".tb-sub .side-tag:not(.cloud-save-tag):not(.sync-tag)"));
+{
+  const hints = () => [...g.win.document.querySelectorAll(".focus-hint")].map(e => e.textContent);
+  const sideLine = () => g.win.document.querySelector(".focus-hint.focus-side");
+  ev("state.focus='rest'"); ev("render()");
+  A.check("16 沒選到副業項目時，提示行沒有多出狀態行", !sideLine());
+  ev("state.focus='interest'; state.focusInterestId='hc'; render()");
+  const withSide = sideLine();
+  A.check("16 選到副業項目的興趣：提示行上方多一行「手作工藝：偶爾接案」", !!withSide && withSide.textContent === "手作工藝：偶爾接案", withSide && withSide.textContent);
+  A.check("16 狀態行在原提示行上面、重心按鈕旁沒有圓點標籤", !!withSide && withSide.nextElementSibling && withSide.nextElementSibling.classList.contains("focus-hint") && !g.win.document.querySelector(".focus-btn .dot, .focus-btn .badge-dot"));
+  ev("state.interestCandidates[0].status='dormant'; render()");
+  A.check("16 久未投入沿用舊膠囊文字：「手作工藝：偶爾接案，久未投入」", !sideLine() || sideLine().textContent === "手作工藝：偶爾接案，久未投入", sideLine() && sideLine().textContent);
+  ev("state.interestCandidates[0].status='active'; state.focus='rest'; render()");
+}
 // 2026-09-30：8.11「程式排定機會／AI回報交件大小」已由8.13訂單簿取代，新機制見test-47-order-book.mjs
 A.check("8.13 選偶爾接案後訂單簿從空白開始(不再排定機會)", ev("(state.interestCandidates[0].gigOrders||[]).length") === 0 && ev("state.interestCandidates[0].gigNextOfferTurn") === undefined);
 A.check("A4 週期性副業收入(8.7)已停用", ev("computeSideBusinessIncome(state)") === 0);

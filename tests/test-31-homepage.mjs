@@ -41,6 +41,26 @@ A.check("16.10.7 年齡提醒不放在頁尾", !/十八歲/.test(foot));
 A.check("16.10.9 不宣傳電郵登入、加購訂閱、放置代活", !/電郵|email|訂閱|加購|放置|掛機/.test(homeText));
 A.check("首頁沒有顯示復原金鑰", !homeText.includes("homekey01"));
 
+
+// ---------- 16.10.N 往下翻提示、名額行位置、淡入 ----------
+{
+  const hm = doc.getElementById("home-more");
+  A.check("16.10.N.2 往下翻提示存在且文字逐字為「往下翻翻看」", !!hm && hm.textContent.replace("↓","").trim() === "往下翻翻看");
+  A.check("16.10.N.6 提示是可用鍵盤操作的按鈕、有替代文字", hm.tagName === "BUTTON" && hm.getAttribute("aria-label") === "往下捲動，看更多內容");
+  const e = doc.getElementById("home-entry"), b = doc.getElementById("btn-home-new");
+  A.check("16.10.N.5 名額行在DOM順序上位於主按鈕之前", !!(e.compareDocumentPosition(b) & 4));
+  A.check("16.10.N.4 jsdom沒有IntersectionObserver時內容不先隱藏(沒有.fx、沒有.reveal)", !doc.getElementById("home").classList.contains("fx") && !doc.querySelector("#home .reveal"));
+  A.check("16.10.N.4 「先隱藏」樣式只掛在.home.fx底下，且有減少動態的對應樣式", /\.home\.fx \.reveal\{opacity:0/.test(html) && !/(^|\n)\s*\.reveal\{opacity:0/.test(html) && /prefers-reduced-motion: reduce\)\{\s*\.home-more \.hm-arrow\{animation:none/.test(html));
+  A.check("16.10.N.2 第一屏高度用svh、退回vh，並扣56", /min-height:calc\(100vh - 56px\);min-height:calc\(100svh - 56px\)/.test(html));
+  // 有IntersectionObserver時：區塊先隱藏、露頭的第一個區塊不參與淡入
+  const g2 = await H.loadGame({ useMock: true, env: H.makeEnv(), key: "homekey02" });
+  await sleep(30);
+  g2.win.IntersectionObserver = class { constructor(cb){ this.cb=cb; } observe(){} unobserve(){} disconnect(){} };
+  g2.ev("render()");
+  const d2 = g2.win.document;
+  const secs = [...d2.querySelectorAll("#home .home-sec")];
+  A.check("16.10.N.4 程式啟動後才套用先隱藏(.fx)，露頭的第一個區塊不參與淡入、後面的區塊與頁尾參與", d2.getElementById("home").classList.contains("fx") && !secs[0].classList.contains("reveal") && secs.slice(1).every(x=>x.classList.contains("reveal")) && d2.querySelector("#home .home-foot").classList.contains("reveal"));
+}
 // ---------- 3. 分享預覽 ----------
 const meta = (p) => (html.match(new RegExp(`<meta property="${p}" content="([^"]*)"`)) || [])[1];
 A.check("16.10.8 og:title", meta("og:title") === "人生草稿｜這一次，換你決定要活成什麼樣子");
