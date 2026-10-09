@@ -161,7 +161,11 @@ function renderAI(s){
       '<div class="small">呼叫 <b>'+num(r.calls)+'</b> 次：'+kinds+'</div>'+
       '<div class="small">輸入 '+num(r.input)+'・快取寫入 '+num(r.cache_write)+'・快取讀取 '+num(r.cache_read)+'・輸出 '+num(r.output)+' token</div>'+
       '<div class="small">快取讀取佔輸入 <b>'+(r.cache_read_pct==null?"—":r.cache_read_pct+"%")+'</b></div></div>'};
-  box.innerHTML='<div class="cards">'+col("今天",a.today)+col("近 7 天",a.last7)+col("累計（"+(a.since||"—")+" 起）",a.total)+'</div>'+
+  var b=a.balance,balHtml=b?('<div class="cards"><div class="card"><h2>估計剩餘可用</h2><div class="big">'+usd(b.remaining_usd)+'</div><div class="small">'+twd(b.remaining_usd)+'</div>'+
+    '<div class="small">'+(b.days_left==null?"近 7 天沒有花費":'照近 7 天的花法，約還能撐 <b>'+b.days_left+'</b> 天')+'</div>'+
+    '<div class="small">依上次校正的餘額 '+usd(b.set_usd)+' 扣掉之後的花費；和 Anthropic 帳單頁可能有小差距</div></div></div>'):
+    ('<div class="small">還沒設定餘額。到 Cloudflare 後台設定 AI_BALANCE_USD（帳單頁餘額）與 AI_BALANCE_BASE_USD（填 '+usd(a.total.usd)+'，同一刻的累計花費）。</div>');
+  box.innerHTML=balHtml+'<div class="cards">'+col("今天",a.today)+col("近 7 天",a.last7)+col("累計（"+(a.since||"—")+" 起）",a.total)+'</div>'+
     '<div class="small">每回合平均＝所有 AI 呼叫（含開場、重試、章節）的花費 ÷ 回合數。</div>';
 }
 $("dl").addEventListener("click",function(){

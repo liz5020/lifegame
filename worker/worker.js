@@ -1084,7 +1084,15 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
     const inAll = r.input + r.cache_write + r.cache_read;
     r.cache_read_pct = inAll > 0 ? Math.round(r.cache_read / inAll * 1000) / 10 : null;
   }
-  return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS }, range);
+  // 餘額估計：AI_BALANCE_USD＝使用者校正當下Anthropic帳單頁的餘額，AI_BALANCE_BASE_USD＝同一刻的累計花費；兩個值只放Cloudflare後台Variables，不寫進toml
+  let balance = null;
+  const bal = parseFloat(env.AI_BALANCE_USD), base = parseFloat(env.AI_BALANCE_BASE_USD);
+  if (Number.isFinite(bal) && Number.isFinite(base)) {
+    const remaining = Math.round((bal - (range.total.usd - base)) * 100) / 100;
+    const perDay = range.last7.usd / 7;
+    balance = { set_usd: bal, base_usd: base, remaining_usd: remaining, days_left: perDay > 0 ? Math.max(0, Math.floor(remaining / perDay)) : null };
+  }
+  return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS, balance }, range);
 }
 // GET /usage-detail.csv：逐筆明細(最近7天、最多5,000筆)，欄位比照遊戲裡的逐筆呼叫紀錄，另加匿名人生代號與距同一段人生上一次呼叫的分鐘數
 async function handleUsageDetailCsv(request, env) {
