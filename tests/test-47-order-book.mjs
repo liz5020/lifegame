@@ -20,7 +20,7 @@ const flags = () => ev("JSON.stringify((state.reviewFlags||[]).map(f=>JSON.strin
 
 // ---------- 8.13.3 數值與接單上限 ----------
 const SP = js("ORDER_SPEC");
-A.check("8.13.3 大小對照：格數／交期／報酬基準", SP.small.need === 1 && SP.medium.need === 2 && SP.large.need === 4 && SP.small.due === 3 && SP.medium.due === 5 && SP.large.due === 8 && SP.small.base === 35 && SP.medium.base === 70 && SP.large.base === 140);
+A.check("8.13.3 大小對照：格數／交期／報酬基準", SP.small.need === 1 && SP.medium.need === 2 && SP.large.need === 4 && SP.small.due === 3 && SP.medium.due === 5 && SP.large.due === 8 && SP.small.base === 18 && SP.medium.base === 35 && SP.large.base === 70);
 setCard("gig", 65);
 A.check("8.13.2 偶爾接案：1單、接案收入", js(`orderTier(${C})`).cap === 1 && ev(`orderIncomeCat(${C})`) === "接案收入");
 setCard("formal", 50);
@@ -47,14 +47,14 @@ let dels = ev(`JSON.stringify(applyOrderResult(state, {}, {key:'work', gigCardId
 A.check("8.13.1 這回合才登記的訂單不推進", dels === "null" && ev(`${C}.gigOrders.every(o=>o.done===0)`));
 ev("state.turnCount=21");
 dels = js(`applyOrderResult(state, {}, {key:'work', gigCardId:'hc'})`);
-A.check("8.13.1 重心「工作：副業X」：推進交期最近的一筆(小單1格＝當回合完成、依基準35交件入帳)", dels && dels.deliveries.length === 1 && dels.deliveries[0].amount === 35 && dels.deliveries[0].cat === "副業收入" && ev("state.cash") === 1035, dels);
-A.check("8.13.1 完成的訂單記為已交件並累計收入", js(`${C}.gigOrders.find(o=>o.item==='貼紙')`).status === "已交件" && ev(`${C}.gigIncome`) === 35 && js(`${C}.gigOrders.find(o=>o.item==='耳環')`).done === 0);
+A.check("8.13.1 重心「工作：副業X」：推進交期最近的一筆(小單1格＝當回合完成、依基準18交件入帳)", dels && dels.deliveries.length === 1 && dels.deliveries[0].amount === 18 && dels.deliveries[0].cat === "副業收入" && ev("state.cash") === 1018, dels);
+A.check("8.13.1 完成的訂單記為已交件並累計收入", js(`${C}.gigOrders.find(o=>o.item==='貼紙')`).status === "已交件" && ev(`${C}.gigIncome`) === 18 && js(`${C}.gigOrders.find(o=>o.item==='耳環')`).done === 0);
 ev("state.turnCount=22");
 js(`applyOrderResult(state, {}, {key:'work', gigCardId:'hc'})`);
 A.check("8.13.1 每回合最多推進1格(中單需2格)", js(`${C}.gigOrders.find(o=>o.item==='耳環')`).done === 1 && js(`${C}.gigOrders.find(o=>o.item==='耳環')`).status === "進行中");
 ev("state.turnCount=23");
 dels = js(`applyOrderResult(state, {}, {key:'work', gigCardId:'hc'})`);
-A.check("8.13.1 中單完成交件：報酬70(未逾期)", dels && dels.deliveries[0].amount === 70 && dels.deliveries[0].late === false, dels);
+A.check("8.13.1 中單完成交件：報酬35(未逾期)", dels && dels.deliveries[0].amount === 35 && dels.deliveries[0].late === false, dels);
 // 交件通知：下一回合提示
 ev("state.turnCount=24");
 const n1 = js("prepareOrderTurn(state, null)");
@@ -67,7 +67,7 @@ ev("state.turnCount=34"); // 交期33，超過1回合
 let nn = js("prepareOrderTurn(state, null)");
 A.check("8.13.1 超過交期：通知旁白寫客人不滿(只通知一次)", nn.late.length === 1 && nn.late[0].client === "陳老闆" && js("prepareOrderTurn(state, null)").late.length === 0, nn);
 dels = js(`applyOrderResult(state, {}, {key:'work', gigCardId:'hc'})`);
-A.check("8.13.1 超過交期、2回合內完成：延遲交件，報酬×0.7(35→25，四捨五入)", dels && dels.deliveries[0].amount === 25 && dels.deliveries[0].late === true && js(`${C}.gigOrders.find(o=>o.item==='招牌')`).status === "延遲交件", dels);
+A.check("8.13.1 超過交期、2回合內完成：延遲交件，報酬×0.7(18→13，四捨五入)", dels && dels.deliveries[0].amount === 13 && dels.deliveries[0].late === true && js(`${C}.gigOrders.find(o=>o.item==='招牌')`).status === "延遲交件", dels);
 ev(`registerOrders(state, [{client:'林先生', via:'雅涵', item:'門牌', size:'small'}])`);
 ev("state.turnCount=state.turnCount+1+3+3"); // 超過交期2回合以上
 nn = js("prepareOrderTurn(state, null)");
@@ -77,11 +77,11 @@ A.check("8.13.1 超過交期2回合仍未完成：訂單取消、介紹人好感
 setCard("formal", 80); // 精通1.4
 ev(`state.turnCount=50; registerOrders(state, [{client:'a', item:'b', size:'large'}]); ${C}.gigOrders[0].done=3; state.turnCount=51`);
 dels = js(`applyOrderResult(state, {}, {key:'work', gigCardId:'hc'})`);
-A.check("8.13.3 精通×1.4：大單140→196", dels && dels.deliveries[0].amount === 196, dels);
+A.check("8.13.3 精通×1.4：大單70→98", dels && dels.deliveries[0].amount === 98, dels);
 setCard("formal", 30); // 0.8
 ev(`state.turnCount=60; registerOrders(state, [{client:'a', item:'b', size:'medium'}]); ${C}.gigOrders[0].done=1; state.turnCount=61`);
 dels = js(`applyOrderResult(state, {}, {key:'work', gigCardId:'hc'})`);
-A.check("8.13.3 投入降到40以下×0.8：中單70→56", dels && dels.deliveries[0].amount === 56, dels);
+A.check("8.13.3 投入降到40以下×0.8：中單35→28", dels && dels.deliveries[0].amount === 28, dels);
 setCard("gig", 65);
 ev(`state.turnCount=70; registerOrders(state, [{client:'a', item:'b', size:'small'}]); state.turnCount=71`);
 dels = js(`applyOrderResult(state, {}, {key:'work', gigCardId:'hc'})`);
@@ -170,11 +170,11 @@ ev("renderGigModal()");
 const gm = doc.getElementById("gig-modal");
 const orders = [...gm.querySelectorAll(".gig-order")];
 A.check("16.16 概況：類型與接單量「手上2單／上限2單」", /正式經營・手作工藝/.test(gm.textContent) && /手上 2 單／上限 2 單/.test(gm.textContent), gm.textContent.slice(0, 120));
-A.check("16.16 訂單簿依交期排序(小單3回合先、中單5回合後)，顯示進度格與預估報酬", orders.length === 2 && /貼紙/.test(orders[0].textContent) && /□/.test(orders[0].textContent) && /預估報酬 35/.test(orders[0].textContent) && /預估報酬 70/.test(orders[1].textContent), orders.map(o => o.textContent.slice(0, 60)));
+A.check("16.16 訂單簿依交期排序(小單3回合先、中單5回合後)，顯示進度格與預估報酬", orders.length === 2 && /貼紙/.test(orders[0].textContent) && /□/.test(orders[0].textContent) && /預估報酬 18/.test(orders[0].textContent) && /預估報酬 35/.test(orders[1].textContent), orders.map(o => o.textContent.slice(0, 60)));
 A.check("16.16 警示色：交期剩1回合橘色", /rgb\(196, 106, 28\)|#c46a1c/i.test(orders[0].getAttribute("style") + orders[0].style.color) && !/b23a2e/.test(orders[1].getAttribute("style")), orders[0].getAttribute("style"));
 ev(`${C}.gigOrders.find(o=>o.item==='貼紙×20').due = state.turnCount - 1`);
 gm.remove(); ev("renderGigModal()");
-A.check("16.16 警示色：已逾期紅色、預估報酬按延遲×0.7", /b23a2e|rgb\(178, 58, 46\)/i.test(doc.querySelector("#gig-modal .gig-order").getAttribute("style")) && /預估報酬 25/.test(doc.querySelector("#gig-modal .gig-order").textContent));
+A.check("16.16 警示色：已逾期紅色、預估報酬按延遲×0.7", /b23a2e|rgb\(178, 58, 46\)/i.test(doc.querySelector("#gig-modal .gig-order").getAttribute("style")) && /預估報酬 13/.test(doc.querySelector("#gig-modal .gig-order").textContent));
 A.check("16.16 交件紀錄：最近的交件與累計收入", /交件紀錄/.test(doc.getElementById("gig-modal").textContent) && /累計收入 210/.test(doc.getElementById("gig-modal").textContent) && /老王/.test(doc.getElementById("gig-modal").textContent));
 doc.querySelector("#gig-modal .gig-rush").click();
 A.check("16.16 「趕這單」：輸入框填入「趕○○的○○」、重心切到該副業、不自動送出", doc.getElementById("custom-input").value === "趕阿宇的貼紙×20" && ev("state.focus") === "work" && ev("state.focusWorkId") === "hc" && !doc.getElementById("gig-modal"), doc.getElementById("custom-input").value);
@@ -189,7 +189,7 @@ ev("state.idleEnabled=true; state.idleMode=true");
 for (let i = 0; i < 12; i++) ev("(()=>{ state.turnCount += 1; state.sideGigIncomeNow=null; sideGigCards(state).forEach(c=>activeOrders(c).forEach(o=>{ o.due += 1; })); idleOrderRound(state); state.orderDeliveredLast=null; })()");
 ev("state.idleMode=false");
 const ords = js(`${C}.gigOrders`);
-A.check("放置期間：訂單不會逾期被取消或罰款(交期跟著往後延)，做完的按準時價入帳", ords.every(o => o.status !== "已取消") && ords.filter(o => o.status === "已交件").length === 2 && ev("state.cash") === 1000 + 35 + 70, ords.map(o => o.status + ":" + o.reward));
+A.check("放置期間：訂單不會逾期被取消或罰款(交期跟著往後延)，做完的按準時價入帳", ords.every(o => o.status !== "已取消") && ords.filter(o => o.status === "已交件").length === 2 && ev("state.cash") === 1000 + 18 + 35, ords.map(o => o.status + ":" + o.reward));
 ev(`${C}.gigOrders=[]; state.turnCount=500; registerOrders(state, [{client:'丙', item:'C', size:'large'}]); ${C}.gigOrders[0].done=0`);
 const due0 = ev(`${C}.gigOrders[0].due`);
 ev("(()=>{ for(let i=0;i<3;i++){ state.turnCount += 1; sideGigCards(state).forEach(c=>activeOrders(c).forEach(o=>{ o.due += 1; })); } })()");
@@ -221,11 +221,22 @@ A.check("放置：實際跑simulateIdleRound，交期順延、沒有被判逾期
 setCard("formal", 50);
 ev(`state.turnCount=200; ${C}.gigOpenOrders=[{turn:1,size:'large'}]; ${C}.gigNextOfferTurn=5; ${C}.gigOrders=[]; registerOrders(state, [{client:'a', item:'b', size:'small'}]); state.turnCount=201`);
 ev("state.cash=1000; prepareOrderTurn(state, null); idleOrderRound(state)");
-A.check("放置：每回合自動推進交期最近的一筆並入帳", ev("state.cash") === 1035 && ev(`${C}.gigOrders[0].status`) === "已交件");
+A.check("放置：每回合自動推進交期最近的一筆並入帳", ev("state.cash") === 1018 && ev(`${C}.gigOrders[0].status`) === "已交件");
 A.check("舊存檔：舊制gigOpenOrders／gigNextOfferTurn被丟棄，訂單簿從空白開始(只有新登記的)", ev(`${C}.gigOpenOrders`) === undefined && ev(`${C}.gigNextOfferTurn`) === undefined);
 const prompt = fs.readFileSync(path.join(H.ROOT, "worker/prompt.js"), "utf8");
 A.check("prompt：訂單簿規則(接單上限、order_new、order_target、程式判定交件、不說系統用語)", ["side_gig_orders", "at_cap", "order_new", "order_target", "order_work", "order_notices", "order_inquiry_now", "gig_category", "系統用語"].every(k => prompt.includes(k)));
 A.check("8.13.1(2026-10-08) prompt：訂單現況以本回合side_gig_orders為準、沒有的訂單不可寫成還在趕或重新登記、open為0＝沒有在趕", /訂單現況一律以本回合side_gig_orders為準/.test(prompt) && /不可以寫成還在趕工或還剩幾件，也不可以用order_new重新登記/.test(prompt) && /open為0代表目前沒有在趕的訂單/.test(prompt));
 A.check("8.13.1(2026-10-08) prompt：order_new只限新客人／新詢問或玩家行動寫明兩種情況；舊的「故事提到就登記」說法不在", /order_new只在兩種情況登記：本回合真的出現新客人或新詢問/.test(prompt) && /玩家這回合的行動寫明要做一筆side_gig_orders裡沒有的訂單/.test(prompt) && !/故事中提到進行中的訂單/.test(prompt));
 A.check("沒有前端錯誤", g.errors.length === 0, g.errors.map(String).slice(0, 3));
+// ---------- 2026-10-09 報酬基準砍半：進行中的訂單不重算 ----------
+setCard("formal", 50);
+ev(`state.turnCount=900; ${C}.gigOrders=[]; registerOrders(state, [{client:'新客', item:'新單', size:'medium'}])`);
+A.check("2026-10-09 新登記的訂單記下當時的基準(中單35)", js(`${C}.gigOrders[0].base`) === 35);
+A.check("2026-10-09 舊存檔的進行中訂單(沒有base欄位)沿用舊基準35／70／140", js(`[orderReward(${C},{size:'small'},false), orderReward(${C},{size:'medium'},false), orderReward(${C},{size:'large'},false)]`).join() === "35,70,140");
+A.check("2026-10-09 記下舊基準的訂單：基準之後改了也不重算(base:70的中單熟練＝70；延遲×0.7＝49)", js(`[orderReward(${C},{size:'medium',base:70},false), orderReward(${C},{size:'medium',base:70},true)]`).join() === "70,49");
+A.check("2026-10-09 三種等級乘數的報酬＝18／35／70、25／49／98、14／28／56", (() => {
+  const row = inv => { setCard("formal", inv); return js(`['small','medium','large'].map(z=>orderReward(${C},{size:z,base:ORDER_SPEC[z].base},false))`).join(); };
+  return row(50) === "18,35,70" && row(80) === "25,49,98" && row(30) === "14,28,56";
+})());
+
 process.exit(A.report() ? 0 : 1);

@@ -210,6 +210,25 @@ A.check("放置代活：pending一律先不花(不扣款)", (() => { ev(`state.s
   A.check("快照欄位清單包含mealHint", js("SNAPSHOT_EXTRA_KEYS").includes("mealHint"));
 }
 
+// ---------- 2026-10-09 打工也算進近3個月工作收入平均 ----------
+{
+  ev("state.sideIncomeLog = []; state.studentStatus='enrolled'; state.family='小康'; state.monthlyIncome=60; state.cash=500");
+  const unit = ev("incomeShareUnit(state)");
+  const c0 = ev("state.cash");
+  ev("applyPartTimeWork(state, '去打工', null, 1)");
+  const earned = ev("state.cash") - c0;
+  A.check("學生期打工1份(小康13)：入帳並記進工作收入紀錄", earned === Math.max(1, Math.round(unit)) && earned === 13 && ev("state.sideIncomeLog.length") === 1 && ev("state.sideIncomeLog[0].amount") === 13, [earned, ev("state.sideIncomeLog")]);
+  A.check("學生期打工份數：清寒7、小康13、富裕27", js("[30,60,120].map(m=>Math.round(PART_TIME_SHARES*m*12/54))").join() === "7,13,27");
+  A.check("近3個月工作收入平均＝打工入帳÷3(13÷3)", Math.abs(ev("computeSideBusinessIncome(state)") - 13 / 3) < 1e-9, ev("computeSideBusinessIncome(state)"));
+  ev("recordSideIncome(state, 35, state.timeState.cal.lastRoundEnd)");
+  A.check("副業交件和打工合併算平均((13+35)÷3＝16)", Math.abs(ev("computeSideBusinessIncome(state)") - 16) < 1e-9);
+  ev("state.studentStatus='graduated'; state.careerStatus=CAREER_STATUS.NOT_EMPLOYED; state.occupationCategory=null; state.sideIncomeLog=[]");
+  const c1 = ev("state.cash"); ev("applyPartTimeWork(state, '去打工', {daysAdvanced:30}, 1)");
+  A.check("出社會後的打工(時薪×時數)金額規則不變，也進平均", ev("state.cash") - c1 === ev("state.partTimeEventLog.earning") && ev("state.sideIncomeLog.length") === 1 && ev("state.sideIncomeLog[0].amount") === ev("state.partTimeEventLog.earning"), ev("state.partTimeEventLog"));
+  A.check("一次性收入(one_time_transaction)不進平均：紀錄只有打工那一筆", ev("state.sideIncomeLog.length") === 1);
+  ev("state.studentStatus='enrolled'; state.sideIncomeLog=[]");
+}
+
 // ---------- 反悔／失敗還原清單 ----------
 A.check("快照欄位清單包含studentExpense與sideIncomeLog", js("SNAPSHOT_EXTRA_KEYS").includes("studentExpense") && js("SNAPSHOT_EXTRA_KEYS").includes("sideIncomeLog"));
 

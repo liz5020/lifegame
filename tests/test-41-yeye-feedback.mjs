@@ -72,7 +72,7 @@ A.check("B5 日記記下這回合的重心", lastE.focusLabel === "工作：打�
 ev("render()");
 A.check("B5 畫面上選擇行旁邊顯示重心", /重心：工作：打工/.test(g.win.document.querySelector("#latest-entry .choice-line").textContent));
 A.check("B5 下載故事的選擇紀錄含重心", /→ .*（重心：工作：打工）/.test(ev("buildStoryExport(state)")));
-A.check("A4 打工收入固定2份(1份＝每回合平均零用錢)", lastE.focusMarks && (lastE.focusMarks.extra || []).some(t => t === `存款 +${Math.round(2 * ev("incomeShareUnit(state)"))}`), lastE.focusMarks);
+A.check("A4 打工收入固定1份(1份＝每回合平均零用錢；2026-10-09由2份改1份)", lastE.focusMarks && (lastE.focusMarks.extra || []).some(t => t === `存款 +${Math.round(1 * ev("incomeShareUnit(state)"))}`), lastE.focusMarks);
 A.check("A4 學生1份＝月零用錢×12÷54", Math.abs(ev("incomeShareUnit(state)") - ev("state.monthlyIncome") * 12 / 54) < 1e-9);
 
 // B1：生日跨過那天年齡+1，家人一起長一歲
@@ -174,7 +174,7 @@ A.check("16 頂部不再有副業膠囊(2026-10-09)", !/副業：/.test(g.win.do
 }
 // 2026-09-30：8.11「程式排定機會／AI回報交件大小」已由8.13訂單簿取代，新機制見test-47-order-book.mjs
 A.check("8.13 選偶爾接案後訂單簿從空白開始(不再排定機會)", ev("(state.interestCandidates[0].gigOrders||[]).length") === 0 && ev("state.interestCandidates[0].gigNextOfferTurn") === undefined);
-A.check("A4 週期性副業收入(8.7)已停用", ev("computeSideBusinessIncome(state)") === 0);
+A.check("A4 週期性副業收入(8.7)已停用(沒有交件、打工紀錄時為0；2026-10-09起有紀錄才會有近3個月平均)", ev("state.sideIncomeLog=[]; computeSideBusinessIncome(state)") === 0);
 
 // ================= A5 人脈 =================
 ev("state.interestCandidates=[]; ENABLE_NETWORK_IDLE_DECAY=true; state.stats.network=50; state.networkIdleStreak=0");

@@ -1742,11 +1742,12 @@ function applyPartTimeWork(s, actionText, win, focusWork){
   if(typeof focusWork==="number"){ if(!(focusWork>0)) return; }
   else if(!detectPartTimeIntent(actionText)) return;
   if(s.careerStatus===CAREER_STATUS.EMPLOYED || s.careerStatus===CAREER_STATUS.BUSINESS || s.careerStatus===CAREER_STATUS.RETIRED) return;
-  // 八、8.11（2026-09-29 A4）：學生時期的打工改成每次固定2份(1份＝這個階段每回合的平均零用錢)，不套用興趣加乘；
+  // 八、8.11（2026-09-29 A4）：學生時期的打工改成每次固定2份(2026-10-09改1份；1份＝這個階段每回合的平均零用錢)，不套用興趣加乘；
   // 取代上面時薪×時數的算法。待業、半退休等非學生時期沒有「每回合平均收入」可當單位，維持3.4.2時薪算法
   if(typeof focusWork==="number" && isStudentPhase(s)){
     const earning = Math.max(1, Math.round(PART_TIME_SHARES * incomeShareUnit(s)));
     s.cash += earning;
+    recordSideIncome(s, earning, workIncomeAbs(s)); // 三、3.4.10（2026-10-09）：打工也進近3個月工作收入平均
     s.partTimeEventLog = { earning, shares: PART_TIME_SHARES };
     if(s.milestones && s.milestones.first_part_time_job!=="completed") s.milestones.first_part_time_job = "completed";
     return;
@@ -1758,6 +1759,7 @@ function applyPartTimeWork(s, actionText, win, focusWork){
   const ratio = typeof focusWork==="number" ? focusWork : 1;
   const earning = Math.round(hourly*hours*ratio);
   s.cash += earning;
+  recordSideIncome(s, earning, workIncomeAbs(s)); // 三、3.4.10（2026-10-09）：出社會後的打工也進平均(金額規則不變)
   s.partTimeEventLog = { hourly, hours, earning, skilled };
   if(ratio<1) s.partTimeEventLog.rank_ratio = ratio;
   if(s.milestones && s.milestones.first_part_time_job!=="completed") s.milestones.first_part_time_job = "completed";
@@ -3594,9 +3596,12 @@ const SIDE_BUSINESS_UPGRADE_TURNS = 24; // 【測試參數,12.8.1，2026-09-27�
 // 八、8.11（2026-09-29 A4定案）：取代上面「接零星案每月3、正式副業每月6」的週期性副業收入——副業改成「接單→交件」，
 // 金額由程式決定、交件時一次入帳，AI只回報完成了什麼(side_gig_delivery)。computeSideBusinessIncome保留給既有呼叫點，一律回傳0
 // 三、3.4.10（2026-10-09）：副業收入算進「每月收入」(只用來算每月生活開銷與手頭狀態，不是月結固定收入)：
-// 近3個月副業訂單簿交件入帳總額÷3，不先取整。真正入帳仍在交件時一次進cash(advanceOrder)，結算的收入不含這個平均，避免重複加
+// 近3個月工作收入（副業訂單簿交件＋打工入帳，2026-10-09後續定案）總額÷3，不先取整。真正入帳仍在交件時一次進cash(advanceOrder)，結算的收入不含這個平均，避免重複加
 const SIDE_INCOME_WINDOW_MONTHS = 3;
 const SIDE_INCOME_WINDOW_TURNS = 13;   // 沒有行事曆日期時的退路(學生時期一年54回合，約4回合一個月)
+// 打工入帳記錄用的日期：applyPartTimeWork在advanceStructuredTime之後執行，行事曆的lastRoundEnd已是這回合的結束日
+function workIncomeAbs(s){ const cal = s.timeState && s.timeState.cal; return cal && cal.v===2 && cal.lastRoundEnd!=null ? cal.lastRoundEnd : null; }
+// 欄位名稱sideIncomeLog沿用(改名要處理舊資料)，2026-10-09起內容是「副業交件＋打工」的工作收入紀錄
 function recordSideIncome(s, amount, abs){
   if(!(amount>0)) return;
   const log = (s.sideIncomeLog = s.sideIncomeLog || []);
@@ -3621,13 +3626,15 @@ const SIDE_BUSINESS_LABELS = { gig:"偶爾接案", formal:"正式經營" };
 // 旁白只登記新訂單(order_new)與指名訂單(order_target／order_work)，編號、交期、報酬、推進、交件、逾期全由程式判定。
 // 訂單存在副業卡的card.gigOrders(進行中＋最近幾筆已結束)，card.gigSeq編號、card.gigIncome累計收入；舊存檔的gigOpenOrders／gigNextOfferTurn一律丟棄(訂單簿從空白開始)
 const SIDE_GIG_SIZE_LABELS = { small:"小單", medium:"中單", large:"大單" };
-const ORDER_SPEC = { small:{ need:1, due:3, base:35 }, medium:{ need:2, due:5, base:70 }, large:{ need:4, due:8, base:140 } }; // 【定案8.13.3】
+const ORDER_SPEC = { small:{ need:1, due:3, base:18 }, medium:{ need:2, due:5, base:35 }, large:{ need:4, due:8, base:70 } }; // 【定案8.13.3，2026-10-09由35／70／140砍約一半】
+// 2026-10-09：進行中的訂單報酬不重算——登記時記下當時的基準(o.base)；舊存檔裡沒有這個欄位的訂單沿用舊基準
+const ORDER_BASE_LEGACY = { small:35, medium:70, large:140 };
 const ORDER_LATE_MULT = 0.7;          // 延遲交件報酬×0.7
 const ORDER_CANCEL_AFTER = 2;         // 超過交期2回合仍未完成→取消
 const ORDER_CANCEL_AFFINITY = -2;     // 取消時介紹人好感
 const ORDER_INQUIRY_PROB = { formal:0.3, gig:0.15 }; // 【測試參數】新詢問擲骰
 const ORDER_KEEP_FINISHED = 12;       // 存檔精簡：已結束的訂單只留最近幾筆
-const PART_TIME_SHARES = 2;             // 【A4，測試參數】打工每次固定2份
+const PART_TIME_SHARES = 1;             // 【A4，測試參數；2026-10-09由2份改1份】學生期打工每次固定1份
 // 「1份」＝學生時期每回合的平均零用錢；有工作收入後＝每回合的平均薪資收入(月收入×12÷每年回合數)
 function incomeShareUnit(s){
   const perYear = isStudentPhase(s) ? YEAR_SEGMENTS.reduce((a,x)=>a+x.budget,0) : roundsPerYearForAge(s.age);
@@ -3647,7 +3654,7 @@ function orderIncomeCat(card){ return card.sideBusinessStatus==="formal" ? "副�
 function orderList(card){ return card.gigOrders || (card.gigOrders = []); }
 function activeOrders(card){ return orderList(card).filter(o=>o.status==="進行中"); }
 function nearestDueOrder(card, s){ return activeOrders(card).filter(o=>o.reg < s.turnCount).sort((a,b)=>a.due-b.due||a.no-b.no)[0] || null; }
-function orderReward(card, o, late){ return Math.round(ORDER_SPEC[o.size].base * orderTier(card).mult * (late ? ORDER_LATE_MULT : 1)); }
+function orderReward(card, o, late){ return Math.round((o.base!=null ? o.base : ORDER_BASE_LEGACY[o.size]) * orderTier(card).mult * (late ? ORDER_LATE_MULT : 1)); }
 function findOrderByNo(s, no){
   if(no==null) return null;
   const key = String(no).trim().replace(/^#/,"");
@@ -3715,7 +3722,7 @@ function registerOrders(s, list){
     const sp = ORDER_SPEC[d.size];
     card.gigSeq = (card.gigSeq||0) + 1;
     orderList(card).push({ id:`${card.id||card.category}-${card.gigSeq}`, no:card.gigSeq, client:String(d.client).slice(0,10), via: d.via ? String(d.via).slice(0,10) : null,
-      item:String(d.item).slice(0,24), size:d.size, need:sp.need, done:0, reg:s.turnCount, due:s.turnCount+sp.due, status:"進行中" });
+      item:String(d.item).slice(0,24), size:d.size, need:sp.need, base:sp.base, done:0, reg:s.turnCount, due:s.turnCount+sp.due, status:"進行中" });
   });
 }
 // 推進一格並在完成時交件入帳(每回合最多推進1格；這回合才登記的訂單不推進)。回傳交件紀錄
@@ -4792,7 +4799,7 @@ function computeBasicLivingCost(s){
 }
 // 每月生活開銷(結算用)＝基本生活開銷＋可支配的錢×花錢習慣比例。
 // 可支配的錢＝每月收入(含配偶、副業)−基本需求−固定支出(房租房貸等monthlyExpenses、扶養費、慢性病)，不足時為0；
-// 學生期收入＝零用錢(打工收入是一次性入帳，不算在這裡)
+// 學生期收入＝零用錢＋近3個月工作收入平均(2026-10-09起打工也算)
 function computeBaseLivingCost(s){
   const meal = MEAL_EXPENSE_MULT[s.mealArrangement] ?? MEAL_EXPENSE_MULT["自己打理"];
   const income = s.monthlyIncome + (s.spouseIncome||0) + computeSideBusinessIncome(s);
@@ -8912,8 +8919,12 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-h";
+const APP_VERSION = "2026.10.09-i";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-i", date:"2026-10-09", title:"副業與打工收入的平衡", items:[
+    "調整了副業與打工的收入平衡，學生時期不會再輕易存下一大筆錢。",
+    "打工賺到的錢，也會讓平常的生活開銷跟著變化。",
+  ]},
   { version:"2026.10.09-h", date:"2026-10-09", title:"學生時期的花費與副業", items:[
     "學生時期偶爾會遇到需要自己掏錢的場合，這時會跳出小視窗，讓你決定要不要花這筆錢。",
     "副業賺到的錢多了，平常的生活開銷也會跟著高一些。",

@@ -19,7 +19,7 @@ await H.playTurn(g, "放學後去超商打工");
 ev("state.focus='rest'");
 const pt = JSON.parse(ev("JSON.stringify(state.partTimeEventLog)"));
 // 2026-09-29 八、8.11（A4）：學生時期打工改成每次固定2份(1份＝每回合平均零用錢)，取代時薪×時數
-A.check("打工：固定2份、收入入帳", pt && pt.shares === 2 && pt.earning === Math.max(1, Math.round(2 * ev("incomeShareUnit(state)"))), pt);
+A.check("打工：固定1份、收入入帳(2026-10-09由2份改1份)", pt && pt.shares === 1 && pt.earning === Math.max(1, Math.round(1 * ev("incomeShareUnit(state)"))), pt);
 A.check("第一次打工里程碑由程式完成", ev("state.milestones.first_part_time_job") === "completed");
 A.check("payload告訴AI打工收入", /part_time_event_now[^}]*earning/.test(flat()));
 A.check("非學生時期(沒傳重心)：文字偵測照舊", ev("applyPartTimeWork(state,'去打工',{daysAdvanced:7}), !!state.partTimeEventLog"));
