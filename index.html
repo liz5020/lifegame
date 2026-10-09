@@ -2467,8 +2467,21 @@ const INTEREST_SIDE_BUSINESS_THRESHOLD = 40; // 【定案】投入度達40觸發
 const SELF_DISCIPLINE_INTEREST_STREAK_1 = 3; // 【定案,3.7.2】連續3次持續投入
 const SELF_DISCIPLINE_INTEREST_STREAK_2 = 6; // 【定案,3.7.2】連續6次持續投入
 
-function findInterestCard(s, category){
-  return (s.interestCandidates||[]).find(c=>c.category===category);
+// 八、8.8.4（2026-10-09）：興趣卡身分＝類別＋項目。傳item時找同項目的卡；沒傳(或沒有)item時，找該類別最近一次投入的卡
+function findInterestCard(s, category, item){
+  const cards = (s.interestCandidates||[]).filter(c=>c.category===category);
+  if(item) return cards.find(c=>c.item===item) || null;
+  return cards.slice().sort((a,b)=>(b.lastEngagedRound||0)-(a.lastEngagedRound||0))[0];
+}
+// 依AI/程式回報的interest_event找要記到哪張卡：①指定cardId(重心選了某張卡/副業卡) ②程式擲出的種子項目(找不到就是新卡)
+// ③AI回報的項目在8.8.1清單內才採用(找不到同項目的卡＝新卡) ④其他一律記到該類別最近投入的卡，該類別沒有卡才走候選
+function resolveInterestCardForEvent(s, ev){
+  const cards = s.interestCandidates||[];
+  if(ev.cardId){ const c = cards.find(x=>x.id===ev.cardId); if(c) return { card:c, item:c.item||null }; }
+  const validItem = ev.item && (ev.fromSeed || (INTEREST_ITEMS[ev.category]||[]).includes(ev.item)) ? ev.item : null;
+  if(validItem) return { card: findInterestCard(s, ev.category, validItem) || null, item: validItem };
+  const recent = findInterestCard(s, ev.category);
+  return { card: recent || null, item: ev.item || null };
 }
 // 八、8.8.1～8.8.3（2026-10-08）：興趣的類別與項目由程式擲出，AI只照寫並回報reaction（改善「手作工藝居多」）
 const INTEREST_ITEMS = {
@@ -2493,9 +2506,15 @@ function rollInterestSeed(s, rng){
   const total = cats.reduce((n,c)=>n+weightOf(c),0);
   let r = rng()*total, category = cats[cats.length-1];
   for(const c of cats){ r -= weightOf(c); if(r<0){ category = c; break; } }
-  const card = findInterestCard(s, category);
-  let items = INTEREST_ITEMS[category];
-  if(card && card.item && items.length>1) items = items.filter(i=>i!==card.item);
+  // 八、8.8.4：玩家已經有卡的項目不再抽(重複接觸沒有新意)；該類別項目都有了就換別的類別，全部都有了才退回整份清單
+  const ownedOf = c => new Set((s.interestCandidates||[]).filter(x=>x.category===c && x.item).map(x=>x.item));
+  let freeOf = c => INTEREST_ITEMS[c].filter(i=>!ownedOf(c).has(i));
+  if(!freeOf(category).length){
+    const other = cats.filter(c=>freeOf(c).length);
+    if(other.length) category = other[Math.min(other.length-1, Math.floor(rng()*other.length))];
+  }
+  let items = freeOf(category);
+  if(!items.length) items = INTEREST_ITEMS[category];
   return { category, item: items[Math.min(items.length-1, Math.floor(rng()*items.length))] };
 }
 // 每回合呼叫AI之前算一次(重新生成沿用同一組)：重心有「嘗試新的」→try_new；重心沒有興趣→8%自然種子；重心指定了興趣卡不擲
@@ -2568,10 +2587,13 @@ function applyInterestEvent(s, interestEvent, scale){ // scale：投入份量倍
   if(!s.interestCandidates) s.interestCandidates = [];
   const category = interestEvent.category;
   const reaction = interestEvent.reaction; // "positive" | "neutral" | "negative"
-  let card = findInterestCard(s, category);
+  const hit = resolveInterestCardForEvent(s, interestEvent);
+  let card = hit.card;
   if(!card){
+    let newId = category+"_"+s.turnCount;
+    while((s.interestCandidates||[]).some(x=>x.id===newId)) newId += "b"; // 8.8.4：同一回合不會有第二張，但保險不撞號
     card = {
-      id: category+"_"+s.turnCount, createdTurn: s.turnCount, category, item: interestEvent.item || null, status:"candidate", investment:0, positiveStreak:0, candidateProgress:0,
+      id: newId, createdTurn: s.turnCount, category, item: hit.item || null, status:"candidate", investment:0, positiveStreak:0, candidateProgress:0,
       lastEngagedRound: s.turnCount, sideBusinessOffered:false, sideBusinessStatus:null,
       selfDisciplineAwarded3:false, selfDisciplineAwarded6:false
     };
@@ -3711,7 +3733,7 @@ function prepareOrderTurn(s, focus){
     const fin = list.filter(o=>o.status!=="進行中");
     if(fin.length > ORDER_KEEP_FINISHED) c.gigOrders = list.filter(o=>o.status==="進行中").concat(fin.slice(-ORDER_KEEP_FINISHED));
     const rollHere = focus ? !!focusGigItem(focus, c.id) : !focusModeActive(s);
-    if(rollHere && activeOrders(c).length < orderTier(c).cap && Math.random() < ORDER_INQUIRY_PROB[c.sideBusinessStatus]) notice.inquiry.push({ category:c.category });
+    if(rollHere && activeOrders(c).length < orderTier(c).cap && Math.random() < ORDER_INQUIRY_PROB[c.sideBusinessStatus]) notice.inquiry.push({ category:interestCardLabel(c) });
   });
   s.orderNotice = notice;
   return notice;
@@ -3724,12 +3746,16 @@ function orderNoticesPayload(n){
   if(n.cancelled.length) out.cancelled = n.cancelled;
   return Object.keys(out).length ? out : null;
 }
+// 8.8.4：副業卡可能有同類別的好幾張；AI回報時優先用「類別・項目」對，對不到才退回只對類別(同類別取第一張)
+function sideGigCardByName(cards, name){
+  return cards.find(c=>interestCardLabel(c)===name) || cards.find(c=>c.category===name) || null;
+}
 function orderPayload(s){
   const cards = sideGigCards(s);
   if(!cards.length) return null;
   return cards.map(c=>{
     const t = orderTier(c), act = activeOrders(c);
-    return { category:c.category, status:SIDE_BUSINESS_LABELS[c.sideBusinessStatus], open:act.length, cap:t.cap, at_cap: act.length>=t.cap,
+    return { category:interestCardLabel(c), status:SIDE_BUSINESS_LABELS[c.sideBusinessStatus], open:act.length, cap:t.cap, at_cap: act.length>=t.cap,
       orders: act.map(o=>({ order_no:String(o.no), client:o.client, via:o.via||null, item:o.item, size:o.size, progress:orderProgressText(o),
         due_in_turns: o.due - s.turnCount, overdue: s.turnCount > o.due })) };
   });
@@ -3739,7 +3765,7 @@ function registerOrders(s, list){
   const cards = sideGigCards(s);
   (Array.isArray(list) ? list : []).slice(0,3).forEach(d=>{
     if(!d || !d.client || !d.item) return;
-    let card = d.category ? cards.find(c=>c.category===d.category) : (cards.length===1 ? cards[0] : null);
+    let card = d.category ? sideGigCardByName(cards, d.category) : (cards.length===1 ? cards[0] : null);
     if(!card){ addReviewFlag(s, "order_new_category", `order_new類別「${d.category||"（沒寫）"}」不是玩家目前的副業類別，未登記`); return; }
     if(!ORDER_SPEC[d.size]){ addReviewFlag(s, "order_new_size", `order_new大小「${d.size}」不合法，未登記`); return; }
     if(activeOrders(card).length >= orderTier(card).cap){ addReviewFlag(s, "order_new_over_cap", `${card.category}已達接單上限，仍回報order_new，未登記`); return; }
@@ -3772,7 +3798,7 @@ function registerGigPartners(s, list){
   const cards = sideGigCards(s);
   (Array.isArray(list) ? list : []).slice(0,3).forEach(d=>{
     if(!d || !d.name) return;
-    const card = d.category ? cards.find(c=>c.category===d.category) : (cards.length===1 ? cards[0] : null);
+    const card = d.category ? sideGigCardByName(cards, d.category) : (cards.length===1 ? cards[0] : null);
     const ch = (s.characters||[]).find(c=>c.name===d.name && !c.deceased && !c.lost);
     if(!card || !ch){ addReviewFlag(s, "gig_partner_invalid", `gig_partner_add「${d.name}」對不到副業或人物名單，未登記`); return; }
     card.gigPartners = card.gigPartners||[];
@@ -7550,7 +7576,7 @@ function adultWorkOptions(s){
   else if(st===CAREER_STATUS.SEMI_RETIRED) main = [{ id:"sidejob", kind:"part", label:"兼職" }];
   else if(st===CAREER_STATUS.RETIRED) main = [];
   else main = [{ id:"search", kind:"search", label:"找工作" }, { id:"part", kind:"part", label:"打工" }];
-  return main.concat(sideGigCards(s).map(c=>({ id:c.id, kind:"gig", label:c.category, pickLabel:`${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}：${c.category}`, card:c })));
+  return main.concat(sideGigCards(s).map(c=>({ id:c.id, kind:"gig", label:interestCardLabel(c), pickLabel:`${SIDE_BUSINESS_LABELS[c.sideBusinessStatus]}：${interestCardLabel(c)}`, card:c })));
 }
 function currentAdultWork(s){
   const opts = adultWorkOptions(s);
@@ -7645,8 +7671,8 @@ const ADULT_FOCUS_SCENE_DIRECTIVES = {
 };
 // 60歲起(2.6.7.7、1.2.16)：重心不決定新場景，發生的事各用一句寫進時間流逝那一段
 function focusItemPhrase(it){
-  if(it.key==="interest") return it.interestCategory ? `做${it.interestCategory}` : "嘗試一件新事物";
-  if(it.key==="work") return it.workKind==="gig" ? `處理${it.gigCategory}的訂單` : it.workLabel;
+  if(it.key==="interest") return it.interestCategory ? `做${it.interestLabel||it.interestCategory}` : "嘗試一件新事物";
+  if(it.key==="work") return it.workKind==="gig" ? `處理${it.gigLabel||it.gigCategory}的訂單` : it.workLabel;
   if(it.key==="family") return it.careTitle ? `照顧${it.careTitle}` : "陪家人";
   return { study:"進修", social:"跟朋友相處", rest:"休息" }[it.key] || it.label;
 }
@@ -7661,7 +7687,7 @@ function focusSceneDirective(focus, programEvent){
   else if(focus.adult && focus.key==="study") text = ADULT_FOCUS_SCENE_DIRECTIVES.study;
   else if(focus.adult && focus.key==="family" && focus.careTitle) text = ADULT_FOCUS_SCENE_DIRECTIVES.care;
   else if(focus.key==="interest"){
-    text = focus.interestCategory ? `本回合須有主角實際從事${focus.interestCategory}的描寫（題材可與其他興趣交疊，但主角在做的事必須是${focus.interestCategory}）`
+    text = focus.interestCategory ? `本回合須有主角實際從事${focus.interestLabel||focus.interestCategory}的描寫（題材可與其他興趣交疊，但主角在做的事必須是${focus.interestLabel||focus.interestCategory}）`
       : "本回合須有主角實際嘗試一件新事物的描寫";
   } else if(focus.key==="work" && focus.gigCategory){
     text = "本回合須有主角實際處理訂單（製作、備料、交件、跟客人溝通）的描寫"; // 二、2.8.2：重心指令表新增一列
@@ -7696,6 +7722,7 @@ function buildFocusItem(s, key, actionText){
     const card = currentInterestChoice(s);
     it.interestCardId = card ? card.id : null;
     it.interestCategory = card ? card.category : null; // null＝嘗試新的，類別由AI判斷(8.10)
+    it.interestLabel = card ? interestCardLabel(card) : null; // 8.8.4：「類別・項目」
   }
   if(key==="family"){
     it.familyTargets = focusFamilyTargets(s, actionText).map(c=>c.name);
@@ -7706,10 +7733,10 @@ function buildFocusItem(s, key, actionText){
     if(adult){
       const w = currentAdultWork(s);
       it.workKind = w.kind; it.workLabel = w.label;
-      if(w.kind==="gig"){ it.gigCardId = w.card.id; it.gigCategory = w.card.category; }
+      if(w.kind==="gig"){ it.gigCardId = w.card.id; it.gigCategory = w.card.category; it.gigLabel = interestCardLabel(w.card); }
     } else {
       const gig = currentWorkChoice(s);
-      if(gig){ it.workKind = "gig"; it.gigCardId = gig.id; it.gigCategory = gig.category; }
+      if(gig){ it.workKind = "gig"; it.gigCardId = gig.id; it.gigCategory = gig.category; it.gigLabel = interestCardLabel(gig); }
       else it.workKind = "part";
     }
   }
@@ -7741,8 +7768,8 @@ function focusPartTimeRatio(focus){
   return it ? (it.ratio==null ? 1 : it.ratio) : 0;
 }
 function focusItemLabel(it){
-  if(it.key==="interest") return it.interestCategory ? `興趣：${it.interestCategory}` : "興趣：嘗試新的";
-  if(it.key==="work") return it.gigCategory ? `工作：${it.gigCategory}` : `工作：${it.workLabel || "打工"}`;
+  if(it.key==="interest") return it.interestCategory ? `興趣：${it.interestLabel||it.interestCategory}` : "興趣：嘗試新的";
+  if(it.key==="work") return it.gigCategory ? `工作：${it.gigLabel||it.gigCategory}` : `工作：${it.workLabel || "打工"}`;
   if(it.key==="family" && it.careTitle) return `家人：照顧${it.careTitle}`;
   return it.label;
 }
@@ -7841,7 +7868,7 @@ function applyFocusItemSettlement(s, it, r, out){
     // 2.6.7.7補充定案：60歲起再乘名次比例
     const rx = r && r.interest_event && ["positive","neutral","negative"].includes(r.interest_event.reaction) ? r.interest_event.reaction : "positive";
     const rankMult = it.rank ? FOCUS_RANK_GIG_INTEREST[it.rank-1] : 1;
-    applyInterestEvent(s, { category: it.gigCategory, reaction: rx }, 0.5*rankMult);
+    applyInterestEvent(s, { category: it.gigCategory, cardId: it.gigCardId, reaction: rx }, 0.5*rankMult);
     out.interest = it.gigCategory;
   } else if(it.key==="work" && it.workKind==="push"){
     // 2.6.7.3：本業拚一點，從主管和同事中隨機挑一位關係＋1(沒有就不加)
@@ -7854,7 +7881,7 @@ function applyFocusItemSettlement(s, it, r, out){
   } else if(it.key==="interest" && it.interestCategory){
     // 八、8.12.1（2026-09-29，取代8.10「一律算喜歡」）：投入直接記到指定的興趣卡，AI回報的category一律忽略，只讀reaction；沒回報時視為positive
     const rx = r && r.interest_event && ["positive","neutral","negative"].includes(r.interest_event.reaction) ? r.interest_event.reaction : "positive";
-    const ev = { category: it.interestCategory, reaction: rx };
+    const ev = { category: it.interestCategory, cardId: it.interestCardId, reaction: rx };
     applyInterestEvent(s, ev);
     applyInterestCost(s, ev);
     out.interest = it.interestCategory;
@@ -8832,7 +8859,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     friend_opportunity_now: (timeCtx && timeCtx.friendOpportunity) || null,
     // 一、1.2.15：程式產生、超過當時存款一成的一次性支出，旁白要用一句話交代
     program_expenses_now: (timeCtx && timeCtx.expenseMentions && timeCtx.expenseMentions.length) ? timeCtx.expenseMentions : null,
-    pending_side_business_category: s.pendingSideBusinessCardId ? ((s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId)||{}).category || null : null,
+    pending_side_business_category: s.pendingSideBusinessCardId ? (()=>{ const c = (s.interestCandidates||[]).find(x=>x.id===s.pendingSideBusinessCardId); return c ? interestCardLabel(c) : null; })() : null, // 8.8.4：「類別・項目」
     // 一、1.2.9.1（2026-09-23新增）：取代原本system prompt裡寫死的「每次敘事約250-350字」，改依這回合monthsCrossed分級給字數目標
     narrative_length_guide: narrativeLengthTier(timeCtx && timeCtx.monthsCrossed, timeCtx && timeCtx.tone && timeCtx.tone.tension, !!(timeCtx && timeCtx.focus && !timeCtx.focus.ranked)), // 18.14：60歲起不另外加
     recent_ambient_categories: (timeCtx && timeCtx.focus) || (s.log||[]).length ? recentAmbientCategories(s) : undefined, // 18.14：5回合內不重複使用
@@ -8859,10 +8886,11 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     turn_focus: timeCtx && timeCtx.focus ? {
       key: timeCtx.focus.key, label: focusItemLabel(timeCtx.focus),
       interest_category: timeCtx.focus.key==="interest" ? (timeCtx.focus.interestCategory||"嘗試新的") : undefined,
+      interest_item: timeCtx.focus.key==="interest" && timeCtx.focus.interestCardId ? ((s.interestCandidates||[]).find(c=>c.id===timeCtx.focus.interestCardId)||{}).item || undefined : undefined, // 8.8.4：選的是哪個項目
       try_new_suggestion: (timeCtx.interestSeed && timeCtx.interestSeed.kind==="try_new") ? { category: timeCtx.interestSeed.category, item: timeCtx.interestSeed.item } : undefined, // 八、8.8.2：嘗試新的由程式擲出
       family_targets: timeCtx.focus.familyTargets || undefined,
       part_time: focusPartTimeRatio(timeCtx.focus) ? (s.partTimeEventLog||null) : undefined,
-      gig_category: timeCtx.focus.gigCategory || undefined, // 八、8.13：重心是「工作：副業X」
+      gig_category: timeCtx.focus.gigLabel || timeCtx.focus.gigCategory || undefined, // 八、8.13：重心是「工作：副業X」
       // 二、2.6.7（2026-10-04）：出社會後的重心；60歲起排序前三，只告訴AI這回合發生了哪幾件(數值由程式算)
       adult: timeCtx.focus.adult || undefined,
       ranked_items: timeCtx.focus.ranked ? timeCtx.focus.items.map(it=>({ rank: it.rank, label: focusItemLabel(it), occurred: it.occurred })) : undefined,
@@ -8968,8 +8996,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-j";
+const APP_VERSION = "2026.10.09-k";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-k", date:"2026-10-09", title:"興趣分項目經營", items:[
+    "興趣現在會分到具體項目：同一類的不同興趣可以分開經營，重心的興趣按鈕與選單也會顯示項目名稱。",
+  ]},
   { version:"2026.10.09-j", date:"2026-10-09", title:"花費先決定，再寫故事", items:[
     "學生時期遇到要自己掏錢的場合，現在會先跳出小視窗讓你決定，決定完這一回合的故事才會寫，內容會直接接上你的選擇。",
     "指定的新興趣、換手機或電腦這類事，故事裡會確實寫到。",
@@ -9612,7 +9643,7 @@ function mockGenerateTurn(actionText, forceEnding, timeCtx){
   const gigCardsNow = sideGigCards(s);
   if(gigCardsNow.length && timeCtx && !timeCtx.prologue && (timeCtx.orderNotice && timeCtx.orderNotice.inquiry.length || Math.random()<0.2)){
     const c = pick(gigCardsNow);
-    order_new = [{ category:c.category, client:pick(["林小姐","阿宇","陳老闆"]), item:`（模擬）${c.category}小物×${rnd(2,9)}`, size:pick(["small","medium","large"]) }];
+    order_new = [{ category:interestCardLabel(c), client:pick(["林小姐","阿宇","陳老闆"]), item:`（模擬）${c.category}小物×${rnd(2,9)}`, size:pick(["small","medium","large"]) }];
   }
   const dueP = promisesPayload(s, win).promises_due_now;
   const promise_results = dueP.map(p=>({ id:p.id, outcome: pick(["kept","postponed","cancelled"]) }));
@@ -10866,7 +10897,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   const seed = timeCtx && timeCtx.interestSeed;
   if(!interestHandledByFocus && seed && r.interest_event && r.interest_event.reaction){
     if(r.interest_event.category && r.interest_event.category!==seed.category) addReviewFlag(s, "interest_event_mismatch", `interest_event類別「${r.interest_event.category}」與程式指定的「${seed.category}」不同`);
-    r.interest_event = { ...r.interest_event, category: seed.category, item: seed.item };
+    r.interest_event = { ...r.interest_event, category: seed.category, item: seed.item, fromSeed: true };
   }
   if(!interestHandledByFocus){
     applyInterestEvent(s, r.interest_event);
@@ -11385,7 +11416,7 @@ function openLifeKeepPanel(mode, childName){
   const need = can ? "" : `<span class="rv-note" style="margin-left:6px;">需要 ${LIFE_KEEP_COST} 點</span>`;
   const dis = can ? "" : "disabled";
   const btn = (keep, text, extra)=>`<button class="choice-btn" data-keep="${escapeHtml(JSON.stringify(keep))}" ${dis||extra||""}>${escapeHtml(text)}</button>`;
-  const interestHtml = cards.length ? cards.map(c=>btn({ type:"interest", category:c.category, label:c.category }, c.category)).join("") : `<p class="rv-note">這一世沒有可以帶的興趣。</p>`;
+  const interestHtml = cards.length ? Array.from(new Set(cards.map(c=>c.category))).map(cat=>btn({ type:"interest", category:cat, label:cat }, cat)).join("") : `<p class="rv-note">這一世沒有可以帶的興趣。</p>`;
   const statHtml = ["knowledge","network"].map(k=>btn({ type:"stat", stat:k }, succeed ? (k==="knowledge" ? "才識（家裡的教育資源）" : "人脈（家裡的人脈）") : LIFE_KEEP_STAT_LABELS[k])).join("");
   const npcHtml = npcs.length ? npcs.map(c=>btn({ type:"npc", name:c.name }, `${c.name}（${c.relation||"認識的人"}）`)).join("") : `<button class="choice-btn" disabled>沒有可以指定的人</button>`;
   const div = entryModal("life-keep-modal", `<h3>人生重開丹</h3>
@@ -13056,14 +13087,14 @@ function renderFocusBar(s, disabled){
   if(!focusKeyAvailable(s, key)) key = FOCUS_DEFAULT;
   const cards = formalInterestCards(s);
   const chosenCard = currentInterestChoice(s);
-  const interestLabel = chosenCard ? `興趣：${chosenCard.category}${cards.length ? " ▾" : ""}` : (cards.length ? "興趣：嘗試新的 ▾" : "興趣");
+  const interestLabel = chosenCard ? `興趣：${interestCardLabel(chosenCard)}${cards.length ? " ▾" : ""}` : (cards.length ? "興趣：嘗試新的 ▾" : "興趣");
   const gigCards = sideGigCards(s);
   // 「工作」：學生時期＝打工＋副業；出社會後依職涯狀態展開(2.6.7.3)
   const workOpts = adult ? adultWorkOptions(s) : null;
   const adultWork = adult ? currentAdultWork(s) : null;
   const workGig = adult ? (adultWork && adultWork.kind==="gig" ? adultWork.card : null) : currentWorkChoice(s);
   const workHasPicker = adult ? workOpts.length>1 : gigCards.length>0;
-  const workLabel = adult ? `工作：${adultWork ? adultWork.label : ""}${workHasPicker ? " ▾" : ""}` : (gigCards.length ? `工作：${workGig ? workGig.category : "打工"} ▾` : "工作");
+  const workLabel = adult ? `工作：${adultWork ? adultWork.label : ""}${workHasPicker ? " ▾" : ""}` : (gigCards.length ? `工作：${workGig ? interestCardLabel(workGig) : "打工"} ▾` : "工作");
   const care = adult ? focusCareTarget(s) : null;
   const familyLabel = care ? `家人：照顧${careTitle(care)}` : FOCUS_LABELS.family;
   const labelOf = k=> k==="interest" ? interestLabel : k==="work" ? workLabel : k==="family" ? familyLabel : k==="study" ? focusStudyLabel(s) : FOCUS_LABELS[k];
@@ -13073,13 +13104,13 @@ function renderFocusBar(s, disabled){
   const keys = FOCUS_KEYS.filter(k=>focusKeyAvailable(s, k));
   const removeBtn = k=> ranked && rank.includes(k) && rank.length>1 ? `<button class="focus-btn" data-rank-remove="${k}">從排序拿掉</button>` : ``;
   const picker = (interestPickerOpen && cards.length && !disabled) ? `<div class="interest-pick" id="interest-pick">
-      ${cards.map(c=>`<button class="focus-btn${chosenCard && chosenCard.id===c.id?" on":""}" data-interest-card="${escapeHtml(c.id)}">${escapeHtml(c.category)}</button>`).join("")}
+      ${cards.map(c=>`<button class="focus-btn${chosenCard && chosenCard.id===c.id?" on":""}" data-interest-card="${escapeHtml(c.id)}">${escapeHtml(interestCardLabel(c))}</button>`).join("")}
       <button class="focus-btn${!chosenCard?" on":""}" data-interest-card="new">嘗試新的</button>${removeBtn("interest")}
     </div>` : ``;
   const workPicker = (workPickerOpen && workHasPicker && !disabled) ? `<div class="interest-pick" id="work-pick">
       ${adult ? workOpts.map(o=>`<button class="focus-btn${adultWork && adultWork.id===o.id?" on":""}" data-work-pick="${escapeHtml(o.id)}">${escapeHtml(o.pickLabel||o.label)}</button>`).join("")
         : `<button class="focus-btn${!workGig?" on":""}" data-work-pick="part">打工</button>
-      ${gigCards.map(c=>`<button class="focus-btn${workGig && workGig.id===c.id?" on":""}" data-work-pick="${escapeHtml(c.id)}">${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}：${escapeHtml(c.category)}</button>`).join("")}`}${removeBtn("work")}
+      ${gigCards.map(c=>`<button class="focus-btn${workGig && workGig.id===c.id?" on":""}" data-work-pick="${escapeHtml(c.id)}">${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}：${escapeHtml(interestCardLabel(c))}</button>`).join("")}`}${removeBtn("work")}
     </div>` : ``;
   let hint;
   if(key==="interest" && !chosenCard) hint = "主要給興趣投入，下個場景可能在嘗試新的事物";
@@ -13570,7 +13601,7 @@ function interestLevelChangeNote(s, before){
     const b = before[c.id];
     if(!b) return;
     const now = interestLevelIndex(Math.round(c.investment||0));
-    if(now!==b.idx) out.push(`興趣：${c.category}　${INTEREST_LEVELS[b.idx][0]} → ${INTEREST_LEVELS[now][0]}`);
+    if(now!==b.idx) out.push(`興趣：${interestCardLabel(c)}　${INTEREST_LEVELS[b.idx][0]} → ${INTEREST_LEVELS[now][0]}`);
   });
   return out.length ? out : null;
 }
@@ -13598,7 +13629,7 @@ function renderTracks(s){
   }
   const cards = (s.interestCandidates||[]).filter(c=>c.status==="active" || c.status==="dormant");
   if(cards.length){
-    rows.push(`<div class="ledger-row"><span class="lbl">興趣</span><span class="dots"></span><span class="val" style="font-size:12px;">${escapeHtml(cards.map(c=>`${c.category}（${interestLevelLabel(c)}）`).join("、"))}</span></div>`);
+    rows.push(`<div class="ledger-row"><span class="lbl">興趣</span><span class="dots"></span><span class="val" style="font-size:12px;">${escapeHtml(cards.map(c=>`${interestCardLabel(c)}（${interestLevelLabel(c)}）`).join("、"))}</span></div>`);
   }
   return rows.length ? `<div class="ledger tracks">${rows.join("")}</div>` : "";
 }
@@ -14050,7 +14081,7 @@ function renderGigCardHtml(s, c){
   const cal = s.timeState && s.timeState.cal;
   const monthOf = abs=> abs==null ? "" : calAbsToDate(abs).m+"月";
   return `<div class="interest-card">
-    <div class="ic-head"><b>${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}・${escapeHtml(c.category)}</b><span class="ic-level">${interestLevelName(Math.round(c.investment||0))}</span></div>
+    <div class="ic-head"><b>${escapeHtml(SIDE_BUSINESS_LABELS[c.sideBusinessStatus])}・${escapeHtml(interestCardLabel(c))}</b><span class="ic-level">${interestLevelName(Math.round(c.investment||0))}</span></div>
     <div class="ic-sub">手上 ${act.length} 單／上限 ${t.cap} 單</div>
     ${(()=>{ const gp = Object.entries(c.gigPlaces||{}).sort((a,b)=>b[1]-a[1])[0]; return gp && findPlace(s, gp[0]) ? `<div class="ic-sub">據點：${escapeHtml(gp[0])}</div>` : ``; })()}
     ${(c.gigPartners||[]).length ? `<div class="ic-sub">一起做的人：${(c.gigPartners||[]).map(n=>{ const ch=(s.characters||[]).find(x=>x.name===n); return escapeHtml(n)+(ch&&ch.relation?"（"+escapeHtml(ch.relation)+"）":""); }).join("、")}</div>` : ``}
@@ -14729,7 +14760,7 @@ function renderSideBusinessModal(cardId){
   ];
   div.innerHTML = `
     <div class="modal">
-      <h3>「${escapeHtml(card.category)}」好像可以更進一步了</h3>
+      <h3>「${escapeHtml(interestCardLabel(card))}」好像可以更進一步了</h3>
       <p>投入這麼久，這個興趣好像不只是興趣了——要不要考慮往下發展？</p>
       ${options.map(o=>`<button class="ghost-btn side-business-btn" data-key="${o.key}" style="margin:4px 6px 0 0;">${o.label}</button>`).join("")}
       <button class="primary-btn" id="btn-side-business-confirm" style="margin-top:14px;">確定</button>
@@ -14745,7 +14776,7 @@ function renderSideBusinessModal(cardId){
     // 取代原本選formal當下直接launchBusiness；持續回合數的檢查見checkSideBusinessUpgrade()
     if(chosen==="formal") card.sideBusinessSince = state.turnCount;
     // 8.7（2026-09-27）：選擇結果下一回合告訴AI（原本AI只在pending_side_business_category看得到，但那個欄位在彈窗前就被清掉，AI實際上收不到）
-    state.sideBusinessEventLog = { category: card.category, choice: chosen };
+    state.sideBusinessEventLog = { category: interestCardLabel(card), choice: chosen };
     // 八、8.13：訂單簿從空白開始，新客人要等旁白依「新詢問擲骰」安排；當回合在日記上顯示一句說明
     const lastE = (state.log||[]).slice().reverse().find(e=>!e.error);
     if(lastE) lastE.sideBusinessNote = sideBusinessChoiceNote(state, card, chosen);

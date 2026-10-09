@@ -96,10 +96,58 @@ const flags1 = js("(state.reviewFlags||[]).filter(f=>f.kind==='interest_event_mi
 A.check("類別相符：不寫錯誤紀錄", flags1 === flags0, [flags0, flags1]);
 A.check("連續兩回合嘗試新的：兩次種子類別不同(不連續同類)", lastPayload.turn_focus.try_new_suggestion.category !== cards1[0].category, [lastPayload.turn_focus.try_new_suggestion.category, cards1[0].category]);
 
-// 第一次的項目不被覆蓋(同類別再抽到其他項目)
-ev("state.interestCandidates=[{id:'k1',category:'手作工藝',item:'飾品',status:'active',investment:30,positiveStreak:0,candidateProgress:3,lastEngagedRound:state.turnCount-1,sideBusinessOffered:false}]; state.interestSeedLast=null");
+// ---------- 8.8.4 每個項目各自成卡（2026-10-09） ----------
+const card0 = (id, category, item, extra = "") => `{id:'${id}',category:'${category}',item:${item ? `'${item}'` : "null"},status:'active',investment:30,positiveStreak:0,candidateProgress:3,lastEngagedRound:state.turnCount-1,sideBusinessOffered:false${extra}}`;
+ev(`state.interestCandidates=[${card0("k1", "手作工藝", "飾品")}]; state.interestSeedLast=null`);
 ev("applyInterestEvent(state,{category:'手作工藝',item:'陶藝',reaction:'positive'})");
-A.check("8.8.3 同類別再接觸其他項目：投入記在原卡、卡上項目保留第一次的", js("state.interestCandidates.length")===1 && js("state.interestCandidates[0].item")==="飾品" && js("state.interestCandidates[0].investment")>30);
+A.check("8.8.4 AI回報清單內的新項目(陶藝)：另開新卡(候選)，原卡不動", js("state.interestCandidates.length")===2 && js("state.interestCandidates[0].item")==="飾品" && js("state.interestCandidates[0].investment")===30 && js("state.interestCandidates[1].item")==="陶藝" && js("state.interestCandidates[1].status")==="candidate");
+ev("applyInterestEvent(state,{category:'手作工藝',item:'陶藝',reaction:'positive'})");
+A.check("8.8.4 同項目再回報：記到同一張卡，不再開新卡", js("state.interestCandidates.length")===2 && js("state.interestCandidates[1].candidateProgress")===2);
+ev("state.interestCandidates[0].lastEngagedRound = state.turnCount; state.interestCandidates[1].lastEngagedRound = state.turnCount-3");
+ev("applyInterestEvent(state,{category:'手作工藝',reaction:'positive'})");
+A.check("8.8.4 沒回報項目：記到該類別最近一次投入的卡(飾品)", js("state.interestCandidates[0].investment")>30 && js("state.interestCandidates[1].candidateProgress")===2 && js("state.interestCandidates.length")===2);
+const inv0 = js("state.interestCandidates[0].investment");
+ev("applyInterestEvent(state,{category:'手作工藝',item:'亂寫的項目',reaction:'positive'})");
+A.check("8.8.4 回報的項目不在清單內：當作沒回報，記到最近投入的卡，不開新卡", js("state.interestCandidates.length")===2 && js("state.interestCandidates[0].investment")>inv0);
+const inv1 = js("state.interestCandidates[1].candidateProgress");
+ev("applyInterestEvent(state,{category:'手作工藝',cardId:'k1',item:'陶藝',reaction:'positive'})");
+A.check("8.8.4 指定cardId(重心選了那張卡)：一律記到那張，AI回報的項目忽略", js("state.interestCandidates[1].candidateProgress")===inv1 && js("state.interestCandidates.length")===2);
+ev("applyInterestEvent(state,{category:'手作工藝',item:'烘焙',fromSeed:true,reaction:'neutral'})");
+A.check("8.8.4 程式擲出的種子項目(烘焙)：另開新卡", js("state.interestCandidates.length")===3 && js("state.interestCandidates[2].item")==="烘焙");
+ev(`state.interestCandidates=[${card0("o1", "手作工藝", null)}]`);
+ev("applyInterestEvent(state,{category:'手作工藝',item:'飾品',fromSeed:true,reaction:'positive'})");
+A.check("8.8.4 舊存檔的卡(沒有項目)：繼續當「手作工藝・未指定」，新項目另開新卡，舊卡不補項目", js("state.interestCandidates.length")===2 && js("state.interestCandidates[0].item")===null && js("state.interestCandidates[1].item")==="飾品");
+{
+  const r = js(`(()=>{ const s={interestCandidates:[{category:'手作工藝',status:'active',item:'飾品'},{category:'手作工藝',status:'candidate',item:'陶藝'}], interestSeedLast:null}; let bad=0, tot=0; for(let i=0;i<8000;i++){ s.interestSeedLast=null; const x=rollInterestSeed(s); if(x.category==='手作工藝'){ tot++; if(x.item==='飾品'||x.item==='陶藝') bad++; } } return {bad,tot}; })()`);
+  A.check("8.8.4 種子不再抽已經擁有的項目(不分卡的狀態)", r.tot > 100 && r.bad === 0, r);
+  const r2 = js(`(()=>{ const all=INTEREST_ITEMS['藝術創作'].map(i=>({category:'藝術創作',status:'active',item:i})); const s={interestCandidates:all, interestSeedLast:null}; let art=0; for(let i=0;i<4000;i++){ s.interestSeedLast=null; if(rollInterestSeed(s).category==='藝術創作') art++; } return art; })()`);
+  A.check("8.8.4 某類別的項目全都擁有後：不再抽到那一類(改抽別類)", r2 === 0, r2);
+}
+{
+  ev(`state.interestCandidates=[${card0("m1", "手作工藝", "金工")}, ${card0("m2", "手作工藝", "飾品")}]; state.focusInterestId='m2'; state.focus='interest'; state.focusWorkId=null`);
+  const it = js("buildFocusItem(state,'interest','')");
+  A.check("8.8.4 重心選第二張卡：focus帶cardId與「類別・項目」標籤", it.interestCardId === "m2" && it.interestLabel === "手作工藝・飾品", it);
+  const bar = ev("renderFocusBar(state,false)");
+  A.check("8.8.4 重心按鈕顯示「興趣：手作工藝・飾品」", bar.includes("興趣：手作工藝・飾品"), bar.slice(0, 200));
+  ev("interestPickerOpen = true");
+  const bar2 = ev("renderFocusBar(state,false)");
+  A.check("8.8.4 選單每張卡一顆按鈕：手作工藝・金工、手作工藝・飾品", bar2.includes(">手作工藝・金工</button>") && bar2.includes(">手作工藝・飾品</button>"));
+  ev("interestPickerOpen = false");
+  const before = js("[state.interestCandidates[0].investment, state.interestCandidates[1].investment]");
+  ev("applyFocusSettlement && 0"); // 確認函式存在不報錯
+  ev("applyInterestEvent(state,{category:'手作工藝',cardId:'m2',reaction:'positive'})");
+  A.check("8.8.4 只有被選的那張卡增加投入(金工不動，飾品增加)", js("state.interestCandidates[0].investment")===before[0] && js("state.interestCandidates[1].investment")>before[1]);
+  ev("state.interestCandidates[0].sideBusinessStatus='formal'; state.interestCandidates[1].sideBusinessStatus='formal'");
+  const op = js("orderPayload(state).map(x=>x.category)");
+  A.check("8.8.4 訂單簿payload的類別帶項目：手作工藝・金工／手作工藝・飾品", op.includes("手作工藝・金工") && op.includes("手作工藝・飾品"), op);
+  ev("registerOrders(state,[{category:'手作工藝・金工',client:'阿美',item:'戒指',size:'small'}])");
+  A.check("8.8.4 AI用「類別・項目」回報訂單：登記到對的那張(金工)", js("(state.interestCandidates[0].gigOrders||[]).length")===1 && js("(state.interestCandidates[1].gigOrders||[]).length")===0, js("state.interestCandidates.map(c=>(c.gigOrders||[]).length)"));
+  ev("state.interestCandidates[0].gigOrders=[]");
+  ev("registerOrders(state,[{category:'手作工藝',client:'老王',item:'胸針',size:'small'}])");
+  A.check("8.8.4 只回報類別：退回同類別第一張卡", js("(state.interestCandidates[0].gigOrders||[]).length")===1 && js("(state.interestCandidates[1].gigOrders||[]).length")===0);
+  ev("registerOrders(state,[{category:'手作工藝・飾品',client:'小張',item:'耳環',size:'small'}])");
+  A.check("8.8.4 用「手作工藝・飾品」回報：登記到飾品那張", js("(state.interestCandidates[1].gigOrders||[]).length")===1);
+}
 
 // ---------- 8.8.2 接進回合：自然種子 ----------
 ev("state.interestCandidates=[]; state.interestSeedLast=null; state.focus='rest'");

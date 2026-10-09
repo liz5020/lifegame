@@ -8,7 +8,7 @@ const env = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env, key: "sx00000001" });
 await H.startNewLife(g);
 const ev = g.ev;
-g.win.__sxManual = true; // 這個測試自己按彈窗按鈕
+// 平常沒預期的彈窗由harness自動按〔不花〕；要自己按的那幾回合才把g.win.__sxManual打開
 { const k = `ap:${H.loc("sx00000001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 const doc = g.win.document;
 const js = (x) => { const r = ev(`JSON.stringify(${x})`); return r === undefined ? undefined : JSON.parse(r); };
@@ -68,16 +68,18 @@ ev(`state.characters.push({name:"阿森", relation:"同學", affinity:50, active
 const planJs = (kind, event, total, amount, target) => `window.__origPrep = window.__origPrep || prepareStudentExpense; prepareStudentExpense = ()=>({kind:${JSON.stringify(kind)},event:${JSON.stringify(event)},total:${total},amount:${amount},target:${JSON.stringify(target)},keys:studentExpenseKeys(state,"上學期")});`;
 const unplan = () => ev("window.__origPrep = window.__origPrep || prepareStudentExpense; prepareStudentExpense = ()=>null;"); // 之後的回合固定不排定，避免隨機事件干擾
 const aff = () => ev(`state.characters.find(c=>c.name==="阿森").affinity`);
-const waitModal = async () => { for (let i = 0; i < 400 && !doc.getElementById("student-expense-modal"); i++) await new Promise(r => setTimeout(r, 5)); };
+const waitModal = async () => { for (let i = 0; i < 6000 && !doc.getElementById("student-expense-modal"); i++) await new Promise(r => setTimeout(r, 5)); };
 // 送出行動→等彈窗出現→(檢查)→按鈕→等回合寫完。回傳這回合送給AI的payload
 const runTurn = async (action, btn, check) => {
   payload = null;
+  g.win.__sxManual = true;
   const pr = g.ev(`takeTurn(${JSON.stringify(action)}, AP_COST_PER_TURN)`);
   await waitModal();
   const sawPayloadBefore = payload;
   if (check) check();
   doc.getElementById(btn).click();
   await pr;
+  g.win.__sxManual = false;
   return { before: sawPayloadBefore, payload };
 };
 unplan();
@@ -150,7 +152,7 @@ await H.playTurn(g);
   ev(planJs("trip", "出遊", 90, 90, null));
   const bad = H.installUpstreamOnce ? null : null; // 見下：改用callAI直接丟錯
   ev("window.__origCallAI = window.__origCallAI || callAI; callAI = async ()=>{ const e = new Error('boom'); e.noRetry = true; throw e; }; window.__origMock = window.__origMock || mockCallAI;");
-  const pr = g.ev(`takeTurn("週末", AP_COST_PER_TURN)`); await waitModal(); doc.getElementById("btn-sx-yes").click(); await pr;
+  g.win.__sxManual = true; const pr = g.ev(`takeTurn("週末", AP_COST_PER_TURN)`); await waitModal(); doc.getElementById("btn-sx-yes").click(); await pr; g.win.__sxManual = false;
   ev("callAI = window.__origCallAI"); unplan();
   A.check("AI失敗還原：花的錢與次數都回到送出前", ev("state.cash") === cash5 && ev("state.studentExpense.termWant") === want5 && !ev("state.studentExpense.pending"), [cash5, ev("state.cash")]);
 }
