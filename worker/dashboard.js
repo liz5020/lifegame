@@ -101,7 +101,8 @@ function renderUsage(s){
     card2("平均每位玩家回合數",u.avg_turns_per_player,"","（今天／近 7 天以活躍玩家計）")+
     card2("每回合平均花費",u.avg_cost_per_turn,"元","")+
     card2("綁定信箱人數",s.accounts_bound,"","")+
-    card2("開啟人生段數",s.lives_started,"","（玩過至少一回合）");
+    card2("開啟人生段數",s.lives_started,"","（玩過至少一回合）")+
+    card2("沒綁信箱的人生段數",s.lives_unbound,"","（含之後結束的；綁了信箱就改算進帳號）");
 }
 function renderCards(s){
   if(!s){$("cards").innerHTML='<div class="card"><h2>玩家與瀏覽</h2><div class="err">'+NA+'</div></div>';return}

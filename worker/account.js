@@ -705,13 +705,15 @@ export class AccountStore {
     const bound = inRange(), started = inRange(); // 10.13.7.11：綁定信箱的帳號(以建立日期)、開啟的人生段數(以人生代號第一次出現日期)
     for (const [, a] of await this.storage.list({ prefix: "a:" })) bound.add(taipeiDateString(a.created));
     for (const [, r] of lids) started.add(r.f);
+    const unbound = inRange(); // 10.13.7.11(2026-10-10)：沒綁信箱的人生段數＝從沒綁進任何帳號的人生代號(以第一次出現日期)；之後綁了信箱就改算進帳號，不再算這裡
+    for (const [lid, r] of lids) if (!owner.has(lid)) unbound.add(r.f);
     const pick = o => ({ total: o.total, today: o.today, last7: o.last7 });
     const newByDate = {};
     for (const d of Array.isArray(b.dates) ? b.dates : []) newByDate[d] = players.filter(p => p.start === d).length;
     return {
       ok: true, free: tally(false), paid: tally(true),
       active: { today: players.filter(p => p.last === b.date).length, last7: players.filter(p => p.last && p.last >= b.week_start && p.last <= b.date).length },
-      new_by_date: newByDate, accounts_bound: pick(bound), lives_started: pick(started)
+      new_by_date: newByDate, accounts_bound: pick(bound), lives_started: pick(started), lives_unbound: pick(unbound)
     };
   }
   _ctx(b) {

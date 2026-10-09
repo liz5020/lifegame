@@ -120,6 +120,7 @@ A.check("每回合平均花費：今天2÷2＝1、累計7÷5＝1.4", u.avg_cost_
 A.check("起算日＝第一筆花費紀錄的日期", u.since === "2026-10-04", u.since);
 A.check("綁定信箱人數：累計2、今天2(綁定當天)、近7天2", s.accounts_bound.total === 2 && s.accounts_bound.today === 2 && s.accounts_bound.last7 === 2, s.accounts_bound);
 A.check("開啟人生段數：累計3(trial1、other1、new001)、今天1(new001)、近7天3；開場不算", s.lives_started.total === 3 && s.lives_started.today === 1 && s.lives_started.last7 === 3, s.lives_started);
+A.check("沒綁信箱的人生段數：累計1(other1；trial1綁了、new001曾綁過都不算)、今天0、近7天1", s.lives_unbound && s.lives_unbound.total === 1 && s.lives_unbound.today === 0 && s.lives_unbound.last7 === 1, s.lives_unbound);
 A.check("daily每筆有turns與cost：第1天3回合、第2天2回合", s.daily.find(d => d.date === "2026-10-04").turns === 3 && s.daily.find(d => d.date === "2026-10-05").turns === 2 && s.daily.find(d => d.date === "2026-10-05").cost === 2, s.daily);
 usageNow = { ...H.ONE_TWD_USAGE, output_tokens: 9375 }; // 剛好3元
 const envP = await H.makeAccountEnv({ TEST_NOW_MS: String(T0), CLOUD_SAVE_ENABLED: "false" });

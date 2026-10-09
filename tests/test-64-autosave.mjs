@@ -39,6 +39,7 @@ await playTo(9, "選擇");
 await sleep(60);
 A.check("到第9回合：還沒存，KV寫入0次", ev("state.turnCount") === 9 && saves(paths) === 0 && cnt.put === 0, { t: ev("state.turnCount"), saves: saves(paths), put: cnt.put });
 A.check("回合數到了、時間沒到：第9回合不存", ev("autoSaveDue(state)") === false);
+A.check("第一次存檔只等1分鐘：還沒存過雲端、滿1分鐘就該存", ev("AUTO_SAVE_FIRST_MS") === 60*1000 && (ev("state.cloudClockStart -= AUTO_SAVE_FIRST_MS"), ev("autoSaveDue(state)")) === true);
 age10();
 await H.playTurn(g, "自由書寫的第十回合：我想去海邊"); await sleep(150); // turnCount從開場的1起算，這一步到第10回合
 A.check("第10回合：自動存一次(1次/save、KV寫入1次)", ev("state.turnCount") === 10 && saves(paths) === 1 && cnt.put === 1, { t: ev("state.turnCount"), saves: saves(paths), put: cnt.put });
@@ -51,6 +52,9 @@ A.check("雲端存檔完整保留每回合的選擇、自由書寫原文與AI劇
 A.check("存檔帶著同意紀錄與自動存檔記號", cloud1.consent && cloud1.consent.v === 1 && ev("state.lastAutoCloudTurn") === 10);
 A.check("時間到了但回合沒推進：不存", (age10(), ev("autoSaveDue(state)")) === false);
 A.check("存檔狀態列：剛存完顯示「剛剛」", ev("cloudSaveTagText()") === "雲端存檔：剛剛" || ev("cloudSaveTagText()").includes("分鐘前"), ev("cloudSaveTagText()"));
+ev("state.lastAutoCloudAt = Date.now()");
+await H.playTurn(g, "存過之後"); ev("state.lastAutoCloudAt -= AUTO_SAVE_FIRST_MS");
+A.check("存過雲端之後：滿1分鐘不夠，要等10分鐘", ev("autoSaveDue(state)") === false);
 ev("state.lastAutoCloudAt = Date.now()");
 await playTo(19, "後續");
 await sleep(60);

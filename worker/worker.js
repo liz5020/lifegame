@@ -1067,7 +1067,7 @@ async function handleStatsSummary(request, env) {
     players: { free: ps.free, paid: ps.paid },
     active: ps.active,
     pageviews: { today: days[today] || 0, last7, total, since },
-    usage, accounts_bound: ps.accounts_bound, lives_started: ps.lives_started,
+    usage, accounts_bound: ps.accounts_bound, lives_started: ps.lives_started, lives_unbound: ps.lives_unbound,
     ai_usage: await buildAIUsageSummary(env, { today, week_start, turns: pv.turns || {} }),
     entry: await buildEntrySummary(env), // 十、10.15.6：名額卡片(只有數字，不含信箱或人生代號)
     daily
@@ -1137,7 +1137,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.09-n";
+const WORKER_VERSION = "2026.10.10-a";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-10 | 2026.10.10-a（含-m、-n；beta，尚未上線） | 2026.10.10-a（account.js、worker.js、dashboard.js：`/stats-summary`新增`lives_unbound`、數據網頁加一格；上正式時Worker隨`master`自動部署） | （待填） | index.html、worker/account.js、worker/worker.js、worker/dashboard.js、設計文件10/00、tests/test-64、test-66 | 還沒存過雲端的人生第一次雲端存檔只等1分鐘(10.13.3)；數據網頁「沒綁信箱的人生段數」(10.13.7.11) |
 | 2026-10-09 | 2026.10.09-n（含-m；beta，尚未上線） | 2026.10.09-n（worker.js、account.js：測試帳號名單AP_TEST_ACCOUNTS；-n：AI呼叫失敗原因寫進Workers Logs、`/usage-today`的`failures`依錯誤類型計次、wrangler.toml打開`[observability]`） | （待填） | index.html、worker/worker.js、worker/account.js、worker/gate.js、worker/wrangler.toml、tests/test-38、test-79、test-87 | 版本號連點5下打開測試選單（手機桌面圖示沒有網址列可加?dev=1）；「不扣行動點」測試開關擴及帳號錢包（10.3.12，需在Cloudflare設`AP_TEST_ACCOUNTS`）；-n：查AI呼叫失敗原因（10/9今日名額6、只有1個開場成功、28次AI呼叫失敗） |
 | 2026-10-09 | 2026.10.09-i（只在`beta`分支預覽網址 beta.lifegame-6an.pages.dev，**尚未上正式**，等使用者說「確認上線」才合併進`master`） | 2026.10.09-i（Worker程式沒改，只換版本號；但-h的`prompt.js`改動尚未部署，上正式時**必須重新部署Worker**） | （beta，未合併） | index.html、worker/worker.js(僅版本號)、設計文件08/03/02/17/00、CLAUDE.md、QA、tests | 副業報酬基準砍約一半、學生期打工1份、打工也算進每月生活開銷的收入平均；驗收重跑通過 |
 | 2026-10-09 | 2026.10.09-l（含-j、-k；2026-10-09使用者說「上線」後合併進`master`，已上線） | 2026.10.09-l（`worker/prompt.js`改了花費寫法、興趣項目與訂單類別寫法與興趣項目寫法（Workers Builds自動部署，`/version`已確認-l）） | 19fccda | index.html、worker/prompt.js、worker/worker.js(版本號)、設計文件08/17/00、tests | 學生期花費改「先選完再寫」（彈窗在寫故事之前）；花了的事與指定興趣項目沒寫進正文會自動重寫；興趣每個項目各自成卡（8.8.4）；學生期花費事件加觸發條件（17.3.6.9） |

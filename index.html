@@ -4108,6 +4108,7 @@ async function ensureCloudHome(st){
 // 額度吃緊時只調大AUTO_SAVE_EVERY_MS(拉長間隔)，不刪減存檔內容；開場同意頁寫「定期」，調整不必改頁面文字。
 // 示範模式(USE_MOCK，內容不是AI寫的)不自動存。失敗不打擾玩家，間隔AUTO_SAVE_RETRY_MS後的下一次存檔再試。
 const AUTO_SAVE_EVERY_MS = 10*60*1000; // 【測試參數】10分鐘
+const AUTO_SAVE_FIRST_MS = 60*1000; // 10.13.3(2026-10-10)：這段人生還沒存過雲端時，第一次只等1分鐘(之後照舊每10分鐘)，玩一下就離開的人生也留得到雲端備份
 const AUTO_SAVE_RETRY_MS = 60*1000;
 let autoCloudSaveRunning = null, autoCloudSaveQueued = false, autoCloudFailAt = 0, cloudSaveFailed = false;
 // 存檔狀態列(2026-10-04)：頂部一行「雲端存檔：X 分鐘前」，失敗時改醒目文字，點一下＝手動存到雲端；只在自動存檔模式(真實API、雲端暫停期間)出現
@@ -4135,7 +4136,7 @@ function autoSaveDue(s){
   if(s.phase!=="playing") return false;
   const t = s.turnCount||0;
   if(!s.cloudClockStart) s.cloudClockStart = Date.now(); // 第一次檢查時才開始計時(新人生、沒有存過的舊存檔都從這裡起算10分鐘)
-  return t>0 && t>(s.lastAutoCloudTurn||0) && Date.now()-(s.lastAutoCloudAt||s.cloudClockStart) >= AUTO_SAVE_EVERY_MS;
+  return t>0 && t>(s.lastAutoCloudTurn||0) && Date.now()-(s.lastAutoCloudAt||s.cloudClockStart) >= (s.lastAutoCloudAt ? AUTO_SAVE_EVERY_MS : AUTO_SAVE_FIRST_MS);
 }
 function autoCloudSave(){
   if(autoCloudSaveRunning){ autoCloudSaveQueued = true; return autoCloudSaveRunning; }
@@ -9028,8 +9029,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-n";
+const APP_VERSION = "2026.10.10-a";
 const RELEASE_NOTES = [
+  { version:"2026.10.10-a", date:"2026-10-10", title:"雲端存檔更早開始", items:[
+    "新的人生玩了一分鐘左右，就會先存一份到雲端，之後照舊定期存檔。",
+  ]},
   { version:"2026.10.09-n", date:"2026-10-09", title:"幕後的穩定性調整", items:[
     "改善了故事寫不出來時的排查方式，遊玩內容沒有變化。",
   ]},
