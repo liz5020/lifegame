@@ -4,6 +4,17 @@
 
 **`協作流程說明-共同基準.md` 是claude.ai Project跟Claude Code雙方都保留的同一份基準文字**——任一邊要調整協作流程，先改那份文件，不要在CLAUDE.md/WORKFLOW.md裡自己另外發展出不同措辭，避免兩邊分岔。
 
+## 這個遊戲的目的與底線（開工前先讀）
+
+1. 這是寫實的現代人生文字遊戲，玩家自己決定人生怎麼走。主線不出現超能力、魔法、一夕致富，奇幻之後另開劇本。
+2. 文字是主角。新功能如果會讓畫面搶過敘事（例如用卡片、圖示取代文字），先停下來問使用者。
+3. 敘事要含蓄、像真人寫的，不直白說破，不要AI腔。
+4. 數值和遊戲狀態一律由程式算，AI只負責敘事和貼標籤。新系統照這個做法設計。
+5. 規則沒寫，或實作會偏離上面任一條時，不自己補。平常先問使用者；批次模式照 `WORKFLOW.md` 第6節，記進「需要確認」清單後繼續做。
+6. 為什麼做：想玩一款現代背景、自己決定人生的文字遊戲。
+
+完整的設計精神見 `life-sim-design/00-總覽.md`。
+
 ## 檔案結構
 
 - `index.html`：遊戲本體，單一HTML檔（前端+呼叫AI的邏輯），部署到Cloudflare Pages（**2026-09-30起連GitHub自動部署**：合併進`master`就上線，`build-pages.sh`只把下列檔案放進`dist/`（`index.html`、`og.png`、`lunar.min.js`，**2026-10-08起再加三個說明頁`terms.html`、`privacy.html`、`pricing.html`**，十、10.16；這三頁由`design-assets/build-legal-pages.py`從設計文件10.16.6～10.16.8的全文區塊產生，改條款文字＝先改設計文件、再重跑這支），見`DEPLOY.md`；舊的手動上傳專案保留備用）；`og.png`（社群分享預覽圖，16.10.9唯一例外；原始檔在`design-assets/og-image.html`，不放進dist）與`lunar.min.js`（農曆套件lunar-javascript，二、2.7真實日曆用；沒放上去時程式退回瀏覽器內建農曆，少數年份春節會差一天）都由`build-pages.sh`放進`dist/`。jsdom測試由`tests/harness.mjs`直接內嵌lunar.min.js
@@ -72,7 +83,7 @@
 
 ## 已知的架構決定（避免重新踩坑）
 
-- 財富分成三個獨立欄位：`cash`（現金）、`propertyValue`（房產淨值）、`mortgageBalance`（房貸剩餘本金），學生時期`cash`/`monthlyIncome`是遊戲內單位（不對應NT$），出社會後是真實新台幣
+- 財富分成三個獨立欄位：`cash`（現金）、`propertyValue`（房產淨值）、`mortgageBalance`（房貸剩餘本金），`cash`/`monthlyIncome`在學生時期與出社會後都是遊戲幣單位（三、3.4總覽9/19改版，不對應NT$，2026-10-09更正）；只有行動點購買價格用新臺幣
 - 全年齡（15歲起）的時間推進都由前端結構化算好（`timeState`），AI的`age_advance`一律視為0。22歲以後採二、2.5的加速曲線（`LIFE_STAGE_ROUND_BUDGET`，v2.1數字：找方向期32回合/年逐步降到80歲以後5回合/年，22歲以後約1234~1404回合；「一輪」＝一次遊玩session，不是整局人生）
 - 依附風格是「焦慮軸/迴避軸」兩軸連續模型，不是固定標籤
 - 死亡是機率判定型（`rollAnnualDeathCheck()`）：40歲以前不判定，40歲起每滿一年由client端算機率（年齡基礎機率×健康修正倍率＋高風險行為加成，皆為測試參數）擲骰，AI不自行決定死亡。前兆（`deathForeshadowed`）是client端兩段式關卡：先中一次埋前兆、再中一次才觸發死亡

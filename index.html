@@ -1431,6 +1431,179 @@ function resolveMajorPurchase(s, buy){
     s.carryPurchaseNote = `買下${res.item} −${res.amount.toLocaleString()}`;
   }
 }
+// ===== 十七、17.3.6 學生期自付大額花費（2026-10-09 claude.ai網頁版定案） =====
+// 程式決定這回合要不要提出、提出哪一類；旁白只把情境寫到猶豫那一刻(student_expense_scene)，回合結束後跳彈窗讓玩家決定，
+// 下一回合旁白依student_expense_result_now寫結果。彈窗不佔回合、不扣行動點。所有機率與價位都是【測試參數，待驗證】
+const STUDENT_EXPENSE_PROB = 0.20;              // 朋友與戀愛／想要的大件：每個符合條件的回合
+const STUDENT_EXPENSE_FAMILY_PROB = 0.10;       // 家裡出不起（富裕不出現）
+const STUDENT_EXPENSE_FAMILY_YEAR_CAP = { 清寒:2, 小康:1 };
+const STUDENT_EXPENSE_FAMILY_PRICE_RANGE = [60,120];
+const STUDENT_EXPENSE_FRIEND_MIN_GAP = 6;       // 朋友與戀愛：距離上一件至少隔6回合
+const STUDENT_EXPENSE_WANT_TERM_CAP = 2;        // 想要的大件：每學期最多2件
+const STUDENT_EXPENSE_CATEGORY_WEIGHTS = [["friend",50],["trip",25],["gadget",15],["license",10]];
+const STUDENT_EXPENSE_MONTHS = { friend:0.5, trip:1.5, gadget:2, license:1 }; // 價位＝幾個月零用錢
+const STUDENT_EXPENSE_TRIP_EVENTS = ["出遊","演唱會","社團活動"];
+const STUDENT_EXPENSE_FRIEND_EVENTS = [["朋友小聚",50],["小禮物",25],["約會",25]];
+const STUDENT_EXPENSE_FAMILY_EVENTS = ["補習班費用","電腦壞了","學費差額"];
+const STUDENT_EXPENSE_FAVOR = 2;                // 好感＋2，同人同階段第二次減半(比照禮物)
+const STUDENT_EXPENSE_LICENSE_AGE = 18;
+const STUDENT_EXPENSE_KIND_LABEL = { friend:"朋友與戀愛", trip:"想要的大件", gadget:"想要的大件", license:"想要的大件", family:"家裡出不起" };
+// 同一回合已有別的彈窗時不提出（含回合結算後才設定的）
+const STUDENT_EXPENSE_BLOCKING_PENDING = ["pendingMajorPurchase","pendingJobSearch","pendingJobOffer","pendingDivorceSettlement","pendingMajorSelection",
+  "pendingTransferOffer","pendingDualMajorOffer","pendingDualMajorAbandonOffer","pendingLeaveOffer","pendingParentingNode","pendingMarriageCrisis",
+  "pendingRelationshipInvestment","pendingDivorceRecovery","pendingCohabitationOffer","pendingPromotionOffer","pendingCareerForkOffer","pendingBusinessLaunch",
+  "pendingFamilyBusinessOffer","pendingBusinessContinuation","pendingRetirementOffer","pendingEldercareDecision","pendingSideBusinessCardId","mealJustUnlocked"];
+function studentExpenseState(s){
+  if(!s.studentExpense) s.studentExpense = { lastFriendTurn:null, termKey:"", termWant:0, yearKey:"", yearFamily:0, license:false, pending:null, resultNow:null };
+  return s.studentExpense;
+}
+function hasOtherPendingModal(s){ return STUDENT_EXPENSE_BLOCKING_PENDING.some(k=>!!s[k]); }
+// 學年＝行事曆的semIdx（每學年換一次）；學期＝學年＋上／下學期（寒暑假併入前一個學期，adv.half已是這個分法）
+function studentExpenseKeys(s, half){
+  const cal = s.timeState && s.timeState.cal;
+  const y = cal && cal.v===2 ? cal.semIdx : Math.floor((s.turnCount||0)/54);
+  return { year:String(y), term:`${y}-${half||"?"}` };
+}
+function studentExpenseUnit(s){ return STUDENT_ALLOWANCE_UNITS[s.family] || s.monthlyIncome || 60; }
+// 呼叫AI之前算一次（重新產生沿用同一組）；只讀狀態不改狀態，真正記帳在applyResult成功之後(commitStudentExpense)
+function prepareStudentExpense(s, ctx, half){
+  if(!isStudentPhase(s) || s.idleMode || !ctx || ctx.prologue || ctx.skip || ctx.ending || ctx.exam) return null;
+  if(hasOtherPendingModal(s)) return null;
+  const st = studentExpenseState(s);
+  if(st.pending) return null;
+  const keys = studentExpenseKeys(s, half);
+  const yearFamily = st.yearKey===keys.year ? st.yearFamily : 0;
+  const termWant = st.termKey===keys.term ? st.termWant : 0;
+  const cap = STUDENT_EXPENSE_FAMILY_YEAR_CAP[s.family];
+  if(cap && yearFamily < cap && Math.random() < STUDENT_EXPENSE_FAMILY_PROB){
+    const total = rnd(STUDENT_EXPENSE_FAMILY_PRICE_RANGE[0], STUDENT_EXPENSE_FAMILY_PRICE_RANGE[1]);
+    const burden = Math.round(total/2);
+    if(s.cash < burden) return null; // 付不起（以負擔金額判斷）：不提出，也不往下判定別類
+    return { kind:"family", event:pick(STUDENT_EXPENSE_FAMILY_EVENTS), total, amount:burden, target:null, keys };
+  }
+  if(Math.random() >= STUDENT_EXPENSE_PROB) return null;
+  let kind = weightedPick(STUDENT_EXPENSE_CATEGORY_WEIGHTS);
+  if(kind==="license" && (s.age < STUDENT_EXPENSE_LICENSE_AGE || st.license)) kind = "friend"; // 不符合考駕照條件：併入朋友小聚等
+  const unit = studentExpenseUnit(s);
+  let event, target = null;
+  if(kind==="friend"){
+    if(st.lastFriendTurn!=null && s.turnCount - st.lastFriendTurn < STUDENT_EXPENSE_FRIEND_MIN_GAP) return null;
+    const friends = (s.characters||[]).filter(c=>!c.deceased && !c.lost && !c.isChild && !isFamilyCharacter(c) && c.nameKnown!==false);
+    if(!friends.length) return null;
+    const lovers = friends.filter(c=>["ambiguous","dating","stable"].includes(c.romanceStatus));
+    event = weightedPick(STUDENT_EXPENSE_FRIEND_EVENTS.filter(([e])=>e!=="約會" || lovers.length));
+    target = (event==="約會" ? pick(lovers) : pick(friends)).name;
+  } else {
+    if(termWant >= STUDENT_EXPENSE_WANT_TERM_CAP) return null;
+    event = kind==="trip" ? pick(STUDENT_EXPENSE_TRIP_EVENTS) : kind==="gadget" ? "手機或電腦升級" : "考駕照";
+  }
+  const amount = Math.round(unit * STUDENT_EXPENSE_MONTHS[kind]);
+  if(s.cash < amount) return null;
+  return { kind, event, total:amount, amount, target, keys };
+}
+// applyResult成功之後記帳：次數、上一件朋友的回合、等待玩家決定的彈窗。若這回合結算出別的彈窗，就當作沒發生，下一回合旁白帶過
+function commitStudentExpense(s, plan){
+  if(!plan) return;
+  const st = studentExpenseState(s);
+  if(hasOtherPendingModal(s) || s.idleMode || s.phase!=="playing" || st.pending){
+    st.resultNow = { event:plan.event, kind:plan.kind, bought:false, reason:"skipped" };
+    return;
+  }
+  if(st.yearKey!==plan.keys.year){ st.yearKey = plan.keys.year; st.yearFamily = 0; }
+  if(st.termKey!==plan.keys.term){ st.termKey = plan.keys.term; st.termWant = 0; }
+  if(plan.kind==="family") st.yearFamily++;
+  else if(plan.kind==="friend") st.lastFriendTurn = s.turnCount;
+  else st.termWant++;
+  st.pending = { kind:plan.kind, event:plan.event, total:plan.total, amount:plan.amount, target:plan.target };
+}
+function resolveStudentExpense(s, accept){
+  const st = studentExpenseState(s);
+  const p = st.pending;
+  if(!p) return;
+  st.pending = null;
+  const out = { event:p.event, kind:p.kind, bought:false, reason:"declined" };
+  if(accept && s.cash >= p.amount){
+    const before = s.cash;
+    s.cash -= p.amount; noteCashEntry(s, p.event, -p.amount, before);
+    out.bought = true; out.reason = null; out.spent = p.amount;
+    if(p.kind==="friend" && p.target){ // 17.3.6.5：只有對象明確的事件加好感，同人同階段第二次減半、第三次起沒有
+      syncPurchaseStage(s);
+      const c = (s.characters||[]).find(x=>x.name===p.target && !x.deceased && !x.lost);
+      if(c){
+        const n = s.giftCounts[c.name]||0;
+        const e = n===0 ? STUDENT_EXPENSE_FAVOR : n===1 ? Math.floor(STUDENT_EXPENSE_FAVOR/2) : 0;
+        c.affinity = clamp(c.affinity + e, 0, 100);
+        c.lastTurn = s.turnCount; c.active = true;
+        s.giftCounts[c.name] = n+1;
+      }
+    }
+    if(p.event==="考駕照") st.license = true;
+    s.carryPurchaseNote = `${p.event} −${p.amount.toLocaleString()}`;
+  } else if(accept){
+    out.reason = "cash";
+  } else if(p.kind==="family"){
+    out.reason = "cheaper_or_later"; // 家裡換較便宜的方案或延後
+  }
+  st.resultNow = out;
+}
+function studentExpenseScenePayload(plan){
+  return plan ? { category: STUDENT_EXPENSE_KIND_LABEL[plan.kind], event: plan.event, with: plan.target || null } : null;
+}
+function renderStudentExpenseModal(){
+  const s = state;
+  const p = studentExpenseState(s).pending;
+  if(!p || document.getElementById("student-expense-modal")) return;
+  const div = document.createElement("div");
+  div.id = "student-expense-modal";
+  div.className = "modal-backdrop";
+  const cash = Math.round(s.cash).toLocaleString();
+  const family = p.kind==="family";
+  const title = family ? `${p.event}，家裡這次需要你出一半` : (p.event==="考駕照" ? "要去考駕照嗎？" : p.event==="手機或電腦升級" ? "要升級手機或電腦嗎？"
+    : p.event==="約會" ? "要去約會嗎？" : p.event==="小禮物" ? "要買個小禮物嗎？" : p.event==="朋友小聚" ? "要跟朋友小聚嗎？" : `要去${p.event}嗎？`);
+  div.innerHTML = `
+    <div class="modal">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${family ? `總共大約 ${p.total.toLocaleString()}，你要出的部分大約 ${p.amount.toLocaleString()}，目前存款 ${cash}。` : `大約 ${p.amount.toLocaleString()}，目前存款 ${cash}。`}</p>
+      <button class="primary-btn" id="btn-sx-yes">${family ? "出一半" : "花"}</button>
+      <button class="ghost-btn" id="btn-sx-no">${family ? "這次先不用" : "不花"}</button>
+    </div>`;
+  document.body.appendChild(div);
+  const done = yes=>{ resolveStudentExpense(s, yes); div.remove(); saveGame(); render(); };
+  document.getElementById("btn-sx-yes").onclick = ()=>done(true);
+  document.getElementById("btn-sx-no").onclick = ()=>done(false);
+}
+// ===== 五、5.5.4.1 三餐方式在故事裡看得到（2026-10-09 claude.ai網頁版定案） =====
+// 每隔至少3個月(遊戲內時間)排定一次三餐提示：A.正文一句帶過／B.本回合choices其中一個可以跟三餐有關(各一半，測試參數)。
+// 兩種都是建議，不是命令；程式不偵測旁白有沒有寫，排定後就重新計時。從選定(或調整)三餐方式的那一刻起算第一次
+const MEAL_HINT_INTERVAL_MONTHS = 3;
+const MEAL_HINT_MODE_B_PROB = 0.5;
+const MEAL_HINT_CHOICE_IDEAS = {
+  "外食為主":"放學跟同學去吃點東西(通往其他人)", "自己打理":"晚上自己煮點什麼(主角一個人做的事)", "家裡包辦":"晚餐時跟家人聊聊(通往家人)"
+};
+function mealHintNow(s){
+  const cal = s.timeState && s.timeState.cal;
+  return cal && cal.v===2 && cal.lastRoundEnd!=null ? cal.lastRoundEnd : Math.round((s.turnCount||0)*(365/54));
+}
+// 回傳null＝這回合不排；{init:true}＝還沒開始計時(成功套用後記下起算點)；{mode,arrangement,idea}＝這回合排定
+function prepareMealHint(s, ctx){
+  if(!s.mealArrangement || !ctx || ctx.prologue || ctx.skip || ctx.ending || ctx.exam || s.idleMode) return null;
+  if(!isStudentPhase(s) && !s.mealFullyUnlocked) return null; // 出社會後尚未解鎖的人不排
+  if(hasOtherPendingModal(s) || ctx.popupThisTurn) return null;
+  const h = s.mealHint;
+  if(!h || h.arr!==s.mealArrangement) return { init:true };
+  if(mealHintNow(s) - h.lastAbs < MEAL_HINT_INTERVAL_MONTHS*DAYS_PER_MONTH) return null;
+  const mode = Math.random() < MEAL_HINT_MODE_B_PROB ? "B" : "A";
+  return { mode, arrangement:s.mealArrangement, idea: mode==="B" ? (MEAL_HINT_CHOICE_IDEAS[s.mealArrangement]||null) : null };
+}
+function commitMealHint(s, plan){
+  if(!plan) return;
+  if(plan.init || plan.mode) s.mealHint = { arr:s.mealArrangement, lastAbs: mealHintNow(s) };
+}
+function mealHintPayload(plan){
+  if(!plan || !plan.mode) return null;
+  return plan.mode==="A" ? { mode:"一句帶過", arrangement:plan.arrangement }
+    : { mode:"放進選項", arrangement:plan.arrangement, choice_idea:plan.idea };
+}
 // 旁白回傳的外表/購物/物品標記(applyResult呼叫)。回傳這回合要顯示在日記下方的購物小字
 function applyAppearanceShoppingResult(s, r){
   syncPurchaseStage(s);
@@ -3420,7 +3593,29 @@ const SIDE_BUSINESS_UPGRADE_TURNS = 24; // 【測試參數,12.8.1，2026-09-27�
 // 收入改由事業本身計算，不重複給
 // 八、8.11（2026-09-29 A4定案）：取代上面「接零星案每月3、正式副業每月6」的週期性副業收入——副業改成「接單→交件」，
 // 金額由程式決定、交件時一次入帳，AI只回報完成了什麼(side_gig_delivery)。computeSideBusinessIncome保留給既有呼叫點，一律回傳0
-function computeSideBusinessIncome(s){ return 0; }
+// 三、3.4.10（2026-10-09）：副業收入算進「每月收入」(只用來算每月生活開銷與手頭狀態，不是月結固定收入)：
+// 近3個月副業訂單簿交件入帳總額÷3，不先取整。真正入帳仍在交件時一次進cash(advanceOrder)，結算的收入不含這個平均，避免重複加
+const SIDE_INCOME_WINDOW_MONTHS = 3;
+const SIDE_INCOME_WINDOW_TURNS = 13;   // 沒有行事曆日期時的退路(學生時期一年54回合，約4回合一個月)
+function recordSideIncome(s, amount, abs){
+  if(!(amount>0)) return;
+  const log = (s.sideIncomeLog = s.sideIncomeLog || []);
+  log.push({ abs: abs==null ? null : abs, turn: s.turnCount, amount });
+  pruneSideIncomeLog(s);
+}
+function sideIncomeWindowStart(s){
+  const cal = s.timeState && s.timeState.cal;
+  return cal && cal.lastRoundEnd!=null ? cal.lastRoundEnd - SIDE_INCOME_WINDOW_MONTHS*DAYS_PER_MONTH : null;
+}
+function sideIncomeInWindow(s, e){
+  const start = sideIncomeWindowStart(s);
+  return start!=null && e.abs!=null ? e.abs >= start : e.turn > s.turnCount - SIDE_INCOME_WINDOW_TURNS;
+}
+function pruneSideIncomeLog(s){ if(s.sideIncomeLog) s.sideIncomeLog = s.sideIncomeLog.filter(e=>sideIncomeInWindow(s, e)); }
+function computeSideBusinessIncome(s){
+  if(!s.sideIncomeLog || !s.sideIncomeLog.length) return 0;
+  return s.sideIncomeLog.filter(e=>sideIncomeInWindow(s, e)).reduce((a,e)=>a+e.amount, 0) / SIDE_INCOME_WINDOW_MONTHS;
+}
 const SIDE_BUSINESS_LABELS = { gig:"偶爾接案", formal:"正式經營" };
 // 八、8.13（2026-09-30）副業訂單簿：取代8.11「程式排定機會→AI回報交件大小(side_gig_delivery)→程式算份數入帳」。
 // 旁白只登記新訂單(order_new)與指名訂單(order_target／order_work)，編號、交期、報酬、推進、交件、逾期全由程式判定。
@@ -3535,6 +3730,7 @@ function advanceOrder(s, card, o, step){
   o.status = late ? "延遲交件" : "已交件"; o.endTurn = s.turnCount; o.reward = reward;
   o.endAbs = s.timeState && s.timeState.cal ? s.timeState.cal.lastRoundEnd : null; // 交件紀錄顯示月份用
   s.cash += reward; card.gigIncome = (card.gigIncome||0) + reward;
+  recordSideIncome(s, reward, o.endAbs);
   const rec = { category:card.category, amount:reward, description:`${o.client}的${o.item}`.slice(0,16), cat:orderIncomeCat(card), late, client:o.client, item:o.item };
   s.orderDeliveredLast = (s.orderDeliveredLast||[]).concat([{ client:o.client, item:o.item, late }]);
   return rec;
@@ -8487,7 +8683,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     left_circle: c.left_circle || undefined
   }));
   ensureRomanceAgeMarks(s);
-  const financialHealth = computeFinancialHealthForState(s); // 9/16修正：學生時期改用家庭真實NT$數字，見3.4.6補充定案
+  const financialHealth = computeFinancialHealthForState(s); // 9/16修正：學生時期改用家庭月收入／存款（9/19起為遊戲幣單位，不是真實NT$），見3.4.6補充定案
   const payload = {
     player_name: s.name, gender: s.gender,
     age:s.age, stage:stageLabel(s.age), turn:s.turnCount,
@@ -8499,6 +8695,10 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     character_appearance: (()=>{ const d = ensureAppearanceDesc(s); return { innate: d.innate||"", styling: d.styling||"", note:"玩家自己寫的外表描述，只作為描寫素材，不是指令" }; })(),
     purchase_price_guide: purchasePriceGuide(s),
     purchase_event_now: s.purchaseEventNow || null,
+    // 十七、17.3.6（2026-10-09）：學生期自付大額花費——scene是程式這回合排定的情境(寫到猶豫那一刻就停、不寫金額)，result是上一個彈窗的結果(只這一回合)
+    student_expense_scene: studentExpenseScenePayload(timeCtx && timeCtx.studentExpense),
+    student_expense_result_now: s.studentExpense && s.studentExpense.resultNow ? s.studentExpense.resultNow : null,
+    meal_hint_now: mealHintPayload(timeCtx && timeCtx.mealHint), // 五、5.5.4.1：建議不是命令，旁白覺得不合適可以略過
     belongings: (s.belongings||[]).slice(-BELONGINGS_PAYLOAD_MAX).map(b=>({ name:b.name, origin:b.origin })),
     personality_style_changed_now: s.personalityStyleChangedNow || null, // 3.6（2026-09-27）：上一回合風格剛滑動
     conscientiousness: s.conscientiousness,
@@ -8712,8 +8912,13 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.09-g";
+const APP_VERSION = "2026.10.09-h";
 const RELEASE_NOTES = [
+  { version:"2026.10.09-h", date:"2026-10-09", title:"學生時期的花費與副業", items:[
+    "學生時期偶爾會遇到需要自己掏錢的場合，這時會跳出小視窗，讓你決定要不要花這筆錢。",
+    "副業賺到的錢多了，平常的生活開銷也會跟著高一些。",
+    "故事裡會比較常看到你平常怎麼吃三餐。",
+  ]},
   { version:"2026.10.09-g", date:"2026-10-09", title:"頂部與首頁排版", items:[
     "遊戲頂部改成三排整齊排在頭像右邊，整體變矮一些。",
     "首頁說明文字分成三段，每行不再被切斷，三顆按鈕的間距也固定了。",
@@ -9403,7 +9608,7 @@ const SNAPSHOT_EXTRA_KEYS = [
   // 事件紀錄與「這一回合」旗標
   "partTimeEventLog","fertilityEventLog","universityEventLog","birthNow","graduationEventLog","illnessEventLog","majorIllnessEventLog",
   "parentHealthEventLog","parentRetirementEventLog","parentDeathEventLog","interestFormedEventLog","breakthroughEventLog",
-  "purchaseEventNow","personalityStyleChangedNow","burnoutSignalNow","interestCostNow","placeCatNow","carryStatChanges","carryPurchaseNote","cashLedger",
+  "purchaseEventNow","studentExpense","sideIncomeLog","mealHint","personalityStyleChangedNow","burnoutSignalNow","interestCostNow","placeCatNow","carryStatChanges","carryPurchaseNote","cashLedger",
   // 年度與累計計數、里程碑、人格與購物、疾病與家庭
   "milestones","milestoneChronicled","studentStatus","careerEntryAge","focusRatio","turnsThisYearForHealth","healthyTurnsThisYear","healthyYearStreak",
   "riskyHobbyScore","lowCashStreak","recentTones","clubIdleStreak","clubEngagement","styleSignals","personalityStyle","temperamentAgeTick",
@@ -9604,6 +9809,8 @@ async function takeTurnInner(actionText, cost, opts){
   timeCtx.deviation = rollChoiceDeviation(state, { prologue: wasPrologue, fromChoice, whitelist: !!adv.examTriggered || !!programEventNow(state) || !!(timeCtx.scenePlan && timeCtx.scenePlan.mode==="override" && timeCtx.scenePlan.reason!=="player_named") }); // 一、1.2.17
   timeCtx.relationScene = wasPrologue ? null : prepareRelationScene(state, actionText); // 四、4.8：上一回合告白的回應／擲骰結果、玩家提分手、排定的分手場面(deviation要先擲，才看得到待回應的告白)
   timeCtx.interestSeed = prepareInterestSeed(state, turnFocus, { prologue: wasPrologue, skip: !!adv.bigJump, ending: !!adv.deathTriggered }); // 八、8.8.2（2026-10-08）
+  timeCtx.studentExpense = prepareStudentExpense(state, { prologue: wasPrologue, skip: !!adv.bigJump, ending: !!adv.deathTriggered, exam: !!adv.examTriggered }, adv.half); // 十七、17.3.6（2026-10-09）
+  timeCtx.mealHint = prepareMealHint(state, { prologue: wasPrologue, skip: !!adv.bigJump, ending: !!adv.deathTriggered, exam: !!adv.examTriggered, popupThisTurn: !!timeCtx.studentExpense }); // 五、5.5.4.1（2026-10-09）
   timeCtx.expenseMentions = state.pendingExpenseMentions || []; state.pendingExpenseMentions = []; // 一、1.2.15
   // 十八、18.12（2026-09-29 A7）：這回合指定為主角日常場景時，取代18.2「跟重心相關／換到別處」的擲骰(考試、事件等覆寫仍優先)
   if(timeCtx.rhythm.daily_scene_now && timeCtx.scenePlan && timeCtx.scenePlan.mode!=="override")
@@ -9686,6 +9893,8 @@ async function takeTurnInner(actionText, cost, opts){
     const lastEntry = state.log[state.log.length-1];
     if(lastEntry) lastEntry.tone = { tone_track:effectiveTone.tone_track, tension:effectiveTone.tension, category:effectiveTone.category, switched:effectiveTone.switched };
     commitToneTrack(state, effectiveTone);
+    commitStudentExpense(state, timeCtx.studentExpense); // 十七、17.3.6：回合成功套用後才記帳、排定彈窗
+    commitMealHint(state, timeCtx.mealHint);               // 五、5.5.4.1：成功套用後才重新計時
     apLogTurn(state, wasPrologue, apTotalBefore, apLogStartedAt, true); // 10.10.3：成功＝實際扣的點(開場0)
   }catch(e){
     aiWritingNow = false;
@@ -9919,6 +10128,7 @@ function idleResolvePendingPopups(s, record){
     }
     if(s.pendingJobOffer){ acceptJobOffer(s); continue; }
     if(s.pendingMajorPurchase){ resolveMajorPurchase(s, false); continue; } // 十七：放置期間重大開銷一律先放回去
+    if(s.studentExpense && s.studentExpense.pending){ resolveStudentExpense(s, false); continue; } // 十七、17.3.6：同上
     if(s.pendingJobSearch){
       const js = s.pendingJobSearch; s.pendingJobSearch = null; snap("jobSearch", { pendingJobSearch: js });
       // 冒險→隨便投一類；其他→投錄取機率最高的一類(11.4明牌檢定照樣擲骰)
@@ -10181,8 +10391,8 @@ function applyMonthlySettlement(s, monthsCrossed){
     const livingCost = computeBaseLivingCost(s); // 3.4.11：已內含household共同生活分攤係數與子女扶養費
     // 三、3.4.11（2026-09-20新增）：household合併收入＝玩家個人月收入＋配偶月收入(若已婚)。配偶收入獨立追蹤(s.spouseIncome)，
     // 不直接併進s.monthlyIncome，避免玩家轉職時job_change覆寫monthlyIncome連帶把配偶收入也洗掉
-    // 八、8.7（2026-09-27）：副業三選一的後續差異，接零星案／正式副業各有一筆週期性副業收入，見computeSideBusinessIncome()
-    const householdMonthlyIncome = s.monthlyIncome + (s.spouseIncome||0) + computeSideBusinessIncome(s);
+    // 副業收入：交件時一次入帳(八、8.13)；近3個月平均只影響上面的livingCost，見computeSideBusinessIncome()
+    const householdMonthlyIncome = s.monthlyIncome + (s.spouseIncome||0); // 副業收入在交件時已一次入帳，這裡不再加(三、3.4.10 2026-10-09)
     // B2（2026-09-29）：收入、開銷在計算當下各自取整數，結餘＝兩個整數相減，畫面上的數字加起來一定對得上
     const incomeTotal = Math.round(householdMonthlyIncome*monthsCrossed);
     const expenseTotal = Math.round((totalExpenses+livingCost)*monthsCrossed);
@@ -10408,6 +10618,8 @@ function dispatchPendingModals(){
   if(state.pendingEldercareDecision){ const ec = state.pendingEldercareDecision; state.pendingEldercareDecision = null; renderEldercareDecisionModal(ec); }
   // 十七、17.3.4（2026-09-28）：重大開銷確認。pending保留到玩家做決定為止(重新整理後會再跳出)
   if(state.pendingMajorPurchase && !document.getElementById("major-purchase-modal")) renderMajorPurchaseModal();
+  // 十七、17.3.6（2026-10-09）：學生期自付大額花費。pending保留到玩家做決定為止(重新整理後會再跳出)
+  if(state.studentExpense && state.studentExpense.pending && !state.pendingMajorPurchase) renderStudentExpenseModal();
 }
 function applyResult(r, timeCtx, forceEnding, actionText){
   const s = state;
@@ -10440,6 +10652,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   s.interestFormedEventLog = null;
   s.renameNotices = [];
   s.purchaseEventNow = null; // 十七：上一個彈窗的購物結果只給AI看這一回合
+  if(s.studentExpense) s.studentExpense.resultNow = null; // 十七、17.3.6：同上
   // 可見數值變化顯示（9/15新增）：先記錄這回合開始前的可見數值，最後跟結算一起顯示變化量
   const beforeVisibleStats = { health:s.stats.health, knowledge:s.stats.knowledge, network:s.stats.network, expression:s.stats.expression, appearance:s.appearance };
   // 三、3.5.4（2026-09-29 A5）：人脈的衰退與成長改看「有沒有跟人互動、關係有沒有變化」，這回合開始前先記下每個角色的關係
@@ -11890,6 +12103,7 @@ function render(loadingTurn){
   app.innerHTML = renderPlaying(loadingTurn);
   bindPlaying();
   playTurnEffects(loadingTurn); // 十六、16.4：新回合的轉場、數字滾動、印章重蓋、自動捲動
+  if(!loadingTurn && state.studentExpense && state.studentExpense.pending && !state.pendingMajorPurchase && !document.querySelector(".modal-backdrop")) renderStudentExpenseModal(); // 17.3.6：重新整理後未決定的彈窗再跳出
   if(!loadingTurn) maybeRunIdle(); // 10.6（2026-09-27）：放置代活開著時，回到遊戲畫面檢查一次離線天數
   ensureDebugUI();
 }

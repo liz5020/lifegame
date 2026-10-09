@@ -10,6 +10,24 @@
 
 ---
 
+## 2026-10-09 整理：CLAUDE.md新增「這個遊戲的目的與底線」、遊戲正文去AI味（進行中）
+
+- `CLAUDE.md`在開頭介紹與「檔案結構」之間新增6條「目的與底線」；`協作流程說明-共同基準.md`的根目錄檔案結構描述與版本記錄同步補上。純文件改動。
+- `worker/prompt.js`：把會被撰稿人學進正文的「接住」等說法換掉（自傷安全規則兩處只換字、意思不變；人際衝突線三處；emotional_tone一處）。尚未部署Worker。
+- 驗證：`--quick`見回報。
+
+## 2026-10-09 開發部：學生期自付大額花費、副業收入進生活開銷、三餐提示（版本2026.10.09-h，只在beta分支預覽，未上正式）
+
+- 依設計文件17.3.6、3.4.10（2026-10-09）、5.5.4.1：
+  - `index.html`：新增`prepareStudentExpense`／`commitStudentExpense`／`resolveStudentExpense`／`renderStudentExpenseModal`（狀態欄位`studentExpense`：上一件朋友的回合、學期想要的大件件數、學年家裡出不起件數、考駕照旗標、`pending`、`resultNow`）。回合開始前只擲骰不改狀態，`applyResult`成功後才記帳並排定彈窗；彈窗不佔回合、不扣行動點，重新整理後會再跳出；同回合結算出別的彈窗就不排、下一回合旁白帶過（`skipped`）。選「花」用`noteCashEntry`記名稱、朋友小聚／小禮物／約會加好感＋2（同人同階段第二次減半，沿用`giftCounts`）；payload新增`student_expense_scene`（不含金額）與`student_expense_result_now`。
+  - 副業收入進生活開銷：`computeSideBusinessIncome`改回傳近3個月（`DAYS_PER_MONTH`×3天）交件入帳總額÷3（新增`sideIncomeLog`，交件時由`advanceOrder`記錄、超過3個月修剪）。**月結算的收入（`householdMonthlyIncome`）不再呼叫它**，避免交件入帳後又重複加；只有`computeBaseLivingCost`與`monthlyBudget`（生活方式小卡、手頭狀態）用平均。`computeBasicLivingCost`不變。
+  - 三餐提示：`prepareMealHint`／`commitMealHint`／`mealHintPayload`，狀態`mealHint={arr,lastAbs}`，每3個月（`DAYS_PER_MONTH`×3）排一次，A正文一句帶過／B放進選項各一半，payload欄位`meal_hint_now`。
+  - `SNAPSHOT_EXTRA_KEYS`加入`studentExpense`、`sideIncomeLog`、`mealHint`。註解「真實NT$」改為遊戲幣單位。版本`2026.10.09-h`＋`RELEASE_NOTES`。
+- `worker/prompt.js`：外表與購物加(7)學生期自付大額花費寫法（寫到猶豫那一刻就停、不寫金額、下一回合依`student_expense_result_now`帶過）；三餐條目後加`meal_hint_now`（建議不是命令）。**上正式時必須重新部署Worker。** `worker/worker.js`只換`WORKER_VERSION`。
+- 設計文件：17.3.6、3.4.10補充、5.5.4.1、8.13.3與`CLAUDE.md`的貨幣單位更正、3.4.6加註、00-總覽日誌（已確認）。
+- `tests/test-86-student-expense.mjs`（62項）；`tests/sim-student-savings.mjs`（驗收模擬，不打真實API）。驗證結果與驗收數字見QA手冊34.33與`qa/`報告。
+- 這次新增存檔欄位（`studentExpense`、`sideIncomeLog`、`mealHint`），預設為空，舊存檔不需要清空。
+
 ## 2026-10-09 開發部：頂部三排與首頁排版（版本2026.10.09-g，只在beta分支預覽，未上正式）
 
 - 依設計文件16.3.1、新增16.10.12：頂部改為頭像右邊三排（階段標題＋進度「N/M」小灰字＋雲端膠囊／角色名第N世第N回合／行動點與存款）；原獨佔一排的「進度＋存款」拿掉；`.tb-sub`只剩示範模式／未同步標籤，沒有標籤時整排不佔位。

@@ -8,6 +8,7 @@ const env = H.makeEnv();
 const g = await H.loadGame({ useMock: false, env, key: "focus00001" });
 await H.startNewLife(g);
 const ev = g.ev;
+ev("prepareStudentExpense = ()=>null"); // 17.3.6：學生期花費彈窗會被測試工具自動按「花」、改到同學的互動紀錄，這支測試不測它，固定不排
 // 這支測試回合數多，避免中途行動點用完(伺服器端紀錄與本機一起補)
 { const k = `ap:${H.loc("focus00001")}:0`; const rec = JSON.parse(await env.SAVES.get(k)); rec.purchased = 100000; await env.SAVES.put(k, JSON.stringify(rec)); ev("state.ap.purchased=100000"); }
 const doc = g.win.document;
