@@ -10,6 +10,13 @@
 
 ---
 
+## 2026-10-09 開發部：AI呼叫失敗原因寫進紀錄（版本2026.10.09-n）
+- 起因：10/9後台「今日名額」用了6個、「開啟人生段數」今天只有1；線上數據顯示今天只有1個開場成功，且AI呼叫114次中28次失敗(沒有回報用量)，中繼站沒有留下失敗原因。
+- `worker/worker.js`：`callAnthropic()`收到非200時讀錯誤內容，`console.warn`一行「AI呼叫失敗：狀態碼、錯誤類型、訊息(前300字)、呼叫類型／開場／回合／耗時」(不含人生代號與玩家內容)；連線錯誤同樣寫一行。`/usage-today`多`failures`欄位(今天依錯誤類型計次，例`529:overloaded_error`、`network`)。
+- `worker/gate.js`：`countAICall()`多一個失敗類型參數，計數器當天的`fails`分類加1(跨日歸零)。
+- `worker/wrangler.toml`：加`[observability] enabled = true`，部署時才不會把後台打開的Workers Logs蓋掉。
+- 驗證：`tests/test-79-spend-actual.mjs`加5項(失敗計次、紀錄內容、不含玩家內容、沒失敗時為空、toml有開)；全套見回報。
+
 ## 2026-10-09 開發部：「不扣行動點」測試開關擴及帳號錢包（版本2026.10.09-m）
 - 依設計文件10.3.12（2026-10-09使用者同意）：原本登入帳號用帳號錢包玩時，開關一律無效、選單也沒提示。
 - `worker/worker.js`：新增`apTestAccounts(env)`讀secret `AP_TEST_ACCOUNTS`(逗號分隔信箱)；錢包路徑的`wallet_pre`在前端送`ap_test_free`時一併轉名單，回應帶`lifegame.ap_test_free`。`worker/account.js`：`opWalletPre`帳號信箱在名單上就不預扣、不記nonce(`wallet_post`找不到預扣紀錄就不動錢包)。
