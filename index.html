@@ -7373,7 +7373,7 @@ function truncateDialogueLine(line, limit){
 }
 // 一、1.2.9.18（2026-09-29 A14）輸出品質檢查：只看AI交回的正文(行動結果＋新場景)，合法的{{名字|台詞}}標記先換成「台詞」再檢查
 const OUTPUT_QUALITY_MAX_RETRIES = 2; // 【定案，A14】
-const OUTPUT_PARAGRAPH_END_OK = /[。！？!?…」』）)～~—.．*＊〕】"”'’]$/;
+const OUTPUT_PARAGRAPH_END_OK = /[。！？!?…」』）)～~.．*＊〕】"”'’]$/;
 // 只挑幾乎不可能是一般口語的詞，避免誤殺(例如「重心」「回合」在一般句子裡也會出現，只抓系統用法)
 const SYSTEM_TERM_RE = /正式副業|投入度|好感度|行動點|訂單簿|接單上限|興趣卡|興趣等級|(?:這|本|上|下|每)回合|重心(?:選|按鈕|是)|把重心|存檔|數值(?:面板|變化)/;
 function detectOutputQualityIssues(r){
@@ -9875,7 +9875,7 @@ async function takeTurnInner(actionText, cost, opts){
     for(let q=0; q<OUTPUT_QUALITY_MAX_RETRIES && quality.length; q++){
       console.warn("[輸出品質] 自動重新產生：", quality.join("；"));
       addReviewFlag(state, "output_quality_retry", `第${q+1}次重新產生：${quality.join("；")}`);
-      timeCtx.retryNote = `你上一次回傳的正文有問題：${quality.join("；")}。這次每一段都要寫完整的句子，引號要成對，台詞一律用{{名字|台詞}}標記，正文不能出現大括號或資料欄位名稱。`;
+      timeCtx.retryNote = `你上一次回傳的正文有問題：${quality.join("；")}。這次每一段都要寫完整的句子，整段重新構思，不要只改上一版的詞句，引號要成對，台詞一律用{{名字|台詞}}標記，正文不能出現大括號或資料欄位名稱。`;
       try{ result = await callOnce(); quality = detectOutputQualityIssues(result); }
       catch(qErr){ console.error("重新產生失敗，沿用上一次的結果：", qErr); break; }
     }
