@@ -37,7 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
-| 2026-10-09 | 2026.10.09-e（隨`master`自動部署，上線確認中） | 2026.10.09-e（同左，Worker程式本身沒改，只換版本號） | （推送後補） | index.html、worker/worker.js(僅版本號)、設計文件16/00、tests | 存檔說明文字改為符合實際：首頁小字、常見問題、手動存檔視窗 |
+| 2026-10-09 | 2026.10.09-e（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.09-e（同左，Worker程式本身沒改，只換版本號） | `4cfdb44` | index.html、worker/worker.js(僅版本號)、設計文件16/00、tests | 存檔說明文字改為符合實際：首頁小字、常見問題、手動存檔視窗 |
 | 2026-10-09 | 2026.10.09-d（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.09-d（prompt.js有改：1.2.20規則與support_flag） | `55a3713` | index.html、worker/prompt.js、worker/worker.js、設計文件01/16/00、tests | 一、1.2.20違法行為與內容底線＋求助資訊；合併雲端分支「首頁文字修訂16.10.10」 |
 | 2026-10-09 | 2026.10.09-c（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.09-c（同左，Worker程式本身沒改，只換版本號） | `f293306` | index.html、worker/worker.js(僅版本號)、CLAUDE.md | 更新紀錄防暴雷：舊更新說明拿掉機率數字、保證條件與內部規則，只寫畫面上看得到的變化；RELEASE_NOTES上方加防暴雷規則註解 |
 | 2026-10-09 | 2026.10.09-b（隨`master`自動部署，已用`/version`、頁面(兩個網址)與check-runs確認線上網頁與Worker都是此版） | 2026.10.09-b（同左，Worker程式本身沒改） | `16ce1c1` | index.html、worker/worker.js(僅版本號) | 首頁背景色塊隨螢幕縮放：電腦大螢幕連成一整片，手機不變 |
