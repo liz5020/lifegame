@@ -184,6 +184,7 @@ UsageCounter.prototype._recordDetail = async function (p, date, now) {
   if (rr) row.rr = rr;
   if (pn) row.pn = pn;
   if (end) row.end = end;
+  if (kind === "turn" && (p.get("fi") === "f" || p.get("fi") === "c")) row.fi = p.get("fi"); // 只記在回合的第一筆(重試不重複算)
   if (rr || pn) {
     const qk = "uq:" + date, qa = (await st.get(qk)) || { regens: 0, reasons: {}, notes: {} };
     if (rr) { qa.regens += 1; for (const c of rr.split("、")) if (c) qa.reasons[c] = (qa.reasons[c] || 0) + 1; }
@@ -249,6 +250,7 @@ export async function recordAIUsage(env, meta, tokens, usd) {
     if (m.rr) params.rr = String(m.rr).slice(0, 80);
     if (m.pn) params.pn = String(m.pn).slice(0, 80);
     if (m.end) params.end = String(m.end).slice(0, 40);
+    if (m.fi === "f" || m.fi === "c") params.fi = m.fi; // 這回合是自由書寫(f)還是點選項(c)
     await usageCall(env, "detail", params);
   } catch (e) { /* 只是紀錄 */ }
 }

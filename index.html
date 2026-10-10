@@ -9802,6 +9802,7 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
         wallet: walletActive(state) || undefined,  // 十、10.9.2：這段人生用帳號共用錢包，由Worker在呼叫AI前預扣、失敗退點
         regen_reason: (timeCtx && timeCtx.retryNote && timeCtx.regenReason) || undefined, // 一、1.2.9.18.1／十、10.14.7.1：這次重寫的第1類原因代碼(「、」分隔)，Worker寫進Workers Logs與用量明細
         prev_turn_notes: (timeCtx && !timeCtx.retryNote && state.lastTurnNotes) || undefined, // 10.14.7.1：上一回合第2類修了什麼、第3類記了什麼(代碼)，只在這回合第一次呼叫帶
+        input_source: (timeCtx && !timeCtx.prologue) ? (timeCtx.fromChoice ? "choice" : "free") : undefined, // 後台統計「自由書寫比例」用：只有這個標記，不含玩家寫的內容
         retry: (timeCtx && timeCtx.isRetry) || undefined, // 十、10.17.5：玩家按「再試一次」沿用同一個turn_nonce，Worker據此不重複扣點、又失敗時退回
         messages: [{ role:"user", content: userMsgStr }]
       })
@@ -11882,7 +11883,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   noteReunionAppeared(s, fullText); // 七、7.4.3.4：轉世指定NPC有沒有在敘事裡登場
   // 二、2.6.2（2026-09-28）：學生時期的數值標記依來源上色——重心帶來的橘色、回應(及其他)帶來的紫色
   const focusMarks = studentTurn ? buildFocusMarks(s, turnFocus, focusChanges) : undefined; // 沒有任何重心變化時也要留空物件：代表這則用來源上色
-  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, turnSummary:r.turn_summary||"", supportFlag: r.support_flag===true || undefined, settlement:compactSettlementForLog(s.lastSettlement), statChanges, healthReason: (statChanges.health<0 && typeof r.health_reason==='string' && r.health_reason.trim()) ? r.health_reason.trim().slice(0,10) : undefined, focusMarks, relationshipHints,
+  s.log.push({age:tagAge, timeLabel:tagLabel, subtitle, sceneDate, text:fullText, sceneAt: fullText.length - sceneText.length, action:chosenAction, inputSource: (chosenAction && timeCtx) ? (timeCtx.fromChoice ? "choice" : "free") : undefined /* 這回合是點選項還是自己輸入(統計自由書寫比例用，2026-10-10)；舊日記沒有這欄 */, turnSummary:r.turn_summary||"", supportFlag: r.support_flag===true || undefined, settlement:compactSettlementForLog(s.lastSettlement), statChanges, healthReason: (statChanges.health<0 && typeof r.health_reason==='string' && r.health_reason.trim()) ? r.health_reason.trim().slice(0,10) : undefined, focusMarks, relationshipHints,
     /* B5（2026-09-29）：這回合的重心也記在日記上(選擇紀錄、下載故事) */ focusLabel: turnFocus ? focusLogLabel(turnFocus) : undefined, focusNote: s.focusYearNote || undefined,
     /* 二、2.4.2（A2）：分數組成在公布時攤開 */ examNote: (timeCtx && timeCtx.examCheck) ? `${timeCtx.examCheck.examType}：${examBreakdownText(timeCtx.examCheck)}` : undefined, purchaseNote: purchaseNotes.join("；")||undefined, levelNotes: interestLevelNote||undefined, cash:s.cash}); // cash：十六、16.6回憶錄的「當時存款」
   // 介面：回憶錄（9/19新增，回應「畫面上舊日記消失」的困擾）：上限從60大幅提高到2000，
