@@ -94,7 +94,7 @@ import {
 import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
-import { computePlayStats } from "./play-stats.js";
+import { computePlayStats, dailyExtrasFromRows, hourlyFromRows } from "./play-stats.js";
 import { runWaitlistTick } from "./entry.js";
 import { handleSaveAdmin, isAdminPath, indexSaveRecord } from "./save-admin.js";
 import { relocateRequest, locationId, locationSecretOk, isLoc } from "./location.js";
@@ -1117,7 +1117,9 @@ async function buildEntrySummary(env) {
   try {
     const e = await accountsCall(env, { op: "entry_stats" });
     if (!e || !e.ok) return null;
-    return { used: e.used, cap: e.cap + e.bonus, cum: e.cum, checkpoint: e.checkpoint, waiting: e.waiting, notified: e.notified };
+    return { used: e.used, cap: e.cap + e.bonus, cum: e.cum, checkpoint: e.checkpoint, waiting: e.waiting, notified: e.notified,
+      // 10.13.7.14：後台設定值(DAILY_NEW_PLAYER_CAP不含前一天收回加上的名額)、今天新加入候補、通知後入場
+      daily_cap_setting: e.cap, bonus: e.bonus, wl_new_today: e.wl_new_today || 0, mailed: e.mailed || 0, entered_after_mail: e.entered_after_mail || 0, notified_over_day: e.notified_over_day || 0 };
   } catch (err) { return null; }
 }
 // 十、10.14.7（2026-10-04）：伺服器記的AI實際用量(Anthropic回報的token數，依單價算出的美元)
@@ -1164,32 +1166,108 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
 async function handleStatsPlay(request, env) {
   const denied = adminDenied(request, env, true);
   if (denied) return denied;
-  const range = new URL(request.url).searchParams.get("range") === "7d" ? "7d" : "today";
+  const q = new URL(request.url).searchParams.get("range");
+  const range = q === "7d" || q === "yesterday" ? q : "today"; // 10.13.7.14：加「昨天」
   const rows = usageCounterStub(env) ? ((await usageCall(env, "urows", {}, "GET")).rows || []) : [];
-  return new Response(JSON.stringify(computePlayStats(rows, nowMs(env), range, USD_TO_TWD)), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  const out = computePlayStats(rows, nowMs(env), range, USD_TO_TWD);
+  // 10.13.7.14：瀏覽人次(漏斗最上面一格、每小時瀏覽與開局圖)——今天／昨天依小時，近7天依天
+  if (usageCounterStub(env)) {
+    if (range === "7d") {
+      const pv = await usageCall(env, "pvstats", {}, "GET"), from = taipeiDateString(nowMs(env) - 6 * 86400000);
+      out.pageviews = {}; for (const [d, n] of Object.entries(pv.days || {})) if (d >= from) out.pageviews[d.slice(5).replace("-", "/")] = n;
+    } else {
+      const h = await usageCall(env, "hours", {}, "GET");
+      out.pageviews = {}; for (const [k, n] of Object.entries(h.pv || {})) if (k.slice(0, 10) === out.date) out.pageviews[k.slice(11) + ":00"] = n;
+    }
+    out.pageviews_total = Object.values(out.pageviews).reduce((t, n) => t + n, 0);
+  }
+  return new Response(JSON.stringify(out), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
-// 十、10.13.7.13（2026-10-10）：GET /daily.csv——每日總表，從第一天起全部日期(這些數字永久保留，不像逐筆明細只留7天)
-async function handleDailyCsv(request, env) {
-  const denied = adminDenied(request, env, true);
-  if (denied) return denied;
+// 十、10.13.7.13（2026-10-10）：每日總表，從第一天起全部日期(這些數字永久保留，不像逐筆明細只留7天)
+// 10.13.7.14：加寬——開局人生、玩到第3／10／20回合(歸到開局那天)、重寫、重寫比例、AI平均等待、名額、候補新增、綁信箱新增、估計餘額。
+// 明細還在的日子用明細現算，較早的日子用每小時排程存下的數字(dx:)；新欄位從上線當天起才有
+const DAILY_COLS = [["date", "日期"], ["pageviews", "瀏覽人次"], ["new_players", "新增玩家"], ["turns", "回合數"], ["cost", "花費_元"], ["usd", "AI花費_美元"],
+  ["lives", "開局人生"], ["reach3", "玩到第3回合"], ["reach10", "玩到第10回合"], ["reach20", "玩到第20回合"], ["retries", "重寫次數"], ["retry_rate", "重寫比例"],
+  ["wait_s", "AI平均等待_秒"], ["quota_used", "名額已用"], ["quota_cap", "名額"], ["waiting", "候補排隊"], ["wl_new", "候補新增"], ["bound_new", "綁信箱新增"], ["balance_usd", "估計AI餘額_美元"]];
+async function buildDailyTable(env) {
   const now = nowMs(env), today = taipeiDateString(now);
-  const pv = usageCounterStub(env) ? await usageCall(env, "pvstats", {}, "GET") : { days: {}, turns: {}, cost: {} };
-  const ua = usageCounterStub(env) ? await usageCall(env, "udays", {}, "GET") : { days: {} };
+  const has = !!usageCounterStub(env);
+  const pv = has ? await usageCall(env, "pvstats", {}, "GET") : { days: {}, turns: {}, cost: {} };
+  const ua = has ? await usageCall(env, "udays", {}, "GET") : { days: {} };
+  const dx = has ? ((await usageCall(env, "dextra", {}, "GET")).days || {}) : {};
+  const live = has ? dailyExtrasFromRows((await usageCall(env, "urows", {}, "GET")).rows || []) : {};
+  const fromLive = taipeiDateString(now - 5 * 86400000);
   const firsts = [pv.since, pv.us_since, ua.since, ...Object.keys(pv.days || {}), ...Object.keys(ua.days || {})].filter(Boolean).sort();
   const dates = [];
   if (firsts.length) for (let d = firsts[0], i = 0; d <= today && i < 3660; i++) { dates.push(d); const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + 1); d = x.toISOString().slice(0, 10); }
   const ps = dates.length ? await accountsCall(env, { op: "player_stats", dates, week_start: today }) : { new_by_date: {} };
-  const kinds = USAGE_KINDS;
-  const head = ["日期", "瀏覽人次", "新增玩家", "回合數", "花費_元", "AI花費_美元", ...kinds.map(k => "呼叫次數_" + (AI_USAGE_KIND_LABELS[k] || k))];
+  const rows = dates.map(d => {
+    const u = (ua.days || {})[d] || {}, x = Object.assign({}, dx[d] || {}, d >= fromLive ? (live[d] || {}) : {});
+    const usd = USAGE_KINDS.reduce((t, k) => t + ((u[k] && u[k].usd) || 0), 0);
+    const tc = (u.turn && u.turn.calls) || 0, rc = (u.retry && u.retry.calls) || 0;
+    const row = { date: d, pageviews: (pv.days || {})[d] || 0, new_players: ((ps && ps.new_by_date) || {})[d] || 0, turns: (pv.turns || {})[d] || 0,
+      cost: Math.round(((pv.cost || {})[d] || 0) * 100) / 100, usd: Math.round(usd * 1e4) / 1e4, retries: rc, retry_rate: tc ? Math.round(rc / tc * 1000) / 1000 : null,
+      bound_new: ((ps && ps.bound_by_date) || {})[d] };
+    for (const k of ["lives", "reach3", "reach10", "reach20", "wait_s", "quota_used", "quota_cap", "waiting", "wl_new", "balance_usd"]) row[k] = x[k] == null ? null : x[k];
+    row.calls = {}; for (const k of USAGE_KINDS) row.calls[k] = (u[k] && u[k].calls) || 0;
+    return row;
+  });
+  return { today, rows };
+}
+// GET /stats-daily：數據網頁「長期趨勢」與「近30天」用(10.13.7.14)
+async function handleStatsDaily(request, env) {
+  const denied = adminDenied(request, env, true);
+  if (denied) return denied;
+  const t = await buildDailyTable(env);
+  return new Response(JSON.stringify({ ok: true, today: t.today, rows: t.rows }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+}
+const csvCell = (v) => v == null ? "" : v;
+async function handleDailyCsv(request, env) {
+  const denied = adminDenied(request, env, true);
+  if (denied) return denied;
+  const { today, rows } = await buildDailyTable(env);
+  const head = [...DAILY_COLS.map(c => c[1]), ...USAGE_KINDS.map(k => "呼叫次數_" + (AI_USAGE_KIND_LABELS[k] || k))];
   const lines = [head.join(",")];
-  for (const d of dates) {
-    const u = (ua.days || {})[d] || {};
-    const usd = kinds.reduce((t, k) => t + ((u[k] && u[k].usd) || 0), 0);
-    lines.push([d, (pv.days || {})[d] || 0, ((ps && ps.new_by_date) || {})[d] || 0, (pv.turns || {})[d] || 0, Math.round(((pv.cost || {})[d] || 0) * 100) / 100, Math.round(usd * 1e4) / 1e4, ...kinds.map(k => (u[k] && u[k].calls) || 0)].join(","));
-  }
+  for (const r of rows) lines.push([...DAILY_COLS.map(c => csvCell(r[c[0]])), ...USAGE_KINDS.map(k => r.calls[k])].join(","));
   const name = "每日總表_" + today.replace(/-/g, "") + ".csv";
   return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",
     "Content-Disposition": "attachment; filename=\"daily.csv\"; filename*=UTF-8''" + encodeURIComponent(name) } });
+}
+// 十、10.13.7.14：GET /hourly.csv——每小時總表(保留90天)：瀏覽人次、新開局人生、一般回合、重寫、花費(元)、AI花費(美元)
+async function buildHourlyTable(env) {
+  const now = nowMs(env);
+  if (!usageCounterStub(env)) return [];
+  const h = await usageCall(env, "hours", {}, "GET");
+  const live = hourlyFromRows((await usageCall(env, "urows", {}, "GET")).rows || []);
+  const fromLive = taipeiDateString(now - 5 * 86400000);
+  const hr = Object.assign({}, h.hr || {});
+  for (const [k, v] of Object.entries(live)) if (k.slice(0, 10) >= fromLive) hr[k] = v;
+  const keys = [...new Set([...Object.keys(h.pv || {}), ...Object.keys(hr)])].sort();
+  return keys.map(k => { const x = hr[k] || {}; return { hour: k, pageviews: (h.pv || {})[k] || 0, new_lives: x.new_lives || 0, turns: x.turns || 0, retries: x.retries || 0,
+    twd: Math.round((x.usd || 0) * USD_TO_TWD * 100) / 100, usd: x.usd || 0 }; });
+}
+async function handleHourlyCsv(request, env) {
+  const denied = adminDenied(request, env, true);
+  if (denied) return denied;
+  const rows = await buildHourlyTable(env);
+  const lines = ["時段_台灣時間,瀏覽人次,新開局人生,一般回合,重寫,花費_元,AI花費_美元"];
+  for (const r of rows) lines.push([r.hour + ":00", r.pageviews, r.new_lives, r.turns, r.retries, r.twd, r.usd].join(","));
+  const name = "每小時總表_" + taipeiDateString(nowMs(env)).replace(/-/g, "") + ".csv";
+  return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",
+    "Content-Disposition": "attachment; filename=\"hourly.csv\"; filename*=UTF-8''" + encodeURIComponent(name) } });
+}
+// 十、10.13.7.14：每小時排程——把明細彙整成每小時與每日數字(明細7天後刪掉，這些留下來)，並記今天的名額與餘額快照
+async function runStatsRollup(env) {
+  if (!usageCounterStub(env)) return;
+  const e = await buildEntrySummary(env);
+  const params = {};
+  if (e) { params.quota_used = String(e.used); params.quota_cap = String(e.cap); params.waiting = String(e.waiting); params.wl_new = String(e.wl_new_today); }
+  try {
+    const now = nowMs(env), today = taipeiDateString(now);
+    const ai = await buildAIUsageSummary(env, { today, week_start: taipeiDateString(now - 6 * 86400000), turns: {} });
+    if (ai && ai.balance) params.balance_usd = String(ai.balance.remaining_usd);
+  } catch (err) { /* 餘額沒設定或暫時抓不到：這一欄空白 */ }
+  await usageCall(env, "rollup", params, "POST");
 }
 // GET /usage-detail.csv：逐筆明細(最近7天、最多30,000筆)，欄位比照遊戲裡的逐筆呼叫紀錄，另加匿名人生代號與距同一段人生上一次呼叫的分鐘數
 async function handleUsageDetailCsv(request, env) {
@@ -1220,6 +1298,7 @@ export default {
     const cron = event && event.cron;
     if (!cron || cron === "0 19 * * *") ctx.waitUntil(cleanupOrphanStagePacks(env));
     if (!cron || cron === "0 * * * *") ctx.waitUntil(runWaitlistTick(env, ctx).catch(e => console.warn("候補排程失敗：" + (e && e.message || e))));
+    if (!cron || cron === "0 * * * *") ctx.waitUntil(runStatsRollup(env).catch(e => console.warn("數據彙整失敗：" + (e && e.message || e)))); // 10.13.7.14
   },
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
@@ -1231,6 +1310,8 @@ export default {
     if (reqUrl.pathname === "/stats-summary" && request.method === "GET") return handleStatsSummary(request, env);
     if (reqUrl.pathname === "/stats-play" && request.method === "GET") return handleStatsPlay(request, env); // 10.13.7.12
     if (reqUrl.pathname === "/daily.csv" && request.method === "GET") return handleDailyCsv(request, env); // 10.13.7.13
+    if (reqUrl.pathname === "/hourly.csv" && request.method === "GET") return handleHourlyCsv(request, env); // 10.13.7.14
+    if (reqUrl.pathname === "/stats-daily" && request.method === "GET") return handleStatsDaily(request, env); // 10.13.7.14
     if (reqUrl.pathname === "/usage-detail.csv" && request.method === "GET") return handleUsageDetailCsv(request, env); // 10.14.7
     if (reqUrl.pathname === "/dashboard" && request.method === "GET") {
       return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" } });

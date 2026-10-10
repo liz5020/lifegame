@@ -198,7 +198,7 @@ r = await get("/daily.csv", ADMIN, null);
 {
   const lines = r.text.replace(/^\uFEFF/, "").trim().split("\n");
   const d1 = lines.find(l => l.startsWith("2026-10-04,")), d2 = lines.find(l => l.startsWith("2026-10-05,"));
-  A.check("/daily.csv：表頭有日期、瀏覽人次、新增玩家、回合數、花費、各種呼叫次數", /^日期,瀏覽人次,新增玩家,回合數,花費_元,AI花費_美元,呼叫次數_一般回合/.test(lines[0]), lines[0]);
+  A.check("/daily.csv：表頭有日期、瀏覽人次、新增玩家、回合數、花費、各種呼叫次數", /^日期,瀏覽人次,新增玩家,回合數,花費_元,AI花費_美元,開局人生,/.test(lines[0]) && lines[0].includes(",呼叫次數_一般回合"), lines[0]);
   A.check("/daily.csv：10/04 瀏覽3、新增2、回合3；10/05 回合2", d1 && d1.split(",")[1] === "3" && d1.split(",")[2] === "2" && d1.split(",")[3] === "3" && d2 && d2.split(",")[3] === "2", [d1, d2]);
 }
 {
@@ -213,7 +213,7 @@ A.check("/dashboard：200、HTML、不被收錄、不快取", r.status === 200 &
 const raw = await (await import("../worker/worker.js")).default.fetch(new Request("https://life-game.smile80275.workers.dev/dashboard"), env, { waitUntil() {} });
 A.check("/dashboard標頭：X-Robots-Tag noindex、Cache-Control no-store、text/html", /noindex/.test(raw.headers.get("X-Robots-Tag") || "") && raw.headers.get("Cache-Control") === "no-store" && /text\/html/.test(raw.headers.get("Content-Type") || ""));
 A.check("/dashboard：不引用任何外部資源(沒有http(s)://的src／href)", !/(src|href)=["']https?:/i.test(r.text) && !/@import|<link/i.test(r.text));
-A.check("/dashboard：密碼只放sessionStorage、錯誤顯示「密碼錯誤」、有手動更新與每小時自動更新、暫時無法取得", /sessionStorage/.test(r.text) && !/localStorage/.test(r.text) && r.text.includes("密碼錯誤") && r.text.includes("3600000") && r.text.includes("秒後可再更新") && r.text.includes("暫時無法取得") && r.text.includes("AI 花費") && r.text.includes("每回合平均") && r.text.includes("開啟人生段數") && r.text.includes("玩家怎麼玩") && r.text.includes("/stats-play") && r.text.includes("下載全部資料") && r.text.includes("/daily.csv") && r.text.includes("<th>回合數</th>"));
+A.check("/dashboard：密碼只放sessionStorage、錯誤顯示「密碼錯誤」、有手動更新與每小時自動更新、暫時無法取得", /sessionStorage/.test(r.text) && !/localStorage/.test(r.text) && r.text.includes("密碼錯誤") && r.text.includes("3600000") && r.text.includes("秒後可再更新") && r.text.includes("暫時無法取得") && r.text.includes("AI 花費") && r.text.includes("每回合平均") && r.text.includes("開啟人生段數") && r.text.includes("名額與人流") && r.text.includes("/stats-play") && r.text.includes("下載全部資料") && r.text.includes("/daily.csv") && r.text.includes("<th>回合數</th>"));
 A.check("/dashboard：頁面本身不含密碼或統計數字(資料靠輸入密碼後才抓)", !r.text.includes("admin-secret"));
 
 process.exit(A.report() ? 0 : 1);

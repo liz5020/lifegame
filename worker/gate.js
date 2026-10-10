@@ -10,6 +10,7 @@
 
 import { sendMail, noticeMail } from "./mail.js";
 import { nowMs, taipeiDateString } from "./ap.js";
+import { dailyExtrasFromRows, hourlyFromRows } from "./play-stats.js";
 
 export const DEFAULT_DAILY_SPEND_CAP = 500;
 export const DEFAULT_DAILY_GIFT_CAP = 20;
@@ -67,6 +68,7 @@ export class UsageCounter {
       const k = "pv:" + date;
       await this.state.storage.put(k, ((await this.state.storage.get(k)) || 0) + 1);
       if (!(await this.state.storage.get("pv_since"))) await this.state.storage.put("pv_since", date);
+      if (now) { const hk = "ph:" + taipeiHourKey(now); await this.state.storage.put(hk, ((await this.state.storage.get(hk)) || 0) + 1); } // 10.13.7.14：每小時瀏覽人次(保留90天)
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
     // 十、10.13.7.11：全站每日回合數(tn:)與每日耗費估價(co:)，永久保留；起算日us_since＝第一筆紀錄的日期
@@ -89,6 +91,20 @@ export class UsageCounter {
       for (const [, v] of await this.state.storage.list({ prefix: "ud:" })) rows.push(v);
       return this._json({ ok: true, rows });
     }
+    // 十、10.13.7.14：每小時總表(ph:瀏覽、hr:從明細彙整)與每日總表新欄位(dx:)。rollup由每小時排程呼叫：
+    // 從還在的明細重算最近幾天的hr:與dx:(較早的日子明細已刪，保留上次算好的數字)，記下今天的名額與餘額快照，刪掉超過90天的每小時資料
+    if (op === "hours" && request.method === "GET") {
+      const out = { ok: true, pv: {}, hr: {} };
+      for (const [k, v] of await this.state.storage.list({ prefix: "ph:" })) out.pv[k.slice(3)] = v;
+      for (const [k, v] of await this.state.storage.list({ prefix: "hr:" })) out.hr[k.slice(3)] = v;
+      return this._json(out);
+    }
+    if (op === "dextra" && request.method === "GET") {
+      const out = { ok: true, days: {} };
+      for (const [k, v] of await this.state.storage.list({ prefix: "dx:" })) out.days[k.slice(3)] = v;
+      return this._json(out);
+    }
+    if (op === "rollup" && request.method === "POST") return this._json(await this._rollup(p, date, now));
     if (op === "pvstats" && request.method === "GET") {
       const out = { ok: true, since: (await this.state.storage.get("pv_since")) || null, us_since: (await this.state.storage.get("us_since")) || null, days: {}, turns: {}, cost: {} };
       for (const [k, v] of await this.state.storage.list({ prefix: "pv:" })) out.days[k.slice(3)] = v;
@@ -190,6 +206,26 @@ UsageCounter.prototype._recordDetail = async function (p, date, now) {
   }
   await st.put("ud_count", count);
   return { ok: true, kind };
+};
+export const HOURLY_KEEP_DAYS = 90; // 10.13.7.14：每小時總表保留90天
+export function taipeiHourKey(ms) { return new Date(ms + 8 * 3600000).toISOString().slice(0, 13).replace("T", " "); }
+UsageCounter.prototype._rollup = async function (p, date, now) {
+  const st = this.state.storage, rows = [];
+  for (const [, v] of await st.list({ prefix: "ud:" })) rows.push(v);
+  // 明細最早那天通常不完整(已刪掉一部分)，只重算最近6天(含今天)
+  const from = taipeiDateString(now - 5 * 86400000);
+  for (const [h, v] of Object.entries(hourlyFromRows(rows))) if (h.slice(0, 10) >= from) await st.put("hr:" + h, v);
+  for (const [d, v] of Object.entries(dailyExtrasFromRows(rows))) {
+    if (d < from) continue;
+    await st.put("dx:" + d, Object.assign((await st.get("dx:" + d)) || {}, v));
+  }
+  // 今天的快照(每小時覆蓋，當天最後一次整點的數字留下來)：名額已用／名額、候補排隊、候補新增、估計AI餘額(美元)
+  const snap = {};
+  for (const k of ["quota_used", "quota_cap", "waiting", "wl_new", "balance_usd"]) if (p.has(k) && p.get(k) !== "" && Number.isFinite(Number(p.get(k)))) snap[k] = Number(p.get(k));
+  if (Object.keys(snap).length) await st.put("dx:" + date, Object.assign((await st.get("dx:" + date)) || {}, snap));
+  const cut = taipeiHourKey(now - HOURLY_KEEP_DAYS * 86400000);
+  for (const pre of ["ph:", "hr:"]) for (const [k] of await st.list({ prefix: pre, end: pre + cut })) await st.delete(k);
+  return { ok: true };
 };
 export const USAGE_KINDS = ["turn", "opening", "retry", "idle", "chapter", "review"];
 export const USAGE_DETAIL_MAX_ROWS = 30000; // 2026-10-10：封測開放日一天約2,000～5,000筆，5,000筆撐不到7天，使用者決定先調高(10.14.7)

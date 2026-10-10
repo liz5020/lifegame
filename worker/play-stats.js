@@ -1,18 +1,29 @@
 // 十、10.13.7.12（2026-10-10）：數據網頁「玩家怎麼玩」分頁——從AI實際用量逐筆明細(10.14.7，最近7天、最多30,000筆)算出的玩家行為分析。
 // 只在打開那一頁時算；不另外存任何資料，不碰KV。人生以明細裡的匿名人生代號(雜湊)區分，不含信箱或存檔內容。
-// range：today＝今天(台灣日期)開局的人生；7d＝明細裡所有人生(最近7天)。時間分組：today每小時、7d每天。
+// range：today＝今天(台灣日期)開局的人生；yesterday＝昨天開局的人生(10.13.7.14)；7d＝明細裡所有人生(最近7天)。時間分組：today／yesterday每小時、7d每天。
 const HOUR = 3600000;
 const ACTIVE_MS = 10 * 60000; // 最後一次呼叫在10分鐘內＝還在玩
 const STOP_BUCKETS = [[0, 1, "只有開場"], [2, 2, "第 2 回合"], [3, 4, "第 3～4 回合"], [5, 9, "第 5～9 回合"], [10, 19, "第 10～19 回合"], [20, 1e9, "第 20 回合以上"]];
+const SESSION_GAP_MS = 30 * 60000; // 10.13.7.14：「一次遊玩」＝中間沒有停超過30分鐘的一段
 const tw = (t) => new Date(t + 8 * HOUR).toISOString(); // 台灣時間的ISO字串(只拿來切日期與時段)
+const dayBefore = (d) => new Date(Date.parse(d + "T00:00:00Z") - 86400000).toISOString().slice(0, 10);
+const medianOf = (arr) => { const a = arr.slice().sort((x, y) => x - y); if (!a.length) return null; return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2; };
+const meanOf = (arr) => arr.length ? arr.reduce((t, x) => t + x, 0) / arr.length : null;
+// 10.13.7.14：重寫原因(第1類代碼，一、1.2.9.18.1)的白話說法；明細與下載檔仍是代碼
+export const REGEN_REASON_LABELS = { "空白": "正文空白", "少一段": "少了一段(行動結果或新場景)", "過短": "正文少於40字", "欄位名稱": "正文出現資料欄位名稱",
+  "節日": "節日放錯日子", "日期": "新場景日期不在範圍內", "花費": "剛決定的花費沒寫到", "興趣": "指定的興趣沒寫到", "約定": "到期的約定沒交代" };
+// 每段人生第一次出現的時間(明細只留7天，7天前開局的人生會被當成明細裡第一筆那天開局)
+function firstSeen(all) { const first = new Map(); for (const r of all) if (r.life && !first.has(r.life)) first.set(r.life, r.t); return first; }
+function maxTurns(rows) { const m = new Map(); for (const r of rows) if (r.life && r.k === "turn" && typeof r.turn === "number") m.set(r.life, Math.max(m.get(r.life) || 0, r.turn)); return m; }
 
 export function computePlayStats(rows, now, range, usdToTwd) {
   const rate = usdToTwd || 32;
   const today = tw(now).slice(0, 10);
   const all = (rows || []).filter(r => r && typeof r.t === "number").sort((a, b) => a.t - b.t);
-  const first = new Map();
-  for (const r of all) if (r.life && !first.has(r.life)) first.set(r.life, r.t);
-  const inRange = (t) => range === "7d" || tw(t).slice(0, 10) === today;
+  range = range === "7d" || range === "yesterday" ? range : "today";
+  const first = firstSeen(all);
+  const day = range === "yesterday" ? dayBefore(today) : today;
+  const inRange = (t) => range === "7d" || tw(t).slice(0, 10) === day;
   const lives = new Set([...first].filter(([, t]) => inRange(t)).map(([l]) => l));
   const R = all.filter(r => r.life && lives.has(r.life));
   const bucketOf = (t) => range === "7d" ? tw(t).slice(5, 10).replace("-", "/") : tw(t).slice(11, 13) + ":00";
@@ -45,6 +56,34 @@ export function computePlayStats(rows, now, range, usdToTwd) {
   const left = ids.filter(l => !active(l));
   const stops = STOP_BUCKETS.map(([lo, hi, label]) => ({ label, lives: left.filter(l => mt(l) >= lo && mt(l) <= hi).length }));
 
+  // 10.13.7.14：跟前一段比(今天比昨天、昨天比前天；近7天不比)
+  let prev = null;
+  if (range !== "7d") {
+    const pd = dayBefore(day), pLives = [...first].filter(([, t]) => tw(t).slice(0, 10) === pd).map(([l]) => l);
+    const pm = maxTurns(all.filter(r => r.life && pLives.includes(r.life)));
+    const p10 = pLives.filter(l => (pm.get(l) || 0) >= 10).length;
+    prev = { date: pd, lives: pLives.length, reach10_rate: pLives.length ? Math.round(p10 / pLives.length * 1000) / 1000 : null };
+  }
+  // 10.13.7.14：玩多久、等多久、有沒有回來
+  const byLife = new Map();
+  for (const r of R) { if (!byLife.has(r.life)) byLife.set(r.life, []); byLife.get(r.life).push(r); }
+  const sessions = [], gaps = [], waitTurn = [], waitOpen = [], waitRetry = [];
+  let revisit = 0, revisitBase = 0;
+  for (const [l, rs] of byLife) {
+    let s0 = rs[0].t, prevT = rs[0].t, prevTurnT = null;
+    for (const r of rs) {
+      if (r.t - prevT > SESSION_GAP_MS) { sessions.push(prevT - s0); s0 = r.t; prevTurnT = null; }
+      if (r.k === "turn") { if (prevTurnT !== null) gaps.push(r.t - prevTurnT); prevTurnT = r.t; }
+      prevT = r.t;
+      if (typeof r.ms === "number") (r.k === "turn" ? waitTurn : r.k === "opening" ? waitOpen : r.k === "retry" ? waitRetry : []).push(r.ms);
+    }
+    sessions.push(prevT - s0);
+    // 隔天又回來玩：開局那天(台灣日期)以後還有呼叫；今天開局的人生還算不出來
+    const d0 = tw(first.get(l)).slice(0, 10);
+    if (d0 < today) { revisitBase++; if (rs.some(r => tw(r.t).slice(0, 10) > d0)) revisit++; }
+  }
+  const sec1 = (ms) => ms == null ? null : Math.round(ms / 100) / 10;
+  const reached = (n) => ids.filter(l => mt(l) >= n);
   // 依時段：新開局、一般回合、重寫、花費、有呼叫的人生數
   const buckets = new Map();
   const B = (k) => { if (!buckets.has(k)) buckets.set(k, { bucket: k, new_lives: 0, turns: 0, retries: 0, twd: 0, lives: new Set() }); return buckets.get(k); };
@@ -65,17 +104,54 @@ export function computePlayStats(rows, now, range, usdToTwd) {
     retry_rate: b.turns ? Math.round(b.retries / b.turns * 1000) / 1000 : null, twd: r1(b.twd), lives: b.lives.size }));
   const reasons = {};
   for (const r of R) if (r.k === "retry" && r.rr) for (const c of String(r.rr).split("、")) if (c) reasons[c] = (reasons[c] || 0) + 1;
+  // 每條人生平均花費、玩到第10回合的人生平均花費、AI讀進去的內容(快取讀取／快取寫入／沒用快取)
+  const lifeCost = new Map();
+  for (const r of R) lifeCost.set(r.life, (lifeCost.get(r.life) || 0) + (Number(r.usd) || 0) * rate);
+  const r10 = reached(10), cost10 = r10.reduce((t, l) => t + (lifeCost.get(l) || 0), 0);
+  let tin = 0, tcw = 0, tcr = 0;
+  for (const r of R) { tin += Number(r.in) || 0; tcw += Number(r.cw) || 0; tcr += Number(r.cr) || 0; }
+  const tall = tin + tcw + tcr, share = (x) => tall ? Math.round(x / tall * 1000) / 1000 : null;
   return {
-    ok: true, range: range === "7d" ? "7d" : "today", date: today,
+    ok: true, range, date: day, prev,
     summary: {
       lives: ids.length, playing_now: ids.filter(active).length,
       reach10: ids.filter(l => mt(l) >= 10).length, reach10_rate: ids.length ? Math.round(ids.filter(l => mt(l) >= 10).length / ids.length * 1000) / 1000 : null,
       median_turns: median, max_turns: sorted.length ? sorted[sorted.length - 1] : null,
       turns, retries, retry_rate: turns ? Math.round(retries / turns * 1000) / 1000 : null,
-      twd: r1(twd), twd_per_turn: turns ? r2(twd / turns) : null, twd_per_turn_no_retry: turns ? r2(twdNoRetry / turns) : null
+      twd: r1(twd), twd_per_turn: turns ? r2(twd / turns) : null, twd_per_turn_no_retry: turns ? r2(twdNoRetry / turns) : null,
+      reach3: reached(3).length, reach20: reached(20).length,
+      twd_per_life: ids.length ? r2(twd / ids.length) : null, twd_per_reach10_life: r10.length ? r2(cost10 / r10.length) : null,
+      cache: { read: share(tcr), write: share(tcw), plain: share(tin) },
+      session_median_min: sessions.length ? r1(medianOf(sessions) / 60000) : null, session_mean_min: sessions.length ? r1(meanOf(sessions) / 60000) : null,
+      turn_gap_median_s: gaps.length ? Math.round(medianOf(gaps) / 1000) : null,
+      wait_turn_s: sec1(meanOf(waitTurn)), wait_opening_s: sec1(meanOf(waitOpen)), wait_retry_s: sec1(meanOf(waitRetry)),
+      revisit: range === "today" ? null : { lives: revisit, of: revisitBase }
     },
     funnel, continuation, stops, timeline,
     cost_split: Object.entries(byKind).map(([k, v]) => ({ kind: k, calls: v.calls, twd: r1(v.twd) })).sort((a, b) => b.twd - a.twd),
-    retry_reasons: Object.entries(reasons).map(([code, n]) => ({ code, n })).sort((a, b) => b.n - a.n).slice(0, 5)
+    retry_reasons: Object.entries(reasons).map(([code, n]) => ({ code, label: REGEN_REASON_LABELS[code] || code, n })).sort((a, b) => b.n - a.n).slice(0, 5)
   };
+}
+
+// 十、10.13.7.14：每日總表的新欄位(從明細算，明細只留7天)——依開局那天(台灣日期)：開局人生數、玩到第3／10／20回合的人生數；依呼叫那天：一般回合平均AI等待秒數
+export function dailyExtrasFromRows(rows) {
+  const all = (rows || []).filter(r => r && typeof r.t === "number").sort((a, b) => a.t - b.t);
+  const first = firstSeen(all), mt = maxTurns(all), out = {};
+  const D = (d) => out[d] || (out[d] = { lives: 0, reach3: 0, reach10: 0, reach20: 0, wait_ms: 0, wait_n: 0 });
+  for (const [l, t] of first) {
+    const o = D(tw(t).slice(0, 10)), m = mt.get(l) || 0;
+    o.lives++; if (m >= 3) o.reach3++; if (m >= 10) o.reach10++; if (m >= 20) o.reach20++;
+  }
+  for (const r of all) if (r.k === "turn" && typeof r.ms === "number") { const o = D(tw(r.t).slice(0, 10)); o.wait_ms += r.ms; o.wait_n++; }
+  for (const o of Object.values(out)) { o.wait_s = o.wait_n ? Math.round(o.wait_ms / o.wait_n / 100) / 10 : null; delete o.wait_ms; delete o.wait_n; }
+  return out;
+}
+// 十、10.13.7.14：每小時總表(從明細算)——鍵為台灣時間「YYYY-MM-DD HH」：新開局人生、一般回合、重寫、AI花費(美元)
+export function hourlyFromRows(rows) {
+  const all = (rows || []).filter(r => r && typeof r.t === "number").sort((a, b) => a.t - b.t);
+  const out = {}, H = (t) => { const k = tw(t).slice(0, 13).replace("T", " "); return out[k] || (out[k] = { new_lives: 0, turns: 0, retries: 0, usd: 0 }); };
+  for (const [, t] of firstSeen(all)) H(t).new_lives++;
+  for (const r of all) { const h = H(r.t); if (r.k === "turn") h.turns++; if (r.k === "retry") h.retries++; h.usd += Number(r.usd) || 0; }
+  for (const h of Object.values(out)) h.usd = Math.round(h.usd * 1e4) / 1e4;
+  return out;
 }

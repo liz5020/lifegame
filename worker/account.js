@@ -734,12 +734,13 @@ export class AccountStore {
     const unbound = inRange(); // 10.13.7.11(2026-10-10)：沒綁信箱的人生段數＝從沒綁進任何帳號的人生代號(以第一次出現日期)；之後綁了信箱就改算進帳號，不再算這裡
     for (const [lid, r] of lids) if (!owner.has(lid)) unbound.add(r.f);
     const pick = o => ({ total: o.total, today: o.today, last7: o.last7 });
-    const newByDate = {};
-    for (const d of Array.isArray(b.dates) ? b.dates : []) newByDate[d] = players.filter(p => p.start === d).length;
+    const newByDate = {}, boundByDate = {};
+    for (const d of Array.isArray(b.dates) ? b.dates : []) { newByDate[d] = players.filter(p => p.start === d).length; boundByDate[d] = 0; }
+    for (const [, a] of await this.storage.list({ prefix: "a:" })) { const d = taipeiDateString(a.created); if (d in boundByDate) boundByDate[d]++; } // 10.13.7.14：每日總表的「綁信箱新增」
     return {
       ok: true, free: tally(false), paid: tally(true),
       active: { today: players.filter(p => p.last === b.date).length, last7: players.filter(p => p.last && p.last >= b.week_start && p.last <= b.date).length },
-      new_by_date: newByDate, accounts_bound: pick(bound), lives_started: pick(started), lives_unbound: pick(unbound)
+      new_by_date: newByDate, bound_by_date: boundByDate, accounts_bound: pick(bound), lives_started: pick(started), lives_unbound: pick(unbound)
     };
   }
   _ctx(b) {
@@ -960,8 +961,16 @@ export class AccountStore {
     const en = await this._entryDay(ctx);
     let notified = 0;
     for (const aid of await this._get("wh", [])) { const a = await this._acct(aid); if (a && a.wl && WL_HOLD_STATUSES.includes(a.wl.status)) notified++; }
+    // 10.13.7.14：今天新加入候補的人數、收到通知信後有入場的比例(只算寄出過通知信的帳號)、通知後超過一天還沒入場的人數
+    let wlNew = 0, mailed = 0, enteredAfterMail = 0, staleNotified = 0;
+    for (const [, a] of await this.storage.list({ prefix: "a:" })) {
+      const w = a && a.wl;
+      if (!w) continue;
+      if (w.joinedAt && taipeiDateString(w.joinedAt) === ctx.date) wlNew++;
+      if (w.sentAt) { mailed++; if (w.status === "entered") enteredAfterMail++; else if (WL_HOLD_STATUSES.includes(w.status) && ctx.now - w.sentAt > 86400000) staleNotified++; }
+    }
     return { ok: true, used: en.used, cap: ctx.new_cap, bonus: en.bonus, cum: await this._get("cum", 0), checkpoint: ctx.checkpoint,
-      waiting: (await this._get("wq", [])).length, notified };
+      waiting: (await this._get("wq", [])).length, notified, wl_new_today: wlNew, mailed, entered_after_mail: enteredAfterMail, notified_over_day: staleNotified };
   }
 }
 
