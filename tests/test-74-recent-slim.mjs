@@ -72,6 +72,6 @@ A.check("34.24#22 turn_summary不受40字截斷(存進日記的是完整80字)",
 
 A.check("規則說明維持「最近3回合原文」(2026-10-08改回，跟2026.10.05-a一致)", /recent_turns_full（最近3回合）/.test(TURN_SYSTEM_PROMPT) && /recent_turns_full只會給你最近3回合的完整原文/.test(TURN_SYSTEM_PROMPT) && !/recent_turns_full只會給你上一回合的完整原文/.test(TURN_SYSTEM_PROMPT));
 A.check("沒有錯誤", g.errors.length === 0, g.errors);
-A.report();
+const __ok = A.report();
 g.win.close();
-process.exit(0);
+process.exit(__ok ? 0 : 1);

@@ -74,5 +74,5 @@ A.check("10.14.8.4 固定值home_purchase_min_down_payment_pct、player_pronoun�
 const merged = H.turnPayloadFromBody({ messages: req.messages });
 A.check("10.14.8.4 分段後併回與送出的payload一字不差", JSON.stringify(Object.keys(merged).sort().map(k => [k, merged[k]])) === JSON.stringify(Object.keys(raw).sort().map(k => [k, raw[k]])));
 g.win.close();
-A.report();
-process.exit(0);
+const __ok = A.report();
+process.exit(__ok ? 0 : 1);

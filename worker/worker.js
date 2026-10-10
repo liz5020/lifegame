@@ -88,12 +88,13 @@ import {
 import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual, markLifeEnded } from "./usage.js";
 import { corsHeaders, jsonResponse } from "./http.js";
 import {
-  UsageCounter, readSetting, spendCap, giftCap, callCostEstimate, USD_TO_TWD, usageCall, usageCounterStub, accountsCall, accountStore,
+  UsageCounter, readSetting, spendCap, giftCap, callCostEstimate, USD_TO_TWD, USAGE_KINDS, usageCall, usageCounterStub, accountsCall, accountStore,
   bearerToken, countAICall, recordAIUsage, spendGate, syncGiftStats, DEFAULT_DAILY_SPEND_CAP, DEFAULT_DAILY_GIFT_CAP
 } from "./gate.js";
 import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
+import { computePlayStats } from "./play-stats.js";
 import { runWaitlistTick } from "./entry.js";
 import { handleSaveAdmin, isAdminPath, indexSaveRecord } from "./save-admin.js";
 import { relocateRequest, locationId, locationSecretOk, isLoc } from "./location.js";
@@ -1159,7 +1160,38 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
   }
   return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS, balance, regen_today }, range);
 }
-// GET /usage-detail.csv：逐筆明細(最近7天、最多5,000筆)，欄位比照遊戲裡的逐筆呼叫紀錄，另加匿名人生代號與距同一段人生上一次呼叫的分鐘數
+// 十、10.13.7.12（2026-10-10）：GET /stats-play?range=today|7d——數據網頁「玩家怎麼玩」分頁，從逐筆明細現算，不另存資料
+async function handleStatsPlay(request, env) {
+  const denied = adminDenied(request, env, true);
+  if (denied) return denied;
+  const range = new URL(request.url).searchParams.get("range") === "7d" ? "7d" : "today";
+  const rows = usageCounterStub(env) ? ((await usageCall(env, "urows", {}, "GET")).rows || []) : [];
+  return new Response(JSON.stringify(computePlayStats(rows, nowMs(env), range, USD_TO_TWD)), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+}
+// 十、10.13.7.13（2026-10-10）：GET /daily.csv——每日總表，從第一天起全部日期(這些數字永久保留，不像逐筆明細只留7天)
+async function handleDailyCsv(request, env) {
+  const denied = adminDenied(request, env, true);
+  if (denied) return denied;
+  const now = nowMs(env), today = taipeiDateString(now);
+  const pv = usageCounterStub(env) ? await usageCall(env, "pvstats", {}, "GET") : { days: {}, turns: {}, cost: {} };
+  const ua = usageCounterStub(env) ? await usageCall(env, "udays", {}, "GET") : { days: {} };
+  const firsts = [pv.since, pv.us_since, ua.since, ...Object.keys(pv.days || {}), ...Object.keys(ua.days || {})].filter(Boolean).sort();
+  const dates = [];
+  if (firsts.length) for (let d = firsts[0], i = 0; d <= today && i < 3660; i++) { dates.push(d); const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + 1); d = x.toISOString().slice(0, 10); }
+  const ps = dates.length ? await accountsCall(env, { op: "player_stats", dates, week_start: today }) : { new_by_date: {} };
+  const kinds = USAGE_KINDS;
+  const head = ["日期", "瀏覽人次", "新增玩家", "回合數", "花費_元", "AI花費_美元", ...kinds.map(k => "呼叫次數_" + (AI_USAGE_KIND_LABELS[k] || k))];
+  const lines = [head.join(",")];
+  for (const d of dates) {
+    const u = (ua.days || {})[d] || {};
+    const usd = kinds.reduce((t, k) => t + ((u[k] && u[k].usd) || 0), 0);
+    lines.push([d, (pv.days || {})[d] || 0, ((ps && ps.new_by_date) || {})[d] || 0, (pv.turns || {})[d] || 0, Math.round(((pv.cost || {})[d] || 0) * 100) / 100, Math.round(usd * 1e4) / 1e4, ...kinds.map(k => (u[k] && u[k].calls) || 0)].join(","));
+  }
+  const name = "每日總表_" + today.replace(/-/g, "") + ".csv";
+  return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",
+    "Content-Disposition": "attachment; filename=\"daily.csv\"; filename*=UTF-8''" + encodeURIComponent(name) } });
+}
+// GET /usage-detail.csv：逐筆明細(最近7天、最多30,000筆)，欄位比照遊戲裡的逐筆呼叫紀錄，另加匿名人生代號與距同一段人生上一次呼叫的分鐘數
 async function handleUsageDetailCsv(request, env) {
   const denied = adminDenied(request, env, true);
   if (denied) return denied;
@@ -1179,7 +1211,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.10-f";
+const WORKER_VERSION = "2026.10.10-g";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
@@ -1197,6 +1229,8 @@ export default {
     if (reqUrl.pathname === "/usage-today" && request.method === "GET") return handleUsageToday(request, env);
     // 十、10.13.7.8：數據總覽——/stats-summary(USAGE_ADMIN_TOKEN，不碰KV)與/dashboard(網頁，不被搜尋引擎收錄、不快取、不走來源白名單)
     if (reqUrl.pathname === "/stats-summary" && request.method === "GET") return handleStatsSummary(request, env);
+    if (reqUrl.pathname === "/stats-play" && request.method === "GET") return handleStatsPlay(request, env); // 10.13.7.12
+    if (reqUrl.pathname === "/daily.csv" && request.method === "GET") return handleDailyCsv(request, env); // 10.13.7.13
     if (reqUrl.pathname === "/usage-detail.csv" && request.method === "GET") return handleUsageDetailCsv(request, env); // 10.14.7
     if (reqUrl.pathname === "/dashboard" && request.method === "GET") {
       return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" } });

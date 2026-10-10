@@ -151,13 +151,69 @@ mk("lifeday00x", "2026-10-04", "2026-10-04"); mk("lifeday06x", "2026-09-28", "20
 r = await H.callWorker(env3, { method: "GET", path: "/stats-summary", headers: ADMIN, origin: null });
 A.check("近7天含今天共7個台灣日期：9/28算、9/27不算；累計3", r.json.players.free.last7 === 2 && r.json.players.free.total === 3 && r.json.active.last7 === 2, r.json);
 
+// ---- 2026-10-10：實際遊戲裡回合帶的人生代號(s.lifeId)跟帳號用人生代號(s.acct.lid)不同 ----
+const env4 = await H.makeAccountEnv({ TEST_NOW_MS: String(T0), CLOUD_SAVE_ENABLED: "false", SAVE_ADMIN_TOKEN: "save-pw" });
+const p4 = (path, body, headers) => H.callWorker(env4, { path, body, headers });
+for (let i = 0; i < 2; i++) await p4("/", { life_id: "savelife01", turn_nonce: "rs" + i + "zzzzzzzzz", messages: [{ role: "user", content: turnPayload() }] });
+await p4("/account/send-code", { email: "real@example.com" }, { "CF-Connecting-IP": "10.8.8.1" });
+r = await p4("/account/bind", { email: "real@example.com", code: resend.lastCode("real@example.com"), key: "KEY-REAL", lives: [{ lid: "lacct00001", pool: { daily: 5, gift: 0 } }] });
+const tReal = r.json.token;
+let s4 = (await H.callWorker(env4, { method: "GET", path: "/stats-summary", headers: ADMIN, origin: null })).json;
+A.check("剛綁好、還沒用帳號出回合：帳號還不知道存檔的人生代號savelife01，沒綁信箱的人生段數暫時算1", s4.lives_unbound.total === 1, s4.lives_unbound);
+for (let i = 0; i < 3; i++) await p4("/", { wallet: true, life_id: "savelife01", turn_nonce: "rw" + i + "zzzzzzzzz", messages: [{ role: "user", content: turnPayload() }] }, auth(tReal));
+s4 = (await H.callWorker(env4, { method: "GET", path: "/stats-summary", headers: ADMIN, origin: null })).json;
+A.check("用帳號錢包出過回合後，存檔人生代號記進帳號：玩家1位、沒綁信箱的人生段數0", s4.players.free.total === 1 && s4.lives_unbound.total === 0, { p: s4.players, u: s4.lives_unbound });
+r = await H.callWorker(env4, { method: "GET", path: "/admin/dashboard-roster", headers: auth("save-pw"), origin: null });
+A.check("名冊回合數：還沒存過雲端＝0", r.status === 200 && r.json.accounts[0].turns === 0, r.json);
+const RK = "ABCD-1234-ABCD-1234-ABCD";
+await p4("/save", { key: RK, slot: 0, meta: { name: "甲", age: 16, stage: "高中", lid: "lacct00001", turns: 4 }, state: { a: 1 } });
+await p4("/save", { key: RK, slot: 0, meta: { name: "甲", age: 16, stage: "高中", lid: "lacct00001", turns: 5 }, state: { a: 1 } });
+await p4("/save", { key: RK, slot: 1, meta: { name: "乙", age: 15, stage: "高中", turns: 99 }, state: { a: 1 } });
+r = await H.callWorker(env4, { method: "GET", path: "/admin/dashboard-roster", headers: auth("save-pw"), origin: null });
+A.check("名冊回合數＝帳號名下人生最後一次雲端存檔附的回合數(5)；沒綁帳號的存檔(99)不算", r.status === 200 && r.json.accounts[0].turns === 5, r.json);
+
+// ---- 10.13.7.12（2026-10-10）：「玩家怎麼玩」——GET /stats-play 從逐筆明細現算 ----
+A.check("/stats-play：沒密碼401", (await get("/stats-play", undefined, null)).status === 401);
+r = await get("/stats-play?range=7d", ADMIN, null);
+const pl = r.json;
+A.check("/stats-play：近7天有人生、漏斗從第2回合起、停在哪裡分組、花費結構有一般回合", r.status === 200 && pl.range === "7d" && pl.summary.lives >= 1 && Array.isArray(pl.funnel) && (pl.funnel.length === 0 || pl.funnel[0].turn === 2) && pl.stops[0].label === "只有開場" && pl.cost_split.some(x => x.kind === "turn"), pl);
+A.check("/stats-play：今天範圍只算今天開局的人生(≤近7天)；沒有信箱或原始人生代號", (await get("/stats-play", ADMIN, null)).json.summary.lives <= pl.summary.lives && !/@|lifetrial1|lifeother1/.test(JSON.stringify(pl)));
+{
+  const { computePlayStats } = await import("../worker/play-stats.js");
+  const N = Date.parse("2026-10-10T05:00:00Z"), M = 60000; // 台灣13:00
+  const rows = [];
+  const life = (id, startMin, turns, retries) => { rows.push({ t: N - startMin * M, k: "opening", turn: 1, life: id, usd: 0.01 }); for (let i = 2; i <= turns; i++) rows.push({ t: N - startMin * M + i * M, k: "turn", turn: i, life: id, usd: 0.03 }); for (let j = 0; j < retries; j++) rows.push({ t: N - startMin * M + 30000, k: "retry", turn: 2, life: id, usd: 0.03, rr: "空白" }); };
+  life("aa", 120, 12, 1); life("bb", 90, 1, 0); life("cc", 60, 3, 0); life("dd", 12, 6, 0); // dd最後一回合在6分鐘前＝還在玩
+  rows.push({ t: N - 3 * 86400000, k: "opening", turn: 1, life: "old", usd: 0.01 });
+  const o = computePlayStats(rows, N, "today", 32), w = computePlayStats(rows, N, "7d", 32);
+  A.check("computePlayStats：今天4條、近7天5條；玩到第10回合1條；還在玩1條", o.summary.lives === 4 && w.summary.lives === 5 && o.summary.reach10 === 1 && o.summary.playing_now === 1, o.summary);
+  A.check("computePlayStats：停在哪裡只算離開的3條(只有開場1、第3～4回合1、第10～19回合1)", o.stops.find(x => x.label === "只有開場").lives === 1 && o.stops.find(x => x.label === "第 3～4 回合").lives === 1 && o.stops.find(x => x.label === "第 10～19 回合").lives === 1 && o.stops.reduce((a, x) => a + x.lives, 0) === 3, o.stops);
+  A.check("computePlayStats：繼續比例第6回合不算還在玩的dd(停在第6回合)", o.continuation.find(x => x.turn === 6).n === 1, o.continuation);
+  A.check("computePlayStats：重寫1次÷一般回合18次(11＋0＋2＋5)、重寫原因、每回合花費", o.summary.retries === 1 && o.summary.turns === 18 && o.retry_reasons[0].code === "空白" && o.summary.twd_per_turn > o.summary.twd_per_turn_no_retry, o.summary);
+}
+
+// ---- 10.13.7.13（2026-10-10）：GET /daily.csv 每日總表(從第一天起) ----
+A.check("/daily.csv：沒密碼401", (await get("/daily.csv", undefined, null)).status === 401);
+r = await get("/daily.csv", ADMIN, null);
+{
+  const lines = r.text.replace(/^\uFEFF/, "").trim().split("\n");
+  const d1 = lines.find(l => l.startsWith("2026-10-04,")), d2 = lines.find(l => l.startsWith("2026-10-05,"));
+  A.check("/daily.csv：表頭有日期、瀏覽人次、新增玩家、回合數、花費、各種呼叫次數", /^日期,瀏覽人次,新增玩家,回合數,花費_元,AI花費_美元,呼叫次數_一般回合/.test(lines[0]), lines[0]);
+  A.check("/daily.csv：10/04 瀏覽3、新增2、回合3；10/05 回合2", d1 && d1.split(",")[1] === "3" && d1.split(",")[2] === "2" && d1.split(",")[3] === "3" && d2 && d2.split(",")[3] === "2", [d1, d2]);
+}
+{
+  const raw2 = await (await import("../worker/worker.js")).default.fetch(new Request("https://life-game.smile80275.workers.dev/daily.csv", { headers: ADMIN }), env, { waitUntil() {} });
+  const bytes = new Uint8Array(await raw2.arrayBuffer()), cd = raw2.headers.get("Content-Disposition") || "";
+  A.check("/daily.csv：UTF-8 BOM開頭(Excel開中文不亂碼)、下載檔名「每日總表_日期」", bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF && decodeURIComponent(cd.split("''")[1] || "").startsWith("每日總表_"), cd);
+}
+
 // ---- 儀表板網頁 ----
 r = await get("/dashboard", undefined, null);
 A.check("/dashboard：200、HTML、不被收錄、不快取", r.status === 200 && /^<!doctype html>/i.test(r.text), r.status);
 const raw = await (await import("../worker/worker.js")).default.fetch(new Request("https://life-game.smile80275.workers.dev/dashboard"), env, { waitUntil() {} });
 A.check("/dashboard標頭：X-Robots-Tag noindex、Cache-Control no-store、text/html", /noindex/.test(raw.headers.get("X-Robots-Tag") || "") && raw.headers.get("Cache-Control") === "no-store" && /text\/html/.test(raw.headers.get("Content-Type") || ""));
 A.check("/dashboard：不引用任何外部資源(沒有http(s)://的src／href)", !/(src|href)=["']https?:/i.test(r.text) && !/@import|<link/i.test(r.text));
-A.check("/dashboard：密碼只放sessionStorage、錯誤顯示「密碼錯誤」、有手動更新與每小時自動更新、暫時無法取得", /sessionStorage/.test(r.text) && !/localStorage/.test(r.text) && r.text.includes("密碼錯誤") && r.text.includes("3600000") && r.text.includes("秒後可再更新") && r.text.includes("暫時無法取得") && r.text.includes("總耗費") && r.text.includes("每回合平均花費") && r.text.includes("開啟人生段數"));
+A.check("/dashboard：密碼只放sessionStorage、錯誤顯示「密碼錯誤」、有手動更新與每小時自動更新、暫時無法取得", /sessionStorage/.test(r.text) && !/localStorage/.test(r.text) && r.text.includes("密碼錯誤") && r.text.includes("3600000") && r.text.includes("秒後可再更新") && r.text.includes("暫時無法取得") && r.text.includes("AI 花費") && r.text.includes("每回合平均") && r.text.includes("開啟人生段數") && r.text.includes("玩家怎麼玩") && r.text.includes("/stats-play") && r.text.includes("下載全部資料") && r.text.includes("/daily.csv") && r.text.includes("<th>回合數</th>"));
 A.check("/dashboard：頁面本身不含密碼或統計數字(資料靠輸入密碼後才抓)", !r.text.includes("admin-secret"));
 
 process.exit(A.report() ? 0 : 1);

@@ -519,7 +519,7 @@ export class AccountStore {
     const accounts = [];
     for (const [, a] of m) {
       accounts.push({
-        aid: a.aid, email: a.email, created: a.created, lives: (a.lives || []).map(l => ({ lid: l.lid, slot: l.slot })),
+        aid: a.aid, email: a.email, created: a.created, lives: (a.lives || []).map(l => ({ lid: l.lid, slot: l.slot })), ever_lids: a.everLids || [],
         gifts: { claimed: ["g1", "g2"].filter(k => a.gifts && a.gifts[k] === "done").length, queued: ["g1", "g2"].filter(k => a.gifts && a.gifts[k] === "queued").length, max: GIFTS_PER_ACCOUNT },
         purchased: !!a.purchased, consent: a.consent || null,
         wl: a.wl ? { status: a.wl.status, joinedAt: a.wl.joinedAt || null, sentAt: a.wl.sentAt || null } : null
@@ -588,6 +588,9 @@ export class AccountStore {
     if (typeof b.nonce !== "string" || !/^[a-z0-9]{6,40}$/.test(b.nonce)) return { ok: false, error: "bad_nonce", status: 400 };
     const ctx = this._ctx(b);
     const flags = await this._tick(a, ctx);
+    // 10.13.7.1(2026-10-10修正)：回合請求帶的是存檔的人生代號(s.lifeId)，帳號名下記的是帳號用人生代號(s.acct.lid)，兩者不同；
+    // 用帳號錢包出回合時把前者也記進「曾綁過的人生代號」，數據總覽與名冊回合數才對得上這個帳號
+    if (typeof b.life_id === "string" && /^[a-z0-9]{4,40}$/.test(b.life_id)) noteEverLid(a, b.life_id);
     // 十、10.3.12（2026-10-09）：測試用「不扣行動點」——Worker轉來測試帳號名單(secret AP_TEST_ACCOUNTS)，本帳號信箱在名單上才不扣點；
     // 不預扣、不記nonce，wallet_post找不到預扣紀錄就不動錢包
     if (b.ap_test_free === true && Array.isArray(b.test_accounts) && a.email && b.test_accounts.includes(normalizeEmail(a.email))) {

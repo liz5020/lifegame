@@ -4109,7 +4109,7 @@ async function manualCloudSave(){
   let ok = false, errText = "";
   try{
     saveGame(); // 先存本機
-    const up = await cloudUploadState(state, home, { name:state.name, age:state.age, stage:stageLabel(state.age), updatedAt:Date.now(), lid: state.acct ? state.acct.lid : undefined });
+    const up = await cloudUploadState(state, home, { name:state.name, age:state.age, stage:stageLabel(state.age), updatedAt:Date.now(), lid: state.acct ? state.acct.lid : undefined, turns: state.turnCount||0 });
     ok = up.ok;
     if(!ok) errText = up.status===429 ? "按得太快了，稍等一下再試。" : "沒有存成功，請稍後再試。";
   }catch(e){ console.warn("手動存到雲端失敗", e); errText = "沒有存成功，請稍後再試。"; }
@@ -4184,7 +4184,7 @@ async function autoCloudSaveOnce(){
   try{
     const placed = await ensureCloudHome(st);
     if(!placed.home) return; // 帳號金鑰的格子滿了：不打擾，玩家自己按「存到雲端」時才會提示
-    const up = await cloudUploadState(st, placed.home, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct ? st.acct.lid : undefined });
+    const up = await cloudUploadState(st, placed.home, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct ? st.acct.lid : undefined, turns: st.turnCount||0 });
     ok = up.ok;
   }catch(e){ console.warn("自動存檔失敗", e); }
   if(!ok){ autoCloudFailAt = Date.now(); cloudSaveFailed = true; updateCloudSaveTag(); return; }
@@ -4479,7 +4479,7 @@ async function emergencyCloudSave(){
   try{
     const placed = await ensureCloudHome(st);
     if(placed.home){
-      const up = await cloudUploadState(st, placed.home, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct ? st.acct.lid : undefined });
+      const up = await cloudUploadState(st, placed.home, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct ? st.acct.lid : undefined, turns: st.turnCount||0 });
       ok = up.ok;
     }
   }catch(e){ console.warn("本機存檔失敗後補存雲端失敗", e); }
@@ -9469,8 +9469,11 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.10-f";
+const APP_VERSION = "2026.10.10-g";
 const RELEASE_NOTES = [
+  { version:"2026.10.10-g", date:"2026-10-10", title:"雲端存檔小調整", items:[
+    "存到雲端時會一併記下這段人生目前玩到第幾回合（只有數字，不含故事內容）。",
+  ]},
   { version:"2026.10.10-f", date:"2026-10-10", title:"等待時間縮短", items:[
     "撰稿人交稿後，標點、括號這類小地方改由程式直接整理，不再整段重寫，送出行動後的等待會比較短。",
     "真的需要重寫時，等待畫面會多一行小字「正在把這段寫得更完整……」。",
@@ -15300,7 +15303,7 @@ async function acctCloudSaveAccepted(accepted){
         if(slot<0) continue;
         st.cloudHome = { key: acct.recovery_key, slot };
       }
-      const up = await cloudUploadState(st, st.cloudHome, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct.lid });
+      const up = await cloudUploadState(st, st.cloudHome, { name:st.name, age:st.age, stage:stageLabel(st.age), updatedAt:Date.now(), lid: st.acct.lid, turns: st.turnCount||0 });
       if(up.ok){ st.lastManualCloudSaveAt = Date.now(); if(st!==state){ try{ localStorage.setItem(STORAGE_KEY+":"+it.slot, JSON.stringify(st)); }catch(e){} } else saveLocalOnly(); }
     }catch(e){ console.warn("綁定後存到雲端失敗", e); }
   }

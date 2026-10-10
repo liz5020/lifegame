@@ -76,7 +76,7 @@ export class UsageCounter {
       await this._markUsageSince(date);
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     }
-    // 十、10.14.7（2026-10-04）：AI實際用量——每日依呼叫類型加總(ua:日期，永久保留)＋逐筆明細(ud:，最近7天、最多5,000筆)
+    // 十、10.14.7（2026-10-04）：AI實際用量——每日依呼叫類型加總(ua:日期，永久保留)＋逐筆明細(ud:，最近7天、最多30,000筆；2026-10-10由5,000筆調高)
     if (op === "detail" && request.method === "POST") return this._json(await this._recordDetail(p, date, now));
     if (op === "udays" && request.method === "GET") {
       const out = { ok: true, since: (await this.state.storage.get("ua_since")) || null, days: {} };
@@ -182,7 +182,7 @@ UsageCounter.prototype._recordDetail = async function (p, date, now) {
   if (!(await st.get("ua_since"))) await st.put("ua_since", date);
   this._seq = ((this._seq || 0) + 1) % 1e6; // 同一毫秒的多筆依寫入順序排(只在這個實例內遞增，重啟後從頭算也不影響排序)
   await st.put("ud:" + String(now).padStart(15, "0") + ":" + String(this._seq).padStart(6, "0"), row);
-  // 清掉超過7天、或超過5,000筆的最舊明細(每次最多清50筆，平常每次只會清0～1筆)
+  // 清掉超過7天、或超過上限筆數的最舊明細(每次最多清50筆，平常每次只會清0～1筆)
   let count = ((await st.get("ud_count")) || 0) + 1;
   for (const [k, v] of await st.list({ prefix: "ud:", limit: 50 })) {
     if (count <= USAGE_DETAIL_MAX_ROWS && v.t >= now - USAGE_DETAIL_KEEP_MS) break;
@@ -192,7 +192,7 @@ UsageCounter.prototype._recordDetail = async function (p, date, now) {
   return { ok: true, kind };
 };
 export const USAGE_KINDS = ["turn", "opening", "retry", "idle", "chapter", "review"];
-export const USAGE_DETAIL_MAX_ROWS = 5000;
+export const USAGE_DETAIL_MAX_ROWS = 30000; // 2026-10-10：封測開放日一天約2,000～5,000筆，5,000筆撐不到7天，使用者決定先調高(10.14.7)
 export const USAGE_DETAIL_KEEP_MS = 7 * 86400000;
 async function shortHash(s) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("lifegame-usage:" + s));

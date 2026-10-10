@@ -51,7 +51,7 @@ A.check("沒有密碼：/stats-summary與CSV都回401", (await get("/stats-summa
 // ---- CSV ----
 let c = await get("/usage-detail.csv", ADMIN);
 const lines = c.text.replace(/^﻿/, "").trim().split("\n");
-A.check("CSV：表頭＋6筆，依時間排序，台灣時間", lines.length === 7 && lines[0] === "time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms" && lines[1].startsWith("2026-10-04 11:00:"), lines.slice(0, 3));
+A.check("CSV：表頭＋6筆，依時間排序，台灣時間", lines.length === 7 && lines[0] === "time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms,regen_reason,prev_turn_notes,end_reason" && lines[1].startsWith("2026-10-04 11:00:"), lines.slice(0, 3));
 A.check("CSV：類型用中文、距同一段人生上一次呼叫的分鐘數", lines[1].split(",")[2] === "開場" && lines[2].split(",")[2] === "失敗重試／重新生成" && lines[3].split(",")[4] === "2" && lines[4].split(",")[4] === "7" && lines[1].split(",")[4] === "" && lines[5].split(",")[4] === "", lines.slice(1, 6));
 {
   const worker = await H.loadWorker();
@@ -87,6 +87,5 @@ A.check("超過上限時刪最舊的，筆數維持在上限", r.length === USAG
 
 // ---- 數據總覽頁面 ----
 const html = (await get("/dashboard")).text;
-A.check("數據總覽有「AI 實際用量」區塊與下載按鈕", html.includes("AI 實際用量（Anthropic 回報）") && html.includes('id="dl"') && html.includes("/usage-detail.csv"));
-A.report();
-process.exit(0);
+A.check("數據總覽有「AI 花費」區塊與「下載全部資料」按鈕(含逐筆明細)", html.includes("AI 花費") && html.includes('id="dl"') && html.includes("/usage-detail.csv")); // 2026-10-10(10.13.7.12)由「AI 實際用量」改名
+process.exit(A.report() ? 0 : 1);

@@ -146,7 +146,7 @@ export async function runMigration(env, { dry }) {
             const old = await accountsCall(env, { op: "legacy_index_at", code: await legacySaveCode(env, rawKey, slot) }); ops++;
             if (old && old.ok) at = old.at;
           }
-          await accountsCall(env, { op: "save_index_put", loc: p.key, slot, only_if_missing: true, at, info: { name: String(meta.name || "").slice(0, 40), age: Number.isFinite(Number(meta.age)) ? Number(meta.age) : null, stage: String(meta.stage || "").slice(0, 40), lid: typeof meta.lid === "string" ? meta.lid.slice(0, 40) : null, size: raw.length } }); ops++;
+          await accountsCall(env, { op: "save_index_put", loc: p.key, slot, only_if_missing: true, at, info: { name: String(meta.name || "").slice(0, 40), age: Number.isFinite(Number(meta.age)) ? Number(meta.age) : null, stage: String(meta.stage || "").slice(0, 40), lid: typeof meta.lid === "string" ? meta.lid.slice(0, 40) : null, size: raw.length, turns: Number.isFinite(Number(meta.turns)) && Number(meta.turns) >= 0 ? Math.floor(Number(meta.turns)) : null } }); ops++;
         } catch (e) { failed++; console.warn("索引重建單筆失敗：" + loc8(p.key)); }
       }
     }

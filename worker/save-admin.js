@@ -23,7 +23,8 @@ export async function indexSaveRecord(env, loc, slot, meta, size) {
   const m = meta && typeof meta === "object" ? meta : {};
   const info = {
     name: String(m.name || "").slice(0, 40), age: Number.isFinite(Number(m.age)) ? Number(m.age) : null,
-    stage: String(m.stage || "").slice(0, 40), lid: typeof m.lid === "string" ? m.lid.slice(0, 40) : null, size: Number(size) || 0
+    stage: String(m.stage || "").slice(0, 40), lid: typeof m.lid === "string" ? m.lid.slice(0, 40) : null, size: Number(size) || 0,
+    turns: Number.isFinite(Number(m.turns)) && Number(m.turns) >= 0 ? Math.floor(Number(m.turns)) : null // 名冊回合數(2026-10-10)：遊戲畫面上的第幾回合
   };
   await accountsCall(env, { op: "save_index_put", loc, slot, info });
 }
@@ -138,7 +139,9 @@ export async function handleSaveAdmin(request, env, url, helpers) {
     const accounts = (r.accounts || []).map(a => {
       let last = null;
       for (const l of a.lives || []) { const v = byLid.has(l.lid) ? byLid.get(l.lid).at : null; if (v && (!last || v > last)) last = v; }
-      return { email: a.email, bound_at: a.created, lives: (a.lives || []).length, last_save: last,
+      const mine = new Set([...(a.ever_lids || []), ...(a.lives || []).map(l => l.lid)]);
+      let turns = 0; for (const lid of mine) { const x = byLid.get(lid); if (x && x.info && x.info.turns) turns += x.info.turns; } // 名冊回合數(2026-10-10)：每段人生最後一次雲端存檔附的回合數加總
+      return { email: a.email, bound_at: a.created, lives: (a.lives || []).length, turns, last_save: last,
         wl_status: a.wl ? (WL[a.wl.status] || "") : "", joined_at: a.wl ? a.wl.joinedAt : null, notified_at: a.wl ? a.wl.sentAt : null };
     });
     return jsonResponse(origin, { success: true, accounts });

@@ -35,7 +35,7 @@ A.check("10.14.4 固定規則快取維持5分鐘版(不帶ttl)——1小時版�
 
 // ---------- 規則與工具定義去重複 ----------
 const toolJson = JSON.stringify(TURN_RESULT_TOOL);
-A.check("10.14.3 去重複後每個欄位仍在工具定義裡(沒有刪欄位)", ["scene_day_offset", "scene_summary", "turn_summary", "stat_deltas", "one_time_transaction", "life_summary", "response_rating", "action_result"].every(k => k in TURN_RESULT_TOOL.input_schema.properties) && JSON.stringify(TURN_RESULT_TOOL.input_schema.required) === JSON.stringify(["narrative", "scene_day_offset", "scene_summary", "location", "chapter_subtitle", "turn_summary", "emotional_tone", "choices"]));
+A.check("10.14.3 去重複後每個欄位仍在工具定義裡(沒有刪欄位)", ["scene_day_offset", "scene_summary", "turn_summary", "stat_deltas", "one_time_transaction", "life_summary", "response_rating", "action_result"].every(k => k in TURN_RESULT_TOOL.input_schema.properties) && JSON.stringify(TURN_RESULT_TOOL.input_schema.required) === JSON.stringify(["action_result", "narrative", "scene_day_offset", "scene_summary", "location", "chapter_subtitle", "turn_summary", "emotional_tone", "choices"]));
 A.check("10.14.3 規則仍保留被去重的那幾條(留在system prompt一處)", /scene_day_offset（新場景日期＝round_start_date往後第幾天/.test(TURN_SYSTEM_PROMPT) && /stat_delta_limits是這回合health/.test(TURN_SYSTEM_PROMPT) && /one_time_transaction裡所有正數收入加起來/.test(TURN_SYSTEM_PROMPT) && /turn_summary：用1-2句話/.test(TURN_SYSTEM_PROMPT) && /life_summary（七、7\.1\.4/.test(TURN_SYSTEM_PROMPT));
 A.check("10.14.3 規則說明回合內容分段送來；開場offset的0要輸出", /【少變資料】、【名冊】，最後一段是本回合的資料/.test(TURN_SYSTEM_PROMPT) && !/【人物卡】/.test(TURN_SYSTEM_PROMPT) && /scene_day_offset填0（這個0要輸出，不可以省略）/.test(TURN_SYSTEM_PROMPT));
 
@@ -70,5 +70,5 @@ removed += JSON.stringify(TURN_RESULT_TOOL.input_schema.properties.life_summary)
 const estTokens = Math.round(removed * 51372 / 61012); // 實測：61,012字≈51,372 token(呼叫成本紀錄的快取讀取數)
 A.check("10.14.2.4 學生版比完整版少的量(估計)低於5,000 token門檻→不拆", estTokens < 5000 && removed > 3000, { removedChars: removed, estTokens, fullChars: full });
 console.log("學生版少的字數", removed, "估計token", estTokens);
-A.report();
-process.exit(0);
+const __ok = A.report();
+process.exit(__ok ? 0 : 1);

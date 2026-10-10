@@ -169,7 +169,7 @@ A.check("存檔管理密碼也能看數字（登入數據網頁）", r.status ==
 r = await get("/admin/dashboard-roster", auth("save-pw"));
 const rows = r.json && r.json.accounts;
 A.check("存檔管理密碼可看名冊：含候補狀態與日期、最新的在最上面、沒有人生的候補帳號也列出", r.status === 200 && rows.length === 3 && rows.some(x => x.wl_status === "已入場") && rows.some(x => x.wl_status === "排隊中") && rows.some(x => x.wl_status === "已過期") && rows.some(x => x.lives === 0) && rows.every((x, i) => i === 0 || rows[i - 1].bound_at >= x.bound_at), rows);
-A.check("名冊欄位：信箱、綁定日期、人生數、最後存檔時間、候補狀態、留信箱日期、通知日期；不含故事內容", Object.keys(rows[0]).sort().join() === ["bound_at", "email", "joined_at", "last_save", "lives", "notified_at", "wl_status"].sort().join() && !/log|diary|story|text/i.test(JSON.stringify(rows)));
+A.check("名冊欄位：信箱、綁定日期、人生數、回合數、最後存檔時間、候補狀態、留信箱日期、通知日期；不含故事內容", Object.keys(rows[0]).sort().join() === ["bound_at", "email", "joined_at", "last_save", "lives", "notified_at", "turns", "wl_status"].sort().join() && !/log|diary|story|text/i.test(JSON.stringify(rows)));
 const logs = (await get("/admin/access-log", { Authorization: "Bearer save-pw" })).json.log;
 A.check("每次載入名冊自動寫存取紀錄：操作者「管理員（數據網頁）」、原因「網頁查看名冊」", logs.length === logN0 + 1 && logs[0].who === "管理員（數據網頁）" && logs[0].reason === "網頁查看名冊" && logs[0].action === "roster", logs[0]);
 A.check("名冊回應裡沒有復原金鑰、驗證碼", !/WLKEY|NEWKEY|GWL/.test(JSON.stringify(rows)));
