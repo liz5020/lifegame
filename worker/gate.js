@@ -85,6 +85,11 @@ export class UsageCounter {
       for (const [k, v] of await this.state.storage.list({ prefix: "ua:" })) out.days[k.slice(3)] = v;
       return this._json(out);
     }
+    if (op === "rkdays" && request.method === "GET") { // 十、10.14.7.2：每天各種重試次數(永久保留)與新算法起算日
+      const out = { ok: true, since: (await this.state.storage.get("rw_since")) || null, days: {} };
+      for (const [k, v] of await this.state.storage.list({ prefix: "rk:" })) out.days[k.slice(3)] = v;
+      return this._json(out);
+    }
     if (op === "uquality" && request.method === "GET") return this._json(Object.assign({ ok: true }, (await this.state.storage.get("uq:" + date)) || { regens: 0, reasons: {}, notes: {} })); // 10.14.7.1
     if (op === "urows" && request.method === "GET") {
       const rows = [];
@@ -184,10 +189,21 @@ UsageCounter.prototype._recordDetail = async function (p, date, now) {
   if (rr) row.rr = rr;
   if (pn) row.pn = pn;
   if (end) row.end = end;
-  if (rr || pn) {
+  // 十、10.14.7.2／10.14.7.3(2026-10-10)：重試種類(重寫／連線／再試，第一次呼叫不帶)與頁面版本。第二次以後的呼叫(kind＝retry)沒帶重試種類＝「未分類」(改版前的紀錄或舊分頁)，讀取時判斷
+  const rk = RETRY_KINDS.includes(p.get("rk")) ? p.get("rk") : "", pv = /^[0-9A-Za-z.\-]{1,24}$/.test(p.get("pv") || "") ? p.get("pv") : "";
+  if (rk) row.rk = rk;
+  if (pv) row.v = pv;
+  if (rk || pv) { // 新算法從第一筆帶著新欄位的紀錄那天起算(每日總表那天以前保留原數字)
+    if (!(await st.get("rw_since"))) await st.put("rw_since", date);
+  }
+  if (rk || (kind === "retry" && !rk)) { // 每天依種類計次，永久保留(rk:日期)——明細只留7天
+    const ck = "rk:" + date, ca = (await st.get(ck)) || { rewrite: 0, conn: 0, again: 0, unclassified: 0 };
+    if (rk) ca[({ "重寫": "rewrite", "連線": "conn", "再試": "again" })[rk]] += 1; else ca.unclassified += 1;
+    await st.put(ck, ca);
+  }
+  if (pn) { // 上回合紀錄(代碼)每天計次，跟著明細保留7天
     const qk = "uq:" + date, qa = (await st.get(qk)) || { regens: 0, reasons: {}, notes: {} };
-    if (rr) { qa.regens += 1; for (const c of rr.split("、")) if (c) qa.reasons[c] = (qa.reasons[c] || 0) + 1; }
-    if (pn) for (const c of pn.split("、")) if (c) qa.notes[c] = (qa.notes[c] || 0) + 1;
+    for (const c of pn.split("、")) if (c) qa.notes[c] = (qa.notes[c] || 0) + 1;
     await st.put(qk, qa);
     for (const [k] of await st.list({ prefix: "uq:", end: "uq:" + taipeiDateString(now - USAGE_DETAIL_KEEP_MS) })) await st.delete(k);
   }
@@ -228,6 +244,7 @@ UsageCounter.prototype._rollup = async function (p, date, now) {
   return { ok: true };
 };
 export const USAGE_KINDS = ["turn", "opening", "retry", "idle", "chapter", "review"];
+export const RETRY_KINDS = ["重寫", "連線", "再試"]; // 十、10.14.7.2：第一次以後的呼叫是哪一種
 export const USAGE_DETAIL_MAX_ROWS = 30000; // 2026-10-10：封測開放日一天約2,000～5,000筆，5,000筆撐不到7天，使用者決定先調高(10.14.7)
 export const USAGE_DETAIL_KEEP_MS = 7 * 86400000;
 async function shortHash(s) {
@@ -249,6 +266,8 @@ export async function recordAIUsage(env, meta, tokens, usd) {
     if (m.rr) params.rr = String(m.rr).slice(0, 80);
     if (m.pn) params.pn = String(m.pn).slice(0, 80);
     if (m.end) params.end = String(m.end).slice(0, 40);
+    if (m.rk) params.rk = String(m.rk); // 十、10.14.7.2／10.14.7.3：重試種類、頁面版本(呼叫端已清過)
+    if (m.pv) params.pv = String(m.pv);
     await usageCall(env, "detail", params);
   } catch (e) { /* 只是紀錄 */ }
 }

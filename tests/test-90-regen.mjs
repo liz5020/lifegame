@@ -209,14 +209,16 @@ A.check("重寫後日期仍違規：拉回範圍、不再呼叫、記「日期�
   const csv = await H.callWorker(env, { method: "GET", path: "/usage-detail.csv", origin: null, headers: { Authorization: "Bearer admin-secret" } });
   const lines = csv.text.replace(/^﻿/, "").trim().split("\n");
   const head = lines[0].split(",");
-  A.check("CSV多三欄：regen_reason、prev_turn_notes、end_reason", head.slice(-3).join(",") === "regen_reason,prev_turn_notes,end_reason", lines[0]);
+  A.check("CSV多五欄：regen_reason、prev_turn_notes、end_reason、retry_kind、page_version", head.slice(-5).join(",") === "regen_reason,prev_turn_notes,end_reason,retry_kind,page_version", lines[0]);
   A.check("CSV有重寫原因與403結束原因的列", lines.some(l => l.split(",")[11] === "過短") && lines.some(l => l.split(",")[13] === "403@HKG"));
   A.check("CSV新欄位只有代碼，不含正文", !lines.some(l => /雅涵傳訊息|福利社/.test(l)));
-  const sum = await H.callWorker(env, { method: "GET", path: "/stats-summary", origin: null, headers: { Authorization: "Bearer admin-secret" } });
-  const q = sum.json && sum.json.ai_usage && sum.json.ai_usage.regen_today;
-  A.check("數據網頁資料：今天重寫比例、重寫原因前5名、上回合紀錄前5名", q && q.regens > 0 && q.turn_calls > 0 && typeof q.pct === "number" && q.reasons.length > 0 && q.reasons.length <= 5 && q.notes.length > 0 && q.notes.length <= 5, q);
+  const pl = await H.callWorker(env, { method: "GET", path: "/stats-play?range=7d", origin: null, headers: { Authorization: "Bearer admin-secret" } });
+  const w = pl.json && pl.json.rewrite;
+  A.check("數據網頁資料：重寫比例只算自動重寫；原因前5名帶佔重寫、上回合紀錄前5名", w && w.all.rewrites > 0 && w.all.turns > 0 && typeof w.all.rate === "number" && w.all.reasons.length > 0 && w.all.reasons.length <= 5 && w.all.reasons[0].share > 0 && w.all.notes.length > 0 && w.all.notes.length <= 5, w && w.all);
+  A.check("連線重試與再試一次分開記，不算進重寫", w.all.conn >= 1 && w.all.rewrites === rows().filter(x => x.rk === "重寫").length, { conn: w.all.conn, rewrites: w.all.rewrites });
+  A.check("每一筆呼叫都記了頁面版本；「只看最新版」＝目前版本的呼叫", rows().every(x => x.v === ev("APP_VERSION")) && w.latest.rewrites === w.all.rewrites && w.latest_version === ev("APP_VERSION"), { latest: w.latest, ver: w.latest_version });
   const dash = fs.readFileSync(path.join(ROOT, "worker/dashboard.js"), "utf8");
-  A.check("數據網頁有「今天的自動重寫」小表", /今天的自動重寫/.test(dash) && /重寫原因前 5 名/.test(dash) && /上回合紀錄前 5 名/.test(dash));
+  A.check("數據網頁沒有獨立的「今天的自動重寫」小表，重寫那一節有「只看最新版」切換、重寫原因前 5 名、上回合紀錄前 5 名", !/今天的自動重寫/.test(dash) && /只看最新版/.test(dash) && /重寫原因前 5 名/.test(dash) && /上回合紀錄前 5 名/.test(dash));
 }
 
 // ---------- Worker：同一回合只扣一次點 ----------
