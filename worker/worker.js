@@ -1180,6 +1180,8 @@ async function handleStatsPlay(request, env) {
       out.pageviews = {}; for (const [k, n] of Object.entries(h.pv || {})) if (k.slice(0, 10) === out.date) out.pageviews[k.slice(11) + ":00"] = n;
     }
     out.pageviews_total = Object.values(out.pageviews).reduce((t, n) => t + n, 0);
+    // 每小時計數是 10/10 下午才開始記，當天前面的小時是空的；漏斗第一格改用「每日計數」整天的數字，每小時圖維持原樣
+    if (range !== "7d") { const day = ((await usageCall(env, "pvstats", {}, "GET")).days || {})[out.date]; if (Number.isFinite(day) && day > out.pageviews_total) out.pageviews_total = day; }
   }
   return new Response(JSON.stringify(out), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }

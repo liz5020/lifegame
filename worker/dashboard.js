@@ -277,9 +277,9 @@ function renderTake(o){
   if(o.lives==null){$("take").innerHTML=NA;return}
   var t=o.word+"有 <b>"+num(o.lives)+"</b> 條人生開局";
   if(o.prev&&o.prev.lives!=null){var d=o.lives-o.prev.lives;t+=d===0?"，跟前一天一樣":"，比前一天"+(d>0?"多":"少")+" <b>"+num(Math.abs(d))+"</b> 條"}
-  t+="；";
-  if(o.reach10_rate!=null)t+="大約每 10 條有 "+Math.round(o.reach10_rate*10)+" 條玩到第 10 回合（<b>"+pct0(o.reach10_rate)+"</b>）。";
-  if(o.cost!=null)t+="花了 <b>NT$ "+num(Math.round(o.cost))+"</b>"+(o.cap?"，是每日上限的 "+pct0(o.cost/o.cap):"")+"。";
+  t+="；<br>";
+  if(o.reach10_rate!=null)t+="大約每 10 條有 "+Math.round(o.reach10_rate*10)+" 條玩到第 10 回合（<b>"+pct0(o.reach10_rate)+"</b>）。<br>";
+  if(o.cost!=null)t+="花了 <b>NT$ "+num(Math.round(o.cost))+"</b>"+(o.cap?"，是每日上限的 "+pct0(o.cost/o.cap):"")+"。<br>";
   if(o.retry_rate!=null)t+=o.retry_rate>RETRY_TARGET?"最該處理的是重寫：重寫次數等於一般回合的 <b>"+pct0(o.retry_rate)+"</b>，目標是 5%。":"重寫佔一般回合 <b>"+pct(o.retry_rate)+"</b>，在目標 5% 以內。";
   $("take").innerHTML=t}
 function renderAlerts(o){
@@ -343,7 +343,20 @@ function renderReport(o){
       regenToday()+'</div>')}
   // ⑦ 玩家有多少
   h+=sec("secPlayers","玩家有多少","綁信箱的一個信箱算一位；沒綁的一段人生算一位。人生段數＝玩過至少一回合的人生，一位玩家可以有好幾段。",playersBlock());
-  $("report").innerHTML=h}
+  D.retryText=retryReport(o,r,p);
+  $("report").innerHTML=h;
+  var rs=$("secRetry");if(rs){var b=document.createElement("div");b.className="row";b.innerHTML='<button id="dlRetry">下載重寫狀況（文字檔，可貼給網頁版討論）</button>';rs.insertBefore(b,rs.children[2]||null);
+    $("dlRetry").addEventListener("click",function(){var u=URL.createObjectURL(new Blob([D.retryText],{type:"text/plain;charset=utf-8"})),a=document.createElement("a");a.href=u;a.download="重寫狀況_"+(o.word||"")+".txt";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},1000)})}}
+function retryReport(o,r,p){
+  var L=["【重寫狀況】範圍："+(o.word||r)+"（"+r+"）","重寫比例＝重寫次數 ÷ 一般回合數，目標低於 "+Math.round(RETRY_TARGET*100)+"%","目前："+(o.retry_rate==null?"沒有資料":pct(o.retry_rate)),""];
+  if(r==="30d"){L.push("每天：");(o.daily||[]).forEach(function(x){L.push(x.date+"　重寫 "+num(x.retries)+"　比例 "+pct(x.retry_rate))})}
+  else if(p){var tl=p.timeline||[];L.push(r==="7d"?"每天：":"每小時：");tl.forEach(function(x){L.push(x.bucket+"　重寫 "+num(x.retries)+" ÷ 一般回合 "+num(x.turns)+" ＝ "+pct(x.retry_rate))});
+    var why=p.retry_reasons||[],wt=why.reduce(function(a,x){return a+x.n},0);L.push("","重寫原因前 5 名（原因代碼／白話／次數／佔重寫）：");
+    if(!why.length)L.push("沒有重寫");why.forEach(function(w){L.push(w.code+"／"+w.label+"／"+num(w.n)+"／"+pct0(wt?w.n/wt:null))})}
+  var q=D.sum&&D.sum.ai_usage&&D.sum.ai_usage.regen_today;
+  if(q){var li=function(a){return a&&a.length?a.map(function(x){return x.code+" "+num(x.n)}).join("、"):"—"};
+    L.push("","今天的自動重寫：重寫 "+num(q.regens)+" 次 ÷ 一般回合 "+num(q.turn_calls)+" 次＝"+(q.pct==null?"—":q.pct+"%"),"重寫原因前 5 名："+li(q.reasons),"上回合紀錄前 5 名："+li(q.notes))}
+  return L.join("\\n")}
 function plainFunnel(f){
   var big=-1,at=-1;for(var i=1;i<f.length;i++){if(f[i][1]==null||f[i-1][1]==null)continue;var l=f[i-1][1]-f[i][1];if(l>big){big=l;at=i}}
   if(at<0||!f[1][1])return "";
@@ -360,7 +373,7 @@ function costBlock(o){
   var bal=a&&a.balance,todayCost=D.today?D.today.est_cost_twd:(u&&u.cost.today),hrs=curHourTW();
   var est=todayCost!=null&&hrs>=1?todayCost/hrs*24:null;
   h+='<div class="tiles">'+
-    tile("今天",todayCost==null?"—":num(Math.round(todayCost)),"元",(u?"共 "+num(u.turns.today)+" 個回合":"")+(est!=null?"；推估全天約 "+num(Math.round(est))+" 元":""))+
+    tile("今天",todayCost==null?"—":num(Math.round(todayCost)),"元",(u?"共 "+num(u.turns.today)+" 個回合":"")+(est!=null?"<br>推估全天約 "+num(Math.round(est))+" 元":""))+
     tile("近 7 天",u?num(Math.round(u.cost.last7)):"—","元",u?"每天平均 "+num(Math.round(u.cost.last7/7))+" 元":"")+
     tile("每條人生平均",m?n1(m.twd_per_life):"—","元",m&&m.twd_per_reach10_life!=null?"玩到第 10 回合的 "+n1(m.twd_per_reach10_life)+" 元":(D.range==="30d"?"只算得到近 7 天":""))+
     tile("AI 餘額還能撐",bal&&bal.days_left!=null?num(bal.days_left):"—",bal&&bal.days_left!=null?"天":"",bal?"剩 "+usd(bal.remaining_usd)+"（約 NT$ "+num(Math.round(bal.remaining_usd*RATE))+"）":"還沒設定餘額（後台 AI_BALANCE_USD、AI_BALANCE_BASE_USD）")+'</div>';
