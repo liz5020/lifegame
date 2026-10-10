@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-10 | 2026.10.10-h（只有版本號與更新說明「幕後的整理」） | 2026.10.10-h（數據網頁改成報告式版面：報表／長期趨勢／名冊、最上方名額與人流、`/stats-daily`、`/hourly.csv`、`/daily.csv`加寬、每小時彙整排程） | （推送後補） | index.html、worker/worker.js、worker/dashboard.js、worker/play-stats.js、worker/gate.js、worker/account.js | 十、10.13.7.14；使用者說「確認上線，不用再跑測試」，上線前未重跑全套(前一次全套96檔95過，test-89單獨重跑通過)；舊存檔相容 |
 | 2026-10-10 | 2026.10.10-g（候補當天補位＋雲端存檔摘要附回合數；2026-10-10已上線，網頁與Worker都確認是此版） | 2026.10.10-g（account.js候補當天補位；數據網頁三頁與玩家怎麼玩`/stats-play`、下載全部資料`/daily.csv`、逐筆明細上限30,000筆、名冊回合數、帳號錢包回合補記人生代號） | `17e7cca` | index.html、worker/worker.js、worker/play-stats.js、worker/dashboard.js、worker/save-admin.js、worker/account.js、worker/location-migrate.js | 十、10.15.4／10.15.11候補當天補位(waitlist-fill分支合併)、10.13.7.11修正、10.13.7.12、10.13.7.13、10.14.7、10.15.6；使用者說「確認上線」、版面微調後由使用者自己push；Pages與Worker建置皆成功；舊存檔相容 |
 | 2026-10-10 | 2026.10.10-f（AI回合自動重新產生降頻＋開場同意頁第2點措辭；2026-10-10已上線，網頁與Worker都確認是此版） | 2026.10.10-f（prompt.js交稿前檢查與選項4個、worker.js／gate.js用量明細三欄與403紀錄、dashboard.js重寫小表） | `8ae2ce6` | index.html、worker/prompt.js、worker/worker.js、worker/gate.js、worker/dashboard.js | 一、1.2.9.18.0～1.2.9.18.8；使用者說「一起提交 上線」；全套測試通過，Pages與Worker建置皆成功；舊存檔相容 |
 | 2026-10-10 | 2026.10.10-e（含-d人生之書15.9、-c大學住處選擇；2026-10-10已上線，網頁與Worker都確認是此版） | 2026.10.10-e（-d的ap.js、account.js、worker.js、prompt.js；名額發完提示只改index.html） | `8046004` | index.html、worker/ | 使用者說「一起推」；本機`--quick`測試通過 |
