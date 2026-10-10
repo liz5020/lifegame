@@ -798,6 +798,7 @@ function turnNoteMeta(body) {
   const rr = sanitizeNoteCodes(body && body.regen_reason), pn = sanitizeNoteCodes(body && body.prev_turn_notes);
   if (rr) out.rr = rr;
   if (pn) out.pn = pn;
+  if (body && (body.input_source === "free" || body.input_source === "choice")) out.fi = body.input_source === "free" ? "f" : "c"; // 自由書寫比例：只收這兩個值，不收內容
   return out;
 }
 // 十、10.14.7（2026-10-04）：meta有值時，回應成功後在背景把Anthropic回報的實際用量記進用量計數器(不影響回應速度與內容)

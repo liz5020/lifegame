@@ -1,7 +1,7 @@
 // 2026-10-10：日記每則記下「點選項／自由輸入」(inputSource)，統計自由書寫比例用；管理端可讀文字也帶標記（全程示範模式，不打真實API）
 import * as H from "./harness.mjs";
 import { buildReadable } from "../worker/save-admin.js";
-const A = H.makeAsserter("85 日記的輸入來源標記");
+const A = H.makeAsserter("93 日記的輸入來源標記");
 const env = H.makeEnv();
 const g = await H.loadGame({ useMock: true, env, key: "insrc01" });
 g.ev("mockCallAI = async (a,f,t)=>mockGenerateTurn(a,f,t)");

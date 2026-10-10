@@ -3,7 +3,10 @@
 // range：today＝今天(台灣日期)開局的人生；yesterday＝昨天開局的人生(10.13.7.14)；7d＝明細裡所有人生(最近7天)。時間分組：today／yesterday每小時、7d每天。
 const HOUR = 3600000;
 const ACTIVE_MS = 10 * 60000; // 最後一次呼叫在10分鐘內＝還在玩
-const STOP_BUCKETS = [[0, 1, "只有開場"], [2, 2, "第 2 回合"], [3, 4, "第 3～4 回合"], [5, 9, "第 5～9 回合"], [10, 19, "第 10～19 回合"], [20, 1e9, "第 20 回合以上"]];
+// 離開時停在哪：前面細一點(只有開場、第2、3～4、5～9)，第10回合起每10回合一格，100回合以上併成一格；後面沒有人的格子不顯示(computePlayStats裡截掉)
+const STOP_BUCKETS = [[0, 1, "只有開場"], [2, 2, "第 2 回合"], [3, 4, "第 3～4 回合"], [5, 9, "第 5～9 回合"]]
+  .concat(Array.from({ length: 9 }, (_, i) => [10 + i * 10, 19 + i * 10, "第 " + (10 + i * 10) + "～" + (19 + i * 10) + " 回合"]))
+  .concat([[100, 1e9, "第 100 回合以上"]]);
 const SESSION_GAP_MS = 30 * 60000; // 10.13.7.14：「一次遊玩」＝中間沒有停超過30分鐘的一段
 const tw = (t) => new Date(t + 8 * HOUR).toISOString(); // 台灣時間的ISO字串(只拿來切日期與時段)
 const dayBefore = (d) => new Date(Date.parse(d + "T00:00:00Z") - 86400000).toISOString().slice(0, 10);
@@ -57,7 +60,9 @@ export function computePlayStats(rows, now, range, usdToTwd) {
   }
   // 離開時停在哪裡：最後10分鐘沒有呼叫的人生
   const left = ids.filter(l => !active(l));
-  const stops = STOP_BUCKETS.map(([lo, hi, label]) => ({ label, lives: left.filter(l => mt(l) >= lo && mt(l) <= hi).length }));
+  let stops = STOP_BUCKETS.map(([lo, hi, label]) => ({ label, lives: left.filter(l => mt(l) >= lo && mt(l) <= hi).length }));
+  let lastFull = stops.length - 1; while (lastFull > 3 && !stops[lastFull].lives) lastFull--; // 前4格固定顯示(網頁的白話說明要讀前兩格)，後面沒有人的格子截掉
+  stops = stops.slice(0, lastFull + 1);
 
   // 10.13.7.14：跟前一段比(今天比昨天、昨天比前天；近7天不比)
   let prev = null;
@@ -102,6 +107,10 @@ export function computePlayStats(rows, now, range, usdToTwd) {
     byKind[r.k].calls++; byKind[r.k].twd += c;
   }
   const r1 = (x) => Math.round(x * 10) / 10, r2 = (x) => Math.round(x * 100) / 100;
+  // 自由書寫比例(2026-10-10起才有標記)：一般回合的第一筆帶fi＝f(自己寫)或c(點選項)；沒標記的舊資料不算進分母
+  let freeN = 0, choiceN = 0; const freeLives = new Set(), markedLives = new Set();
+  for (const r of R) if (r.k === "turn" && (r.fi === "f" || r.fi === "c")) { markedLives.add(r.life); if (r.fi === "f") { freeN++; freeLives.add(r.life); } else choiceN++; }
+  const markedN = freeN + choiceN;
   const timeline = [...buckets.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1)).map(b => ({
     bucket: b.bucket, new_lives: b.new_lives, turns: b.turns, retries: b.retries,
     retry_rate: b.turns ? Math.round(b.retries / b.turns * 1000) / 1000 : null, twd: r1(b.twd), lives: b.lives.size }));
@@ -127,6 +136,8 @@ export function computePlayStats(rows, now, range, usdToTwd) {
       turns, retries, retry_rate: turns ? Math.round(retries / turns * 1000) / 1000 : null,
       twd: r1(twd), twd_per_turn: turns ? r2(twd / turns) : null, twd_per_turn_no_retry: turns ? r2(twdNoRetry / turns) : null,
       reach3: reached(3).length, reach20: reached(20).length,
+      free_input: { free: freeN, choice: choiceN, rate: markedN ? Math.round(freeN / markedN * 1000) / 1000 : null, lives_marked: markedLives.size, lives_free: freeLives.size,
+        lives_free_rate: markedLives.size ? Math.round(freeLives.size / markedLives.size * 1000) / 1000 : null },
       twd_per_life: ids.length ? r2(twd / ids.length) : null, twd_per_reach10_life: r10.length ? r2(cost10 / r10.length) : null,
       cache: { read: share(tcr), write: share(tcw), plain: share(tin) },
       session_median_min: sessions.length ? r1(medianOf(sessions) / 60000) : null, session_mean_min: sessions.length ? r1(meanOf(sessions) / 60000) : null,

@@ -9802,6 +9802,7 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
         wallet: walletActive(state) || undefined,  // 十、10.9.2：這段人生用帳號共用錢包，由Worker在呼叫AI前預扣、失敗退點
         regen_reason: (timeCtx && timeCtx.retryNote && timeCtx.regenReason) || undefined, // 一、1.2.9.18.1／十、10.14.7.1：這次重寫的第1類原因代碼(「、」分隔)，Worker寫進Workers Logs與用量明細
         prev_turn_notes: (timeCtx && !timeCtx.retryNote && state.lastTurnNotes) || undefined, // 10.14.7.1：上一回合第2類修了什麼、第3類記了什麼(代碼)，只在這回合第一次呼叫帶
+        input_source: (timeCtx && !timeCtx.prologue) ? (timeCtx.fromChoice ? "choice" : "free") : undefined, // 後台統計「自由書寫比例」用：只有這個標記，不含玩家寫的內容
         retry: (timeCtx && timeCtx.isRetry) || undefined, // 十、10.17.5：玩家按「再試一次」沿用同一個turn_nonce，Worker據此不重複扣點、又失敗時退回
         messages: [{ role:"user", content: userMsgStr }]
       })
