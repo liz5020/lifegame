@@ -55,7 +55,7 @@ async function decodePack(rec) {
 function entryText(e) {
   if (!e || typeof e !== "object") return "";
   const head = [e.age != null ? e.age + "歲" : "", e.timeLabel || "", e.subtitle || ""].filter(Boolean).join("｜");
-  const act = e.action ? "\n〔玩家的選擇〕" + e.action : "";
+  const act = e.action ? "\n〔玩家的選擇〕" + e.action + (e.inputSource === "free" ? "〔自由輸入〕" : e.inputSource === "choice" ? "〔選項〕" : "") : "";
   return "▍" + head + act + "\n" + String(e.text || "") + (e.error ? "\n（這一筆是系統訊息）" : "");
 }
 function ageRange(log) {
