@@ -54,6 +54,14 @@ export function noticeMail(kind, info) {
     lines.push("已暫停從未購買過的帳號的 AI 呼叫，台灣時間午夜自動恢復。");
     return { subject: "人生草稿：今日花費已碰到上限", text: lines.join("\n") + "\n" };
   }
+  if (kind === "creditOut") {
+    return { subject: "人生草稿：Anthropic 餘額用完了", text: [
+      "狀態：Anthropic 回報帳戶餘額不足，AI 呼叫都失敗了。",
+      "玩家端看到「撰稿人今天寫得太多，需要休息一下」，不扣點、進度保留。",
+      "請到 Anthropic Console 的 Billing 儲值；儲值後會自動恢復，不用重新部署。",
+      "時間：" + time
+    ].join("\n") + "\n" };
+  }
   const lines = [
     "今日已發份數：" + info.gifts + " 份",
     "目前上限：" + info.giftCap + " 份",

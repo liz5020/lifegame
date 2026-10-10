@@ -125,6 +125,7 @@ export class UsageCounter {
       cur.calls += 1;
       const fail = p.get("fail"); // 2026-10-09：AI呼叫失敗的錯誤類型(狀態碼／network)，每天分類計次，只有數字不含內容
       if (fail) { cur.fails = cur.fails || {}; cur.fails[fail] = (cur.fails[fail] || 0) + 1; }
+      if (fail === "credit_exhausted") cur.creditOut = true; // 2026-10-10：Anthropic餘額用完，當天寄一封通知信(每天重算)
       const cost = Number(p.get("cost"));
       const c = p.has("cost") && Number.isFinite(cost) && cost >= 0 ? cost : (await this._estimate(date, estFallback, minCalls)).twd; // 沒有回報用量(失敗呼叫)：照預估計入
       cur.spent += c;
@@ -145,7 +146,7 @@ export class UsageCounter {
     const out = Object.assign({}, cur, { capped: cur.spent + est.twd >= cap, estimate_twd: est.twd, estimate_source: est.source, recent_calls: est.calls, due: [] });
     // 到了門檻、還沒寄成功、次數沒用完、沒有別的請求正在寄：交給呼叫端寄，並記一次嘗試
     if (op === "add" || op === "gate" || op === "gifts") {
-      const rules = [["spend80", cur.spent >= 0.8 * cap], ["spend100", out.capped], ["gift15", cur.gifts >= GIFT_NOTICE_AT], ["giftFull", cur.gifts >= gcap]];
+      const rules = [["spend80", cur.spent >= 0.8 * cap], ["spend100", out.capped], ["gift15", cur.gifts >= GIFT_NOTICE_AT], ["giftFull", cur.gifts >= gcap], ["creditOut", cur.creditOut === true]];
       for (const [kind, hit] of rules) {
         if (!hit) continue;
         const n = cur.notices[kind] || (cur.notices[kind] = { sent: false, attempts: 0, lease: 0 });

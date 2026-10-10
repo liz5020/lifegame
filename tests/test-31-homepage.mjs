@@ -29,7 +29,7 @@ A.check("16.10.1 兩顆按鈕與下方說明", /開始一段人生/.test(homeTex
 A.check("16.10.3 介紹第一段(從高一開學前開始)", /故事從高一開學前、暑假的最後一天開始。之後一路升學、畢業、出社會，直到老去。/.test(homeText) && !/你從出生開始/.test(homeText));
 A.check("16.10.5 落筆內文改版", /在第一頁的角落寫上你的名字。寫歪了也沒關係，這本草稿從這裡開始，都由你自己選。/.test(homeText) && !/命運會先替你寫好第一頁/.test(homeText));
 A.check("16.10.6 常見問題數字：每回合1點、啟程禮25點(綁定再領30點)、每日補到5點", /每過一回合會用掉 1 個行動點。新的人生會先附上 25 點啟程禮，大約夠你走到高一的寒假；綁定信箱可以再領 30 點，大約走到高一結束。之後每天午夜，再替你補滿 5 點。/.test(homeText) && !/50 點/.test(homeText));
-A.check("16.10.6 常見問題七題(2026-10-04刪除「適合幾歲的人？」)", doc.querySelectorAll(".faq").length === 7);
+A.check("16.10.6 常見問題八題(2026-10-04刪除「適合幾歲的人？」；2026-10-10新增「要付費嗎？」)", doc.querySelectorAll(".faq").length === 8 && /要付費嗎？/.test(homeText) && !!doc.querySelector('.faq a[href="/pricing"]'));
 A.check("16.10.6 常見問題不出現年齡題", ![...doc.querySelectorAll(".faq")].some(e=>/十八歲|適合幾歲/.test(e.textContent)));
 A.check("16.10.6(2026-10-08改) 反悔：每一世免費 5 次，用完每次扣 1 點", /每一世可以免費反悔 5 次，轉世或傳承後重新計算。用完之後還想反悔，每次扣 1 點。/.test(homeText));
 A.check("16.10.7 頁尾：讀完了、翻回第一頁、字樣、版權", /這一頁讀完了，下一頁還空著。/.test(homeText) && !!doc.getElementById("btn-home-top") && /© 2026 人生草稿/.test(homeText));

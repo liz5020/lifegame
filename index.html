@@ -1018,8 +1018,12 @@ async function paySinglePoints(s, n, reason, tag){
 const CAP_MODAL_DATE_KEY = "life_sim_cap_modal_date";
 let dailyCapDate = null; // 這個台灣日期碰過暫停
 function dailyCapNoteActive(){ return dailyCapDate===taipeiDateString(); }
-function isDailyCapResponse(res, data){ return !!(res && res.status===503 && data && data.error && data.error.type==="daily_cap_reached"); }
-function noteDailyCapBlocked(){
+function isDailyCapResponse(res, data){ return !!(res && res.status===503 && data && data.error && (data.error.type==="daily_cap_reached" || data.error.type==="credit_exhausted")); }
+let capIsCredit = false; // 2026-10-10：這次暫停是AI服務額度用完(不是每日上限)，不會在午夜自動恢復，提示不提午夜
+function capResumeText(){ return capIsCredit ? "故事會在稍後恢復，你的進度都已經保存好了。" : "故事會在台灣時間午夜後恢復，你的進度都已經保存好了。"; }
+function capNoteText(){ return capIsCredit ? "撰稿人休息中，稍後恢復。" : "撰稿人休息中，台灣時間午夜後恢復。"; }
+function noteDailyCapBlocked(res, data){
+  if(data) capIsCredit = !!(data.error && data.error.type==="credit_exhausted"); // 沒帶回應(回合失敗處理那條路)時沿用callAI當下記下的原因
   const today = taipeiDateString();
   dailyCapDate = today;
   let seen = null; try{ seen = localStorage.getItem(CAP_MODAL_DATE_KEY); }catch(e){}
@@ -1044,7 +1048,7 @@ function renderDailyCapModal(){
   div.innerHTML = `
     <div class="modal">
       <p>撰稿人今天寫得太多，需要休息一下。</p>
-      <p>故事會在台灣時間午夜後恢復，你的進度都已經保存好了。</p>
+      <p>${capResumeText()}</p>
       <button class="primary-btn" id="btn-daily-cap-ok">好的</button>
     </div>`;
   document.body.appendChild(div);
@@ -9484,8 +9488,12 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.10-j";
+const APP_VERSION = "2026.10.10-k";
 const RELEASE_NOTES = [
+  { version:"2026.10.10-k", date:"2026-10-10", title:"首頁常見問題與休息提示", items:[
+    "首頁的常見問題多了一題「要付費嗎？」，附上收費說明的連結。",
+    "撰稿人需要休息、暫時寫不了的時候，畫面上的說明更清楚，進度和行動點都不會受影響。",
+  ]},
   { version:"2026.10.10-j", date:"2026-10-10", title:"新版本提醒", items:[
     "遊戲分頁開著的時候，如果有新版本，回合結束後會出現一個小提示，重新整理就能用上新版。",
     "營運端看數據的畫面又整理過，其餘遊玩內容沒有變化。",
@@ -9879,7 +9887,7 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
   if(data && data.lifegame && data.lifegame.wallet){ syncWallet(data.lifegame.wallet); lastCallWallet = data.lifegame.wallet; }
   if(data && data.lifegame && data.lifegame.wallet_events) acctApplyEvents(data.lifegame.wallet_events);
   // 十、10.9.3.1：全站每日花費上限暫停(還沒扣點、也沒呼叫AI)——不重試，由takeTurn照10.12.5第4則處理
-  if(isDailyCapResponse(res, data)){ const err = new Error("今天的故事額度已用完"); err.noRetry = true; err.dailyCap = true; throw err; }
+  if(isDailyCapResponse(res, data)){ capIsCredit = data.error.type==="credit_exhausted"; const err = new Error("今天的故事額度已用完"); err.noRetry = true; err.dailyCap = true; throw err; }
   if(res.status===401 && walletActive(state)){ const err = new Error("登入已失效"); err.noRetry = true; err.unauthorized = true; acctSessionLost(); throw err; }
   if(res.ok) clearDailyCapNote(); // 呼叫成功＝額度恢復了
   if(data && data.lifegame) lastTurnServerInfo = data.lifegame;
@@ -10615,7 +10623,7 @@ async function takeTurnInner(actionText, cost, opts){
     if(e && e.dailyCap){
       // 十、10.9.3.1／10.9.3.3／10.12.5第4則：全站每日花費上限暫停期間送出的行動——不扣點、不算回合(上面applySnapshot已還原)、
       // 輸入框文字保留，恢復後可直接再送出。開場回合沒有輸入框，留一則「重新送出」的說明；不寫點數紀錄(沒有呼叫AI、也沒動到點數)
-      if(wasPrologue) state.log.push({age:state.age, timeLabel:null, text:"（撰稿人今天寫得太多，需要休息一下。故事會在台灣時間午夜後恢復。）", error:true, capBlocked:true, retryAction:actionText, retryCost:cost});
+      if(wasPrologue) state.log.push({age:state.age, timeLabel:null, text: capIsCredit ? "（撰稿人今天寫得太多，需要休息一下。故事會在稍後恢復。）" : "（撰稿人今天寫得太多，需要休息一下。故事會在台灣時間午夜後恢復。）", error:true, capBlocked:true, retryAction:actionText, retryCost:cost});
       saveGame();
       noteDailyCapBlocked();
       if(!wasPrologue && !fromChoice) restoreCustomDraft(actionText);
@@ -11207,7 +11215,7 @@ async function writeIdleSummary(s){
         kind:"idle_summary", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
         life_id: ensureLifeId(s), app_version: APP_VERSION, messages:[{ role:"user", content: JSON.stringify(payload) }] }) });
       const data = await res.json();
-      if(isDailyCapResponse(res, data)) noteDailyCapBlocked(); // 十、10.9.3.1：放置摘要也是AI呼叫，碰到全站上限照樣暫停(這次就用模板短句代替摘要)
+      if(isDailyCapResponse(res, data)) noteDailyCapBlocked(res, data); // 十、10.9.3.1：放置摘要也是AI呼叫，碰到全站上限照樣暫停(這次就用模板短句代替摘要)
       if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"idle", inChars:{ stats:JSON.stringify(payload).length }, outChars:outputBlockChars(data) });
       const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_idle_summary");
       if(block && block.input) out = block.input;
@@ -12533,7 +12541,7 @@ async function callChapterAI(s, ch){
   });
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("章節回應不是合法JSON（HTTP "+res.status+"）"); }
-  if(isDailyCapResponse(res, data)){ noteDailyCapBlocked(); const err = new Error("今天的故事額度已用完"); err.dailyCap = true; throw err; } // 十、10.9.3.1
+  if(isDailyCapResponse(res, data)){ noteDailyCapBlocked(res, data); const err = new Error("今天的故事額度已用完"); err.dailyCap = true; throw err; } // 十、10.9.3.1
   // 15.9.2：扣點在伺服器（AI成功後才扣、同一章只扣一次），回應帶回最新餘額；失敗不扣點
   if(data && data.lifegame && data.lifegame.ap) syncServerAP(s, data.lifegame.ap);
   if(data && data.lifegame && data.lifegame.wallet) syncWallet(data.lifegame.wallet);
@@ -12577,7 +12585,7 @@ function normalizeBookPunct(text){
   return t;
 }
 function chapterErrorText(err){
-  if(err && err.dailyCap) return "撰稿人今天寫得太多，需要休息一下，台灣時間午夜後恢復。";
+  if(err && err.dailyCap) return capIsCredit ? "撰稿人今天寫得太多，需要休息一下，稍後恢復。" : "撰稿人今天寫得太多，需要休息一下，台灣時間午夜後恢復。";
   if(err && err.chapterLimit) return "這一章暫時寫不出來，明天再試。";
   if(err && err.apInsufficient) return "行動點不足。";
   return "這一章這次沒寫成，沒有扣點，可以再按一次。";
@@ -13006,6 +13014,7 @@ const HOME_FAQ = [
   ["存檔會不見嗎？換手機怎麼辦？", ["不會，進度會自己存在這台裝置裡。", ()=>CLOUD_SAVE_ENABLED ? "要換手機，帶著那把復原金鑰就好。只是它一旦弄丟，就真的找不回來了，請像收好重要的東西那樣，把它抄在某個地方。" : "遊戲也會每隔約 10 分鐘把進度備份到雲端。要換手機，請先到選單的「我的復原金鑰」把金鑰抄下來，換裝置後在首頁「切換其他人生」輸入，就能接回；綁定信箱的話，也可以用信箱登入拿回。金鑰一旦弄丟就找不回來了，請像收好重要的東西那樣收好。"]],
   ["一段人生要玩多久？", ["看你想過多快。可以一個晚上走完整個高中，也可以一個月只過一個寒假。", "隨時關掉都沒關係，它會停在你離開的那一頁。"]],
   ["可以同時過好幾段人生嗎？", ["還沒綁定信箱時，同時只能過一段人生；綁定信箱後，可以同時過兩段。"]],
+  ["要付費嗎？", ["可以免費玩。每天都會補上免費的行動點，用完就等明天。", "之後預計推出點數包，想一口氣多寫幾段人生，可以買來用，買的點數沒有使用期限。購買功能還在準備中，開放時會在遊戲內公告。", `詳細說明請看<a href="/pricing" target="_blank" rel="noopener" style="text-decoration:underline;">收費說明</a>。`]],
   ["什麼路都能走嗎？", ["幾乎都能。蹺課、說謊、衝動、走錯路，這裡都攔不住你，後果也一樣攔不住。", "唯一走不通的是超能力。這裡的世界，跟外面那個一樣講道理。"]],
   ["一生走完之後呢？", ["這一生會留下一頁回顧：走過的路、陪過你的人，最後蓋上一枚印章。", "然後，你可以轉世重來，或者把故事交給下一代。"]],
   ["可以反悔嗎？", ["每一世可以免費反悔 5 次，轉世或傳承後重新計算。用完之後還想反悔，每次扣 1 點。"]]
@@ -13782,7 +13791,7 @@ function renderPlaying(loadingTurn){
   <main class="journal">${renderStory(s, loadingTurn)}</main>
   <footer class="actions glass">
     ${apOut && !busy ? `<div class="ap-out">撰稿人提醒你，今天的行動點用完了。明天打開遊戲會再領到 ${AP_DAILY_REFILL} 點，到時再接著寫。</div>` : ``}
-    ${dailyCapNoteActive() && !busy ? `<div class="ap-out cap-note" id="cap-note">撰稿人休息中，台灣時間午夜後恢復。</div>` : ``}
+    ${dailyCapNoteActive() && !busy ? `<div class="ap-out cap-note" id="cap-note">${capNoteText()}</div>` : ``}
     ${updateNoticeShown() && !busy ? `<div class="ap-out cap-note" id="update-notice">遊戲有新版本，重新整理一下就能用到 <button class="ghost-btn" id="btn-update-reload" style="margin-left:6px;">重新整理</button> <button class="ghost-btn" id="btn-update-close" aria-label="關閉" style="margin-left:2px;">×</button></div>` : ``}
     ${renderFocusBar(s, apOut||busy)}
     ${s.seekTarget ? `<div class="seek-tag">${characterState((s.characters||[]).find(c=>c.name===s.seekTarget))==="deceased" ? "回憶" : "想找"}：${escapeHtml(s.seekTarget)}<button id="btn-seek-clear" aria-label="取消想找" ${busy?"disabled":""}>×</button></div>` : ``}
@@ -16519,7 +16528,7 @@ async function callLifeReviewAI(s, m){
       life_id: ensureLifeId(s), app_version: APP_VERSION, wallet: walletActive(s) || undefined, messages:[{ role:"user", content: JSON.stringify(m) }] }) });
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）"); }
-  if(isDailyCapResponse(res, data)){ noteDailyCapBlocked(); const err = new Error("今天的故事額度已用完"); err.dailyCap = true; throw err; }
+  if(isDailyCapResponse(res, data)){ noteDailyCapBlocked(res, data); const err = new Error("今天的故事額度已用完"); err.dailyCap = true; throw err; }
   if(data && data.lifegame && data.lifegame.ap) syncServerAP(s, data.lifegame.ap);
   if(data && data.lifegame && data.lifegame.wallet) syncWallet(data.lifegame.wallet); // 十、10.9.2：伺服器成功後才扣5點，回傳最新錢包
   if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"review", inChars:{ stats:JSON.stringify(m).length }, outChars:outputBlockChars(data) });
@@ -16567,7 +16576,7 @@ async function unlockLifeReview(){
     console.warn("回顧這一生生成失敗", err);
     lifeReviewBusy = false; render();
     const el = document.getElementById("review-msg");
-    if(el) el.textContent = err && err.apInsufficient ? "行動點不足。" : err && err.dailyCap ? "撰稿人今天寫得太多，需要休息一下，台灣時間午夜後恢復。" : "撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。";
+    if(el) el.textContent = err && err.apInsufficient ? "行動點不足。" : err && err.dailyCap ? (capIsCredit ? "撰稿人今天寫得太多，需要休息一下，稍後恢復。" : "撰稿人今天寫得太多，需要休息一下，台灣時間午夜後恢復。") : "撰稿人一時沒接上線，這一回合還沒扣點。請稍等一下再送出一次。";
   }
 }
 // ---------- 16.7.0 分享這一生：圖片分享卡(沿用7.7分享卡的canvas產生方式) ----------

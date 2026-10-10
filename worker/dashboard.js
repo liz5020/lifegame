@@ -110,7 +110,7 @@ dt{font-weight:600}dd{margin:0;color:var(--soft)}
     <div class="eyebrow">人生草稿．後台數據</div>
     <div class="row"><span class="pill"><span class="dot"></span>更新時間 <b id="upd">—</b>（台灣時間）</span><span class="pill" id="capPill">每日上限用了 —</span><button id="refresh">立即更新</button></div>
   </header>
-  <div class="tabs" role="tablist"><button id="tabR" role="tab" aria-selected="true">報表</button><button id="tabT" role="tab" aria-selected="false">長期趨勢</button><button id="tabN" role="tab" aria-selected="false">名冊</button></div>
+  <div class="tabs" role="tablist"><button id="tabR" role="tab" aria-selected="true">報表</button><button id="tabT" role="tab" aria-selected="false">長期趨勢</button><button id="tabN" role="tab" aria-selected="false">名冊</button><button id="tabC" role="tab" aria-selected="false">回本估算</button></div>
 
   <div id="paneR" class="stack">
     <section class="sec" id="secQuota"><h2>名額與人流（即時）</h2><p class="sub">固定看今天，不跟下面的時間範圍切換。要加名額或暫停時看這裡。</p><div id="quotaBody"></div></section>
@@ -153,6 +153,10 @@ dt{font-weight:600}dd{margin:0;color:var(--soft)}
     </section>
   </div>
 
+    <div id="paneC" hidden class="stack"><section class="sec"><h2>回本估算</h2><p class="sub">灰底的欄位是從後台帶入的真實數字（近 7 天），可以直接改成你想試的數字。購買比例沒有真實資料，是你的假設。所有金額是新臺幣，1 美元＝NT$32。</p>
+    <div class="card"><h3>你的假設</h3><div id="calcIn"></div></div>
+    <div id="calcOut" class="stack"></div>
+    <p class="note">點數包價格與點數依設計文件 10.9.9.3，手續費暫用 3%。這頁只是算術，不會改任何設定。</p></section></div>
   <div id="paneN" hidden><section class="sec"><h2>名冊</h2><p class="sub">唯讀；每次打開這個分頁，系統會自動留一筆存取紀錄。</p><div class="card"><div id="rosterBody"></div></div></section></div>
 </div>
 <div id="tip"></div>
@@ -527,16 +531,93 @@ $("range").addEventListener("click",function(ev){var r=ev.target.getAttribute&&e
 $("report").addEventListener("click",function(ev){var v=ev.target.getAttribute&&ev.target.getAttribute("data-ver");if(!v)return;D.ver=v;renderAll()});
 $("trendPick").addEventListener("click",function(ev){var k=ev.target.getAttribute&&ev.target.getAttribute("data-k");if(!k)return;D.trendKey=k;
   document.querySelectorAll("#trendPick button").forEach(function(b){b.setAttribute("aria-pressed",b.getAttribute("data-k")===k)});renderTrend()});
+
+// ---- 回本估算（2026-10-10）：純前端算術，數字來自 /stats-summary 與 /stats-play?range=7d ----
+var PACKS=[["短篇",99,90],["中篇",499,600],["長篇",999,1300]],FEE=0.03;
+var CALC_FIELDS=[
+  ["newP","明天預計放幾位新玩家","位",60,0],
+  ["turnsNew","每位新玩家平均玩幾回合","回合",9,1],
+  ["costTurn","每回合成本（含重試）","元",1.67,2],
+  ["exist","已經有的玩家人數","位",120,0],
+  ["retRate","其中隔天會回來的比例","%",40,0],
+  ["turnsRet","每位回來的玩家玩幾回合","回合",5,1],
+  ["buffer","安全緩衝","%",20,0],
+  ["bal","目前 Anthropic 餘額","美元",0,2],
+  ["buyRate","新玩家購買比例（你的假設）","%",2,1],
+  ["pack","買哪一種點數包","",2,0]
+];
+var C={};
+function calcDefaults(){
+  var p=D.play&&D.play["7d"],m=p&&p.summary,sm=D.sum,bal=sm&&sm.ai_usage&&sm.ai_usage.balance;
+  var d={},real={};
+  if(m&&m.lives>0){
+    if(m.turns){d.turnsNew=Math.round(m.turns/m.lives*10)/10;real.turnsNew=1}
+    if(m.twd_per_turn!=null){d.costTurn=m.twd_per_turn;real.costTurn=1}
+    d.exist=m.lives;real.exist=1;
+    if(m.revisit&&m.revisit.of>0){d.retRate=Math.round(m.revisit.lives/m.revisit.of*100);real.retRate=1}
+  }
+  if(bal&&bal.remaining_usd!=null){d.bal=bal.remaining_usd;real.bal=1}
+  return {d:d,real:real}}
+function renderCalcInputs(){
+  var df=calcDefaults();C.real=df.real;
+  var h='<div class="scroll"><table><tr><th>項目</th><th>數字</th><th>說明</th></tr>';
+  CALC_FIELDS.forEach(function(f){
+    var id=f[0],v=C.vals&&C.vals[id]!=null?C.vals[id]:(df.d[id]!=null?df.d[id]:f[3]);
+    if(!C.vals)C.vals={};C.vals[id]=v;
+    var note=df.real[id]?"後台帶入":(id==="buyRate"?"假設，沒有真實資料":"預設值，請自行調整");
+    var input=id==="pack"
+      ?'<select id="c_pack">'+PACKS.map(function(k,i){return '<option value="'+i+'"'+(i===+v?' selected':'')+'>'+k[0]+'（'+k[1]+' 元／'+k[2]+' 點）</option>'}).join("")+'</select>'
+      :'<input id="c_'+id+'" type="number" step="any" min="0" value="'+v+'"'+(df.real[id]?' style="background:rgba(128,128,128,.15)"':'')+'> '+f[2];
+    h+='<tr><td>'+f[1]+'</td><td>'+input+'</td><td>'+note+'</td></tr>'});
+  h+='</table></div><div class="row"><button id="c_t10">成本設 1.0</button><button id="c_t08">成本設 0.8</button><button id="c_reset">回到後台帶入的數字</button></div>';
+  $("calcIn").innerHTML=h;
+  CALC_FIELDS.forEach(function(f){var el=$("c_"+f[0]);if(el)el.addEventListener("input",function(){calcRead();renderCalcOut()})});
+  $("c_t10").addEventListener("click",function(){C.vals.costTurn=1.0;renderCalcInputs();renderCalcOut()});
+  $("c_t08").addEventListener("click",function(){C.vals.costTurn=0.8;renderCalcInputs();renderCalcOut()});
+  $("c_reset").addEventListener("click",function(){C.vals=null;renderCalcInputs();renderCalcOut()})}
+function calcRead(){CALC_FIELDS.forEach(function(f){var el=$("c_"+f[0]);if(el){var v=parseFloat(el.value);C.vals[f[0]]=isFinite(v)&&v>=0?v:0}})}
+function renderCalcOut(){
+  var v=C.vals;if(!v)return;
+  var cost=v.costTurn,turns=v.newP*v.turnsNew+v.exist*(v.retRate/100)*v.turnsRet;
+  var day=turns*cost,withBuf=day*(1+v.buffer/100),needUsd=Math.max(0,withBuf/RATE-v.bal);
+  var tot=D.sum&&D.sum.ai_usage&&D.sum.ai_usage.total&&D.sum.ai_usage.total.usd,sunk=tot!=null?tot*RATE:null;
+  var pk=PACKS[Math.round(v.pack)]||PACKS[2];
+  var buyers=v.newP*v.buyRate/100,rev=buyers*pk[1],revNet=rev*(1-FEE);
+  var a=card("明天要儲多少",
+    '<table><tr><th>預估明天的回合數</th><td class="n">'+num(Math.round(turns))+' 回合</td></tr>'+
+    '<tr><th>預估明天花費</th><td class="n">NT$ '+num(Math.round(day))+'（約 US$ '+n1(day/RATE)+'）</td></tr>'+
+    '<tr><th>加上緩衝 '+v.buffer+'%</th><td class="n">NT$ '+num(Math.round(withBuf))+'（約 US$ '+n1(withBuf/RATE)+'）</td></tr>'+
+    '<tr><th>目前餘額</th><td class="n">US$ '+n2(v.bal)+'</td></tr>'+
+    '<tr><th><b>建議再儲值</b></th><td class="n"><b>US$ '+n1(needUsd)+'（約 NT$ '+num(Math.round(needUsd*RATE))+'）</b></td></tr></table>',
+    "算法：（新玩家人數 × 平均回合 ＋ 舊玩家 × 回來比例 × 回合）× 每回合成本，再加緩衝，減掉目前餘額。")
+  var rows=PACKS.map(function(k){
+    var net=k[1]*(1-FEE),perPt=net/k[2],margin=(perPt-cost)*k[2];
+    return '<tr><td>'+k[0]+'</td><td class="n">'+n2(perPt)+'</td><td class="n">'+n2(cost)+'</td><td class="n'+(margin<0?' down':'')+'">'+(margin>=0?'+':'')+num(Math.round(margin))+'</td><td class="n">'+(margin>0&&sunk?num(Math.ceil(sunk/margin))+' 包':(margin>0?'—':'賣越多虧越多'))+'</td></tr>'}).join("");
+  var b=card("賣一包賺還是虧",
+    '<div class="scroll"><table><tr><th>點數包</th><th class="n">每點實收（扣手續費）</th><th class="n">每點成本</th><th class="n">一包盈虧（元）</th><th class="n">回收已花的錢要賣</th></tr>'+rows+'</table></div>',
+    "已花掉的錢："+(sunk!=null?"NT$ "+num(Math.round(sunk))+"（累計 US$ "+n2(tot)+"）":"暫時無法取得")+"。每點成本要低於「每點實收」才賺；每一包的盈虧＝（每點實收－每點成本）× 點數。")
+  var c=card("明天的購買收入（你的假設）",
+    '<table><tr><th>購買人數</th><td class="n">'+n1(buyers)+' 位（'+v.buyRate+'% × '+v.newP+' 位，買'+pk[0]+'）</td></tr>'+
+    '<tr><th>收入（扣手續費）</th><td class="n">NT$ '+num(Math.round(revNet))+'</td></tr>'+
+    '<tr><th>跟明天花費比</th><td class="n">'+(revNet>=day?'收入多 ':'還差 ')+'NT$ '+num(Math.abs(Math.round(revNet-day)))+'</td></tr></table>',
+    "這裡只比「明天一天」的收入與花費。買了點數的人之後還會把點數玩完，那部分成本不在明天，所以實際盈虧要看上面的「一包盈虧」。")
+  $("calcOut").innerHTML=a+b+c}
+function openCalc(){
+  var need=[];
+  if(!D.play["7d"])need.push(soft("/stats-play?range=7d").then(function(j){D.play["7d"]=j}));
+  return Promise.all(need).then(function(){if(!C.vals||!$("c_newP"))renderCalcInputs();renderCalcOut()})}
 function showTab(n){
   document.documentElement.scrollTop=0;document.body.scrollTop=0;
-  $("paneR").hidden=n!=="r";$("paneT").hidden=n!=="t";$("paneN").hidden=n!=="n";
-  $("tabR").setAttribute("aria-selected",n==="r");$("tabT").setAttribute("aria-selected",n==="t");$("tabN").setAttribute("aria-selected",n==="n");
+  $("paneR").hidden=n!=="r";$("paneT").hidden=n!=="t";$("paneN").hidden=n!=="n";$("paneC").hidden=n!=="c";
+  $("tabR").setAttribute("aria-selected",n==="r");$("tabT").setAttribute("aria-selected",n==="t");$("tabN").setAttribute("aria-selected",n==="n");$("tabC").setAttribute("aria-selected",n==="c");
   if(n==="t"){if(D.daily)renderTrend();else soft("/stats-daily").then(function(j){D.daily=j;renderTrend()}).catch(authFail)}
   if(n==="n")loadRoster();
+  if(n==="c")openCalc().catch(authFail);
 }
 $("tabR").addEventListener("click",function(){showTab("r")});
 $("tabT").addEventListener("click",function(){showTab("t")});
 $("tabN").addEventListener("click",function(){showTab("n")});
+$("tabC").addEventListener("click",function(){showTab("c")});
 function authFail(e){if(e&&e.auth){try{sessionStorage.removeItem(KEY)}catch(x){} tok="";$("app").hidden=true;$("login").hidden=false;$("loginErr").textContent="密碼錯誤"}}
 var busy=false;
 function load(){

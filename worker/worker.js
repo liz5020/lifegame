@@ -810,6 +810,10 @@ export function pageMeta(body) {
   return typeof v === "string" && /^[0-9A-Za-z.\-]{1,24}$/.test(v) ? { pv: v } : {};
 }
 // 十、10.14.7（2026-10-04）：meta有值時，回應成功後在背景把Anthropic回報的實際用量記進用量計數器(不影響回應速度與內容)
+export function isCreditExhaustedError(status, fail, msg) {
+  if (status !== 400 && status !== 402) return false;
+  return /credit balance|billing|purchase credits|plans & billing/i.test(String(msg || ""));
+}
 async function callAnthropic(env, upstreamBody, ctx, meta) {
   let res;
   const startedAt = Date.now(); // 十、10.17.2：Worker呼叫Anthropic到收到回應的耗時(毫秒)，記進逐筆紀錄
@@ -832,12 +836,19 @@ async function callAnthropic(env, upstreamBody, ctx, meta) {
   // 十、10.9.3.1／10.9.3.3／10.9.3.1a補充二(2026-10-08)：每次AI呼叫記一筆花費——有回報用量的記實際花費(美元×匯率)，沒有的(失敗呼叫)照預估；達80%／上限時寄管理通知信
   let usage = null, stopReason = "";
   if (res.ok) { try { const d = await res.clone().json(); if (d && d.usage) usage = extractUsage(d.usage); if (d && typeof d.stop_reason === "string") stopReason = d.stop_reason; } catch (e) { usage = null; } }
-  let fail;
+  let fail, creditMsg = "";
   if (!res.ok) { // 2026-10-09：AI回錯誤時把狀態碼、錯誤類型與訊息寫進Workers Logs(不含玩家內容)，並按類型計次(/usage-today的failures)
     let type = "", msg = "";
     try { const t = await res.clone().text(); try { const j = JSON.parse(t); type = (j && j.error && j.error.type) || ""; msg = (j && j.error && j.error.message) || ""; } catch (e) { msg = t; } } catch (e) { /* 讀不到內容就只記狀態碼 */ }
     fail = res.status + (type ? ":" + type : "");
+    creditMsg = String(msg);
     console.warn("AI呼叫失敗：狀態 " + res.status + (type ? " " + type : "") + " " + String(msg).slice(0, 300) + aiFailMetaText(meta, elapsedMs));
+  }
+  // 2026-10-10：Anthropic帳戶餘額用完(400／402帶credit balance／billing字樣)時，改成跟全站每日上限同一種暫停訊號回給前端(503)，
+  // 玩家看到「撰稿人今天寫得太多，需要休息一下」，不會誤以為是網路不穩而一直重打；狀態碼與原因照樣記在上面的Workers Logs與failures計次
+  if (!res.ok && isCreditExhaustedError(res.status, fail, creditMsg)) {
+    fail = "credit_exhausted"; // 計數器看到這個類型會寄「餘額用完」通知信(gate.js)
+    res = new Response(JSON.stringify({ error: { type: "credit_exhausted", message: "AI服務額度用完，暫停呼叫" }, lifegame: { daily_cap: true, credit_exhausted: true } }), { status: 503, headers: { "Content-Type": "application/json" } });
   }
   await countAICall(env, ctx, usage ? costUSD(usage) * USD_TO_TWD : undefined, fail);
   // 十、10.14.7.1（2026-10-10）：結束原因＝上游的stop_reason；上游回403時沒有用量，也記一筆(用量為0)，結束原因記「403@機房代碼」(10.17.11)
@@ -1299,7 +1310,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.10-j";
+const WORKER_VERSION = "2026.10.10-k";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
