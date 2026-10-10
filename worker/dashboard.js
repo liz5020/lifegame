@@ -86,6 +86,7 @@ svg text{fill:var(--soft);font-size:11px;font-family:var(--sans)}
 table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 th{text-align:left;font-weight:600;color:var(--soft);font-size:12.5px;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.wrap{white-space:normal;word-break:break-all;min-width:12em}
 td.n,th.n{text-align:right}
 .files{display:flex;flex-direction:column;gap:10px}
 .file{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--card)}
@@ -339,7 +340,7 @@ function renderReport(o){
     var tl=p.timeline||[],why=p.retry_reasons||[],wt=why.reduce(function(a,x){return a+x.n},0);
     h+=sec("secRetry","重寫有多頻繁、為什麼","重寫次數 ÷ 一般回合數。虛線是目標 5%。",'<div class="grid">'+
       card((r==="7d"?"每天":"每小時")+"重寫比例",bars(tl.map(function(x){return r==="7d"?x.bucket:x.bucket.slice(0,2)}),[{v:tl.map(function(x){return x.retry_rate||0}),c:"var(--stamp)"}],{pct:true,ref:RETRY_TARGET,aria:"重寫比例",tips:tl.map(function(x){return x.bucket+"　重寫 "+x.retries+" ÷ 一般回合 "+x.turns+" ＝ "+pct(x.retry_rate)})}))+
-      card("重寫原因",why.length?'<div class="scroll"><table><tr><th>原因</th><th class="n">次數</th><th class="n">佔重寫</th></tr>'+why.map(function(w){return '<tr><td>'+esc(w.label)+'</td><td class="n">'+num(w.n)+'</td><td class="n">'+pct0(wt?w.n/wt:null)+'</td></tr>'}).join("")+'</table></div>':'<p class="small">沒有重寫</p>',"下載的明細裡是原因代碼（例如「過短」「日期」）。")+
+      card("重寫原因",why.length?'<div class="scroll"><table><tr><th>原因</th><th class="n">次數</th><th class="n">佔重寫</th></tr>'+why.map(function(w){return '<tr><td class="wrap">'+esc(w.label)+'</td><td class="n">'+num(w.n)+'</td><td class="n">'+pct0(wt?w.n/wt:null)+'</td></tr>'}).join("")+'</table></div>':'<p class="small">沒有重寫</p>',"下載的明細裡是原因代碼（例如「過短」「日期」）。")+
       regenToday()+'</div>')}
   // ⑦ 玩家有多少
   h+=sec("secPlayers","玩家有多少","綁信箱的一個信箱算一位；沒綁的一段人生算一位。人生段數＝玩過至少一回合的人生，一位玩家可以有好幾段。",playersBlock());
@@ -366,8 +367,8 @@ function plainFunnel(f){
   return s}
 function plainStops(st,left){if(!left)return "還沒有人離開。";var a=st[0].lives+st[1].lives;return "「只有開場」和「第 2 回合就走」加起來 "+num(a)+" 條，佔離開的 "+pct0(a/left)+"。"}
 function regenToday(){var q=D.sum&&D.sum.ai_usage&&D.sum.ai_usage.regen_today;if(!q)return "";
-  var list=function(arr){return arr&&arr.length?arr.map(function(x){return esc(x.code)+" "+num(x.n)}).join("、"):"—"};
-  return card("今天的自動重寫",'<div class="scroll"><table><tr><th>重寫</th><td>'+num(q.regens)+' 次 ÷ 一般回合 '+num(q.turn_calls)+' 次＝'+(q.pct==null?"—":q.pct+"%")+'</td></tr><tr><th>重寫原因前 5 名</th><td>'+list(q.reasons)+'</td></tr><tr><th>上回合紀錄前 5 名</th><td>'+list(q.notes)+'</td></tr></table></div>')}
+  var list=function(arr){return arr&&arr.length?arr.map(function(x,i){return (i+1)+". "+esc(x.code)+"（"+num(x.n)+" 次）"}).join("<br>"):"—"};
+  return card("今天的自動重寫",'<div class="scroll"><table><tr><th>重寫</th><td>'+num(q.regens)+' 次 ÷ 一般回合 '+num(q.turn_calls)+' 次＝'+(q.pct==null?"—":q.pct+"%")+'</td></tr><tr><th>重寫原因前 5 名</th><td class="wrap">'+list(q.reasons)+'</td></tr><tr><th>上回合紀錄前 5 名</th><td class="wrap">'+list(q.notes)+'</td></tr></table></div>')}
 function costBlock(o){
   var s=D.sum,a=s&&s.ai_usage,u=s&&s.usage,p=o.p,m=p&&p.summary,h="";
   var bal=a&&a.balance,todayCost=D.today?D.today.est_cost_twd:(u&&u.cost.today),hrs=curHourTW();
