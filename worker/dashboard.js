@@ -110,7 +110,7 @@ dt{font-weight:600}dd{margin:0;color:var(--soft)}
     <div class="eyebrow">人生草稿．後台數據</div>
     <div class="row"><span class="pill"><span class="dot"></span>更新時間 <b id="upd">—</b>（台灣時間）</span><span class="pill" id="capPill">每日上限用了 —</span><button id="refresh">立即更新</button></div>
   </header>
-  <div class="tabs" role="tablist"><button id="tabR" role="tab" aria-selected="true">報表</button><button id="tabT" role="tab" aria-selected="false">長期趨勢</button><button id="tabN" role="tab" aria-selected="false">名冊</button><button id="tabC" role="tab" aria-selected="false">回本估算</button></div>
+  <div class="tabs" role="tablist"><button id="tabR" role="tab" aria-selected="true">報表</button><button id="tabT" role="tab" aria-selected="false">長期趨勢</button><button id="tabN" role="tab" aria-selected="false">名冊</button><button id="tabC" role="tab" aria-selected="false">回本估算</button><button id="tabL" role="tab" aria-selected="false">攔截門檻</button></div>
 
   <div id="paneR" class="stack">
     <section class="sec" id="secQuota"><h2>名額與人流（即時）</h2><p class="sub">固定看今天，不跟下面的時間範圍切換。要加名額或暫停時看這裡。</p><div id="quotaBody"></div></section>
@@ -157,6 +157,8 @@ dt{font-weight:600}dd{margin:0;color:var(--soft)}
     <div class="card"><h3>你的假設</h3><div id="calcIn"></div></div>
     <div id="calcOut" class="stack"></div>
     <p class="note">點數包價格與點數依設計文件 10.9.9.3，手續費暫用 3%。這頁只是算術，不會改任何設定。</p></section></div>
+  <div id="paneL" hidden class="stack"><section class="sec"><h2>攔截門檻</h2><p class="sub">所有會讓玩家被擋住或被限量的數字都列在這裡，數字是目前生效的值。「後台可調」的可以到 Cloudflare 後台改（改完馬上生效）；「程式固定」的要請 Claude 改程式再部署。用了八成以上的會標紅。</p>
+    <div id="limBody" class="stack"></div></section></div>
   <div id="paneN" hidden><section class="sec"><h2>名冊</h2><p class="sub">唯讀；每次打開這個分頁，系統會自動留一筆存取紀錄。</p><div class="card"><div id="rosterBody"></div></div></section></div>
 </div>
 <div id="tip"></div>
@@ -606,18 +608,46 @@ function openCalc(){
   var need=[];
   if(!D.play["7d"])need.push(soft("/stats-play?range=7d").then(function(j){D.play["7d"]=j}));
   return Promise.all(need).then(function(){if(!C.vals||!$("c_newP"))renderCalcInputs();renderCalcOut()})}
+
+// ---- 攔截門檻（2026-10-10）：清單來自 /stats-summary 的 limits（後端現算），使用量搭配 /usage-today 與 entry ----
+function limUsage(u){
+  var e=D.sum&&D.sum.entry,t=D.today;
+  if(u==="spend"&&t&&t.daily_spend_cap_twd)return {used:t.est_cost_twd,cap:t.daily_spend_cap_twd,txt:"今天已用 NT$ "+num(Math.round(t.est_cost_twd))};
+  if(u==="gifts"&&t&&t.gifts)return {used:t.gifts.issued,cap:t.gifts.cap,txt:"今天已發 "+num(t.gifts.issued)+" 份，排隊 "+num(t.gifts.queued)+" 人"};
+  if(u==="newPlayers"&&e)return {used:e.used,cap:e.cap,txt:"今天已用 "+num(e.used)+"，候補 "+num(e.waiting)+" 人"};
+  if(u==="checkpoint"&&e)return {used:e.cum,cap:e.checkpoint,txt:"累計入場 "+num(e.cum)};
+  return null}
+function renderLimits(){
+  var L=D.sum&&D.sum.limits;
+  if(!L){$("limBody").innerHTML='<p class="note">暫時無法取得</p>';return}
+  var groups=[],byG={};
+  L.forEach(function(x){if(!byG[x.group]){byG[x.group]=[];groups.push(x.group)}byG[x.group].push(x)});
+  var hot=[];
+  var html=groups.map(function(gn){
+    var rows=byG[gn].map(function(x){
+      var u=x.usage?limUsage(x.usage):null,full=u&&u.cap>0&&u.used/u.cap>=0.8,over=u&&u.cap>0&&u.used>=u.cap;
+      if(full)hot.push(x.label+"（"+u.txt+"，上限 "+num(x.value)+"）");
+      var val=x.value==null?"—":(typeof x.value==="number"?num(x.value):esc(x.value))+(x.unit?" "+esc(x.unit):"");
+      var use=u?'<br><span class="'+(full?'down':'small')+'">'+esc(u.txt)+(over?"（已到上限）":(full?"（接近上限）":""))+'</span>':"";
+      var how=x.source==="後台可調"?'後台可調<br><span class="small">'+esc(x.var)+'</span>':'<span class="small">'+esc(x.source)+'</span>';
+      return '<tr><td>'+esc(x.label)+use+'</td><td class="n">'+val+'</td><td>'+how+'</td><td class="small">'+esc(x.effect||"")+'</td></tr>'}).join("");
+    return card(gn,'<div class="scroll"><table><tr><th>項目</th><th class="n">目前的值</th><th>怎麼改</th><th>被擋住時會怎樣</th></tr>'+rows+'</table></div>')}).join("");
+  var top=hot.length?'<div class="card"><h3>現在接近或已經到上限</h3><p>'+hot.map(esc).join("<br>")+'</p></div>':'<div class="card"><h3>現在接近或已經到上限</h3><p>目前沒有項目超過八成。</p></div>';
+  $("limBody").innerHTML=top+html}
 function showTab(n){
   document.documentElement.scrollTop=0;document.body.scrollTop=0;
-  $("paneR").hidden=n!=="r";$("paneT").hidden=n!=="t";$("paneN").hidden=n!=="n";$("paneC").hidden=n!=="c";
-  $("tabR").setAttribute("aria-selected",n==="r");$("tabT").setAttribute("aria-selected",n==="t");$("tabN").setAttribute("aria-selected",n==="n");$("tabC").setAttribute("aria-selected",n==="c");
+  $("paneR").hidden=n!=="r";$("paneT").hidden=n!=="t";$("paneN").hidden=n!=="n";$("paneC").hidden=n!=="c";$("paneL").hidden=n!=="l";
+  $("tabR").setAttribute("aria-selected",n==="r");$("tabT").setAttribute("aria-selected",n==="t");$("tabN").setAttribute("aria-selected",n==="n");$("tabC").setAttribute("aria-selected",n==="c");$("tabL").setAttribute("aria-selected",n==="l");
   if(n==="t"){if(D.daily)renderTrend();else soft("/stats-daily").then(function(j){D.daily=j;renderTrend()}).catch(authFail)}
   if(n==="n")loadRoster();
   if(n==="c")openCalc().catch(authFail);
+  if(n==="l")renderLimits();
 }
 $("tabR").addEventListener("click",function(){showTab("r")});
 $("tabT").addEventListener("click",function(){showTab("t")});
 $("tabN").addEventListener("click",function(){showTab("n")});
 $("tabC").addEventListener("click",function(){showTab("c")});
+$("tabL").addEventListener("click",function(){showTab("l")});
 function authFail(e){if(e&&e.auth){try{sessionStorage.removeItem(KEY)}catch(x){} tok="";$("app").hidden=true;$("login").hidden=false;$("loginErr").textContent="密碼錯誤"}}
 var busy=false;
 function load(){

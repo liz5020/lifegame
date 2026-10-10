@@ -94,6 +94,7 @@ import {
 import { AccountStore } from "./account.js";
 import { handleAccountRoute, isAccountPath } from "./account-routes.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
+import { buildLimits } from "./limits.js";
 import { computePlayStats, dailyExtrasFromRows, hourlyFromRows } from "./play-stats.js";
 import { runWaitlistTick } from "./entry.js";
 import { handleSaveAdmin, isAdminPath, indexSaveRecord } from "./save-admin.js";
@@ -1128,6 +1129,7 @@ async function handleStatsSummary(request, env) {
     usage, accounts_bound: ps.accounts_bound, lives_started: ps.lives_started, lives_unbound: ps.lives_unbound,
     ai_usage: await buildAIUsageSummary(env, { today, week_start, turns: pv.turns || {} }),
     entry: await buildEntrySummary(env), // 十、10.15.6：名額卡片(只有數字，不含信箱或人生代號)
+    limits: buildLimits(env, { playerActionChars: MAX_PLAYER_ACTION_CHARS, turnPayloadChars: MAX_TURN_PAYLOAD_CHARS, stateBytes: MAX_STATE_BYTES, rateLimitPerMin: 30, stagePackPerHour: DEFAULT_STAGE_PACK_RATE_PER_HOUR }), // 2026-10-10：「攔截門檻」分頁，所有會擋玩家的數字
     daily
   };
   return new Response(JSON.stringify(out, null, 2), { headers });
