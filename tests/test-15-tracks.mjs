@@ -45,7 +45,8 @@ ev("render()");
 const txt = doc.querySelector(".ledger.tracks") ? doc.querySelector(".ledger.tracks").textContent : "";
 A.check("畫面顯示課業軌跡", txt.includes("上次期中考" + midScore + "分"), txt);
 A.check("畫面顯示興趣軌跡(文字級距、不含候選)", txt.includes("藝術創作（漸入佳境）") && txt.includes("體能競技（淡了）") && !txt.includes("知識研究"), txt);
-A.check("興趣不裸露投入度數字", !txt.includes("55"));
+// 2026-10-10：先去掉「上次期中考○○分」——考試分數是隨機的，擲到55會被誤判成投入度外露
+A.check("興趣不裸露投入度數字", !txt.replace(/上次期中考\d+分/g, "").includes("55"));
 
 // 出社會後不顯示課業
 ev("state.studentStatus='graduated'; state.timeState.stageMode='career'; render()");
