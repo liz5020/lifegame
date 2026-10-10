@@ -10,6 +10,21 @@
 
 ---
 
+## 2026-10-10 開發部：自動重新產生原因寫進Workers Logs（版本2026.10.10-c，與住處選擇同版）
+- 起因：AI用量明細CSV顯示10/9晚與10/10早「失敗重試／重新生成」約25%（同一個turn_nonce第2次以後的呼叫都算，不一定是出錯）；要查是哪一項檢查（場景日期、正文完整性、簡體字等）擋下最多。
+- `index.html`：自動重新產生時帶`regen_reason`（短字串，最多60字：「場景日期違規」或品質檢查原因）；`worker/worker.js`兩條路徑（KV、帳號錢包）收到就`console.log`「自動重新產生原因：…（第N回合）」，不含人生代號與劇情內容。不影響規則與存檔。
+- 人生之書付費章節（十五、15.9）本機另有未完成的修改，這次**刻意不上線**。
+
+---
+
+## 2026-10-10 開發部：大學住處選擇實作（版本2026.10.10-c，分支feedback-yeye-150-193）
+- 依：設計文件九、9.11（claude.ai網頁版定案、使用者確認），連動1.2.22、2.6、3.4.10、4.1.2、5.5.5、7.5.1、7.6.1.1。**遊戲狀態新增欄位（見9.11.9），依定案舊存檔不需清空。**
+- `index.html`：新增住處區塊（`housingTypeOf`／`detectHousingIntent`／`housingChoiceDue`／`applyHousingNext`／`applyHousingType`／`ensureRoommate`／`queueGraduationHousing`／`renderHousingChoiceModal`／`migrateHousing`）；學生期基本需求依住處25／28／30；高三選完科系後先選住處、9月生效；宿舍建室友；搬出解除原生家庭同住、搬回掛回；不住家裡自動改自己打理並反灰家裡包辦；租屋算搬出家裡；畢業／肄業跳住處彈窗；學生時期不採用旁白`housing_choice`；舊存檔開學第一回合補跳、被舊回報改成租屋的學生存檔載入時重設。
+- `worker/prompt.js`：【房屋里程碑】刪「外縣市／出國分支」並補學生時期不回報`housing_choice`；住處條補不得寫回家裡日常、不另生室友。**動到worker，需重新部署（WORKER_VERSION 2026.10.10-c），未推送。**
+- 測試：新增`tests/test-89-housing.mjs`；`harness.mjs`加自動選住家裡（`__housingManual`可關）。全套結果見回報。
+
+---
+
 ## 2026-10-10 開發部：葉夜第1世第150～193回合回饋實作（版本2026.10.10-b，分支feedback-yeye-150-193）
 - 依：設計文件九、9.10、八、8.8.5、十八、18.10.7／18.13、一、1.2.21／1.2.22與交接文件第三節（A～F）。**遊戲狀態新增欄位`tryNewCont`；依定案舊存檔不需清空。**
 - 九、9.10：`index.html`新增`majorSelectionDue()`（高三下學期、日期到5月、還沒選系，放暑假或跳過指令跨過5月也算）；`takeTurnInner`在呼叫AI前`askMajorSelectionFirst()`先彈選科系（標題「○歲・選填志願」）；`advanceStageYear`進大一時已選過系就不再跳（學生證入學年齡改為實際年齡），沒選過才補跳；高中畢業事件改在高三下學期期末考那一回合送出；暑假標籤「準大一・暑假」（`highSchoolYearLabel`）；給旁白的`university_status`以主修系名為主、5～9月帶`admitted`；雙主修選「申請」後自己選系（`renderMajorSelectionModal({mode:"dual"})`，不能選主修同系與5年制系別）。

@@ -883,6 +883,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
 
   let upstream, text, data = null;
   try {
+    if (isTurn && typeof body.regen_reason === "string" && body.regen_reason) console.log("自動重新產生原因：" + body.regen_reason.slice(0, 60) + "（第" + check.payload.turn + "回合）"); // 帳號錢包路徑，同上
     upstream = await callAnthropic(env, upstreamBody, ctx, { kind: ({ chapter: "chapter", idle_summary: "idle", life_review: "review" })[body.kind] || "turn", lifeId: safeLifeId, nonce: isTurn ? body.turn_nonce : null, turn: isTurn ? check.payload.turn : null, prologue: isTurn && !!(check.payload.time_context && check.payload.time_context.is_prologue === true) }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
@@ -965,6 +966,7 @@ async function handleAIProxy(request, env, origin, ctx) {
 
   let upstream, text, data = null;
   try {
+    if (typeof body.regen_reason === "string" && body.regen_reason) console.log("自動重新產生原因：" + body.regen_reason.slice(0, 60) + "（第" + check.payload.turn + "回合）"); // 2026-10-10：查重試比例偏高的原因(不含人生代號與內容)
     upstream = await callAnthropic(env, buildTurnRequest(body.messages), ctx, { kind: "turn", lifeId: safeLifeId, nonce, turn: check.payload.turn, prologue: isPrologue }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
@@ -1137,7 +1139,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.10-b";
+const WORKER_VERSION = "2026.10.10-c";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

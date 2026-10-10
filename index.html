@@ -1459,7 +1459,7 @@ const STUDENT_EXPENSE_KIND_LABEL = { friend:"朋友與戀愛", trip:"想要的�
 const STUDENT_EXPENSE_BLOCKING_PENDING = ["pendingMajorPurchase","pendingJobSearch","pendingJobOffer","pendingDivorceSettlement","pendingMajorSelection",
   "pendingTransferOffer","pendingDualMajorOffer","pendingDualMajorAbandonOffer","pendingLeaveOffer","pendingParentingNode","pendingMarriageCrisis",
   "pendingRelationshipInvestment","pendingDivorceRecovery","pendingCohabitationOffer","pendingPromotionOffer","pendingCareerForkOffer","pendingBusinessLaunch",
-  "pendingFamilyBusinessOffer","pendingBusinessContinuation","pendingRetirementOffer","pendingEldercareDecision","pendingSideBusinessCardId","mealJustUnlocked"];
+  "pendingHousingChoice","pendingFamilyBusinessOffer","pendingBusinessContinuation","pendingRetirementOffer","pendingEldercareDecision","pendingSideBusinessCardId","mealJustUnlocked"];
 function studentExpenseState(s){
   if(!s.studentExpense) s.studentExpense = { lastFriendTurn:null, lastGadgetTurn:null, termKey:"", termWant:0, yearKey:"", yearFamily:0, license:false, pending:null, resultNow:null };
   return s.studentExpense;
@@ -4032,9 +4032,18 @@ async function initApp(){
   if(acctToken()) refreshAccount().then(ok=>{ if(ok && state && (state.phase==="home" || state.phase==="playing")) render(); }); // 十、10.9.2：當天第一次打開時補點在伺服器
 }
 // 讀檔時的舊存檔遷移：4.1.3性別；二、2.7／B1（2026-09-29）舊行事曆換算到真實日曆、年齡依生日重算
+// 九、9.11.8：學生時期住處被舊版旁白回報改成租屋／自有房的存檔，重設回住家裡(由玩家之後自己選)；已畢業或肄業不處理
+function migrateHousing(st){
+  if(!st || !st.housing || !isStudentPhase(st) || (st.housing.type!=="rent" && st.housing.type!=="own")) return;
+  st.housing = null;
+  st.monthlyExpenses = (st.monthlyExpenses||[]).filter(e=>e.label!=="房租" && e.label!=="房貸");
+  if(st.milestones && st.milestones.moved_out==="completed") st.milestones.moved_out = "available";
+  (st.characters||[]).forEach(c=>{ if(/^(父母|隔代教養|手足)，從出生起$/.test(c.origin||"") && !c.deceased && !c.lost && !/不同住/.test(c.relation||"")) c.cohabiting = true; });
+}
 function migrateLoadedState(st){
   if(!st) return;
   if(st.characters){ ensureCharacterGenders(st); updateFamilyPaths(st); backfillOccupationJobs(st); } // 4.9.5：舊存檔的兄弟姊妹、子女依目前年齡補擲出路
+  migrateHousing(st); // 九、9.11.8
   revealPendingExams(st); // B3：上次沒看完就離開的考試分數，重新進來直接公布
   if(st.timeState && st.phase && st.phase!=="home" && st.phase!=="setup"){ try{ ensureCalendar(st); }catch(e){ console.warn("行事曆遷移失敗", e); } }
 }
@@ -4640,7 +4649,8 @@ const SIBLING_TRAITS = ["競爭心強，什麼都要比一下","很罩你，關�
 // 改成只花掉「多出來的錢」的幾成，賺越多剩越多；只有收入勉強夠基本需求又吃外食的人會見底
 const SPENDING_HABITS = { "精打細算":0.3, "普通花費":0.6, "隨性大方":0.9 }; // 可支配的錢花掉幾成
 const MEAL_EXPENSE_MULT = { "家裡包辦":0.8, "自己打理":1.0, "外食為主":1.1 };   // 乘在基本需求上
-const STUDENT_BASIC_NEED = 25; // 學生期基本需求(遊戲幣/月)，不分家境
+const STUDENT_BASIC_NEED = 25; // 學生期基本需求(遊戲幣/月)，不分家境；住家裡的數字
+const STUDENT_BASIC_NEED_BY_HOUSING = { parents:25, dorm:28, rent:30 }; // 九、9.11.3（2026-10-10）：學生期依住處分級【測試參數】；宿舍費、房租家長付，不列結算欄
 // 三餐事件觸發機率倍率，只適用「自己打理」vs「外食為主」，家裡包辦不適用這組（敘事情境本質不同）
 const MEAL_EVENT_MULT = {
   "自己打理": { socialEncounter:0.7, healthBonusHit:1.2, timeConsumingMilestone:0.85 },
@@ -4781,6 +4791,7 @@ function livingCostTierForState(s){
   if(!s.housing || s.housing.type==="parents") return "低";
   if(s.housing.type==="rent") return "中";
   if(s.housing.type==="own") return "中";
+  if(s.housing.type==="dorm") return "低"; // 宿舍畢業時一定要離開(9.11.7)，這只是換住處生效前的保底
   return "低";
 }
 // ========== 三、3.4.11 家庭財務合併與子女扶養支出（2026-09-20新增） ==========
@@ -4880,7 +4891,7 @@ function computeChildSupportCost(s){
 // 3.4.10（2026-09-28）：基本需求(未乘三餐)。學生期固定STUDENT_BASIC_NEED；出社會後照3.4.8居住分級，已婚/同居套3.4.11分攤係數
 // 2026-09-27：學生判斷改用studentStatus（3.4.8明文禁止以occupationCategory判斷），畢業未就業/收攤者走housing分級，不會變0
 function livingBasicNeed(s){
-  if(isStudentPhase(s)) return STUDENT_BASIC_NEED;
+  if(isStudentPhase(s)) return STUDENT_BASIC_NEED_BY_HOUSING[housingTypeOf(s)] ?? STUDENT_BASIC_NEED;
   const tier = livingCostTierForState(s);
   let amount = LIVING_COST_BASE[tier] * LIVING_COST_MULTIPLIER;
   // 三、3.4.11（2026-09-20新增，2026-09-22拆分同居/已婚兩組係數，取代原本「與伴侶共同生活時整體×0.75」算不出household_status的舊做法）：
@@ -5175,6 +5186,7 @@ function newRoll(carry, identity){
     examBelowExpectationStreak: 0,
     lowCashStreak: 0,
     pendingMajorSelection: false,
+    pendingHousingChoice: null, housingNext: null, housingAsked: false, housingOfferCooldownUntilTurn: 0, housingReleasedNames: [], roommateName: null, roommateMade: false, // 九、9.11
     pendingTransferOffer: false,
     pendingDualMajorOffer: false,
     pendingLeaveOffer: null, // null/'financial'/'health'
@@ -6168,6 +6180,7 @@ function advanceStageYear(s, mode, yearsToAdd){
     s.milestones.graduation_college = "completed";
     s.graduationEventLog = { type:"college" }; // 一、1.2.8.6（2026-09-24拍板）
     s.studentStatus = "graduated"; // 九、9.8：畢業後用studentStatus判斷已出社會，不是只看年齡
+    queueGraduationHousing(s); // 九、9.11.7：沒住家裡的人，畢業時跳住處彈窗
     // 9.5.2：畢業時若雙主修仍在active狀態（未經由renderDualMajorAbandonModal()中途放棄），直接結算為completed
     if(s.dualMajorStatus==="active") s.dualMajorStatus = "completed";
   }
@@ -6203,6 +6216,181 @@ const COHABITING_AFFINITY_FLOOR = 25; // 【測試參數,待驗證,4.1.2】
 function releaseCohabiting(c){
   // 4.1.2【定案】解除同住標記後，回歸4.1既有的12回合降級規則
   if(c) c.cohabiting = false;
+}
+// ========== 九、9.11 大學住處選擇（2026-10-10） ==========
+// 住處＝s.housing.type：parents(住家裡，預設)／dorm(宿舍)／rent／own。學生時期只能由這裡的彈窗改變，旁白回報的housing_choice不採用(applyResult)。
+// 狀態：pendingHousingChoice={kind:initial|legacy|change|graduate}(彈窗還沒決定，重新整理後再跳出)、housingNext={type,at:"enroll"|"month",ym}(已決定、待生效)、
+// housingAsked(初次／補跳已問過)、housingOfferCooldownUntilTurn(選「先不要」後的冷卻)、housingReleasedNames(搬出時解除同住的原生家庭，搬回家時掛回)、
+// roommateName(目前的宿舍室友)、roommateMade(這一世已建過室友，之後再住宿舍不再建新的)
+const HOUSING_LABEL = { parents:"住家裡", dorm:"住宿舍", rent:"在外租屋", own:"住自己的房子" };
+const HOUSING_ATMOS = { parents:"有人照顧，也有人管", dorm:"熱鬧，但沒什麼隱私", rent:"自由，什麼都要自己來" };
+const HOUSING_MONEY_HINT = "自己住每個月會多花一點，手頭會比住家裡緊";
+const HOUSING_MEAL_HINT = "三餐會改成自己打理";
+const HOUSING_CHANGE_COOLDOWN_TURNS = 12; // 【測試參數,待驗證】選「先不要」後的冷卻回合數
+function housingTypeOf(s){ return (s.housing && s.housing.type) || "parents"; }
+function housingAway(s){ const t = housingTypeOf(s); return t==="dorm" || t==="rent"; }
+function housingYm(abs){ const d = calAbsToDate(abs); return d.y*12 + d.m; }
+// 【測試參數】意圖關鍵字；「朋友搬家了」這類別人搬家的句子不算
+function detectHousingIntent(actionText){
+  const t = String(actionText||"");
+  if(!/搬出去|搬回家|申請宿舍|退宿|找房子|租房子|搬家/.test(t)) return false;
+  const others = /(朋友|同學|室友|鄰居|同事|老師|爸|媽|哥|姊|姐|弟|妹|家人|他|她|別人)[^，。！？、\s]{0,4}(搬家|搬出去|搬走)/.test(t);
+  const self = /(我|自己)[^，。！？]{0,6}(搬|找房|租房|申請|退宿)|想[^，。！？]{0,3}(搬|找房|租|申請)|打算|決定|要搬|準備搬/.test(t);
+  return !others || self;
+}
+function housingOptionsFor(s, kind){
+  const cur = housingTypeOf(s);
+  let types;
+  if(kind==="graduate") types = cur==="dorm" ? ["parents","rent"] : ["rent","parents"];
+  else if(kind==="change") types = ["parents","dorm","rent"].filter(t=>t!==cur);
+  else types = ["parents","dorm","rent"];
+  return types.map(t=>{
+    let label = HOUSING_LABEL[t];
+    if(kind==="graduate") label = t==="parents" ? "搬回家" : (cur==="rent" ? "繼續租" : "在外租屋");
+    const hints = [];
+    if(kind==="graduate"){ if(t==="rent") hints.push("從下個月起房租自己付"); }
+    else {
+      hints.push(HOUSING_ATMOS[t]);
+      if(t!=="parents"){ hints.push(HOUSING_MONEY_HINT); if(s.mealArrangement==="家裡包辦") hints.push(HOUSING_MEAL_HINT); }
+    }
+    return { type:t, label, hints };
+  });
+}
+// 玩家打字出現搬家意圖：只有念大學中(沒休學)才跳確認彈窗(9.11.5)；排入後由dispatchPendingModals跳出
+function checkHousingChangeOffer(s, actionText){
+  if(s.pendingHousingChoice || s.turnCount < (s.housingOfferCooldownUntilTurn||0)) return;
+  if(s.studentStatus!=="enrolled" || s.leaveStatus==="onLeave") return;
+  if(!s.timeState || s.timeState.stageMode!=="college") return;
+  if(!detectHousingIntent(actionText)) return;
+  s.pendingHousingChoice = { kind:"change" };
+}
+// 這回合要不要在呼叫AI前先問住處(先選完再寫，比照選科系)：回傳kind或null
+function housingChoiceDue(s, adv){
+  if(s.pendingHousingChoice) return s.pendingHousingChoice.kind;
+  if(s.housingAsked) return null;
+  if(majorAdmittedNotEnrolled(s)) return "initial"; // 高三5月選完系之後(含5～8月才進來的存檔)
+  if(s.studentStatus==="enrolled" && s.leaveStatus!=="onLeave" && s.timeState && s.timeState.stageMode==="college" && adv && adv.segKey==="開學初" && adv.segTurn===0) return "legacy"; // 舊存檔：下一個學期開學第一回合補跳
+  return null;
+}
+function askHousingChoiceFirst(s, kind){
+  s.pendingHousingChoice = { kind };
+  return new Promise(resolve=>{ renderHousingChoiceModal({ onDone: ()=>resolve() }); });
+}
+// 玩家按下選項：type＝要住的類型，null＝先不要。initial：9月開學起；其餘：下一個完整月份起(3.4)
+function resolveHousingChoice(s, type){
+  const p = s.pendingHousingChoice;
+  if(!p) return;
+  s.pendingHousingChoice = null;
+  if(p.kind==="initial" || p.kind==="legacy") s.housingAsked = true;
+  const cur = housingTypeOf(s);
+  if(!type || type===cur){
+    if(p.kind==="change" && !type) s.housingOfferCooldownUntilTurn = s.turnCount + HOUSING_CHANGE_COOLDOWN_TURNS;
+    if(type===cur) s.housingNext = null; // 選回現在的住處＝取消還沒生效的安排
+    return;
+  }
+  if(p.kind==="initial") s.housingNext = { type, at:"enroll" };
+  else {
+    const cal = s.timeState && s.timeState.cal;
+    s.housingNext = { type, at:"month", ym: housingYm(cal ? (cal.lastRoundEnd||0) : 0) + 1 };
+  }
+}
+// 每回合（算完時間之後）檢查：到了生效時間就換住處。adv＝advanceStructuredTime的回傳
+function applyHousingNext(s, adv){
+  const n = s.housingNext;
+  if(!n || !n.type) return;
+  let due = false;
+  if(n.at==="enroll") due = !!(s.timeState && s.timeState.stageMode==="college" && s.studentStatus==="enrolled");
+  else if(adv && adv.window) due = housingYm(adv.bigJump ? adv.window.end : adv.window.start) >= n.ym;
+  if(!due) return;
+  s.housingNext = null;
+  applyHousingType(s, n.type);
+}
+function applyHousingType(s, type){
+  const prev = housingTypeOf(s);
+  if(type===prev) return;
+  s.housing = { type, monthlyCost:0 }; // 宿舍費、房租由家長付；畢業後的租屋已含在3.4.8「租屋＝中」的基準裡
+  const family = ()=> (s.characters||[]).filter(c=>/^(父母|隔代教養|手足)，從出生起$/.test(c.origin||"") && !c.deceased && !c.lost);
+  if(type==="dorm" || type==="rent"){
+    // 四、4.1.2：搬進宿舍或租屋，解除原生家庭的同住標記(配偶、子女不受影響)
+    const rel = family().filter(c=>c.cohabiting);
+    s.housingReleasedNames = Array.from(new Set((s.housingReleasedNames||[]).concat(rel.map(c=>c.name))));
+    rel.forEach(releaseCohabiting);
+    if(s.mealArrangement==="家裡包辦"){ // 5.5：不住家裡就沒有家裡包辦，自動改自己打理，搬回家後玩家自己改回
+      s.mealArrangement = "自己打理"; s.cookingInterestSeed = true;
+      const prevLog = s.lifestyleChangeLog;
+      s.lifestyleChangeLog = { from: Object.assign({ mealArrangement:"家裡包辦" }, prevLog ? prevLog.from : {}), to: Object.assign({}, prevLog ? prevLog.to : {}, { mealArrangement:"自己打理" }) };
+    }
+    if(type==="rent") completeMilestone(s, "moved_out"); // 9.11.6：租屋算搬出家裡，宿舍不算；完成後不倒退
+  } else if(type==="parents"){
+    (s.housingReleasedNames||[]).forEach(n=>{ const c = characterByName(s, n); if(c && !c.deceased && !c.lost) c.cohabiting = true; });
+    s.housingReleasedNames = [];
+  }
+  if(prev==="dorm") endRoommate(s);
+  if(type==="dorm") ensureRoommate(s);
+}
+// 9.11.2：住宿舍時建1位室友(同性別、同年級、不同系)；一世只建一次，搬走後不再有室友身分，再搬回宿舍不建新的
+function ensureRoommate(s){
+  if(s.roommateMade) return;
+  s.roommateMade = true;
+  const g = CHARACTER_GENDERS.includes(s.gender) ? s.gender : rollNpcGender();
+  const used = new Set((s.characters||[]).map(c=>c.name));
+  const pool = g==="男" ? RENAME_GIVEN_NAMES_MALE : RENAME_GIVEN_NAMES_FEMALE;
+  let name = null;
+  for(let i=0;i<60 && !name;i++){ const n = pick(RENAME_SURNAMES)+pick(pool); if(!used.has(n)) name = n; }
+  if(!name) name = renameForConflict(s, pick(RENAME_SURNAMES)+pick(pool), "室友");
+  const depts = Object.values(MAJOR_DEPARTMENTS).flat().filter(d=>d!==s.studentDepartment && !FIVE_YEAR_DEPARTMENTS.includes(d));
+  const dept = pick(depts.length ? depts : ["中文"]);
+  s.characters.push({ name, relation:"室友", gender:g, traits:"", dialogueStyle:rollDialogueStyle(), style:null,
+    affinity:50, summary:"", lastTurn:s.turnCount, active:true, isChild:false, origin:"大學宿舍室友", age:s.age,
+    affiliation:`${deptWithXi(dept)}，大學同年級`, roommate:true });
+  s.roommateName = name;
+}
+function endRoommate(s){
+  const c = s.roommateName ? characterByName(s, s.roommateName) : null;
+  if(c){ c.roommate = false; c.relation = "大學室友"; }
+  s.roommateName = null;
+}
+// 9.11.7：畢業或肄業時，沒住家裡的人由程式跳出住處彈窗
+function queueGraduationHousing(s){
+  s.housingNext = null;
+  if(housingTypeOf(s)==="dorm" || housingTypeOf(s)==="rent") s.pendingHousingChoice = { kind:"graduate" };
+}
+// 給旁白的住處說明（payload residence，一、1.2.22）
+function residenceText(s){
+  const t = housingTypeOf(s);
+  let txt = HOUSING_LABEL[t];
+  if(t==="dorm" || t==="rent"){
+    if(t==="dorm" && s.roommateName) txt += `（室友${s.roommateName}，旁白不得另外生出室友）`;
+    txt += "；家人不在身邊，平常只用電話、訊息出現，或在主角回家的場景出現，不可自行寫成在家裡日常生活（例如在家吃晚餐）；寒暑假預設放假回家，玩家表示留下就照寫";
+  }
+  const n = s.housingNext;
+  if(n && n.type) txt += n.at==="enroll" ? `；9月開學起住${HOUSING_LABEL[n.type].replace(/^住/,"")}（現在還是${HOUSING_LABEL[t]}，暑假可以寫看房子、收行李、跟家人告別，不寫成已經搬過去）` : `；下個月起${HOUSING_LABEL[n.type]}（這個月剩下的回合可寫找房子、打包）`;
+  return txt;
+}
+function renderHousingChoiceModal(opts){
+  opts = opts || {};
+  const s = state;
+  const p = s.pendingHousingChoice;
+  if(!p || document.getElementById("housing-modal")) return;
+  const kind = p.kind;
+  const options = housingOptionsFor(s, kind);
+  const title = kind==="graduate" ? (s.studentStatus==="withdrawn" ? "離開學校之後住哪裡" : "畢業之後住哪裡") : kind==="change" ? "想換個住處嗎" : "大學住哪裡";
+  const div = document.createElement("div");
+  div.id = "housing-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal" style="text-align:left;">
+      <h3>${title}</h3>
+      ${kind==="legacy" ? `<p style="font-size:12px;color:var(--ink-soft);">新功能：大學可以選擇住哪裡。</p>` : ``}
+      ${options.map(o=>`<div style="margin:10px 0;"><button class="primary-btn hs-opt" data-type="${o.type}">${escapeHtml(o.label)}</button>
+        ${o.hints.map(h=>`<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(h)}</div>`).join("")}</div>`).join("")}
+      ${kind==="change" ? `<button class="ghost-btn" id="btn-housing-no">先不要</button>` : ``}
+    </div>`;
+  document.body.appendChild(div);
+  const done = type=>{ resolveHousingChoice(s, type); div.remove(); saveGame(); render(); if(opts.onDone) opts.onDone(); };
+  div.querySelectorAll(".hs-opt").forEach(b=>b.onclick = ()=>done(b.dataset.type));
+  const no = div.querySelector("#btn-housing-no");
+  if(no) no.onclick = ()=>done(null);
 }
 // QA 34.15 #5（2026-09-30）：關係提示的用詞——第一次認識寫「認識了○○」；級距改變要分升級與降級，不再用「好像不一樣了」
 const relLabelRanks = ()=>[["關係生疏","認識不深","普通朋友","熟悉的朋友","多年好友"], FAMILY_RELATION_LABELS, ["漸行漸遠","貌合神離","平穩","恩愛"]]; // 用函式包起來，避免載入時FAMILY_RELATION_LABELS還沒定義
@@ -9131,7 +9319,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     marriage_crisis_event_now: s.marriageCrisisEventLog, // 七、7.6.2（2026-09-20新增）：{choice,spouseName}，玩家剛在婚姻危機彈窗做了選擇(repair/maintain/divorce)
     divorce_event_now: s.divorceEventLog, // 七、7.6.3（2026-09-20新增）：{spouseName,playerCashSharePct,propertyChoice,custody}，離婚結算剛完成，數字僅供敘事參考不用你計算
     cohabitation_event_now: s.cohabitationEventLog, // 七、7.6.1.1（2026-09-22新增）：{choice,partnerName}，玩家剛在「要不要一起住」彈窗做了選擇(move_in/stay_separate)
-    residence: (isStudentPhase(s) || s.studentStatus==='enrolled') ? "住家裡" : undefined, // 一、1.2.22（2026-10-09）：主角住處是遊戲狀態，旁白不得自行改變；目前沒有住處欄位，學生時期一律視為住家裡
+    residence: (isStudentPhase(s) || s.studentStatus==='enrolled') ? residenceText(s) : undefined, // 一、1.2.22／九、9.11：主角住處是遊戲狀態，旁白不得自行改變；學生時期依住處欄位
     family_structure: s.familyStructure,
     family_background: s.family,
     attachment_axes: { anxiety: s.anxiety, avoidance: s.avoidance },
@@ -9194,8 +9382,14 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.10-b";
+const APP_VERSION = "2026.10.10-c";
 const RELEASE_NOTES = [
+  { version:"2026.10.10-c", date:"2026-10-10", title:"大學可以選住哪裡", items:[
+    "選完科系之後，可以選大學要住家裡、住宿舍，還是在外租屋。",
+    "不住家裡的時候，家人會比較少出現在日常裡，三餐也要自己打理。",
+    "念大學的時候，如果自己打字說想搬家，可以重新選一次住哪裡。",
+    "畢業的時候，如果不是住家裡，會再問你接下來住哪裡。",
+  ]},
   { version:"2026.10.10-b", date:"2026-10-10", title:"選科系時機、故事更完整", items:[
     "選科系的時間提前到高三下學期，畢業典禮也跟著調整，畢業後的暑假改稱「準大一」。選完到開學之間，故事會當成已經錄取、準備入學。",
     "申請雙主修之後，可以自己挑要念哪一個系。",
@@ -9494,6 +9688,7 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
         ap_hint: timeCtx && timeCtx.apBefore,
         ap_test_free: apTestFreeOn() || undefined, // 10.3.12：只是請求，Worker只認登記過的測試鑰匙(帳號錢包：測試帳號名單)
         wallet: walletActive(state) || undefined,  // 十、10.9.2：這段人生用帳號共用錢包，由Worker在呼叫AI前預扣、失敗退點
+        regen_reason: (timeCtx && timeCtx.retryNote && timeCtx.regenReason) || undefined, // 2026-10-10：自動重新產生的原因(短字串)，Worker只寫進Workers Logs
         retry: (timeCtx && timeCtx.isRetry) || undefined, // 十、10.17.5：玩家按「再試一次」沿用同一個turn_nonce，Worker據此不重複扣點、又失敗時退回
         messages: [{ role:"user", content: userMsgStr }]
       })
@@ -9934,6 +10129,7 @@ const SNAPSHOT_EXTRA_KEYS = [
   "halfYearCarry","collegeDelayYearsUsed","pendingBusinessLaunch","inPrepPhaseThisTurn","reunionNow",
   "pendingConfession","confessionResultNext","pendingBreakup","pendingMajorPurchase","pendingJobSearch","jobSearchPhase","everSearchedJob",
   "pendingEldercareDecision","pendingParentDeath","pendingFamilyBusinessOffer","eldercareQueue",
+  "pendingHousingChoice","housingNext","housingAsked","housingOfferCooldownUntilTurn","housingReleasedNames","roommateName","roommateMade","lifestyleChangeLog","mealArrangement","cookingInterestSeed",
   // 事件紀錄與「這一回合」旗標
   "partTimeEventLog","fertilityEventLog","universityEventLog","birthNow","graduationEventLog","illnessEventLog","majorIllnessEventLog",
   "parentHealthEventLog","parentRetirementEventLog","parentDeathEventLog","interestFormedEventLog","breakthroughEventLog",
@@ -10106,6 +10302,7 @@ async function takeTurnInner(actionText, cost, opts){
   // 二、2.5（9/16新增）：22歲以後改採加速曲線回合預算，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
   // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
   const adv = advanceStructuredTime(actionText, turnFocus && turnFocus.key);
+  if(!wasPrologue){ applyHousingNext(state, adv); checkHousingChangeOffer(state, actionText); } // 九、9.11：到了生效時間換住處；玩家打字想搬家排入確認彈窗
   maybeRollBackgroundEvents(state, adv); // 四、4.7：學生時期每學期(假期第一回合)、出社會後每年(跨入新年第一回合)擲一次NPC背景事件
   const focus = (turnFocus && !adv.bigJump) ? turnFocus : null; // 2.6.1：跳過指令的回合不結算重心
   // 3.4.2（2026-09-27）：打工收入由程式依時薪×時數算好，AI只負責敘事；學生時期改由打工重心觸發(2026-09-28)
@@ -10146,6 +10343,7 @@ async function takeTurnInner(actionText, cost, opts){
   if(timeCtx.rhythm.daily_scene_now && timeCtx.scenePlan && timeCtx.scenePlan.mode!=="override")
     timeCtx.scenePlan = { mode:"daily", theme: timeCtx.rhythm.daily_scene_now.theme, period: timeCtx.scenePlan.period, banned_category: timeCtx.scenePlan.banned_category||null };
   if(!wasPrologue && majorSelectionDue(state, adv)) await askMajorSelectionFirst(state); // 九、9.10（2026-10-09）：高三5月先選科系再寫這一回合
+  if(!wasPrologue){ const hk = housingChoiceDue(state, adv); if(hk) await askHousingChoiceFirst(state, hk); } // 九、9.11：選完科系接著選住處(不佔回合、不扣行動點)
   if(timeCtx.studentExpense) await askStudentExpenseFirst(state, timeCtx.studentExpense); // 十七、17.3.6（2026-10-09）：先選完再寫
   aiWritingNow = true;
   render(true);
@@ -10189,6 +10387,7 @@ async function takeTurnInner(actionText, cost, opts){
     if(!dateCheck.ok){
       console.warn("[場景日期違規] 自動重新生成一次：", dateCheck.reason);
       addReviewFlag(state, "scene_date_retry", "第一次生成違規，已自動重新生成："+dateCheck.reason);
+      timeCtx.regenReason = "場景日期違規";
       timeCtx.retryNote = `你上一次回傳的新場景日期不合規則：${dateCheck.reason}。這次scene_day_offset必須是0到${timeCtx.window.end-timeCtx.window.start}之間的整數（${calFormat(timeCtx.window.start)}～${calFormat(timeCtx.window.end)}）。`;
       try{
         const retried = await callOnce();
@@ -10209,6 +10408,7 @@ async function takeTurnInner(actionText, cost, opts){
     for(let q=0; q<OUTPUT_QUALITY_MAX_RETRIES && quality.length; q++){
       console.warn("[輸出品質] 自動重新產生：", quality.join("；"));
       addReviewFlag(state, "output_quality_retry", `第${q+1}次重新產生：${quality.join("；")}`);
+      timeCtx.regenReason = quality.join("；").slice(0,60);
       timeCtx.retryNote = `你上一次回傳的正文有問題：${quality.join("；")}。這次每一段都要寫完整的句子，整段重新構思，不要只改上一版的詞句，引號要成對，台詞一律用{{名字|台詞}}標記，正文不能出現大括號或資料欄位名稱。`;
       try{ result = await callOnce(); quality = qualityOf(result); }
       catch(qErr){ console.error("重新產生失敗，沿用上一次的結果：", qErr); break; }
@@ -10386,7 +10586,7 @@ const IDLE_POPUP_MAP = {
   businessCont: [{key:"persist",tag:"努力"},{key:"inject",tag:"冒險"},{key:"close",tag:["安逸","逃避","顧家"]}],
   eldercare:    [{key:"self",tag:"顧家"},{key:"hire",tag:["努力","冒險"]},{key:"split",tag:"社交"},{key:"limited",tag:["安逸","逃避"]}]
 };
-const IDLE_POPUP_TITLES = { sideBusiness:"副業契機", major:"選科系", transfer:"轉系", dualMajor:"雙主修", dualAbandon:"雙主修中途放棄", withdrawal:"休學／肄業",
+const IDLE_POPUP_TITLES = { housing:"住處", sideBusiness:"副業契機", major:"選科系", transfer:"轉系", dualMajor:"雙主修", dualAbandon:"雙主修中途放棄", withdrawal:"休學／肄業",
   parenting:"子女成長節點", marriageCrisis:"婚姻危機", divorce:"離婚結算", relationship:"關係投入", divorceRecovery:"一個人的生活", cohabitation:"同居",
   jobSearch:"求職投遞", promotion:"升遷", careerFork:"職涯岔路", businessLaunch:"創業", familyBusiness:"接手家業", businessCont:"事業存續", retirement:"退休", eldercare:"照顧家人", exam:"期末考" };
 const IDLE_CHOICE_LABELS = { kept:"保持興趣原樣", gig:"接一些零星案子", formal:"認真發展成正式副業", stay:"維持現狀", apply:"申請", decline:"婉拒", keep:"撐下去", abandon:"放棄",
@@ -10406,6 +10606,12 @@ function idleResolvePendingPopups(s, record){
     if(s.pendingSideBusinessCardId){
       const card = (s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId); s.pendingSideBusinessCardId = null;
       if(card){ snap("sideBusiness", { pendingSideBusinessCardId: card.id }); const k = idleChooseOption(s, IDLE_POPUP_MAP.sideBusiness); card.sideBusinessStatus = k; if(k==="formal") card.sideBusinessSince = s.turnCount; s.sideBusinessEventLog = { category:card.category, choice:k }; decide("sideBusiness", k); }
+      continue;
+    }
+    if(s.pendingHousingChoice){ // 九、9.11：放置期間不換住處；畢業時宿舍一定要離開，代選搬回家
+      const hp = s.pendingHousingChoice; snap("housing", { pendingHousingChoice: hp });
+      resolveHousingChoice(s, hp.kind==='graduate' && housingTypeOf(s)==='dorm' ? 'parents' : null);
+      if(hp.kind==='graduate' && housingTypeOf(s)==='dorm') decide("housing", "parents", "搬回家");
       continue;
     }
     if(s.pendingMajorSelection){
@@ -10929,6 +11135,7 @@ function dispatchPendingModals(){
   // 九、大學科系系統：四個彈窗互斥，一次只處理一個，優先序為選科系＞轉系＞雙主修＞休學肄業
   // （選科系優先是因為其他三個狀態機都要有科系才有意義；後三者用if/else if避免同一回合疊兩個彈窗互相蓋掉）
   if(state.pendingMajorSelection){ state.pendingMajorSelection = false; renderMajorSelectionModal(); }
+  else if(state.pendingHousingChoice){ renderHousingChoiceModal(); } // 九、9.11：決定前一直保留，重新整理後再跳出
   else if(state.pendingTransferOffer){ state.pendingTransferOffer = false; renderTransferOfferModal(); }
   else if(state.pendingDualMajorOffer){ state.pendingDualMajorOffer = false; renderDualMajorOfferModal(); }
   else if(state.pendingDualMajorAbandonOffer){ state.pendingDualMajorAbandonOffer = false; renderDualMajorAbandonModal(); }
@@ -11237,7 +11444,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   const cashBeforePurchase = s.cash;
   const purchaseNote = applyAppearanceShoppingResult(s, r); // 十七、17.1.2／17.3（2026-09-28）
   if(Math.round(s.cash - cashBeforePurchase)) settlementExtras.push({ label: (s.purchaseEventNow && s.purchaseEventNow.bought!==false && s.purchaseEventNow.item) ? String(s.purchaseEventNow.item).slice(0,16) : "購物", amount: Math.round(s.cash - cashBeforePurchase), cat:"購物" });
-  if(r.housing_choice && r.housing_choice.type && r.housing_choice.type!==(s.housing?.type)){
+  if(!isStudentPhase(s) && r.housing_choice && r.housing_choice.type && r.housing_choice.type!==(s.housing?.type)){ // 九、9.11.5：學生時期不採用旁白回報的housing_choice
     const wasOwn = s.housing?.type==="own";
     const nowOwn = r.housing_choice.type==="own";
     // 七、7.5.3買房頭期款門檻檢查（9/15新增，取代原本無客戶端強制檢查的P2缺口）：
@@ -11973,6 +12180,7 @@ async function succeedAsChild(childName, opts){
     examBelowExpectationStreak: 0,
     lowCashStreak: 0,
     pendingMajorSelection: false,
+    pendingHousingChoice: null, housingNext: null, housingAsked: false, housingOfferCooldownUntilTurn: 0, housingReleasedNames: [], roommateName: null, roommateMade: false, // 九、9.11
     pendingTransferOffer: false,
     pendingDualMajorOffer: false,
     pendingLeaveOffer: null,
@@ -14902,8 +15110,9 @@ const LIFESTYLE_SETTINGS = [
   { key:"spendingHabit", label:"花錢習慣", options:()=>Object.keys(SPENDING_HABITS).map(v=>({ value:v })) },
   { key:"mealArrangement", label:"三餐方式", options:(s)=>Object.keys(MEAL_EXPENSE_MULT).map(v=>{
       // 5.5.2資格判定＋5.5.3解鎖：開局不符資格且還沒解鎖時，家裡包辦反灰
-      const locked = v==="家裡包辦" && !s.mealCareEligibleAtStart && !s.mealFullyUnlocked;
-      return { value:v, locked, reason: locked ? MEAL_HOME_LOCKED_REASON : "" };
+      const away = v==="家裡包辦" && housingAway(s); // 九、9.11.3：不住家裡期間不提供家裡包辦
+      const locked = away || (v==="家裡包辦" && !s.mealCareEligibleAtStart && !s.mealFullyUnlocked);
+      return { value:v, locked, reason: locked ? (away ? "目前不住家裡" : MEAL_HOME_LOCKED_REASON) : "" };
     }) }
 ];
 function renderLifestyleCard(s, loadingTurn){
@@ -15411,6 +15620,7 @@ function resolveWithdrawalOffer(s, choice){
   } else if(choice==="withdraw"){
     s.studentStatus = "withdrawn"; // 九、9.5.3（2026-09-22定案）：肄業後不可重新入學，本函式與其他任何地方都不會把studentStatus從withdrawn改回enrolled
     s.timeState.stageMode = "career";
+    queueGraduationHousing(s); // 九、9.11.7：肄業比照畢業
     applyHalfYearCarryOnCareerEntry(s); // 9.8.1：帶著halfYearCarry=1肄業時，當年度回合預算設為一半
     s.universityEventLog = { type:"withdrawn" };
   } else {
