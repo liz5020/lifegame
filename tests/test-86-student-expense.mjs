@@ -280,11 +280,11 @@ A.check("放置代活：pending一律先不花(不扣款)", (() => { ev(`state.s
   const c0 = ev("state.cash");
   ev("applyPartTimeWork(state, '去打工', null, 1)");
   const earned = ev("state.cash") - c0;
-  A.check("學生期打工1份(小康13)：入帳並記進工作收入紀錄", earned === Math.max(1, Math.round(unit)) && earned === 13 && ev("state.sideIncomeLog.length") === 1 && ev("state.sideIncomeLog[0].amount") === 13, [earned, ev("state.sideIncomeLog")]);
-  A.check("學生期打工份數：清寒7、小康13、富裕27", js("[30,60,120].map(m=>Math.round(PART_TIME_SHARES*m*12/54))").join() === "7,13,27");
-  A.check("近3個月工作收入平均＝打工入帳÷3(13÷3)", Math.abs(ev("computeSideBusinessIncome(state)") - 13 / 3) < 1e-9, ev("computeSideBusinessIncome(state)"));
+  A.check("學生期打工1份(小康16)：入帳並記進工作收入紀錄", earned === Math.max(1, Math.round(unit)) && earned === 16 && ev("state.sideIncomeLog.length") === 1 && ev("state.sideIncomeLog[0].amount") === 16, [earned, ev("state.sideIncomeLog")]);
+  A.check("學生期打工份數：清寒8、小康16、富裕33", js("[30,60,120].map(m=>Math.round(PART_TIME_SHARES*m*12/44))").join() === "8,16,33");
+  A.check("近3個月工作收入平均＝打工入帳÷3(16÷3)", Math.abs(ev("computeSideBusinessIncome(state)") - 16 / 3) < 1e-9, ev("computeSideBusinessIncome(state)"));
   ev("recordSideIncome(state, 35, state.timeState.cal.lastRoundEnd)");
-  A.check("副業交件和打工合併算平均((13+35)÷3＝16)", Math.abs(ev("computeSideBusinessIncome(state)") - 16) < 1e-9);
+  A.check("副業交件和打工合併算平均((16+35)÷3＝17)", Math.abs(ev("computeSideBusinessIncome(state)") - 17) < 1e-9);
   ev("state.studentStatus='graduated'; state.careerStatus=CAREER_STATUS.NOT_EMPLOYED; state.occupationCategory=null; state.sideIncomeLog=[]");
   const c1 = ev("state.cash"); ev("applyPartTimeWork(state, '去打工', {daysAdvanced:30}, 1)");
   A.check("出社會後的打工(時薪×時數)金額規則不變，也進平均", ev("state.cash") - c1 === ev("state.partTimeEventLog.earning") && ev("state.sideIncomeLog.length") === 1 && ev("state.sideIncomeLog[0].amount") === ev("state.partTimeEventLog.earning"), ev("state.partTimeEventLog"));
