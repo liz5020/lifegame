@@ -1,4 +1,5 @@
 // 2026-09-29：四、4.6關係面板與角色狀態、一、1.2.14精簡名冊／1.2.15大筆支出、十六、16.11結算明細、QA 34.13#1/#2/#16（全程假上游，不打真實API）
+// 2026-10-10：測試用角色改用隨機名字庫沒有的名字(原本「小雨」「阿凱」偶爾跟開局隨機產生的家人撞名，按名字找人時找錯)
 import path from "path";
 import * as H from "./harness.mjs";
 const A = H.makeAsserter("4.6關係面板與角色狀態");
@@ -21,19 +22,19 @@ const reset = () => ev(`state.characters = state.characters.filter(c=>c.origin==
 // ---------- 4.6.1 排序、不分組；4.6.2 副標題；34.13#16 ----------
 reset();
 ev(`state.characters.push(${card({ name: "小安", affinity: 50 })}, ${card({ name: "阿哲", affinity: 85, active: false })}, ${card({ name: "小美", affinity: 50, lastTurn: 0 })},
-  ${card({ name: "老王", affinity: 95, deceased: true, active: false })}, ${card({ name: "阿凱", affinity: 90, lost: true, active: false })}, ${card({ name: "阿光", affinity: 30, deceased: true, active: false })})`);
+  ${card({ name: "老王", affinity: 95, deceased: true, active: false })}, ${card({ name: "劭謙", affinity: 90, lost: true, active: false })}, ${card({ name: "阿光", affinity: 30, deceased: true, active: false })})`);
 ev("state.characters.find(c=>c.name==='小安').lastTurn = state.turnCount"); // 同分：小安較近
 ev("openPanel='roster'; render()");
 const rows = [...doc.querySelectorAll("#panel-roster .rrow[data-npc]")];
 const order = rows.map(r => r.dataset.npc);
-const friendsOrder = order.filter(n => ["小安", "阿哲", "小美", "老王", "阿凱", "阿光"].includes(n));
-A.check("4.6.1 一般與漸行漸遠混合依好感排序，同分最近互動在前；已故(組內依好感)、失聯排最後", JSON.stringify(friendsOrder) === JSON.stringify(["阿哲", "小安", "小美", "老王", "阿光", "阿凱"]), friendsOrder);
+const friendsOrder = order.filter(n => ["小安", "阿哲", "小美", "老王", "劭謙", "阿光"].includes(n));
+A.check("4.6.1 一般與漸行漸遠混合依好感排序，同分最近互動在前；已故(組內依好感)、失聯排最後", JSON.stringify(friendsOrder) === JSON.stringify(["阿哲", "小安", "小美", "老王", "阿光", "劭謙"]), friendsOrder);
 const states = order.map(n => ev(`characterState(state.characters.find(c=>c.name===${JSON.stringify(n)}))`));
 const firstAway = states.findIndex(x => x === "deceased" || x === "lost");
 A.check("4.6.1 已故、失聯排在所有一般/漸行漸遠角色之後(已故在前、失聯在後)", firstAway > 0 && states.slice(firstAway).every(x => x === "deceased" || x === "lost") && states.lastIndexOf("deceased") < states.indexOf("lost"), { order, states });
 A.check("4.6.1 不再分組(沒有「位在場」「位漸行漸遠」字樣)", !/位在場|位漸行漸遠/.test(doc.querySelector("#panel-roster .roster-note").textContent), doc.querySelector("#panel-roster .roster-note").textContent);
 const sub = (n) => doc.querySelector(`#panel-roster .rrow[data-npc="${n}"] .sub`).textContent;
-A.check("4.6.2 副標題：漸行漸遠／已故／失聯", /漸行漸遠/.test(sub("阿哲")) && /已故/.test(sub("老王")) && /失聯/.test(sub("阿凱")) && /普通朋友/.test(sub("小安")), [sub("阿哲"), sub("老王"), sub("阿凱"), sub("小安")]);
+A.check("4.6.2 副標題：漸行漸遠／已故／失聯", /漸行漸遠/.test(sub("阿哲")) && /已故/.test(sub("老王")) && /失聯/.test(sub("劭謙")) && /普通朋友/.test(sub("小安")), [sub("阿哲"), sub("老王"), sub("劭謙"), sub("小安")]);
 A.check("4.6.2 漸行漸遠的點點改淡色，一般的不是", !!doc.querySelector('#panel-roster .rrow[data-npc="阿哲"] .dots5.faded') && !doc.querySelector('#panel-roster .rrow[data-npc="小安"] .dots5.faded'));
 A.check("34.13#16 列不再使用class「bg」(全域.bg是固定背景層)", !doc.querySelector("#panel-roster .rrow.bg"));
 const fam = js("state.characters.filter(c=>isFamilyCharacter(c) && !c.deceased && !c.lost).map(c=>c.name)");
@@ -78,30 +79,30 @@ A.check("4.6.4 出現在scene_characters也算一次互動→恢復一般", ev("
 
 // ---------- 4.6.6 失聯 ----------
 reset();
-ev(`state.characters.push(${card({ name: "阿凱", affinity: 66 })}, ${card({ name: "小雨", affinity: 30, romanceStatus: "dating" })})`);
-override = () => ({ contact_lost: ["阿凱", "不存在的人", "小雨"] });
+ev(`state.characters.push(${card({ name: "劭謙", affinity: 66 })}, ${card({ name: "芷瑄", affinity: 30, romanceStatus: "dating" })})`);
+override = () => ({ contact_lost: ["劭謙", "不存在的人", "芷瑄"] });
 await H.playTurn(g, "繼續過日子");
-A.check("4.6.6 contact_lost：名冊上的人改成失聯，不存在的名字忽略", ev("state.characters.find(c=>c.name==='阿凱').lost") === true && !ev("state.characters.some(c=>c.name==='不存在的人')"));
-A.check("4.6.6 交往中的對象斷聯視為分手", ev("state.characters.find(c=>c.name==='小雨').romanceStatus") === "breakup");
-override = () => ({ character_updates: [{ name: "阿凱", affinity_delta: 10 }] });
+A.check("4.6.6 contact_lost：名冊上的人改成失聯，不存在的名字忽略", ev("state.characters.find(c=>c.name==='劭謙').lost") === true && !ev("state.characters.some(c=>c.name==='不存在的人')"));
+A.check("4.6.6 交往中的對象斷聯視為分手", ev("state.characters.find(c=>c.name==='芷瑄').romanceStatus") === "breakup");
+override = () => ({ character_updates: [{ name: "劭謙", affinity_delta: 10 }] });
 await H.playTurn(g, "繼續過日子");
-A.check("4.6.6 失聯期間好感凍結、不會因角色更新恢復", ev("state.characters.find(c=>c.name==='阿凱').affinity") === 66 && ev("state.characters.find(c=>c.name==='阿凱').lost") === true);
+A.check("4.6.6 失聯期間好感凍結、不會因角色更新恢復", ev("state.characters.find(c=>c.name==='劭謙').affinity") === 66 && ev("state.characters.find(c=>c.name==='劭謙').lost") === true);
 A.check("4.6.6 成功率：普通朋友以下50%／熟悉的朋友65%／多年好友80%／家人一律50%",
   ev(`lostContactFindProb({affinity:45,relation:'同學'})`) === 0.5 && ev(`lostContactFindProb({affinity:66,relation:'同學'})`) === 0.65 && ev(`lostContactFindProb({affinity:90,relation:'同學'})`) === 0.8 && ev(`lostContactFindProb({affinity:90,relation:'父親（不同住）',origin:'父母，從出生起'})`) === 0.5);
-ev("renderNpcDetailModal('阿凱')");
+ev("renderNpcDetailModal('劭謙')");
 A.check("4.6.6 失聯者的詳細頁仍有「去找他」", /去找/.test((doc.getElementById("btn-npc-seek") || {}).textContent || ""));
 ev("document.getElementById('npc-detail-modal').remove()");
 // 擲骰失敗
 override = () => ({});
-ev("state.seekTarget='阿凱'; window.__rnd = Math.random; Math.random = ()=>0.99");
+ev("state.seekTarget='劭謙'; window.__rnd = Math.random; Math.random = ()=>0.99");
 let ap0 = ev("totalAP(state)");
-await H.playTurn(g, "去找阿凱");
+await H.playTurn(g, "去找劭謙");
 ev("Math.random = window.__rnd");
-A.check("4.6.6 找人撲空：payload告訴AI失敗、仍是失聯、照常花1行動點", lastPayload.relationship_event_now.mode === "find_lost" && lastPayload.relationship_event_now.found === false && ev("state.characters.find(c=>c.name==='阿凱').lost") === true && ap0 - ev("totalAP(state)") === 1, lastPayload.relationship_event_now);
-ev("state.seekTarget='阿凱'; window.__rnd = Math.random; Math.random = ()=>0.6"); // 0.6 < 0.65
-await H.playTurn(g, "去找阿凱");
+A.check("4.6.6 找人撲空：payload告訴AI失敗、仍是失聯、照常花1行動點", lastPayload.relationship_event_now.mode === "find_lost" && lastPayload.relationship_event_now.found === false && ev("state.characters.find(c=>c.name==='劭謙').lost") === true && ap0 - ev("totalAP(state)") === 1, lastPayload.relationship_event_now);
+ev("state.seekTarget='劭謙'; window.__rnd = Math.random; Math.random = ()=>0.6"); // 0.6 < 0.65
+await H.playTurn(g, "去找劭謙");
 ev("Math.random = window.__rnd");
-A.check("4.6.6 找到：恢復一般，payload帶found與重逢氣氛", lastPayload.relationship_event_now.found === true && lastPayload.relationship_event_now.reunion_tone === "一見如故" && ev("characterState(state.characters.find(c=>c.name==='阿凱'))") === "normal", lastPayload.relationship_event_now);
+A.check("4.6.6 找到：恢復一般，payload帶found與重逢氣氛", lastPayload.relationship_event_now.found === true && lastPayload.relationship_event_now.reunion_tone === "一見如故" && ev("characterState(state.characters.find(c=>c.name==='劭謙'))") === "normal", lastPayload.relationship_event_now);
 
 // ---------- 4.6.5 已故：回憶 ----------
 reset();

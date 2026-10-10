@@ -9462,15 +9462,18 @@ const WORKER_URL = "https://life-game.smile80275.workers.dev/";
 // 十、10.13.7.5：瀏覽人次——頁面每載入一次送一次空的POST，伺服器只把當天總數加1(不帶任何內容、不記訪客資料)；失敗不影響遊戲載入
 try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(function () {}); } catch (e) { /* 只是計數 */ }
 // ===== 版本與更新紀錄（2026-09-30新增）=====
-// 每次要上傳index.html時：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
+// 每次發佈時(2026-10-10起版本以「發佈」為單位，平常的commit不換)：①APP_VERSION換成新的(日期＋當天流水字母)，②在RELEASE_NOTES最前面加一筆玩家看得懂的說明(版本號要跟APP_VERSION一樣)，
 // ③worker/有改就把worker/worker.js的WORKER_VERSION也換成同一個版本號，④在DEPLOY.md記一行。tests/test-54-version.mjs會檢查這幾處有沒有對上。
 // 玩家看得到這份文字：寫「玩起來有什麼不同」，不要寫系統用語或程式細節。
 // 防暴雷(2026-10-09)：寫「玩家在畫面上看得到什麼」，不寫「系統怎麼決定」。
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.10-h";
+const APP_VERSION = "2026.10.10-i";
 const RELEASE_NOTES = [
+  { version:"2026.10.10-i", date:"2026-10-10", title:"幕後的小修整", items:[
+    "營運端看數據的畫面再整理過，遊玩內容沒有變化。",
+  ]},
   { version:"2026.10.10-h", date:"2026-10-10", title:"幕後的整理", items:[
     "改善了營運端看數據的方式，遊玩內容沒有變化。",
   ]},
