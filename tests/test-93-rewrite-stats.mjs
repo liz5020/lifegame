@@ -17,7 +17,8 @@ const get = (path) => H.callWorker(env, { method: "GET", path, origin: null, hea
 const payload = (extra) => JSON.stringify(Object.assign({ player_name: "x", gender: "男", age: 15, turn: 5, stats: {}, player_action: "讀書", forceEnding: false }, extra || {}));
 const turn = (lid, nonce, extra, top) => post("/", Object.assign({ life_id: lid, turn_nonce: nonce, messages: [{ role: "user", content: payload(extra) }] }, top || {}));
 const rows = () => [...env.USAGE_COUNTER._store.keys()].filter(k => k.startsWith("ud:")).sort().map(k => env.USAGE_COUNTER._store.get(k));
-const V = "2026.10.10-i";
+// 2026-10-10：「目前版本」從worker.js讀，不寫死(每次發佈換版本號時這支不用跟著改)
+const V = fs.readFileSync(new URL("../worker/worker.js", import.meta.url), "utf8").match(/const WORKER_VERSION = "([^"]+)"/)[1];
 
 const L = "lifexxxxxxxxxxxx1";
 await turn(L, "nonce-a-000000001", { turn: 2 }, { app_version: V });                                                     // 一般回合
