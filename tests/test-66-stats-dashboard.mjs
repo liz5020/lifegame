@@ -198,8 +198,11 @@ r = await get("/daily.csv", ADMIN, null);
 {
   const lines = r.text.replace(/^\uFEFF/, "").trim().split("\n");
   const d1 = lines.find(l => l.startsWith("2026-10-04,")), d2 = lines.find(l => l.startsWith("2026-10-05,"));
-  A.check("/daily.csv：表頭有日期、瀏覽人次、新增玩家、回合數、花費、各種呼叫次數", /^日期,瀏覽人次,新增玩家,回合數,花費_元,AI花費_美元,開局人生,/.test(lines[0]) && lines[0].includes(",呼叫次數_一般回合"), lines[0]);
-  A.check("/daily.csv：10/04 瀏覽3、新增2、回合3；10/05 回合2", d1 && d1.split(",")[1] === "3" && d1.split(",")[2] === "2" && d1.split(",")[3] === "3" && d2 && d2.split(",")[3] === "2", [d1, d2]);
+  // 2026-10-10：依欄位名稱找位置，不寫死欄位順序(之前每次加欄都要改這裡)；第一欄是日期，下面用日期找列
+  const cols = lines[0].split(","), col = (name) => cols.indexOf(name);
+  A.check("/daily.csv：表頭有日期、瀏覽人次、新增玩家、回合數、花費、各種呼叫次數", cols[0] === "日期" && ["瀏覽人次", "新增玩家", "回合數", "花費_元", "AI花費_美元", "呼叫次數_一般回合"].every(n => col(n) > 0), lines[0]);
+  const v = (line, name) => line && line.split(",")[col(name)];
+  A.check("/daily.csv：10/04 瀏覽3、新增2、回合3；10/05 回合2", v(d1, "瀏覽人次") === "3" && v(d1, "新增玩家") === "2" && v(d1, "回合數") === "3" && v(d2, "回合數") === "2", [d1, d2]);
 }
 {
   const raw2 = await (await import("../worker/worker.js")).default.fetch(new Request("https://life-game.smile80275.workers.dev/daily.csv", { headers: ADMIN }), env, { waitUntil() {} });

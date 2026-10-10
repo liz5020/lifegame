@@ -158,7 +158,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   A.check("已畢業的存檔不處理", ev("housingChoiceDue(state,{segKey:'開學初',segTurn:0})") === null);
   // 學生時期被旁白舊回報改成租屋的存檔：載入時重設
   ev("state.studentStatus='enrolled'; state.housing={type:'rent',monthlyCost:8}; state.monthlyExpenses=[{label:'房租',amount:8}]; state.milestones.moved_out='completed'; state.characters.filter(c=>/^(父母|手足)，從出生起$/.test(c.origin||'')).forEach(c=>c.cohabiting=false); migrateLoadedState(state)");
-  A.check("被改成租屋的學生存檔：重設回住家裡、房租移除、搬出家裡改回原狀、同住掛回", ev("housingTypeOf(state)") === "parents" && ev("state.monthlyExpenses.length") === 0 && ev("state.milestones.moved_out") === "available" && ev("state.characters.filter(c=>/^(父母|手足)，從出生起$/.test(c.origin||'') && !c.deceased && !c.lost).every(c=>c.cohabiting)") === true);
+  A.check("被改成租屋的學生存檔：重設回住家裡、房租移除、搬出家裡改回原狀、同住掛回", ev("housingTypeOf(state)") === "parents" && ev("state.monthlyExpenses.length") === 0 && ev("state.milestones.moved_out") === "available" && ev("state.characters.filter(c=>/^(父母|手足)，從出生起$/.test(c.origin||'') && !c.deceased && !c.lost && !/不同住/.test(c.relation||'')).every(c=>c.cohabiting)") === true); // 2026-10-10：父母離異、關係寫「不同住」的那一位本來就不掛回(migrateHousing)，開局隨機抽到時不能算失敗
   ev("state.studentStatus='graduated'; state.housing={type:'rent',monthlyCost:8}; migrateLoadedState(state)");
   A.check("已畢業的租屋不受影響", ev("state.housing.type") === "rent" && ev("state.housing.monthlyCost") === 8);
 }

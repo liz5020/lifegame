@@ -51,8 +51,10 @@ A.check("沒有密碼：/stats-summary與CSV都回401", (await get("/stats-summa
 // ---- CSV ----
 let c = await get("/usage-detail.csv", ADMIN);
 const lines = c.text.replace(/^﻿/, "").trim().split("\n");
-A.check("CSV：表頭＋6筆，依時間排序，台灣時間", lines.length === 7 && lines[0] === "time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms,regen_reason,prev_turn_notes,end_reason" && lines[1].startsWith("2026-10-04 11:00:"), lines.slice(0, 3));
-A.check("CSV：類型用中文、距同一段人生上一次呼叫的分鐘數", lines[1].split(",")[2] === "開場" && lines[2].split(",")[2] === "失敗重試／重新生成" && lines[3].split(",")[4] === "2" && lines[4].split(",")[4] === "7" && lines[1].split(",")[4] === "" && lines[5].split(",")[4] === "", lines.slice(1, 6));
+// 2026-10-10：依欄位名稱找位置，不寫死整行表頭與欄位順序(之前每次加欄都要改這裡)
+const cols = lines[0].split(","), col = (name) => cols.indexOf(name), v = (i, name) => lines[i].split(",")[col(name)];
+A.check("CSV：表頭＋6筆，依時間排序，台灣時間", lines.length === 7 && cols[0] === "time_taipei" && ["turn", "kind", "life", "gap_min", "input_tokens", "cache_write_tokens", "cache_read_tokens", "output_tokens", "cost_usd", "elapsed_ms", "regen_reason", "prev_turn_notes", "end_reason"].every(n => col(n) > 0) && lines[1].startsWith("2026-10-04 11:00:"), lines.slice(0, 3));
+A.check("CSV：類型用中文、距同一段人生上一次呼叫的分鐘數", v(1, "kind") === "開場" && v(2, "kind") === "失敗重試／重新生成" && v(3, "gap_min") === "2" && v(4, "gap_min") === "7" && v(1, "gap_min") === "" && v(5, "gap_min") === "", lines.slice(1, 6));
 {
   const worker = await H.loadWorker();
   const res = await worker.fetch(new Request("https://life-game.smile80275.workers.dev/usage-detail.csv", { headers: ADMIN }), env, { waitUntil: () => {} });

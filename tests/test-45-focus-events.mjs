@@ -58,7 +58,10 @@ await H.playTurn(g, "嗯");
 A.check("8.12.1 情況一：重心指定的興趣記到該卡，AI的category忽略", ev("state.interestCandidates.find(c=>c.id==='g1').investment") > 30 && !ev("state.interestCandidates.some(c=>c.category==='體能競技')"));
 ev("state.focus='study'");
 override = () => ({ interest_event: { category: "體能競技", reaction: "positive" } });
+// 2026-10-10：這一回合不擲8.8.2自然興趣種子(約8%)——擲中時程式改用自己抽的類別，AI回報的category不採用，是設計行為，不是這項要測的
+ev("window.__seedFn = prepareInterestSeed; prepareInterestSeed = () => null");
 await H.playTurn(g, "嗯");
+ev("prepareInterestSeed = window.__seedFn");
 A.check("8.12.1 情況二：重心不是興趣的回合，AI回報的category照現行規則計入", ev("state.interestCandidates.some(c=>c.category==='體能競技')"));
 ev("state.focus='interest'; state.focusInterestId=null");
 override = () => ({});
