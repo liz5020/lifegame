@@ -1187,7 +1187,8 @@ async function updateHomeEntryLine(){
   if(deviceHasLifeSave() || deviceGiftClaimed()) return;
   const r = await acctFetch("entry/status");
   const el2 = document.getElementById("home-entry"); if(!el2 || !r.ok || !r.data) return;
-  el2.textContent = r.data.open ? `今日封測名額　剩 ${r.data.remaining}／${r.data.total}` : "今日名額已滿，可留信箱候補";
+  el2.textContent = r.data.open ? `今日封測名額　剩 ${r.data.remaining}／${r.data.total}`
+    : (r.data.reason==="full" && r.data.remaining<=0 && r.data.total>0) ? `今日 ${r.data.total} 個名額已全數發出，可留信箱候補` : "今日名額已滿，可留信箱候補";
 }
 
 // 每條人生一個id（遙測與免費開場回合判定用），newRoll/世代傳承時換新

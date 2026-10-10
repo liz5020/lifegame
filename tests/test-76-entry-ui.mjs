@@ -52,7 +52,7 @@ A.check("啟程禮實際發出（人生正式開始）才扣名額：25點、名
 const g2 = await dev();
 const d2 = g2.win.document;
 await until(() => d2.getElementById("home-entry")?.textContent);
-A.check("開始畫面：名額用完顯示「今日名額已滿，可留信箱候補」", d2.getElementById("home-entry").textContent === "今日名額已滿，可留信箱候補", d2.getElementById("home-entry").textContent);
+A.check("開始畫面：名額用完顯示「今日 1 個名額已全數發出，可留信箱候補」", d2.getElementById("home-entry").textContent === "今日 1 個名額已全數發出，可留信箱候補", d2.getElementById("home-entry").textContent);
 d2.getElementById("btn-home-new").click();
 await until(() => d2.getElementById("entry-full-modal"));
 const t9 = txt(g2, "#entry-full-modal");
