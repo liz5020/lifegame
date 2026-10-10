@@ -67,7 +67,7 @@ doc.getElementById("btn-ret-confirm").click();
 A.check("自訂：繼續工作、內容交給AI", ev("state.careerStatus===CAREER_STATUS.BUSINESS") && ev("state.careerEventLog.choice") === "custom" && ev("state.careerEventLog.text").includes("環島"));
 ev("resolveRetirementOffer(state,'handover')");
 A.check("交棒：退休、事業已交棒、子女記為繼承人、寫履歷", ev("state.retirementStatus") === "已退休" && ev("state.businessStatus") === "已交棒" && ev("state.characters.find(c=>c.name==='小寶').familyBusinessHeir") === true && ev("state.chronicle.slice(-1)[0]").includes("交給了小寶"));
-await ev(`state.ending={ successionAvailable:true, lifeSummary:'', epitaph:'' }; state.phase='ending'; succeedAsChild('小寶')`);
+await ev(`state.book=null; state.ending={ successionAvailable:true, lifeSummary:'', epitaph:'' }; state.phase='ending'; succeedAsChild('小寶')`); // 15.9.6：有空白章會先跳提醒，這個測試不看人生之書
 A.check("傳承給繼承人：下一世記著家業", ev("state.familyBusinessFromPrevLife") === true && ev("state.characters.find(c=>c.prevLifeProfile).occupation") === "自營業者");
 ev(`state.studentStatus='graduated'; state.timeState.stageMode='career'; state.careerStatus=CAREER_STATUS.NOT_EMPLOYED; state.occupationCategory=null; state.pendingFamilyBusinessOffer=null; checkJobSearchTrigger(state)`);
 A.check("下一世出社會：先問要不要回來接家業", ev("state.pendingFamilyBusinessOffer && state.pendingFamilyBusinessOffer.fromPrevLife") === true && ev("state.familyBusinessFromPrevLife") === false);

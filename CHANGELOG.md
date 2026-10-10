@@ -10,6 +10,27 @@
 
 ---
 
+## 2026-10-10 開發部：人生之書改「玩家按了才寫、每章3點」（十五、15.9；版本2026.10.10-d，分支feedback-yeye-150-193）
+
+- 設計文件：`15`新增15.9、舊規則加刪除線；`10`的10.3.13加「人生之書每章3點」、重新打開雲端存檔檢查清單更新；`16`的16.18加玩法與圖例條目；`00-總覽`日誌與目錄。`pricing.html`只寫「每回合1點」、沒有用途清單，故不動。
+- `worker/ap.js`：移除每10回合1章額度(`addChapterUnit`、`CHAPTER_TURN_UNITS`)，改`preChapter(holder,wallet,id,today)`(檢查餘額＋同一章每台灣日最多5次)與`chargeChapter`(AI成功才扣3點、同一章`chapterPaid`只扣一次)。
+- `worker/account.js`：帳號DO新增`chapter_pre`／`chapter_post`兩個動作；`worker/worker.js`：有KV路徑(`handleChapter`)與帳號錢包路徑(`handleAIProxyNoKV`)都在伺服器扣點、失敗不扣、餘額在生成期間被花掉時不交付；不碰KV又沒登入的路徑點數在玩家瀏覽器，與一般回合相同無法由伺服器驗證。**動到worker，需重新部署（WORKER_VERSION 2026.10.10-d）。**
+- `worker/prompt.js`：章節prompt補15.9.8三條(首次出場交代身分、依時間先後與日期、避免重複用詞)，素材多帶每則摘要日期與人物`origin`。
+- `index.html`：換階段只新增空白章(`status:"blank"`)；`requestWriteChapter`確認視窗→`generateChapter`(成功才`payForChapter`、章節`paid:true`)；依序寫、點數不足／每日5次按鈕變灰；`remindBlankChapters`在世代傳承前、就此闔卷前提醒一次(可選「現在寫」依序寫完)；`ensureBook`把舊存檔排隊中／失敗／寫到一半的章節轉空白章，沒有`paid`的已寫好章節照舊免費；反悔保留已寫好或正在寫的章節、同階段再收章不重寫(`closeBookDraft`)；`normalizeBookPunct`存檔前統一標點；「玩法與圖例」加人生之書；階段封存包(`stagePackReady`)空白章也一起封存。移除`processBookQueue`／`retryChapter`／`waitForBook`。
+- **章節資料結構有變動**：狀態新增`blank`、寫好的章節新增`paid`、空白章保留`items`／`events`；舊存檔相容（缺欄位視為免費、排隊中轉空白章）。
+- 測試：重寫`test-6-book.mjs`；新增`test-90-book-wallet.mjs`(帳號錢包路徑)；`test-28`、`test-42`配合調整。
+- 第7節調查（葉夜第1世第一章漏掉高三下）：見對話回報，沒有改規則。
+
+---
+
+## 2026-10-10 開發部：大學住處選擇實作（版本2026.10.10-c，分支feedback-yeye-150-193）
+- 依：設計文件九、9.11（claude.ai網頁版定案、使用者確認），連動1.2.22、2.6、3.4.10、4.1.2、5.5.5、7.5.1、7.6.1.1。**遊戲狀態新增欄位（見9.11.9），依定案舊存檔不需清空。**
+- `index.html`：新增住處區塊（`housingTypeOf`／`detectHousingIntent`／`housingChoiceDue`／`applyHousingNext`／`applyHousingType`／`ensureRoommate`／`queueGraduationHousing`／`renderHousingChoiceModal`／`migrateHousing`）；學生期基本需求依住處25／28／30；高三選完科系後先選住處、9月生效；宿舍建室友；搬出解除原生家庭同住、搬回掛回；不住家裡自動改自己打理並反灰家裡包辦；租屋算搬出家裡；畢業／肄業跳住處彈窗；學生時期不採用旁白`housing_choice`；舊存檔開學第一回合補跳、被舊回報改成租屋的學生存檔載入時重設。
+- `worker/prompt.js`：【房屋里程碑】刪「外縣市／出國分支」並補學生時期不回報`housing_choice`；住處條補不得寫回家裡日常、不另生室友。**動到worker，需重新部署（WORKER_VERSION 2026.10.10-c），未推送。**
+- 測試：新增`tests/test-89-housing.mjs`；`harness.mjs`加自動選住家裡（`__housingManual`可關）。全套結果見回報。
+
+---
+
 ## 2026-10-10 開發部：葉夜第1世第150～193回合回饋實作（版本2026.10.10-b，分支feedback-yeye-150-193）
 - 依：設計文件九、9.10、八、8.8.5、十八、18.10.7／18.13、一、1.2.21／1.2.22與交接文件第三節（A～F）。**遊戲狀態新增欄位`tryNewCont`；依定案舊存檔不需清空。**
 - 九、9.10：`index.html`新增`majorSelectionDue()`（高三下學期、日期到5月、還沒選系，放暑假或跳過指令跨過5月也算）；`takeTurnInner`在呼叫AI前`askMajorSelectionFirst()`先彈選科系（標題「○歲・選填志願」）；`advanceStageYear`進大一時已選過系就不再跳（學生證入學年齡改為實際年齡），沒選過才補跳；高中畢業事件改在高三下學期期末考那一回合送出；暑假標籤「準大一・暑假」（`highSchoolYearLabel`）；給旁白的`university_status`以主修系名為主、5～9月帶`admitted`；雙主修選「申請」後自己選系（`renderMajorSelectionModal({mode:"dual"})`，不能選主修同系與5年制系別）。

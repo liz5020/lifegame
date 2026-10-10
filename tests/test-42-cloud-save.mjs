@@ -32,12 +32,12 @@ A.check("3 前端解壓函式能還原", await ev(`unpackFromCloud(${JSON.string
 const hsCount = ev("state.log.length");
 ev("state.timeState.stageMode='college'; state.timeState.yearInStage=1; state.timeState.segmentIndex=0; state.timeState.turnsInSegment=0; state.studentStatus='enrolled'; state.pendingMajorSelection=false");
 for (let i = 0; i < 3; i++) { await H.playTurn(g); H.clickModals(g.win); }
-await waitFor(() => ev("state.book.chapters.filter(c=>c.key==='highschool').every(c=>c.status==='done')"));
+await waitFor(() => ev("state.book.chapters.filter(c=>c.key==='highschool').every(c=>c.status!=='writing')"));
 await ev("saveGame()");
 const packs = JSON.parse(ev("JSON.stringify(state.stagePacks)"));
 A.check("4 高中階段結束：產生封存包並上傳", packs.length === 1 && packs[0].key === "highschool" && packs[0].uploaded === true && packs[0].count === hsCount && env.SAVES._m.has(`stagepack:${H.loc(KEY)}:${packs[0].id}`), packs);
 const pk = decode(kvRecord(`stagepack:${H.loc(KEY)}:${packs[0].id}`));
-A.check("4 封存包有那一段的日記與人生之書(壓縮)", pk.log.length === hsCount && pk.chapters.length >= 1 && pk.chapters.every(c => c.key === "highschool" && c.status === "done"), { log: pk.log.length, ch: pk.chapters.length });
+A.check("4 封存包有那一段的日記與人生之書(壓縮)", pk.log.length === hsCount && pk.chapters.length >= 1 && pk.chapters.every(c => c.key === "highschool" && ["done", "blank"].includes(c.status)), { log: pk.log.length, ch: pk.chapters.length });
 const c2 = cloudSave();
 A.check("4 之後的日常同步不再包含該階段內容", c2.log.length === ev("state.log.length") - hsCount && c2.logOffset === hsCount && c2.book.chapters.filter(c => c.key === "highschool").every(c => c.packed && !c.text), { cloudLog: c2.log.length, local: ev("state.log.length") });
 A.check("4 同一台裝置：本機日記照樣完整", ev("state.log.length") === hsCount + 3 && !ev("state.logOffset"));
@@ -77,7 +77,7 @@ A.check("2 在新裝置玩了一回合後，就能反悔這一回合", !!g2.win.
   const realFetch = g3.win.fetch;
   g3.win.fetch = async (url, init = {}) => (String(url).includes("stage-pack") && init.method === "POST") ? { ok: false, status: 500, json: async () => ({ success: false }) } : realFetch(url, init);
   for (let i = 0; i < 2; i++) { await H.playTurn(g3); H.clickModals(g3.win); }
-  await waitFor(() => e3("state.book.chapters.filter(c=>c.key==='highschool').every(c=>c.status==='done')"));
+  await waitFor(() => e3("state.book.chapters.filter(c=>c.key==='highschool').every(c=>c.status!=='writing')"));
   await e3("saveGame()");
   const cl = decode(kvRecord(`save:${H.loc("cloudkey02")}:0`));
   A.check("6 封存包上傳失敗：該階段內容仍在雲端主存檔裡、沒有遺失", e3("state.stagePacks[0].uploaded") === false && cl.log.length === e3("state.log.length") && !cl.logOffset && cl.book.chapters.every(c => !c.packed));

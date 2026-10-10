@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-10 | 2026.10.10-d（含-c大學住處選擇；尚未上線） | 2026.10.10-d（ap.js、account.js、worker.js、prompt.js：人生之書每章3點、空白章、每章每日5次；-c的prompt.js住處條） | （尚未提交） | index.html、worker/ap.js、worker/account.js、worker/worker.js、worker/prompt.js | 人生之書改玩家按了才寫(15.9)；章節資料結構有變動，舊存檔相容 |
 | 2026-10-10 | 2026.10.10-b（含-a、-m、-n；2026-10-10已合併進master並上線） | 2026.10.10-b（prompt.js：對話講完／不發明病症／不改住處／不忘約定、`health_reason`；s2t.js：簡體字漏轉修正；上正式時Worker隨`master`自動部署，改prompt後確認部署成功） | 79a466c | index.html、worker/prompt.js、worker/s2t.js、worker/worker.js、設計文件08/09/18、tests/test-88、harness、test-33、test-82 | 葉夜第1世第150～193回合回饋；Pages與Worker建置皆成功，線上網頁與/version都確認為2026.10.10-b |
 | 2026-10-10 | 2026.10.10-a（含-m、-n；beta，尚未上線） | 2026.10.10-a（account.js、worker.js、dashboard.js：`/stats-summary`新增`lives_unbound`、數據網頁加一格；上正式時Worker隨`master`自動部署） | （待填） | index.html、worker/account.js、worker/worker.js、worker/dashboard.js、設計文件10/00、tests/test-64、test-66 | 還沒存過雲端的人生第一次雲端存檔只等1分鐘(10.13.3)；數據網頁「沒綁信箱的人生段數」(10.13.7.11) |
 | 2026-10-09 | 2026.10.09-n（含-m；beta，尚未上線） | 2026.10.09-n（worker.js、account.js：測試帳號名單AP_TEST_ACCOUNTS；-n：AI呼叫失敗原因寫進Workers Logs、`/usage-today`的`failures`依錯誤類型計次、wrangler.toml打開`[observability]`） | （待填） | index.html、worker/worker.js、worker/account.js、worker/gate.js、worker/wrangler.toml、tests/test-38、test-79、test-87 | 版本號連點5下打開測試選單（手機桌面圖示沒有網址列可加?dev=1）；「不扣行動點」測試開關擴及帳號錢包（10.3.12，需在Cloudflare設`AP_TEST_ACCOUNTS`）；-n：查AI呼叫失敗原因（10/9今日名額6、只有1個開場成功、28次AI呼叫失敗） |

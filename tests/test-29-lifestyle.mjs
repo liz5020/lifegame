@@ -55,7 +55,7 @@ A.check("出社會後：「零用錢」改「收入」", txt({ months: 0.5, net:
 A.check("超過3個月：區間總結", txt({ months: 14, net: 280, rawNet: 280, incomeTotal: 700, expenseTotal: 420, student: false, balanceAfter: 1240 }, 0) === "這段期間收入約 700，支出約 420，結餘 +280；目前存款 1,240");
 A.check("舊存檔紀錄：維持舊格式", txt({ months: 1, net: 20, balanceAfter: 87 }, 0) === "本回合結算：1個月淨收入 20；目前存款 87");
 // 觸底：結餘照實列負數、存款維持0
-ev("state.studentStatus='enrolled'; state.monthlyIncome=30; state.monthlyExpenses=[]; state.cash=1; state.spendingHabit='隨性大方'; state.mealArrangement='外食為主'");
+ev("state.studentStatus='enrolled'; state.housing=null; state.monthlyIncome=30; state.monthlyExpenses=[]; state.cash=1; state.spendingHabit='隨性大方'; state.mealArrangement='外食為主'");
 ev("applyMonthlySettlement(state, 1); state.lastSettlement.balanceAfter=state.cash");
 const floor = ev("JSON.parse(JSON.stringify(state.lastSettlement))");
 A.check("學生期觸底：存款維持0", ev("state.cash") === 0 && floor.net === -1);

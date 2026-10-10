@@ -48,7 +48,7 @@
 // 2026-09-25新增（佇列批次6：人生之書／章節成書，設計文件十五章）：
 //   POST / 的body帶 kind:"chapter" 時是章節成書：{kind, key, slot, life_id, chapter_id, messages}
 //   system/工具一樣由Worker決定(prompt.js的CHAPTER_SYSTEM_PROMPT/CHAPTER_TOOL)；不扣行動點，
-//   但每條人生每玩10回合才累積1章額度(ap.js的preChapter)；用量記為chapter類別
+//   十五、15.9（2026-10-10）：玩家按了才寫、每章扣3點(AI成功才扣、同一章只扣一次、同一章每天最多呼叫5次，ap.js的preChapter／chargeChapter)；用量記為chapter類別
 //
 // 2026-09-28新增（十五、15.1世代傳承保留上一代的人生之書）：
 //   POST /family-book       body: {key, id, book:{owner, chapters:[...]}}  傳承時把上一代寫好的章節另存一筆，存檔裡只記id
@@ -81,7 +81,7 @@ import { TURN_SYSTEM_PROMPT, TURN_RESULT_TOOL, CHAPTER_SYSTEM_PROMPT, CHAPTER_TO
 import {
   AP_UNBOUND_GIFT, loadRecord, saveRecord, apKvKey, preCharge, postCharge, publicAP,
   isValidNonce, isValidLifeId, isUsableTurnResponse, taipeiDateString, nowMs,
-  addChapterUnit, preChapter, isValidChapterId, isUsableChapterResponse,
+  preChapter, chargeChapter, isValidChapterId, isUsableChapterResponse,
   claimIdle, preIdleSummary, isUsableIdleSummaryResponse, chargeIdleRollback,
   canAffordLifeReview, chargeLifeReview, isUsableLifeReviewResponse, markAction, LIFE_REVIEW_COST
 } from "./ap.js";
@@ -660,10 +660,11 @@ async function handleChapter(body, env, origin, ctx) {
   if (!isValidKey(key) || !isValidSlot(slot)) return jsonResponse(origin, { error: { type: "invalid_request", message: "AI請求必須附帶金鑰與slot" } }, 400);
   if (!isValidChapterId(chapterId)) return jsonResponse(origin, { error: { type: "invalid_request", message: "缺少chapter_id" } }, 400);
   const safeLifeId = isValidLifeId(lifeId) ? lifeId : null;
+  const today = taipeiDateString(nowMs(env));
   const { rec } = await loadRecord(env, key, slot, null);
-  const pre = preChapter(rec, chapterId);
+  const pre = preChapter(rec, rec, chapterId, today);
   await saveRecord(env, key, slot, rec);
-  if (!pre.ok) return jsonResponse(origin, { error: pre.error }, pre.status);
+  if (!pre.ok) return jsonResponse(origin, { error: pre.error, lifegame: { ap: publicAP(rec) } }, pre.status);
   let upstream, text, data = null;
   try {
     upstream = await callAnthropic(env, buildChapterRequest(body.messages), ctx, { kind: "chapter", lifeId: safeLifeId }); // 10.14.7
@@ -674,12 +675,22 @@ async function handleChapter(body, env, origin, ctx) {
   }
   const lifegame = { usable: !!(upstream.ok && data && isUsableChapterResponse(data)) };
   if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
+  // 十五、15.9：AI成功才扣3點(重新讀一次紀錄再扣；同一章扣過不再扣)；失敗不扣點。餘額在生成期間被花掉而不夠時，這次不交付章節
+  const { rec: rec2 } = await loadRecord(env, key, slot, null);
+  let chargeFail = null;
+  if (lifegame.usable) {
+    const ch = chargeChapter(rec2, rec2, chapterId);
+    if (ch.ok) { lifegame.charged = ch.charged; await saveRecord(env, key, slot, rec2); }
+    else { chargeFail = ch; lifegame.usable = false; }
+  }
+  lifegame.ap = publicAP(rec2);
   if (upstream.ok && data && data.usage) {
     const tokens = extractUsage(data.usage);
     lifegame.usage = Object.assign({}, tokens, { cost_usd: Math.round(costUSD(tokens) * 1e6) / 1e6 });
     const job = recordUsage(env, { key, slot, lifeId: safeLifeId, category: "chapter", usage: data.usage, countsAsTurn: false, payloadChars: 0, taipeiDate: taipeiDateString(nowMs(env)) });
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
   }
+  if (chargeFail) return jsonResponse(origin, { error: chargeFail.error, lifegame }, chargeFail.status);
   if (upstream.ok && data) {
     let out = data;
     try { out = convertAnthropicResponse(data); } catch (e) { /* 轉換失敗就用原文 */ }
@@ -875,6 +886,10 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
       testAccts ? { ap_test_free: true, test_accounts: testAccts } : {}));
     if (!r.ok) return walletFail(r);
     walletPre = r.pre;
+  } else if (wallet && body.kind === "chapter") {
+    if (!isValidChapterId(body.chapter_id)) return jsonResponse(origin, { error: { type: "invalid_request", message: "缺少chapter_id" } }, 400);
+    const r = await acctCall({ op: "chapter_pre", chapter_id: body.chapter_id }); // 十五、15.9：餘額與每日5次上限在伺服器檢查
+    if (!r.ok) return walletFail(r);
   } else if (wallet && body.kind === "life_review") {
     const r = await acctCall({ op: "wallet_can_afford", n: LIFE_REVIEW_COST });
     if (!r.ok) return walletFail(r);
@@ -883,6 +898,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
 
   let upstream, text, data = null;
   try {
+    if (isTurn && typeof body.regen_reason === "string" && body.regen_reason) console.log("自動重新產生原因：" + body.regen_reason.slice(0, 60) + "（第" + check.payload.turn + "回合）"); // 帳號錢包路徑，同上
     upstream = await callAnthropic(env, upstreamBody, ctx, { kind: ({ chapter: "chapter", idle_summary: "idle", life_review: "review" })[body.kind] || "turn", lifeId: safeLifeId, nonce: isTurn ? body.turn_nonce : null, turn: isTurn ? check.payload.turn : null, prologue: isTurn && !!(check.payload.time_context && check.payload.time_context.is_prologue === true) }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
@@ -894,8 +910,14 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
   if (usable && isTurn && !(check.payload.time_context && check.payload.time_context.is_prologue === true)) recordLidSeen(env, ctx, safeLifeId); // 10.13.7.3
   if (wallet && isTurn) await acctCall({ op: "wallet_post", nonce: body.turn_nonce, life_id: safeLifeId, success: usable });
   else if (wallet && body.kind === "life_review" && usable) await acctCall({ op: "wallet_spend", n: LIFE_REVIEW_COST });
-  const lifegame = { usable, cloud_disabled: true };
+  let chapterFail = null;
+  if (wallet && body.kind === "chapter" && usable) { // 十五、15.9：AI成功才扣3點，同一章只扣一次
+    const r = await acctCall({ op: "chapter_post", chapter_id: body.chapter_id });
+    if (!r.ok) chapterFail = r;
+  }
+  const lifegame = { usable: usable && !chapterFail, cloud_disabled: true };
   if (wallet) { lifegame.wallet = walletInfo; lifegame.wallet_events = walletEvents; lifegame.charged = !!(walletPre && walletPre.charged && usable); }
+  if (chapterFail) return walletFail(chapterFail);
   if (wallet && isTurn && body.ap_test_free === true) lifegame.ap_test_free = !!(walletPre && walletPre.test_free); // 10.3.12：前端據此顯示開關有沒有效
   if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   if (upstream.ok && data && data.usage) {
@@ -965,6 +987,7 @@ async function handleAIProxy(request, env, origin, ctx) {
 
   let upstream, text, data = null;
   try {
+    if (typeof body.regen_reason === "string" && body.regen_reason) console.log("自動重新產生原因：" + body.regen_reason.slice(0, 60) + "（第" + check.payload.turn + "回合）"); // 2026-10-10：查重試比例偏高的原因(不含人生代號與內容)
     upstream = await callAnthropic(env, buildTurnRequest(body.messages), ctx, { kind: "turn", lifeId: safeLifeId, nonce, turn: check.payload.turn, prologue: isPrologue }); // 10.14.7
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
@@ -977,7 +1000,6 @@ async function handleAIProxy(request, env, origin, ctx) {
   if (usable && !isPrologue) recordLidSeen(env, ctx, safeLifeId); // 10.13.7.3
   if (apTestFree) { if (usable) markAction(rec, taipeiDateString(nowMs(env))); }
   else postCharge(rec, pre, usable, safeLifeId, taipeiDateString(nowMs(env)));
-  if (usable && (pre.charge || pre.freePrologue || apTestFree)) addChapterUnit(rec); // 十五、每成功一個新回合累積章節額度
   await saveRecord(env, key, slot, rec);
   const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable), ap_test_free: apTestFree };
   if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
@@ -1137,7 +1159,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.10-b";
+const WORKER_VERSION = "2026.10.10-d";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)

@@ -11,7 +11,7 @@
 // 所有操作都由Worker以 POST {op, ...args, now, date, gift_cap} 呼叫；時間(now、台灣日期date)一律由呼叫端傳進來，
 // 這裡不讀系統時鐘，測試才能控制時間(TEST_NOW_MS)。驗證碼本身不會回傳給玩家，只回給Worker寄信。
 
-import { AP_BIND_BONUS, AP_SECOND_LIFE_GIFT, AP_LEGACY_GIFT_MAX, AP_DAILY_REFILL, freshRecord, preCharge, postCharge, spend, refund, taipeiDateString } from "./ap.js";
+import { AP_BIND_BONUS, AP_SECOND_LIFE_GIFT, AP_LEGACY_GIFT_MAX, AP_DAILY_REFILL, freshRecord, preCharge, postCharge, spend, refund, taipeiDateString, preChapter, chargeChapter, isValidChapterId } from "./ap.js";
 
 export const CODE_TTL_MS = 10 * 60 * 1000;        // 10.2：驗證碼10分鐘內有效
 export const CODE_MAX_TRIES = 5;                  // 10.2：同一組輸錯5次作廢
@@ -637,6 +637,29 @@ export class AccountStore {
     await this._putAcct(a);
     return this._out(a, { wallet: publicWallet(a) }, null, null);
   }
+  // 十五、15.9：人生之書每章3點。pre＝檢查餘額與每日5次上限並記次數；post＝AI成功後才扣，同一章只扣一次
+  async opChapterPre(b) {
+    const a = await this._auth(b.token, b.now);
+    if (!a) return { ok: false, error: "unauthorized", status: 401 };
+    if (!isValidChapterId(b.chapter_id)) return { ok: false, error: "bad_chapter", status: 400 };
+    const ctx = this._ctx(b);
+    const flags = await this._tick(a, ctx);
+    const pre = preChapter(a, a.wallet, b.chapter_id, ctx.date);
+    await this._putAcct(a);
+    const out = await this._out(a, { wallet: publicWallet(a) }, flags, flags.giftChanged ? await this._giftStats(ctx) : null);
+    if (!pre.ok) { out.ok = false; out.status = pre.status; out.error = pre.error; }
+    return out;
+  }
+  async opChapterPost(b) {
+    const a = await this._auth(b.token, b.now);
+    if (!a) return { ok: false, error: "unauthorized", status: 401 };
+    if (!isValidChapterId(b.chapter_id)) return { ok: false, error: "bad_chapter", status: 400 };
+    const r = chargeChapter(a, a.wallet, b.chapter_id);
+    await this._putAcct(a);
+    const out = await this._out(a, { wallet: publicWallet(a) }, null, null);
+    if (!r.ok) { out.ok = false; out.status = r.status; out.error = r.error; }
+    return out;
+  }
   async opWalletCanAfford(b) {
     const a = await this._auth(b.token, b.now);
     if (!a) return { ok: false, error: "unauthorized", status: 401 };
@@ -962,6 +985,8 @@ const OPS = {
   wallet_refund: AccountStore.prototype.opWalletRefund,
   purge_abuse: AccountStore.prototype.opPurgeAbuse,
   wallet_can_afford: AccountStore.prototype.opWalletCanAfford,
+  chapter_pre: AccountStore.prototype.opChapterPre,
+  chapter_post: AccountStore.prototype.opChapterPost,
   is_purchased: AccountStore.prototype.opIsPurchased,
   stats: AccountStore.prototype.opStats,
   lid_seen: AccountStore.prototype.opLidSeen,

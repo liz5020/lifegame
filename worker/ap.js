@@ -150,30 +150,35 @@ export function isUsableTurnResponse(data) {
   return true;
 }
 
-// ========== 十五、人生之書：章節成書的額度（2026-09-25新增，佇列批次6） ==========
-// 章節成書不扣行動點(玩家獎勵)，但要防止被拿來當免費AI用：每條人生每玩成功10回合累積1章的額度(最多存10章)，
-// 新章節用掉1章額度；同一章(chapter_id)重試不再扣額度，但最多呼叫5次
-export const CHAPTER_TURN_UNITS = 10;
-export const CHAPTER_UNITS_CAP = 100;
-export const MAX_CALLS_PER_CHAPTER = 5;
+// ========== 十五、15.9 人生之書：玩家按了才寫、每章扣3點（2026-10-10，取代2026-09-25的「每玩10回合1章額度」） ==========
+// 扣點在伺服器判定：AI成功回傳可用內容才扣（失敗不扣，等於「已扣全額退回」）；同一章(chapter_id)只會扣一次，
+// 扣過的章節再被呼叫（例如前端沒收到回應）不再扣點；同一章每天（台灣日期）最多呼叫5次，防止失敗被拿來當免費AI。
+// holder＝存chapterCalls／chapterPaid的物件（KV紀錄或帳號物件），wallet＝實際扣點的點數池（KV紀錄本身，或帳號的wallet）
+export const CHAPTER_COST = 3;
+export const MAX_CALLS_PER_CHAPTER_PER_DAY = 5;
+const CHAPTER_PAID_KEEP = 300;
 export function isValidChapterId(id) { return typeof id === "string" && /^[a-z0-9]{4,40}$/.test(id); }
-export function addChapterUnit(rec) {
-  rec.chapterUnits = Math.min(CHAPTER_UNITS_CAP, (Number(rec.chapterUnits) || 0) + 1);
+export function chapterIsPaid(holder, chapterId) { return Array.isArray(holder.chapterPaid) && holder.chapterPaid.includes(chapterId); }
+function chapterWalletTotal(w) { return (w.daily || 0) + (w.gift || 0) + (w.purchased || 0); }
+export function preChapter(holder, wallet, chapterId, today) {
+  if (!holder.chapterCalls || typeof holder.chapterCalls !== "object") holder.chapterCalls = {};
+  const c = holder.chapterCalls[chapterId];
+  const n = c && c.d === today ? c.n : 0;
+  if (n >= MAX_CALLS_PER_CHAPTER_PER_DAY) return { ok: false, status: 429, error: { type: "chapter_retry_limit", message: "這一章暫時寫不出來，明天再試" } };
+  const paid = chapterIsPaid(holder, chapterId);
+  if (!paid && chapterWalletTotal(wallet) < CHAPTER_COST) return { ok: false, status: 402, error: { type: "insufficient_action_points", message: "行動點不足" } };
+  holder.chapterCalls[chapterId] = { d: today, n: n + 1 };
+  const ids = Object.keys(holder.chapterCalls);
+  if (ids.length > 40) for (const id of ids.slice(0, ids.length - 40)) delete holder.chapterCalls[id]; // 只留最近幾章的呼叫次數
+  return { ok: true, paid };
 }
-export function preChapter(rec, chapterId) {
-  if (!rec.chapterCalls || typeof rec.chapterCalls !== "object") rec.chapterCalls = {};
-  const calls = rec.chapterCalls[chapterId];
-  if (calls !== undefined) {
-    if (calls >= MAX_CALLS_PER_CHAPTER) return { ok: false, status: 429, error: { type: "chapter_retry_limit", message: "這一章重試太多次了" } };
-    rec.chapterCalls[chapterId] = calls + 1;
-    return { ok: true };
-  }
-  if ((Number(rec.chapterUnits) || 0) < CHAPTER_TURN_UNITS) return { ok: false, status: 402, error: { type: "chapter_not_available", message: "這條人生還沒累積到可以成書的回合數" } };
-  rec.chapterUnits -= CHAPTER_TURN_UNITS;
-  rec.chapterCalls[chapterId] = 1;
-  const ids = Object.keys(rec.chapterCalls);
-  if (ids.length > 12) delete rec.chapterCalls[ids[0]]; // 只留最近幾章的重試次數
-  return { ok: true };
+// AI成功後呼叫：還沒扣過就扣3點並記下；已扣過回傳charged:false。餘額在AI生成期間被花掉而不夠時回傳ok:false（章節不交付）
+export function chargeChapter(holder, wallet, chapterId) {
+  if (chapterIsPaid(holder, chapterId)) return { ok: true, charged: false };
+  if (chapterWalletTotal(wallet) < CHAPTER_COST) return { ok: false, status: 402, error: { type: "insufficient_action_points", message: "行動點不足" } };
+  spend(wallet, CHAPTER_COST);
+  holder.chapterPaid = (Array.isArray(holder.chapterPaid) ? holder.chapterPaid : []).concat(chapterId).slice(-CHAPTER_PAID_KEEP);
+  return { ok: true, charged: true };
 }
 export function isUsableChapterResponse(data) {
   const block = data && Array.isArray(data.content) && data.content.find(b => b.type === "tool_use" && b.name === "submit_chapter");

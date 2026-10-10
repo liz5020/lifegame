@@ -238,6 +238,13 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
     const ok = win.document.getElementById("btn-major-confirm");
     if (ok && !ok.__auto) { ok.__auto = true; setTimeout(() => ok.click(), 0); }
   }).observe(win.document.body, { childList: true, subtree: true });
+  // 九、9.11（2026-10-10）：選完科系接著選住處也是「先選完再寫」的彈窗，一般測試自動選〔住家裡〕（維持原本行為）；要測的測試設 win.__housingManual = true 自己按
+  new win.MutationObserver(() => {
+    if (win.__housingManual) return;
+    const m = win.document.getElementById("housing-modal");
+    const ok = m && (m.querySelector('.hs-opt[data-type="parents"]') || m.querySelector(".hs-opt"));
+    if (ok && !ok.__auto) { ok.__auto = true; setTimeout(() => ok.click(), 0); }
+  }).observe(win.document.body, { childList: true, subtree: true });
   new win.MutationObserver(() => {
     if (win.__sxManual) return;
     const no = win.document.getElementById("btn-sx-no");
@@ -282,7 +289,7 @@ export async function playTurn(g, text) {
 
 export function makeAsserter(title) {
   const results = [];
-  const check = (name, cond, detail) => { results.push({ name, ok: !!cond, detail }); };
+  const check = (name, cond, detail) => { results.push({ name, ok: !!cond, detail }); if (process.env.TRACE) console.log(`${cond ? "通過" : "未通過"}｜${name}${!cond && detail !== undefined ? "｜" + JSON.stringify(detail).slice(0, 300) : ""}`); };
   const report = () => {
     const pass = results.filter(r => r.ok).length;
     console.log(`\n=== ${title}：${pass}/${results.length} 通過 ===`);

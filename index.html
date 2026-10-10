@@ -1459,7 +1459,7 @@ const STUDENT_EXPENSE_KIND_LABEL = { friend:"朋友與戀愛", trip:"想要的�
 const STUDENT_EXPENSE_BLOCKING_PENDING = ["pendingMajorPurchase","pendingJobSearch","pendingJobOffer","pendingDivorceSettlement","pendingMajorSelection",
   "pendingTransferOffer","pendingDualMajorOffer","pendingDualMajorAbandonOffer","pendingLeaveOffer","pendingParentingNode","pendingMarriageCrisis",
   "pendingRelationshipInvestment","pendingDivorceRecovery","pendingCohabitationOffer","pendingPromotionOffer","pendingCareerForkOffer","pendingBusinessLaunch",
-  "pendingFamilyBusinessOffer","pendingBusinessContinuation","pendingRetirementOffer","pendingEldercareDecision","pendingSideBusinessCardId","mealJustUnlocked"];
+  "pendingHousingChoice","pendingFamilyBusinessOffer","pendingBusinessContinuation","pendingRetirementOffer","pendingEldercareDecision","pendingSideBusinessCardId","mealJustUnlocked"];
 function studentExpenseState(s){
   if(!s.studentExpense) s.studentExpense = { lastFriendTurn:null, lastGadgetTurn:null, termKey:"", termWant:0, yearKey:"", yearFamily:0, license:false, pending:null, resultNow:null };
   return s.studentExpense;
@@ -4032,9 +4032,18 @@ async function initApp(){
   if(acctToken()) refreshAccount().then(ok=>{ if(ok && state && (state.phase==="home" || state.phase==="playing")) render(); }); // 十、10.9.2：當天第一次打開時補點在伺服器
 }
 // 讀檔時的舊存檔遷移：4.1.3性別；二、2.7／B1（2026-09-29）舊行事曆換算到真實日曆、年齡依生日重算
+// 九、9.11.8：學生時期住處被舊版旁白回報改成租屋／自有房的存檔，重設回住家裡(由玩家之後自己選)；已畢業或肄業不處理
+function migrateHousing(st){
+  if(!st || !st.housing || !isStudentPhase(st) || (st.housing.type!=="rent" && st.housing.type!=="own")) return;
+  st.housing = null;
+  st.monthlyExpenses = (st.monthlyExpenses||[]).filter(e=>e.label!=="房租" && e.label!=="房貸");
+  if(st.milestones && st.milestones.moved_out==="completed") st.milestones.moved_out = "available";
+  (st.characters||[]).forEach(c=>{ if(/^(父母|隔代教養|手足)，從出生起$/.test(c.origin||"") && !c.deceased && !c.lost && !/不同住/.test(c.relation||"")) c.cohabiting = true; });
+}
 function migrateLoadedState(st){
   if(!st) return;
   if(st.characters){ ensureCharacterGenders(st); updateFamilyPaths(st); backfillOccupationJobs(st); } // 4.9.5：舊存檔的兄弟姊妹、子女依目前年齡補擲出路
+  migrateHousing(st); // 九、9.11.8
   revealPendingExams(st); // B3：上次沒看完就離開的考試分數，重新進來直接公布
   if(st.timeState && st.phase && st.phase!=="home" && st.phase!=="setup"){ try{ ensureCalendar(st); }catch(e){ console.warn("行事曆遷移失敗", e); } }
 }
@@ -4055,7 +4064,7 @@ async function tryLoadSlot(key, slot, allowLocalFallback){
       try{ localStorage.setItem(STORAGE_KEY+":"+slot, JSON.stringify(state)); }catch(e){}
       render();
       refreshServerAP(); // 10.3.11：行動點以伺服器端為準，讀檔後同步一次
-      if(state.book){ ensureBook(state); processBookQueue(false); } // 十五：上次沒寫完的章節接著寫
+      if(state.book) ensureBook(state); // 十五、15.9.5：舊存檔排隊中／失敗的章節轉成空白章
       // 10.7.4：上次沒同步成功、或本機比雲端新，重新開啟時自動重試
       if(isSyncPending(slot) || (local && state===local && (local.turnCount||0) > (cloud.turnCount||0))) saveGame();
       return true;
@@ -4367,7 +4376,7 @@ function stagePackReady(s, p){
   const book = s.book;
   if(!book) return true;
   if(book.draft && book.draft.key===p.key) return false;
-  return (book.chapters||[]).filter(c=>c.key===p.key && !c.packed).every(c=>c.status==="done" || (c.status==="failed" && (c.attempts||0)>=3));
+  return (book.chapters||[]).filter(c=>c.key===p.key && !c.packed).every(c=>c.status==="done" || c.status==="blank"); // 15.9：空白章也一起封存(素材在包裡，玩家要寫時先補齊)，只有正在寫的要等
 }
 function buildStagePackContent(s, p){
   const offset = s.logOffset||0;
@@ -4640,7 +4649,8 @@ const SIBLING_TRAITS = ["競爭心強，什麼都要比一下","很罩你，關�
 // 改成只花掉「多出來的錢」的幾成，賺越多剩越多；只有收入勉強夠基本需求又吃外食的人會見底
 const SPENDING_HABITS = { "精打細算":0.3, "普通花費":0.6, "隨性大方":0.9 }; // 可支配的錢花掉幾成
 const MEAL_EXPENSE_MULT = { "家裡包辦":0.8, "自己打理":1.0, "外食為主":1.1 };   // 乘在基本需求上
-const STUDENT_BASIC_NEED = 25; // 學生期基本需求(遊戲幣/月)，不分家境
+const STUDENT_BASIC_NEED = 25; // 學生期基本需求(遊戲幣/月)，不分家境；住家裡的數字
+const STUDENT_BASIC_NEED_BY_HOUSING = { parents:25, dorm:28, rent:30 }; // 九、9.11.3（2026-10-10）：學生期依住處分級【測試參數】；宿舍費、房租家長付，不列結算欄
 // 三餐事件觸發機率倍率，只適用「自己打理」vs「外食為主」，家裡包辦不適用這組（敘事情境本質不同）
 const MEAL_EVENT_MULT = {
   "自己打理": { socialEncounter:0.7, healthBonusHit:1.2, timeConsumingMilestone:0.85 },
@@ -4781,6 +4791,7 @@ function livingCostTierForState(s){
   if(!s.housing || s.housing.type==="parents") return "低";
   if(s.housing.type==="rent") return "中";
   if(s.housing.type==="own") return "中";
+  if(s.housing.type==="dorm") return "低"; // 宿舍畢業時一定要離開(9.11.7)，這只是換住處生效前的保底
   return "低";
 }
 // ========== 三、3.4.11 家庭財務合併與子女扶養支出（2026-09-20新增） ==========
@@ -4880,7 +4891,7 @@ function computeChildSupportCost(s){
 // 3.4.10（2026-09-28）：基本需求(未乘三餐)。學生期固定STUDENT_BASIC_NEED；出社會後照3.4.8居住分級，已婚/同居套3.4.11分攤係數
 // 2026-09-27：學生判斷改用studentStatus（3.4.8明文禁止以occupationCategory判斷），畢業未就業/收攤者走housing分級，不會變0
 function livingBasicNeed(s){
-  if(isStudentPhase(s)) return STUDENT_BASIC_NEED;
+  if(isStudentPhase(s)) return STUDENT_BASIC_NEED_BY_HOUSING[housingTypeOf(s)] ?? STUDENT_BASIC_NEED;
   const tier = livingCostTierForState(s);
   let amount = LIVING_COST_BASE[tier] * LIVING_COST_MULTIPLIER;
   // 三、3.4.11（2026-09-20新增，2026-09-22拆分同居/已婚兩組係數，取代原本「與伴侶共同生活時整體×0.75」算不出household_status的舊做法）：
@@ -5175,6 +5186,7 @@ function newRoll(carry, identity){
     examBelowExpectationStreak: 0,
     lowCashStreak: 0,
     pendingMajorSelection: false,
+    pendingHousingChoice: null, housingNext: null, housingAsked: false, housingOfferCooldownUntilTurn: 0, housingReleasedNames: [], roommateName: null, roommateMade: false, // 九、9.11
     pendingTransferOffer: false,
     pendingDualMajorOffer: false,
     pendingLeaveOffer: null, // null/'financial'/'health'
@@ -6168,6 +6180,7 @@ function advanceStageYear(s, mode, yearsToAdd){
     s.milestones.graduation_college = "completed";
     s.graduationEventLog = { type:"college" }; // 一、1.2.8.6（2026-09-24拍板）
     s.studentStatus = "graduated"; // 九、9.8：畢業後用studentStatus判斷已出社會，不是只看年齡
+    queueGraduationHousing(s); // 九、9.11.7：沒住家裡的人，畢業時跳住處彈窗
     // 9.5.2：畢業時若雙主修仍在active狀態（未經由renderDualMajorAbandonModal()中途放棄），直接結算為completed
     if(s.dualMajorStatus==="active") s.dualMajorStatus = "completed";
   }
@@ -6203,6 +6216,181 @@ const COHABITING_AFFINITY_FLOOR = 25; // 【測試參數,待驗證,4.1.2】
 function releaseCohabiting(c){
   // 4.1.2【定案】解除同住標記後，回歸4.1既有的12回合降級規則
   if(c) c.cohabiting = false;
+}
+// ========== 九、9.11 大學住處選擇（2026-10-10） ==========
+// 住處＝s.housing.type：parents(住家裡，預設)／dorm(宿舍)／rent／own。學生時期只能由這裡的彈窗改變，旁白回報的housing_choice不採用(applyResult)。
+// 狀態：pendingHousingChoice={kind:initial|legacy|change|graduate}(彈窗還沒決定，重新整理後再跳出)、housingNext={type,at:"enroll"|"month",ym}(已決定、待生效)、
+// housingAsked(初次／補跳已問過)、housingOfferCooldownUntilTurn(選「先不要」後的冷卻)、housingReleasedNames(搬出時解除同住的原生家庭，搬回家時掛回)、
+// roommateName(目前的宿舍室友)、roommateMade(這一世已建過室友，之後再住宿舍不再建新的)
+const HOUSING_LABEL = { parents:"住家裡", dorm:"住宿舍", rent:"在外租屋", own:"住自己的房子" };
+const HOUSING_ATMOS = { parents:"有人照顧，也有人管", dorm:"熱鬧，但沒什麼隱私", rent:"自由，什麼都要自己來" };
+const HOUSING_MONEY_HINT = "自己住每個月會多花一點，手頭會比住家裡緊";
+const HOUSING_MEAL_HINT = "三餐會改成自己打理";
+const HOUSING_CHANGE_COOLDOWN_TURNS = 12; // 【測試參數,待驗證】選「先不要」後的冷卻回合數
+function housingTypeOf(s){ return (s.housing && s.housing.type) || "parents"; }
+function housingAway(s){ const t = housingTypeOf(s); return t==="dorm" || t==="rent"; }
+function housingYm(abs){ const d = calAbsToDate(abs); return d.y*12 + d.m; }
+// 【測試參數】意圖關鍵字；「朋友搬家了」這類別人搬家的句子不算
+function detectHousingIntent(actionText){
+  const t = String(actionText||"");
+  if(!/搬出去|搬回家|申請宿舍|退宿|找房子|租房子|搬家/.test(t)) return false;
+  const others = /(朋友|同學|室友|鄰居|同事|老師|爸|媽|哥|姊|姐|弟|妹|家人|他|她|別人)[^，。！？、\s]{0,4}(搬家|搬出去|搬走)/.test(t);
+  const self = /(我|自己)[^，。！？]{0,6}(搬|找房|租房|申請|退宿)|想[^，。！？]{0,3}(搬|找房|租|申請)|打算|決定|要搬|準備搬/.test(t);
+  return !others || self;
+}
+function housingOptionsFor(s, kind){
+  const cur = housingTypeOf(s);
+  let types;
+  if(kind==="graduate") types = cur==="dorm" ? ["parents","rent"] : ["rent","parents"];
+  else if(kind==="change") types = ["parents","dorm","rent"].filter(t=>t!==cur);
+  else types = ["parents","dorm","rent"];
+  return types.map(t=>{
+    let label = HOUSING_LABEL[t];
+    if(kind==="graduate") label = t==="parents" ? "搬回家" : (cur==="rent" ? "繼續租" : "在外租屋");
+    const hints = [];
+    if(kind==="graduate"){ if(t==="rent") hints.push("從下個月起房租自己付"); }
+    else {
+      hints.push(HOUSING_ATMOS[t]);
+      if(t!=="parents"){ hints.push(HOUSING_MONEY_HINT); if(s.mealArrangement==="家裡包辦") hints.push(HOUSING_MEAL_HINT); }
+    }
+    return { type:t, label, hints };
+  });
+}
+// 玩家打字出現搬家意圖：只有念大學中(沒休學)才跳確認彈窗(9.11.5)；排入後由dispatchPendingModals跳出
+function checkHousingChangeOffer(s, actionText){
+  if(s.pendingHousingChoice || s.turnCount < (s.housingOfferCooldownUntilTurn||0)) return;
+  if(s.studentStatus!=="enrolled" || s.leaveStatus==="onLeave") return;
+  if(!s.timeState || s.timeState.stageMode!=="college") return;
+  if(!detectHousingIntent(actionText)) return;
+  s.pendingHousingChoice = { kind:"change" };
+}
+// 這回合要不要在呼叫AI前先問住處(先選完再寫，比照選科系)：回傳kind或null
+function housingChoiceDue(s, adv){
+  if(s.pendingHousingChoice) return s.pendingHousingChoice.kind;
+  if(s.housingAsked) return null;
+  if(majorAdmittedNotEnrolled(s)) return "initial"; // 高三5月選完系之後(含5～8月才進來的存檔)
+  if(s.studentStatus==="enrolled" && s.leaveStatus!=="onLeave" && s.timeState && s.timeState.stageMode==="college" && adv && adv.segKey==="開學初" && adv.segTurn===0) return "legacy"; // 舊存檔：下一個學期開學第一回合補跳
+  return null;
+}
+function askHousingChoiceFirst(s, kind){
+  s.pendingHousingChoice = { kind };
+  return new Promise(resolve=>{ renderHousingChoiceModal({ onDone: ()=>resolve() }); });
+}
+// 玩家按下選項：type＝要住的類型，null＝先不要。initial：9月開學起；其餘：下一個完整月份起(3.4)
+function resolveHousingChoice(s, type){
+  const p = s.pendingHousingChoice;
+  if(!p) return;
+  s.pendingHousingChoice = null;
+  if(p.kind==="initial" || p.kind==="legacy") s.housingAsked = true;
+  const cur = housingTypeOf(s);
+  if(!type || type===cur){
+    if(p.kind==="change" && !type) s.housingOfferCooldownUntilTurn = s.turnCount + HOUSING_CHANGE_COOLDOWN_TURNS;
+    if(type===cur) s.housingNext = null; // 選回現在的住處＝取消還沒生效的安排
+    return;
+  }
+  if(p.kind==="initial") s.housingNext = { type, at:"enroll" };
+  else {
+    const cal = s.timeState && s.timeState.cal;
+    s.housingNext = { type, at:"month", ym: housingYm(cal ? (cal.lastRoundEnd||0) : 0) + 1 };
+  }
+}
+// 每回合（算完時間之後）檢查：到了生效時間就換住處。adv＝advanceStructuredTime的回傳
+function applyHousingNext(s, adv){
+  const n = s.housingNext;
+  if(!n || !n.type) return;
+  let due = false;
+  if(n.at==="enroll") due = !!(s.timeState && s.timeState.stageMode==="college" && s.studentStatus==="enrolled");
+  else if(adv && adv.window) due = housingYm(adv.bigJump ? adv.window.end : adv.window.start) >= n.ym;
+  if(!due) return;
+  s.housingNext = null;
+  applyHousingType(s, n.type);
+}
+function applyHousingType(s, type){
+  const prev = housingTypeOf(s);
+  if(type===prev) return;
+  s.housing = { type, monthlyCost:0 }; // 宿舍費、房租由家長付；畢業後的租屋已含在3.4.8「租屋＝中」的基準裡
+  const family = ()=> (s.characters||[]).filter(c=>/^(父母|隔代教養|手足)，從出生起$/.test(c.origin||"") && !c.deceased && !c.lost);
+  if(type==="dorm" || type==="rent"){
+    // 四、4.1.2：搬進宿舍或租屋，解除原生家庭的同住標記(配偶、子女不受影響)
+    const rel = family().filter(c=>c.cohabiting);
+    s.housingReleasedNames = Array.from(new Set((s.housingReleasedNames||[]).concat(rel.map(c=>c.name))));
+    rel.forEach(releaseCohabiting);
+    if(s.mealArrangement==="家裡包辦"){ // 5.5：不住家裡就沒有家裡包辦，自動改自己打理，搬回家後玩家自己改回
+      s.mealArrangement = "自己打理"; s.cookingInterestSeed = true;
+      const prevLog = s.lifestyleChangeLog;
+      s.lifestyleChangeLog = { from: Object.assign({ mealArrangement:"家裡包辦" }, prevLog ? prevLog.from : {}), to: Object.assign({}, prevLog ? prevLog.to : {}, { mealArrangement:"自己打理" }) };
+    }
+    if(type==="rent") completeMilestone(s, "moved_out"); // 9.11.6：租屋算搬出家裡，宿舍不算；完成後不倒退
+  } else if(type==="parents"){
+    (s.housingReleasedNames||[]).forEach(n=>{ const c = characterByName(s, n); if(c && !c.deceased && !c.lost) c.cohabiting = true; });
+    s.housingReleasedNames = [];
+  }
+  if(prev==="dorm") endRoommate(s);
+  if(type==="dorm") ensureRoommate(s);
+}
+// 9.11.2：住宿舍時建1位室友(同性別、同年級、不同系)；一世只建一次，搬走後不再有室友身分，再搬回宿舍不建新的
+function ensureRoommate(s){
+  if(s.roommateMade) return;
+  s.roommateMade = true;
+  const g = CHARACTER_GENDERS.includes(s.gender) ? s.gender : rollNpcGender();
+  const used = new Set((s.characters||[]).map(c=>c.name));
+  const pool = g==="男" ? RENAME_GIVEN_NAMES_MALE : RENAME_GIVEN_NAMES_FEMALE;
+  let name = null;
+  for(let i=0;i<60 && !name;i++){ const n = pick(RENAME_SURNAMES)+pick(pool); if(!used.has(n)) name = n; }
+  if(!name) name = renameForConflict(s, pick(RENAME_SURNAMES)+pick(pool), "室友");
+  const depts = Object.values(MAJOR_DEPARTMENTS).flat().filter(d=>d!==s.studentDepartment && !FIVE_YEAR_DEPARTMENTS.includes(d));
+  const dept = pick(depts.length ? depts : ["中文"]);
+  s.characters.push({ name, relation:"室友", gender:g, traits:"", dialogueStyle:rollDialogueStyle(), style:null,
+    affinity:50, summary:"", lastTurn:s.turnCount, active:true, isChild:false, origin:"大學宿舍室友", age:s.age,
+    affiliation:`${deptWithXi(dept)}，大學同年級`, roommate:true });
+  s.roommateName = name;
+}
+function endRoommate(s){
+  const c = s.roommateName ? characterByName(s, s.roommateName) : null;
+  if(c){ c.roommate = false; c.relation = "大學室友"; }
+  s.roommateName = null;
+}
+// 9.11.7：畢業或肄業時，沒住家裡的人由程式跳出住處彈窗
+function queueGraduationHousing(s){
+  s.housingNext = null;
+  if(housingTypeOf(s)==="dorm" || housingTypeOf(s)==="rent") s.pendingHousingChoice = { kind:"graduate" };
+}
+// 給旁白的住處說明（payload residence，一、1.2.22）
+function residenceText(s){
+  const t = housingTypeOf(s);
+  let txt = HOUSING_LABEL[t];
+  if(t==="dorm" || t==="rent"){
+    if(t==="dorm" && s.roommateName) txt += `（室友${s.roommateName}，旁白不得另外生出室友）`;
+    txt += "；家人不在身邊，平常只用電話、訊息出現，或在主角回家的場景出現，不可自行寫成在家裡日常生活（例如在家吃晚餐）；寒暑假預設放假回家，玩家表示留下就照寫";
+  }
+  const n = s.housingNext;
+  if(n && n.type) txt += n.at==="enroll" ? `；9月開學起住${HOUSING_LABEL[n.type].replace(/^住/,"")}（現在還是${HOUSING_LABEL[t]}，暑假可以寫看房子、收行李、跟家人告別，不寫成已經搬過去）` : `；下個月起${HOUSING_LABEL[n.type]}（這個月剩下的回合可寫找房子、打包）`;
+  return txt;
+}
+function renderHousingChoiceModal(opts){
+  opts = opts || {};
+  const s = state;
+  const p = s.pendingHousingChoice;
+  if(!p || document.getElementById("housing-modal")) return;
+  const kind = p.kind;
+  const options = housingOptionsFor(s, kind);
+  const title = kind==="graduate" ? (s.studentStatus==="withdrawn" ? "離開學校之後住哪裡" : "畢業之後住哪裡") : kind==="change" ? "想換個住處嗎" : "大學住哪裡";
+  const div = document.createElement("div");
+  div.id = "housing-modal";
+  div.className = "modal-backdrop";
+  div.innerHTML = `
+    <div class="modal" style="text-align:left;">
+      <h3>${title}</h3>
+      ${kind==="legacy" ? `<p style="font-size:12px;color:var(--ink-soft);">新功能：大學可以選擇住哪裡。</p>` : ``}
+      ${options.map(o=>`<div style="margin:10px 0;"><button class="primary-btn hs-opt" data-type="${o.type}">${escapeHtml(o.label)}</button>
+        ${o.hints.map(h=>`<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(h)}</div>`).join("")}</div>`).join("")}
+      ${kind==="change" ? `<button class="ghost-btn" id="btn-housing-no">先不要</button>` : ``}
+    </div>`;
+  document.body.appendChild(div);
+  const done = type=>{ resolveHousingChoice(s, type); div.remove(); saveGame(); render(); if(opts.onDone) opts.onDone(); };
+  div.querySelectorAll(".hs-opt").forEach(b=>b.onclick = ()=>done(b.dataset.type));
+  const no = div.querySelector("#btn-housing-no");
+  if(no) no.onclick = ()=>done(null);
 }
 // QA 34.15 #5（2026-09-30）：關係提示的用詞——第一次認識寫「認識了○○」；級距改變要分升級與降級，不再用「好像不一樣了」
 const relLabelRanks = ()=>[["關係生疏","認識不深","普通朋友","熟悉的朋友","多年好友"], FAMILY_RELATION_LABELS, ["漸行漸遠","貌合神離","平穩","恩愛"]]; // 用函式包起來，避免載入時FAMILY_RELATION_LABELS還沒定義
@@ -9131,7 +9319,7 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     marriage_crisis_event_now: s.marriageCrisisEventLog, // 七、7.6.2（2026-09-20新增）：{choice,spouseName}，玩家剛在婚姻危機彈窗做了選擇(repair/maintain/divorce)
     divorce_event_now: s.divorceEventLog, // 七、7.6.3（2026-09-20新增）：{spouseName,playerCashSharePct,propertyChoice,custody}，離婚結算剛完成，數字僅供敘事參考不用你計算
     cohabitation_event_now: s.cohabitationEventLog, // 七、7.6.1.1（2026-09-22新增）：{choice,partnerName}，玩家剛在「要不要一起住」彈窗做了選擇(move_in/stay_separate)
-    residence: (isStudentPhase(s) || s.studentStatus==='enrolled') ? "住家裡" : undefined, // 一、1.2.22（2026-10-09）：主角住處是遊戲狀態，旁白不得自行改變；目前沒有住處欄位，學生時期一律視為住家裡
+    residence: (isStudentPhase(s) || s.studentStatus==='enrolled') ? residenceText(s) : undefined, // 一、1.2.22／九、9.11：主角住處是遊戲狀態，旁白不得自行改變；學生時期依住處欄位
     family_structure: s.familyStructure,
     family_background: s.family,
     attachment_axes: { anxiety: s.anxiety, avoidance: s.avoidance },
@@ -9194,8 +9382,21 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.10-b";
+const APP_VERSION = "2026.10.10-d";
 const RELEASE_NOTES = [
+  { version:"2026.10.10-d", date:"2026-10-10", title:"人生之書改成想寫再寫", items:[
+    "換人生階段的時候，人生之書會多一章空白章，不再自動寫好。",
+    "想把那段日子寫成小說，到人生之書按「寫成這一章」，每章要用 3 點，寫好就固定下來，扣了不退；沒寫成功不會扣點。",
+    "章節要依序寫。不想寫的章可以先放著，但這一世結束（傳承或闔上草稿）之後就不能補了，結束前會提醒一次。",
+    "以前已經寫好的章節照樣可以看。",
+    "章節裡的人物第一次出現時，會交代他是誰；標點也統一成全形。",
+  ]},
+  { version:"2026.10.10-c", date:"2026-10-10", title:"大學可以選住哪裡", items:[
+    "選完科系之後，可以選大學要住家裡、住宿舍，還是在外租屋。",
+    "不住家裡的時候，家人會比較少出現在日常裡，三餐也要自己打理。",
+    "念大學的時候，如果自己打字說想搬家，可以重新選一次住哪裡。",
+    "畢業的時候，如果不是住家裡，會再問你接下來住哪裡。",
+  ]},
   { version:"2026.10.10-b", date:"2026-10-10", title:"選科系時機、故事更完整", items:[
     "選科系的時間提前到高三下學期，畢業典禮也跟著調整，畢業後的暑假改稱「準大一」。選完到開學之間，故事會當成已經錄取、準備入學。",
     "申請雙主修之後，可以自己挑要念哪一個系。",
@@ -9494,6 +9695,7 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
         ap_hint: timeCtx && timeCtx.apBefore,
         ap_test_free: apTestFreeOn() || undefined, // 10.3.12：只是請求，Worker只認登記過的測試鑰匙(帳號錢包：測試帳號名單)
         wallet: walletActive(state) || undefined,  // 十、10.9.2：這段人生用帳號共用錢包，由Worker在呼叫AI前預扣、失敗退點
+        regen_reason: (timeCtx && timeCtx.retryNote && timeCtx.regenReason) || undefined, // 2026-10-10：自動重新產生的原因(短字串)，Worker只寫進Workers Logs
         retry: (timeCtx && timeCtx.isRetry) || undefined, // 十、10.17.5：玩家按「再試一次」沿用同一個turn_nonce，Worker據此不重複扣點、又失敗時退回
         messages: [{ role:"user", content: userMsgStr }]
       })
@@ -9934,6 +10136,7 @@ const SNAPSHOT_EXTRA_KEYS = [
   "halfYearCarry","collegeDelayYearsUsed","pendingBusinessLaunch","inPrepPhaseThisTurn","reunionNow",
   "pendingConfession","confessionResultNext","pendingBreakup","pendingMajorPurchase","pendingJobSearch","jobSearchPhase","everSearchedJob",
   "pendingEldercareDecision","pendingParentDeath","pendingFamilyBusinessOffer","eldercareQueue",
+  "pendingHousingChoice","housingNext","housingAsked","housingOfferCooldownUntilTurn","housingReleasedNames","roommateName","roommateMade","lifestyleChangeLog","mealArrangement","cookingInterestSeed",
   // 事件紀錄與「這一回合」旗標
   "partTimeEventLog","fertilityEventLog","universityEventLog","birthNow","graduationEventLog","illnessEventLog","majorIllnessEventLog",
   "parentHealthEventLog","parentRetirementEventLog","parentDeathEventLog","interestFormedEventLog","breakthroughEventLog",
@@ -9998,7 +10201,7 @@ function applySnapshot(){
   if(state.book && bookDraft!==undefined){
     state.book.draft = bookDraft ? bookDraft.draft : null;
     if(bookDraft) state.book.chronicleSeen = bookDraft.chronicleSeen;
-    state.book.chapters = state.book.chapters.filter(c=>c.createdTurn <= state.turnCount || c.status==="done");
+    state.book.chapters = state.book.chapters.filter(c=>c.createdTurn <= state.turnCount || c.status==="done" || c.status==="writing"); // 15.9.7：沒寫的空白章撤掉，付點寫好(或正在寫)的保留
   }
 }
 // 十、10.3.13（2026-10-08）：每一世免費5次(取代每段人生3次)，用完每次扣1點、跳確認視窗。舊存檔(沒有undoRule)只補上新增的2次，不改變已用掉的次數
@@ -10106,6 +10309,7 @@ async function takeTurnInner(actionText, cost, opts){
   // 二、2.5（9/16新增）：22歲以後改採加速曲線回合預算，取代原本「30歲以後交給AI自行判斷age_advance」的舊架構
   // 全生涯（15歲起）都由客戶端結構化算好本回合要推進多少時間，AI的age_advance一律視為0，不再有年齡分界
   const adv = advanceStructuredTime(actionText, turnFocus && turnFocus.key);
+  if(!wasPrologue){ applyHousingNext(state, adv); checkHousingChangeOffer(state, actionText); } // 九、9.11：到了生效時間換住處；玩家打字想搬家排入確認彈窗
   maybeRollBackgroundEvents(state, adv); // 四、4.7：學生時期每學期(假期第一回合)、出社會後每年(跨入新年第一回合)擲一次NPC背景事件
   const focus = (turnFocus && !adv.bigJump) ? turnFocus : null; // 2.6.1：跳過指令的回合不結算重心
   // 3.4.2（2026-09-27）：打工收入由程式依時薪×時數算好，AI只負責敘事；學生時期改由打工重心觸發(2026-09-28)
@@ -10146,6 +10350,7 @@ async function takeTurnInner(actionText, cost, opts){
   if(timeCtx.rhythm.daily_scene_now && timeCtx.scenePlan && timeCtx.scenePlan.mode!=="override")
     timeCtx.scenePlan = { mode:"daily", theme: timeCtx.rhythm.daily_scene_now.theme, period: timeCtx.scenePlan.period, banned_category: timeCtx.scenePlan.banned_category||null };
   if(!wasPrologue && majorSelectionDue(state, adv)) await askMajorSelectionFirst(state); // 九、9.10（2026-10-09）：高三5月先選科系再寫這一回合
+  if(!wasPrologue){ const hk = housingChoiceDue(state, adv); if(hk) await askHousingChoiceFirst(state, hk); } // 九、9.11：選完科系接著選住處(不佔回合、不扣行動點)
   if(timeCtx.studentExpense) await askStudentExpenseFirst(state, timeCtx.studentExpense); // 十七、17.3.6（2026-10-09）：先選完再寫
   aiWritingNow = true;
   render(true);
@@ -10189,6 +10394,7 @@ async function takeTurnInner(actionText, cost, opts){
     if(!dateCheck.ok){
       console.warn("[場景日期違規] 自動重新生成一次：", dateCheck.reason);
       addReviewFlag(state, "scene_date_retry", "第一次生成違規，已自動重新生成："+dateCheck.reason);
+      timeCtx.regenReason = "場景日期違規";
       timeCtx.retryNote = `你上一次回傳的新場景日期不合規則：${dateCheck.reason}。這次scene_day_offset必須是0到${timeCtx.window.end-timeCtx.window.start}之間的整數（${calFormat(timeCtx.window.start)}～${calFormat(timeCtx.window.end)}）。`;
       try{
         const retried = await callOnce();
@@ -10209,6 +10415,7 @@ async function takeTurnInner(actionText, cost, opts){
     for(let q=0; q<OUTPUT_QUALITY_MAX_RETRIES && quality.length; q++){
       console.warn("[輸出品質] 自動重新產生：", quality.join("；"));
       addReviewFlag(state, "output_quality_retry", `第${q+1}次重新產生：${quality.join("；")}`);
+      timeCtx.regenReason = quality.join("；").slice(0,60);
       timeCtx.retryNote = `你上一次回傳的正文有問題：${quality.join("；")}。這次每一段都要寫完整的句子，整段重新構思，不要只改上一版的詞句，引號要成對，台詞一律用{{名字|台詞}}標記，正文不能出現大括號或資料欄位名稱。`;
       try{ result = await callOnce(); quality = qualityOf(result); }
       catch(qErr){ console.error("重新產生失敗，沿用上一次的結果：", qErr); break; }
@@ -10268,7 +10475,6 @@ async function takeTurnInner(actionText, cost, opts){
   dispatchPendingModals(); // 2026-09-27：抽成函式，放置回溯(10.6.5)回到某個彈窗時也要能重新跳出
   if(apJustExhausted) renderAPExhaustedModal(); // 最後才疊上去，確保在其他彈窗之上
   updateDevUsageBox(); // 10.5：開發者面板的上一回合用量
-  processBookQueue(true); // 十五、背景寫章節(不等它，不影響這回合)；失敗的章節每回合自動重試一次，最多3次
 }
 
 // ========== 十、10.6 放置代活（2026-09-27實作，使用者授權Claude全權判斷；傾向標籤表2026-09-28定案(數字仍為測試參數)；彈窗代選對應表2026-09-27使用者確認定案） ==========
@@ -10386,7 +10592,7 @@ const IDLE_POPUP_MAP = {
   businessCont: [{key:"persist",tag:"努力"},{key:"inject",tag:"冒險"},{key:"close",tag:["安逸","逃避","顧家"]}],
   eldercare:    [{key:"self",tag:"顧家"},{key:"hire",tag:["努力","冒險"]},{key:"split",tag:"社交"},{key:"limited",tag:["安逸","逃避"]}]
 };
-const IDLE_POPUP_TITLES = { sideBusiness:"副業契機", major:"選科系", transfer:"轉系", dualMajor:"雙主修", dualAbandon:"雙主修中途放棄", withdrawal:"休學／肄業",
+const IDLE_POPUP_TITLES = { housing:"住處", sideBusiness:"副業契機", major:"選科系", transfer:"轉系", dualMajor:"雙主修", dualAbandon:"雙主修中途放棄", withdrawal:"休學／肄業",
   parenting:"子女成長節點", marriageCrisis:"婚姻危機", divorce:"離婚結算", relationship:"關係投入", divorceRecovery:"一個人的生活", cohabitation:"同居",
   jobSearch:"求職投遞", promotion:"升遷", careerFork:"職涯岔路", businessLaunch:"創業", familyBusiness:"接手家業", businessCont:"事業存續", retirement:"退休", eldercare:"照顧家人", exam:"期末考" };
 const IDLE_CHOICE_LABELS = { kept:"保持興趣原樣", gig:"接一些零星案子", formal:"認真發展成正式副業", stay:"維持現狀", apply:"申請", decline:"婉拒", keep:"撐下去", abandon:"放棄",
@@ -10406,6 +10612,12 @@ function idleResolvePendingPopups(s, record){
     if(s.pendingSideBusinessCardId){
       const card = (s.interestCandidates||[]).find(c=>c.id===s.pendingSideBusinessCardId); s.pendingSideBusinessCardId = null;
       if(card){ snap("sideBusiness", { pendingSideBusinessCardId: card.id }); const k = idleChooseOption(s, IDLE_POPUP_MAP.sideBusiness); card.sideBusinessStatus = k; if(k==="formal") card.sideBusinessSince = s.turnCount; s.sideBusinessEventLog = { category:card.category, choice:k }; decide("sideBusiness", k); }
+      continue;
+    }
+    if(s.pendingHousingChoice){ // 九、9.11：放置期間不換住處；畢業時宿舍一定要離開，代選搬回家
+      const hp = s.pendingHousingChoice; snap("housing", { pendingHousingChoice: hp });
+      resolveHousingChoice(s, hp.kind==='graduate' && housingTypeOf(s)==='dorm' ? 'parents' : null);
+      if(hp.kind==='graduate' && housingTypeOf(s)==='dorm') decide("housing", "parents", "搬回家");
       continue;
     }
     if(s.pendingMajorSelection){
@@ -10929,6 +11141,7 @@ function dispatchPendingModals(){
   // 九、大學科系系統：四個彈窗互斥，一次只處理一個，優先序為選科系＞轉系＞雙主修＞休學肄業
   // （選科系優先是因為其他三個狀態機都要有科系才有意義；後三者用if/else if避免同一回合疊兩個彈窗互相蓋掉）
   if(state.pendingMajorSelection){ state.pendingMajorSelection = false; renderMajorSelectionModal(); }
+  else if(state.pendingHousingChoice){ renderHousingChoiceModal(); } // 九、9.11：決定前一直保留，重新整理後再跳出
   else if(state.pendingTransferOffer){ state.pendingTransferOffer = false; renderTransferOfferModal(); }
   else if(state.pendingDualMajorOffer){ state.pendingDualMajorOffer = false; renderDualMajorOfferModal(); }
   else if(state.pendingDualMajorAbandonOffer){ state.pendingDualMajorAbandonOffer = false; renderDualMajorAbandonModal(); }
@@ -11237,7 +11450,7 @@ function applyResult(r, timeCtx, forceEnding, actionText){
   const cashBeforePurchase = s.cash;
   const purchaseNote = applyAppearanceShoppingResult(s, r); // 十七、17.1.2／17.3（2026-09-28）
   if(Math.round(s.cash - cashBeforePurchase)) settlementExtras.push({ label: (s.purchaseEventNow && s.purchaseEventNow.bought!==false && s.purchaseEventNow.item) ? String(s.purchaseEventNow.item).slice(0,16) : "購物", amount: Math.round(s.cash - cashBeforePurchase), cat:"購物" });
-  if(r.housing_choice && r.housing_choice.type && r.housing_choice.type!==(s.housing?.type)){
+  if(!isStudentPhase(s) && r.housing_choice && r.housing_choice.type && r.housing_choice.type!==(s.housing?.type)){ // 九、9.11.5：學生時期不採用旁白回報的housing_choice
     const wasOwn = s.housing?.type==="own";
     const nowOwn = r.housing_choice.type==="own";
     // 七、7.5.3買房頭期款門檻檢查（9/15新增，取代原本無客戶端強制檢查的P2缺口）：
@@ -11801,7 +12014,10 @@ async function succeedAsChild(childName, opts){
   if(!child || succeeding) return;
   succeeding = true;
   let familyBook = null;
-  try{ familyBook = await preserveFamilyBook(prev); } finally { succeeding = false; }
+  try{
+    if(blankChapterCount(prev) && !(await remindBlankChapters(prev, "傳承"))) return; // 15.9.6：傳承前提醒一次
+    familyBook = await preserveFamilyBook(prev);
+  } finally { succeeding = false; }
   if(state!==prev) return; // 等待期間畫面已經換掉(例如切換人生)，不再繼續傳承
   // 2026-09-22修正：配偶認定改用romanceStatus==="married"（比照7.6.2sweepMarriageCrisisCandidate既有寫法），
   // 不再用relation字串regex比對——離婚後的「前配偶」relation仍含「配偶」兩字，regex會誤判成現任配偶
@@ -11973,6 +12189,7 @@ async function succeedAsChild(childName, opts){
     examBelowExpectationStreak: 0,
     lowCashStreak: 0,
     pendingMajorSelection: false,
+    pendingHousingChoice: null, housingNext: null, housingAsked: false, housingOfferCooldownUntilTurn: 0, housingReleasedNames: [], roommateName: null, roommateMade: false, // 九、9.11
     pendingTransferOffer: false,
     pendingDualMajorOffer: false,
     pendingLeaveOffer: null,
@@ -11992,10 +12209,9 @@ async function succeedAsChild(childName, opts){
 // 移到唯讀的人生回顧區、空出格子；禮包點消失，購買點全部移到金鑰錢包（由Worker在/archive裡加總）
 async function endLife(reason){
   // 十五、人生之書：封存前把還沒寫完的章節等完(最多90秒)，人生回顧裡才看得到完整的書；刪除人生不等
-  if(reason!=="deleted" && state && state.book && state.book.chapters.some(c=>c.status!=="done")){
-    state.book.chapters.forEach(c=>{ if(c.status==="failed") c.status = "pending"; }); // 失敗的章節封存前再試最後一次
-    document.getElementById("app").insertAdjacentHTML("afterbegin", `<div class="loading" id="book-finishing">正在把最後一章寫進人生之書…</div>`);
-    await waitForBook(90000);
+  if(reason!=="deleted" && state && state.book && blankChapterCount(state)){ // 15.9.6：闔卷前提醒一次，闔卷之後不能再寫；刪除這段人生不提醒
+    const go = await remindBlankChapters(state, "闔卷");
+    if(!go) return;
   }
   closeBookPage();
   if(reason!=="deleted") await ensureArchivedContent(state); // 10.7.3：人生封存要完整(新裝置先補齊封存包)；補不齊時封存清單照樣留在存檔裡
@@ -12040,10 +12256,12 @@ async function endLife(reason){
 // ========== 十五、人生之書：章節成書（2026-09-25新增，佇列批次6，【定案草稿】待使用者確認） ==========
 // 每換一個人生階段(高中→大學／技職→初入社會→職涯發展→中年→老年)成一章；同一階段超過5個遊戲年，每5年另成一章；
 // 人生結束(死亡)那一回合把最後一段也收成一章。素材只用每回合的turn_summary與重大事件，不送完整敘事(控制成本)。
-// 背景生成、不扣行動點、不影響任何遊戲數值；失敗可稍後重試，不影響遊玩
+// 十五、15.9（2026-10-10）：換階段只新增「空白章」（不自動呼叫AI）；玩家按「寫成這一章」確認後才寫、每章扣3點，依序寫、寫好固定；
+// 失敗不扣點可以再按（同一章每天最多5次）；不影響任何遊戲數值
 const BOOK_MAX_YEARS_PER_CHAPTER = 5;        // 【定案草稿,十五、15.1】
 const BOOK_MAX_SUMMARIES_PER_CHAPTER = 150;  // 【測試參數,15.2】素材上限，超過就平均抽樣(有重大事件的回合一定保留)
-const BOOK_AUTO_RETRY_MAX = 3;               // 【測試參數,15.5】失敗後每回合結束自動重試一次，最多3次；之後只能手動重試
+const BOOK_CHAPTER_COST = 3;                 // 【測試參數,15.9.2】每章扣3點
+const BOOK_CALLS_PER_DAY = 5;                // 【定案,15.9.4】同一章每天(台灣日期)最多呼叫5次；Worker端也擋，前端先擋避免白跑
 let MOCK_CHAPTER_FAIL_RATE = 0;              // 🛠面板可調，測試失敗重試用
 let MOCK_CHAPTER_DELAY_MS = 600;
 let bookInFlight = null;                     // 目前正在生成的Promise(一次只生成一章)
@@ -12064,8 +12282,9 @@ function bookStageOf(s){
 }
 function ensureBook(s){
   if(!s.book) s.book = { chapters:[], draft:null, unseen:0, seq:0 };
-  // 讀檔時上一次沒寫完的(頁面關掉)改回待寫
-  if(!bookInFlight) s.book.chapters.forEach(c=>{ if(c.status==="writing") c.status = "pending"; });
+  // 15.9.5：舊存檔裡已經收成章但還沒寫好(排隊中／失敗)的章節一律轉成空白章；讀檔時上一次沒寫完的(頁面關掉)也改回空白章。
+  // 已經寫好的章節(done)不動，缺少paid欄位的視為舊規則下的免費章
+  s.book.chapters.forEach(c=>{ if(c.status==="pending" || c.status==="failed" || (c.status==="writing" && !bookInFlight)) c.status = "blank"; });
   return s.book;
 }
 // 每回合成功套用結果後呼叫：先判斷要不要收成一章，再把這回合的摘要放進目前這一章的素材
@@ -12096,6 +12315,8 @@ function closeBookDraft(s){
   const d = book.draft;
   book.draft = null;
   if(!d || !d.items.length) return null;
+  // 15.9.7：反悔後同一階段再次收章時，已經寫好(或正在寫)的那一章不重寫、不再扣點，這次收的素材就不另成一章
+  if(book.chapters.some(c=>c.key===d.key && c.ageFrom===d.startAge && c.status!=="blank")) return null;
   book.seq = (book.seq||0) + 1;
   const part = book.chapters.filter(c=>c.key===d.key).length + 1;
   const ch = {
@@ -12104,10 +12325,10 @@ function closeBookDraft(s){
     key: d.key, label: d.label, part,
     ageFrom: d.startAge, ageTo: d.endAge, dateFrom: d.dateFrom||null, dateTo: d.dateTo||null,
     items: d.items, events: d.events,
-    status: "pending", attempts: 0, lastAttemptTurn: null,
-    createdTurn: s.turnCount, title: null, text: null
+    status: "blank", createdTurn: s.turnCount, title: null, text: null
   };
   book.chapters.push(ch);
+  book.unseen = (book.unseen||0) + 1; // 人生之書入口顯示「N章新」，玩家才知道多了一章空白章
   return ch;
 }
 function sampleChapterItems(items){
@@ -12127,9 +12348,9 @@ function buildChapterMaterial(s, ch){
     player_name: s.name, gender: s.gender,
     chapter_index: ch.index, stage_label: chapterStageText(ch),
     age_from: ch.ageFrom, age_to: ch.ageTo, date_from: ch.dateFrom, date_to: ch.dateTo,
-    turn_summaries: sampleChapterItems(ch.items).map(it=>({ t:it.t, s:it.s })),
+    turn_summaries: sampleChapterItems(ch.items).map(it=>it.d ? { t:it.t, d:it.d, s:it.s } : { t:it.t, s:it.s }),
     major_events: (ch.events||[]).slice(-60),
-    characters: (s.characters||[]).slice(0,40).map(c=>({ name:c.name, relation:c.relation })),
+    characters: (s.characters||[]).slice(0,40).map(c=>({ name:c.name, relation:c.relation, origin:c.origin||"" })), // 15.9.8：首次出場交代身分用
     romance_flags: buildRomanceFlags(s), intimacy_mode: "full", // 十六、16.3.7：人生之書套用同一尺度(2026-09-28起一律完整呈現)
     previous_chapter_title: prev ? prev.title : null
   };
@@ -12142,15 +12363,24 @@ async function callChapterAI(s, ch){
       kind:"chapter",
       key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME),
       slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
-      life_id: ensureLifeId(s), chapter_id: ch.id,
+      life_id: ensureLifeId(s), chapter_id: ch.id, wallet: walletActive(s) || undefined,
       messages: [{ role:"user", content: chapterMsg }]
     })
   });
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("章節回應不是合法JSON（HTTP "+res.status+"）"); }
-  if(isDailyCapResponse(res, data)) noteDailyCapBlocked(); // 十、10.9.3.1：人生之書章節也是AI呼叫；這章之後會自動重試
-  if(!res.ok) throw new Error("章節生成失敗 "+res.status+"："+(data?.error?.message||""));
+  if(isDailyCapResponse(res, data)){ noteDailyCapBlocked(); const err = new Error("今天的故事額度已用完"); err.dailyCap = true; throw err; } // 十、10.9.3.1
+  // 15.9.2：扣點在伺服器（AI成功後才扣、同一章只扣一次），回應帶回最新餘額；失敗不扣點
+  if(data && data.lifegame && data.lifegame.ap) syncServerAP(s, data.lifegame.ap);
+  if(data && data.lifegame && data.lifegame.wallet) syncWallet(data.lifegame.wallet);
   if(data && data.lifegame && data.lifegame.usage){ lastChapterUsage = data.lifegame.usage; addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"chapter", inChars:{ stats:chapterMsg.length }, outChars:outputBlockChars(data) }); }
+  if(!res.ok){
+    const err = new Error("章節生成失敗 "+res.status+"："+(data?.error?.message||""));
+    if(res.status===402) err.apInsufficient = true;
+    if(res.status===429) err.chapterLimit = true;
+    throw err;
+  }
+  if(data && data.lifegame && data.lifegame.usable===false) throw new Error("章節內容不合格");
   const block = (data.content||[]).find(b=>b.type==="tool_use" && b.name==="submit_chapter");
   if(!block || !block.input) throw new Error("回應裡沒有submit_chapter");
   return block.input;
@@ -12168,51 +12398,130 @@ async function mockGenerateChapter(s, ch){
   while(Array.from(text).length < 1500) text += "\n\n窗外的光慢慢移過桌面，你把杯子裡剩下的水喝完。";
   return { title: `${m.stage_label}的日子`, text: Array.from(text).slice(0,2500).join("") };
 }
+// 15.9.8：書裡標點由程式在存檔前統一（半形逗號等改全形、間隔號統一），不靠AI
+function normalizeBookPunct(text){
+  const cjk = "㐀-鿿＀-￯」』）、，。！？；：…";
+  let t = String(text||"");
+  t = t.replace(new RegExp("(["+cjk+"])[ \\t]*,[ \\t]*(?=\\S)","g"), "$1，")
+       .replace(new RegExp("(["+cjk+"])[ \\t]*;[ \\t]*(?=\\S)","g"), "$1；")
+       .replace(new RegExp("(["+cjk+"])[ \\t]*:[ \\t]*(?=[^\\d\\s])","g"), "$1：")
+       .replace(new RegExp("(["+cjk+"])\\?","g"), "$1？")
+       .replace(new RegExp("(["+cjk+"])!","g"), "$1！")
+       .replace(new RegExp("(["+cjk+"])\\.(?![\\w.])","g"), "$1。")
+       .replace(/\.{3,}|…+/g, "……")
+       .replace(/(?<=[㐀-鿿])[·•‧･](?=[㐀-鿿])/g, "・");
+  return t;
+}
+function chapterErrorText(err){
+  if(err && err.dailyCap) return "撰稿人今天寫得太多，需要休息一下，台灣時間午夜後恢復。";
+  if(err && err.chapterLimit) return "這一章暫時寫不出來，明天再試。";
+  if(err && err.apInsufficient) return "行動點不足。";
+  return "這一章這次沒寫成，沒有扣點，可以再按一次。";
+}
+// 15.9.4：依序寫——第N章要等第N-1章寫好才能寫
+function chapterPrevDone(book, ch){
+  const prev = book.chapters.find(c=>c.index===ch.index-1);
+  return !prev || prev.status==="done";
+}
+function chapterCallsToday(ch){ return ch.calls && ch.calls.d===taipeiDateString() ? ch.calls.n : 0; }
+// 回傳null＝可以寫；否則是不能寫的原因
+function chapterBlockedReason(s, ch){
+  if(!ch || ch.status!=="blank") return "state";
+  if(bookInFlight) return "busy";
+  if(!chapterPrevDone(s.book, ch)) return "order";
+  if(totalAP(s) < BOOK_CHAPTER_COST) return "points";
+  if(chapterCallsToday(ch) >= BOOK_CALLS_PER_DAY) return "limit";
+  return null;
+}
+// 本機扣點（伺服器不扣的路徑）與點數紀錄；真實模式的伺服器扣點已在callChapterAI同步
+async function payForChapter(s, ch){
+  if(walletActive(s)){
+    if(USE_MOCK){ const spent = await walletSpendOnce(BOOK_CHAPTER_COST, "book"); if(!spent.ok) throw Object.assign(new Error("行動點不足"), { apInsufficient:true }); }
+  } else if(!SERVER_AP) spendAP(s, BOOK_CHAPTER_COST);
+  apLogAdd(s, `人生之書（第${chineseNum(ch.index)}章）`, -BOOK_CHAPTER_COST);
+}
+// 寫一章：成功＝章節固定並扣3點；失敗＝回到空白章、不扣點。回傳{ok, error}
 async function generateChapter(s, ch){
-  ch.status = "writing"; ch.attempts = (ch.attempts||0)+1; ch.lastAttemptTurn = s.turnCount;
+  const id = ch.id;
+  if(ch.packed){ // 10.7.3：素材在雲端封存包裡，先補齊（補齊後章節物件會換成完整的那份）
+    await ensureArchivedContent(s);
+    ch = s.book.chapters.find(c=>c.id===id) || ch;
+  }
+  ch.status = "writing"; ch.errMsg = null;
+  ch.calls = { d: taipeiDateString(), n: chapterCallsToday(ch)+1 };
+  refreshBookPage();
   try{
     const out = USE_MOCK ? await mockGenerateChapter(s, ch) : await callChapterAI(s, ch);
-    const title = String(out.title||"").replace(/^第.{1,4}章[\s　:：]*/,"").trim().slice(0,20);
-    const text = String(out.text||"").trim();
+    const title = normalizeBookPunct(String(out.title||"").replace(/^第.{1,4}章[\s　:：]*/,"").trim().slice(0,20));
+    const text = normalizeBookPunct(String(out.text||"").trim());
     if(!title || Array.from(text).length < 300) throw new Error("章節內容過短或沒有章名");
-    ch.title = title; ch.text = text; ch.status = "done"; ch.error = null;
+    await payForChapter(s, ch);
+    ch.title = title; ch.text = text; ch.status = "done"; ch.paid = true; ch.errMsg = null; ch.calls = null;
     delete ch.items; delete ch.events; // 寫好後素材用不到了，減少存檔大小
     const book = ensureBook(s);
-    if(!book.chapters.includes(ch)) return; // 這一章在生成途中被反悔撤掉了
     book.unseen = (book.unseen||0) + 1;
+    bookInFlight = null; // 先放開「正在寫」，下面重畫頁面時下一章的按鈕才會恢復
     if(state===s){ saveGame(); showBookToast(); refreshBookPage(); updateBookLink(); }
+    return { ok:true };
   }catch(e){
-    console.warn("章節生成失敗，之後會再試：", e);
-    ch.status = "failed"; ch.error = String(e && e.message || e).slice(0,200);
+    console.warn("章節生成失敗，沒有扣點：", e);
+    ch.status = "blank"; ch.errMsg = chapterErrorText(e);
+    bookInFlight = null;
     if(state===s){ saveGame(); refreshBookPage(); }
+    return { ok:false, error:e };
   }
 }
-// 依序把待寫的章節寫完。autoRetry=true時，失敗的章節(自動重試未滿3次、這回合還沒試過)也重試一次
-function processBookQueue(autoRetry){
-  const s = state;
-  if(!s || !s.book || bookInFlight) return bookInFlight;
-  const next = s.book.chapters.find(c=>c.status==="pending" ||
-    (autoRetry && c.status==="failed" && (c.attempts||0) < BOOK_AUTO_RETRY_MAX && c.lastAttemptTurn!==s.turnCount));
-  if(!next) return null;
-  const p = generateChapter(s, next).finally(()=>{ if(bookInFlight===p) bookInFlight = null; if(state===s) processBookQueue(false); });
+function startChapterWrite(s, ch){
+  const p = generateChapter(s, ch).finally(()=>{ if(bookInFlight===p) bookInFlight = null; });
   bookInFlight = p;
   return p;
 }
-function retryChapter(id){
-  const ch = state && state.book && state.book.chapters.find(c=>c.id===id);
-  if(!ch || ch.status!=="failed") return;
-  ch.status = "pending";
-  refreshBookPage();
-  processBookQueue(false);
+// 15.9.3：按「寫成這一章（3點）」→確認視窗→才呼叫AI
+function requestWriteChapter(id){
+  const s = state, ch = s && s.book && s.book.chapters.find(c=>c.id===id);
+  if(!ch || chapterBlockedReason(s, ch)) return;
+  const div = entryModal("book-pay-modal", `<p>這一章寫下去要扣 ${BOOK_CHAPTER_COST} 點，寫好之後就固定下來，扣了不退。</p>
+    <button class="primary-btn" id="btn-book-pay-ok">寫成這一章</button><button class="ghost-btn" id="btn-book-pay-no">先不要</button>`);
+  document.getElementById("btn-book-pay-no").onclick = ()=>div.remove();
+  document.getElementById("btn-book-pay-ok").onclick = ()=>{
+    div.remove();
+    if(state!==s || chapterBlockedReason(s, ch)) return;
+    startChapterWrite(s, ch);
+  };
 }
-// 人生結束前把還沒寫完的章節等完(最多等maxMs)，讓封存到人生回顧的是完整的書
-async function waitForBook(maxMs){
-  const deadline = Date.now() + (maxMs||90000);
-  while(Date.now() < deadline){
-    const p = processBookQueue(false);
-    if(!p) return;
-    await Promise.race([p, new Promise(r=>setTimeout(r, Math.max(0, deadline-Date.now())))]);
-  }
+function blankChapterCount(s){ return s && s.book ? s.book.chapters.filter(c=>c.status==="blank").length : 0; }
+// 15.9.6：世代傳承前、就此闔卷前，這一世還有空白章就提醒一次。回傳true＝繼續原本的動作，false＝中止（玩家選了「現在寫」但中途沒寫完）
+function remindBlankChapters(s, what){
+  const n = blankChapterCount(s);
+  if(!n || !s.book) return Promise.resolve(true);
+  return new Promise(resolve=>{
+    const enough = totalAP(s) >= BOOK_CHAPTER_COST;
+    const div = entryModal("book-remind-modal", `<p>這一世還有 ${n} 章沒寫，要現在寫嗎？</p>
+      <p style="font-size:13px;color:var(--ink-soft);">每章 ${BOOK_CHAPTER_COST} 點，寫好就固定、扣了不退。不寫的，${what}之後就不能補了。</p>
+      <p id="book-remind-msg" style="font-size:13px;color:var(--ink-soft);"></p>
+      <button class="primary-btn" id="btn-book-remind-write" ${enough?"":"disabled"}>現在寫</button><button class="ghost-btn" id="btn-book-remind-skip">不寫，直接繼續</button>`);
+    const writeBtn = ()=>document.getElementById("btn-book-remind-write"), skipBtn = ()=>document.getElementById("btn-book-remind-skip");
+    skipBtn().onclick = ()=>{ div.remove(); resolve(true); };
+    writeBtn().onclick = async ()=>{
+      const msg = document.getElementById("book-remind-msg");
+      writeBtn().disabled = true; skipBtn().disabled = true;
+      while(true){ // 依序一章一章寫，每寫完一章再看下一章
+        const ch = s.book.chapters.find(c=>c.status==="blank");
+        if(!ch) break;
+        if(msg) msg.textContent = `正在寫第${chineseNum(ch.index)}章…`;
+        if(bookInFlight) await bookInFlight.catch(()=>{});
+        const why = chapterBlockedReason(s, ch);
+        const r = why ? { ok:false, error: why==="points" ? { apInsufficient:true } : why==="limit" ? { chapterLimit:true } : null } : await startChapterWrite(s, ch);
+        if(state!==s){ div.remove(); resolve(false); return; }
+        if(!r.ok){
+          if(msg) msg.textContent = chapterErrorText(r.error) + " 可以到人生之書繼續寫，或選「不寫，直接繼續」。";
+          writeBtn().disabled = false; skipBtn().disabled = false;
+          return;
+        }
+      }
+      div.remove(); resolve(true);
+    };
+  });
 }
 // 十五、15.1（2026-09-28使用者確認）：世代傳承保留上一代的人生之書(唯讀)，轉世丹不保留。
 // 比照「就此闔卷」先等還沒寫完的章節(最多90秒)，再把寫好的章節另存到Worker(/family-book)，家族年表只記id——
@@ -12221,12 +12530,6 @@ const FAMILY_BOOK_CHAPTER_FIELDS = ["id","index","label","part","title","text","
 async function preserveFamilyBook(prev){
   if(!prev.book || !prev.book.chapters.length) return null;
   await ensureArchivedContent(prev); // 10.7.3：章節內文在封存包裡時先補齊
-  if(prev.book.chapters.some(c=>c.status!=="done")){
-    prev.book.chapters.forEach(c=>{ if(c.status==="failed") c.status = "pending"; });
-    document.getElementById("app").insertAdjacentHTML("afterbegin", `<div class="loading" id="book-finishing">正在把最後一章寫進人生之書…</div>`);
-    await waitForBook(90000);
-    document.getElementById("book-finishing")?.remove();
-  }
   closeBookPage();
   const chapters = prev.book.chapters.filter(c=>c.status==="done").map(c=>{
     const o = { status:"done" };
@@ -12326,7 +12629,17 @@ function refreshBookPage(create){
     page.querySelectorAll("#btn-book-back,#btn-book-back2").forEach(b=>b.onclick = ()=>{ bookPageCtx.openId = null; refreshBookPage(); });
     return;
   }
-  const statusText = (c)=> c.status==="done" ? "" : c.status==="failed" ? (readOnly ? "這一章沒有寫成" : "這一章還沒寫成") : (readOnly ? "這一章沒有寫成" : "旁白正在寫這一章…");
+  // 15.9.1／15.9.3／15.9.4：空白章顯示「還沒寫」；可以寫的章節有按鈕（寫成這一章（3點）），點數不足、沒輪到、正在寫別章時按鈕變灰
+  const blankArea = (c)=>{
+    if(c.status==="writing") return `<span style="color:var(--ink-soft);">旁白正在寫這一章…</span>`;
+    if(readOnly) return `<span style="color:var(--ink-soft);">這一章沒有寫成</span>`;
+    if(c.status!=="blank") return ``;
+    const why = chapterBlockedReason(state, c);
+    const btnLabel = `寫成這一章（${BOOK_CHAPTER_COST}點）`;
+    const note = c.errMsg ? c.errMsg : why==="order" ? "請先寫上一章" : why==="points" ? `行動點不足（需要 ${BOOK_CHAPTER_COST} 點）` : why==="limit" ? "這一章暫時寫不出來，明天再試" : "";
+    return `<span style="color:var(--ink-soft);">還沒寫</span>
+      <div><button class="ghost-btn book-write" data-write="${c.id}" ${why?"disabled":""}>${btnLabel}</button>${note?`<span class="book-write-note" style="font-size:12px;color:var(--ink-soft);margin-left:8px;">${escapeHtml(note)}</span>`:``}</div>`;
+  };
   const draft = book && book.draft;
   page.innerHTML = `
     <div class="book-inner">
@@ -12334,17 +12647,17 @@ function refreshBookPage(create){
         <div class="book-cover-sub">${escapeHtml(owner||"")}</div>
         <h2>人生之書</h2>
       </div>
+      ${(!readOnly && chapters.some(c=>c.status!=="done")) ? `<p class="book-empty">換人生階段時，書裡會多一章空白章。想寫的時候按「寫成這一章」，每章 ${BOOK_CHAPTER_COST} 點，寫好就固定、扣了不退，要依序寫。</p>` : ``}
       ${chapters.length ? `<ol class="book-toc">${chapters.map(c=>`
         <li class="book-toc-item${c.status==="done"?" is-done":""}" ${c.status==="done"?`data-open="${c.id}"`:""}>
           <div class="book-chapter-no">第${chineseNum(c.index)}章・${escapeHtml(chapterStageText(c))}・${c.ageFrom===c.ageTo?c.ageFrom:c.ageFrom+"－"+c.ageTo}歲</div>
-          <div class="book-toc-title">${c.status==="done" ? escapeHtml(c.title) : `<span style="color:var(--ink-soft);">${statusText(c)}</span>`}</div>
-          ${(!readOnly && c.status==="failed") ? `<button class="ghost-btn book-retry" data-retry="${c.id}">重試</button>` : ``}
-        </li>`).join("")}</ol>` : `<p class="book-empty">還沒有任何一章。每走完一個人生階段（或同一階段每5年），旁白會把這段日子整理成一章。</p>`}
+          <div class="book-toc-title">${c.status==="done" ? escapeHtml(c.title) : blankArea(c)}</div>
+        </li>`).join("")}</ol>` : `<p class="book-empty">還沒有任何一章。每走完一個人生階段（或同一階段每5年），書裡會多一章空白章，由你決定要不要寫。</p>`}
       ${(!readOnly && draft && draft.items && draft.items.length) ? `<p class="book-empty">現在這一章（${escapeHtml(draft.label)}）還在發生中。</p>` : ``}
       <button class="ghost-btn" id="btn-book-close">關閉</button>
     </div>`;
   page.querySelectorAll("[data-open]").forEach(li=>li.onclick = ()=>{ bookPageCtx.openId = li.dataset.open; refreshBookPage(); });
-  page.querySelectorAll("[data-retry]").forEach(b=>b.onclick = (ev)=>{ ev.stopPropagation(); retryChapter(b.dataset.retry); });
+  page.querySelectorAll("[data-write]").forEach(b=>b.onclick = (ev)=>{ ev.stopPropagation(); requestWriteChapter(b.dataset.write); });
   document.getElementById("btn-book-close").onclick = closeBookPage;
 }
 
@@ -13721,6 +14034,9 @@ function renderLegendModal(){
         <p>跟某個人互動得多，關係欄會出現「曖昧中」，太冷淡又會退回去。要在一起，必須真的有告白的場面，而且是你自己點頭：對方告白時選「答應」，或是你主動告白（成不成看你們有多熟）。在一起之後，這件事不會再重來一次。分手也一定會有一個場面。</p>
         <h4>人物</h4>
         <p>衝突背後，通常有一件沒說出口的在意。</p>
+        <h4>人生之書</h4>
+        <p>換人生階段的時候，人生之書裡會多一章空白章。想把那段日子寫成一章小說，就到人生之書按「寫成這一章」，每章扣 ${BOOK_CHAPTER_COST} 點行動點，寫好就固定下來，不能換一版，扣了不退。章節要依序寫，沒寫成功不會扣點。</p>
+        <p>不想寫的章可以先放著，但這一世結束（傳承或闔卷）之後就不能補了。以前已經寫好的章節照樣可以看。</p>
       </div>
       <button class="ghost-btn" id="btn-legend-close" style="margin-top:14px;">關閉</button>
     </div>`;
@@ -14902,8 +15218,9 @@ const LIFESTYLE_SETTINGS = [
   { key:"spendingHabit", label:"花錢習慣", options:()=>Object.keys(SPENDING_HABITS).map(v=>({ value:v })) },
   { key:"mealArrangement", label:"三餐方式", options:(s)=>Object.keys(MEAL_EXPENSE_MULT).map(v=>{
       // 5.5.2資格判定＋5.5.3解鎖：開局不符資格且還沒解鎖時，家裡包辦反灰
-      const locked = v==="家裡包辦" && !s.mealCareEligibleAtStart && !s.mealFullyUnlocked;
-      return { value:v, locked, reason: locked ? MEAL_HOME_LOCKED_REASON : "" };
+      const away = v==="家裡包辦" && housingAway(s); // 九、9.11.3：不住家裡期間不提供家裡包辦
+      const locked = away || (v==="家裡包辦" && !s.mealCareEligibleAtStart && !s.mealFullyUnlocked);
+      return { value:v, locked, reason: locked ? (away ? "目前不住家裡" : MEAL_HOME_LOCKED_REASON) : "" };
     }) }
 ];
 function renderLifestyleCard(s, loadingTurn){
@@ -15411,6 +15728,7 @@ function resolveWithdrawalOffer(s, choice){
   } else if(choice==="withdraw"){
     s.studentStatus = "withdrawn"; // 九、9.5.3（2026-09-22定案）：肄業後不可重新入學，本函式與其他任何地方都不會把studentStatus從withdrawn改回enrolled
     s.timeState.stageMode = "career";
+    queueGraduationHousing(s); // 九、9.11.7：肄業比照畢業
     applyHalfYearCarryOnCareerEntry(s); // 9.8.1：帶著halfYearCarry=1肄業時，當年度回合預算設為一半
     s.universityEventLog = { type:"withdrawn" };
   } else {
