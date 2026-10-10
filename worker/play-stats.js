@@ -30,8 +30,8 @@ function maxTurns(rows) { const m = new Map(); for (const r of rows) if (r.life 
 export function isRewriteRow(r) { return r.rk === "重寫"; }
 export function retryClass(r) { return r.rk === "重寫" ? "rewrite" : r.rk === "連線" ? "conn" : r.rk === "再試" ? "again" : r.k === "retry" ? "unclassified" : null; }
 export function rewriteBlock(rows, bucketOf) {
-  const out = { turns: 0, rewrites: 0, conn: 0, again: 0, unclassified: 0, rate: null, reasons: [], notes: [], timeline: [] };
-  const reasons = {}, notes = {}, tl = new Map();
+  const out = { turns: 0, rewrites: 0, conn: 0, again: 0, unclassified: 0, rate: null, reasons: [], cats: [], notes: [], timeline: [] };
+  const reasons = {}, notes = {}, tl = new Map(), catCount = {}, catEx = {};
   let legacy = 0;
   const T = (k) => { if (!tl.has(k)) tl.set(k, { bucket: k, turns: 0, retries: 0, conn: 0, again: 0, unclassified: 0 }); return tl.get(k); };
   for (const r of rows) {
@@ -45,11 +45,17 @@ export function rewriteBlock(rows, bucketOf) {
       else reasons["改版前格式"] = (reasons["改版前格式"] || 0) + 1; // 整句當一筆
     } else if (r.rr) legacy++; // 沒帶重試種類的舊紀錄留下的整句原因
     if (r.pn) for (const x of String(r.pn).split("、")) if (x) notes[x] = (notes[x] || 0) + 1;
+    if (r.rr) { // 重寫原因分類(2026-10-10)：一筆重寫只算一類(依序比對整句或代碼)，例句取原因白話或原文前60字
+      const raw = String(r.rr), c = classifyRegen(raw), parts = raw.split("、").filter(Boolean);
+      const t = parts.length && parts.every(x => REGEN_REASON_LABELS[x]) ? parts.map(x => REGEN_REASON_LABELS[x]).join("、") : raw.slice(0, 60);
+      catCount[c] = (catCount[c] || 0) + 1; (catEx[c] = catEx[c] || {})[t] = (catEx[c][t] || 0) + 1;
+    }
   }
   if (legacy) reasons["改版前格式"] = (reasons["改版前格式"] || 0) + legacy;
   out.rate = out.turns ? Math.round(out.rewrites / out.turns * 1000) / 1000 : null;
   // 「佔重寫」的分母＝同一範圍內的自動重寫總次數(取代原本以前5名加總當分母)；改版前格式的整句不是這個數字的一部分，不算佔比
   out.reasons = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([code, n]) => ({ code, label: code === "改版前格式" ? "改版前格式（整句原因）" : (REGEN_REASON_LABELS[code] || code), n, share: code === "改版前格式" || !out.rewrites ? null : Math.round(n / out.rewrites * 1000) / 1000 }));
+  out.cats = Object.entries(catCount).map(([cat, n]) => ({ cat, n, examples: Object.entries(catEx[cat]).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([t, k]) => ({ t, n: k })) })).sort((x, y) => y.n - x.n).slice(0, 5);
   out.notes = Object.entries(notes).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([code, n]) => ({ code, label: NOTE_LABELS[code] || code, n }));
   out.timeline = [...tl.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1)).map(b => Object.assign(b, { rate: b.turns ? Math.round(b.retries / b.turns * 1000) / 1000 : null }));
   return out;

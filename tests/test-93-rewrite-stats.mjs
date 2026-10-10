@@ -123,6 +123,16 @@ A.check("N8 再玩一回合也不會再出現", !g.win.document.getElementById("
   A.check("N9 示範模式不出現新版本提醒", !gm.win.document.getElementById("update-notice") && gm.ev("updateNoticeShown()") === false);
 }
 
+// ---------- 重寫原因分類(2026-10-10，合併回來的前五名分類圖表) ----------
+{
+  const mk = (rr, i) => ({ t: 1000 + i, k: "retry", rk: "重寫", rr, life: "L" });
+  const rows = [mk("日期", 1), mk("節日", 2), mk("過短、日期", 3), mk("花費", 4), mk("欄位名稱", 5), mk("很奇怪的整句原因", 6), { t: 2000, k: "turn", life: "L" }];
+  const b = rewriteBlock(rows);
+  const n = (c) => (b.cats.find(x => x.cat === c) || {}).n;
+  A.check("C1 重寫原因分類：一筆重寫只算一類（日期2＋日期、過短1＝3，花費1，格式1，其他1）", n("日期、星期、節日寫錯") === 3 && n("該寫的事沒寫到") === 1 && n("格式、用詞不合") === 1 && n("其他") === 1 && b.cats.reduce((t, x) => t + x.n, 0) === 6, b.cats);
+  A.check("C2 分類由多到少排序，例句最多3筆，代碼例句顯示白話", b.cats[0].cat === "日期、星期、節日寫錯" && b.cats.every(x => x.examples.length <= 3) && b.cats[0].examples.some(e => e.t === "新場景日期不在範圍內"), b.cats[0]);
+}
+
 // ---------- 前端程式碼：重試種類與頁面版本都有送 ----------
 const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 A.check("F1 每種AI呼叫(回合、放置摘要、章節、回顧這一生)都帶app_version", (html.match(/app_version: APP_VERSION/g) || []).length >= 4);

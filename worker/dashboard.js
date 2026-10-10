@@ -380,15 +380,18 @@ function verToggle(p){
   return '<div class="chips" id="verPick"><button data-ver="all" aria-pressed="'+(D.ver!=="latest")+'">全部</button><button data-ver="latest" aria-pressed="'+(D.ver==="latest")+'">只看最新版</button></div>'+
     (D.ver==="latest"?'<p class="note">只算頁面版本是目前伺服器版本'+(w.latest_version?'（'+esc(w.latest_version)+'）':'')+'的呼叫，沒有帶版本號的舊分頁不算。</p>':'')}
 function rwList(a,withShare){return a&&a.length?'<div class="scroll"><table><tr><th>項目</th><th class="n">次數</th>'+(withShare?'<th class="n">佔重寫</th>':'')+'</tr>'+a.map(function(x){return '<tr><td class="wrap">'+esc(x.label)+'</td><td class="n">'+num(x.n)+'</td>'+(withShare?'<td class="n">'+pct0(x.share)+'</td>':'')+'</tr>'}).join("")+'</table></div>':'<p class="small">沒有紀錄</p>'}
+function catsBlock(c){if(!c.length)return '<p class="small">沒有重寫</p>';var t=c.reduce(function(a,x){return a+x.n},0);
+  return '<div class="scroll tall">'+hbars(c.map(function(x){return[x.cat,x.n]}),false," 次")+'<table><tr><th>類別</th><th class="n">次數</th><th class="n">佔重寫</th><th>最常見的原文</th></tr>'+c.map(function(x){return '<tr><td>'+esc(x.cat)+'</td><td class="n">'+num(x.n)+'</td><td class="n">'+pct0(t?x.n/t:null)+'</td><td class="wrap">'+x.examples.map(function(e){return esc(e.t)+"（"+e.n+"）"}).join("<br>")+'</td></tr>'}).join("")+'</table></div>'}
 function rewriteBody(o,r,p){
   var w=rwOf(p);if(!w)return '<p class="small">'+NA+'</p>';
   var tl=w.timeline||[],bar=card((r==="7d"?"每天":"每小時")+"重寫比例（只算自動重寫）",bars(tl.map(function(x){return r==="7d"?x.bucket:x.bucket.slice(0,2)}),[{v:tl.map(function(x){return x.turns<10?0:(x.rate||0)}),c:"var(--stamp)"}],{pct:true,ref:RETRY_TARGET,aria:"重寫比例",tips:tl.map(function(x){return x.bucket+"　自動重寫 "+x.retries+" ÷ 一般回合 "+x.turns+(x.turns<10?"（回合太少，不畫比例）":" ＝ "+pct(x.rate))})})+'<p class="note">一般回合少於 10 的時段樣本太少，不畫比例，滑過去可看實際次數。</p>');
   var cnt=card("這段時間的次數",'<div class="scroll"><table><tr><th>自動重寫</th><td>'+num(w.rewrites)+' 次 ÷ 一般回合 '+num(w.turns)+' 次＝'+pct(w.rate)+'</td></tr><tr><th>連線重試</th><td>'+num(w.conn)+' 次</td></tr><tr><th>再試一次</th><td>'+num(w.again)+' 次</td></tr><tr><th>改版前（未分類）</th><td>'+num(w.unclassified)+' 次</td></tr></table></div>','連線重試、再試一次、未分類都不算進重寫比例。');
+  var cats=card("重寫原因分類（前五名）",catsBlock(w.cats||[]),"同一次重寫只歸一類；原文是當時記下的原因（新版是原因白話，舊紀錄是整句原文）。");
   var why=card("重寫原因前 5 名",rwList(w.reasons,true),"下載的明細裡是原因代碼（例如「過短」「日期」）。");
   var notes=card("上回合紀錄前 5 名",rwList(w.notes,false),"上一回合程式直接修好、或只記錄沒重寫的事。");
   var hr='<div class="card"><h3>'+(r==="7d"?"每天":"每小時")+'明細</h3><div class="scroll tall"><table><tr><th>'+(r==="7d"?"日期":"時段")+'</th><th class="n">一般回合</th><th class="n">重寫</th><th class="n">連線重試</th><th class="n">再試一次</th><th class="n">未分類</th></tr>'+
     tl.map(function(x){return '<tr><td>'+esc(x.bucket)+'</td><td class="n">'+num(x.turns)+'</td><td class="n">'+num(x.retries)+'</td><td class="n">'+num(x.conn)+'</td><td class="n">'+num(x.again)+'</td><td class="n">'+num(x.unclassified)+'</td></tr>'}).join("")+'</table></div></div>';
-  return '<div class="grid">'+bar+cnt+why+notes+hr+'</div>'}
+  return '<div class="grid">'+bar+cnt+cats+why+notes+hr+'</div>'}
 function costBlock(o){
   var s=D.sum,a=s&&s.ai_usage,u=s&&s.usage,p=o.p,m=p&&p.summary,h="";
   var bal=a&&a.balance,todayCost=D.today?D.today.est_cost_twd:(u&&u.cost.today),hrs=curHourTW();
