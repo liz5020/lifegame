@@ -7778,6 +7778,7 @@ function repairTurnText(r){
 }
 
 // ---- 第1類與第3類的偵測(1.2.9.18.1)。回傳{ c1:[{code,msg,id?}], c3:[{code,msg}], fillPromises:[id] }，不改動r ----
+const FESTIVAL_NEAR_DAYS = 14; // 一、1.2.9.18.1【測試參數】「除夕」「大年初N」離檢查範圍幾天以內只記錄、不重寫
 function classifyTurnOutput(r, s, ctx){
   const c1 = [], c3 = [], fillPromises = [];
   const out = { c1, c3, fillPromises };
@@ -7835,13 +7836,27 @@ function classifyTurnOutput(r, s, ctx){
         for(let a=fromAbs;a<=toAbs;a++) if(weekdayOfAbs(a)===dow){ ok = true; break; }
         if(!ok){ c3.push({ code:"星期", msg:`${where}寫了「星期${m[1]}」，這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）沒有星期${m[1]}` }); break; }
       }
-      // 第1類第4點(B3)：「大年初N」「除夕」要真的落在這段時間裡
-      const cny = (calLunarDates(calAbsToDate(toAbs).y) || {}).cny;
-      if(cny!=null){
+      // 一、1.2.9.18.1(2026-10-10)：「大年初N」「除夕」離檢查範圍超過FESTIVAL_NEAR_DAYS天＝第1類重寫(節日)；14天以內＝第3類只記錄(節日附近)；落在範圍內不算問題。
+      // 年份取前一年、當年、下一年三者中離檢查範圍最近的那一個
+      {
         const NUMC = { 一:1, 二:2, 三:3, 四:4, 五:5, 六:6, 七:7, 1:1, 2:2, 3:3, 4:4, 5:5, 6:6, 7:7 };
         const cm = /大年初([一二三四五六七1-7])/.exec(t);
-        if(cm){ const a = cny + NUMC[cm[1]] - 1; if(a<fromAbs || a>toAbs) c1.push({ code:"節日", msg:`${where}寫了「大年初${cm[1]}」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）不是，節日要照time_context給的日期` }); }
-        else if(/(?<![年次回前每])除夕/.test(t)){ const a = cny - 1; if(a<fromAbs || a>toAbs) c1.push({ code:"節日", msg:`${where}寫了「除夕」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）不是除夕` }); }
+        const isEve = !cm && /(?<![年次回前每])除夕/.test(t);
+        if(cm || isEve){
+          const y0 = calAbsToDate(toAbs).y;
+          let best = null;
+          for(const yy of [y0-1, y0, y0+1]){
+            const cny = (calLunarDates(yy) || {}).cny; if(cny==null) continue;
+            const a = cm ? cny + NUMC[cm[1]] - 1 : cny - 1;
+            const dist = a<fromAbs ? fromAbs-a : a>toAbs ? a-toAbs : 0;
+            if(best===null || dist<best) best = dist;
+          }
+          if(best!==null && best>0){
+            const label = cm ? `大年初${cm[1]}` : "除夕";
+            if(best<=FESTIVAL_NEAR_DAYS) c3.push({ code:"節日附近", msg:`${where}寫了「${label}」，離這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）${best}天，只記錄` });
+            else c1.push({ code:"節日", msg:`${where}寫了「${label}」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）${cm ? "不是" : "不是除夕"}，節日要照time_context給的日期` });
+          }
+        }
       }
       // 第3類：具體日期M月D日／M/D——只看附近20天內的過去日期(編造「已讀，9/15」)；未來的約定、考試日不管
       const dre = /(\d{1,2})\s*(?:月\s*(\d{1,2})\s*[日號号]|\/\s*(\d{1,2})(?!\d))/g; let dm;
@@ -7933,7 +7948,7 @@ function buildMustDoList(s, timeCtx, forceEnding){
   return out;
 }
 // 1.2.9.18.2：重寫後挑版本——讀不了的(空白、少一段、欄位名稱)不用；兩版都讀不了就丟錯走十、10.17.7回合失敗還原；
-// 都能讀時給第1類問題比較少的那版，一樣多給重寫版【技術判斷：第一版能讀、重寫版讀不了時用第一版，不退回回合】
+// 都能讀時給第1類問題比較少的那版，一樣多給重寫版【定案(2026-10-10)：第一版能讀、重寫版讀不了時用第一版，不退回回合，記一筆output_quality_unresolved】
 function isUnreadableTurn(v){ return !v || v.cls.c1.some(i=>UNREADABLE_CODES.includes(i.code)); }
 function pickTurnVersion(first, second){
   const ok = [second, first].filter(v=>!isUnreadableTurn(v));
@@ -9725,6 +9740,30 @@ function hasUnseenRelease(){
 function markReleaseSeen(){
   try{ localStorage.setItem(SEEN_VERSION_STORAGE_NAME, APP_VERSION); }catch(e){}
 }
+// 十、10.17.12（2026-10-10）：舊分頁的新版本提醒——Worker每次回傳帶目前版本號，比自己的APP_VERSION新才提醒；
+// 等這一回合寫完、結果套用並存檔之後才出現(不打斷寫作)，只提醒不強制，同一個分頁只出現一次，按×就不再出現；示範模式不出現；本機存檔失敗提示出現時不顯示
+let serverVersionSeen = null, updateNoticeOn = false, updateNoticeDismissed = false;
+function parseAppVersion(v){ const m = /^(\d+)\.(\d+)\.(\d+)-([a-z]+)$/.exec(String(v||"")); return m ? [Number(m[1]), Number(m[2]), Number(m[3]), m[4]] : null; }
+function appVersionNewer(a, b){ // a是不是比b新(日期先比，同一天再比尾巴的字母：a<b<…<z<aa)
+  const x = parseAppVersion(a), y = parseAppVersion(b);
+  if(!x || !y) return false;
+  for(let i=0;i<3;i++) if(x[i]!==y[i]) return x[i]>y[i];
+  if(x[3].length!==y[3].length) return x[3].length>y[3].length;
+  return x[3]>y[3];
+}
+function noteWorkerVersion(v){ if(!USE_MOCK) serverVersionSeen = String(v); }
+function updateNoticeShown(){ return updateNoticeOn && !updateNoticeDismissed && !localSaveFailed && !USE_MOCK; }
+function checkUpdateNotice(){ // 回合寫完、套用並存檔之後呼叫
+  if(USE_MOCK || updateNoticeDismissed || updateNoticeOn) return;
+  if(serverVersionSeen && appVersionNewer(serverVersionSeen, APP_VERSION)) updateNoticeOn = true;
+}
+document.addEventListener("click", ev=>{
+  const t = ev.target && ev.target.closest ? ev.target.closest("#btn-update-reload, #btn-update-close") : null;
+  if(!t) return;
+  if(t.id==="btn-update-reload"){ location.reload(); return; }
+  updateNoticeDismissed = true; updateNoticeOn = false;
+  const box = document.getElementById("update-notice"); if(box) box.remove();
+});
 async function fetchWorkerVersion(){
   try{
     const r = await fetch(WORKER_URL.replace(/\/$/,"") + "/version");
@@ -9804,6 +9843,8 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
         prev_turn_notes: (timeCtx && !timeCtx.retryNote && state.lastTurnNotes) || undefined, // 10.14.7.1：上一回合第2類修了什麼、第3類記了什麼(代碼)，只在這回合第一次呼叫帶
         input_source: (timeCtx && !timeCtx.prologue) ? (timeCtx.fromChoice ? "choice" : "free") : undefined, // 後台統計「自由書寫比例」用：只有這個標記，不含玩家寫的內容
         retry: (timeCtx && timeCtx.isRetry) || undefined, // 十、10.17.5：玩家按「再試一次」沿用同一個turn_nonce，Worker據此不重複扣點、又失敗時退回
+        retry_kind: (timeCtx && timeCtx.retryKind) || undefined, // 十、10.14.7.2：這次是第幾種重試——「重寫」(自動重寫)／「連線」(連線重試)／「再試」(玩家按再試一次)；第一次呼叫不帶
+        app_version: APP_VERSION, // 十、10.14.7.3：頁面版本號，Worker記進用量明細(只記版本，不記其他裝置資訊)
         messages: [{ role:"user", content: userMsgStr }]
       })
     });
@@ -9838,6 +9879,7 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
   if(res.status===401 && walletActive(state)){ const err = new Error("登入已失效"); err.noRetry = true; err.unauthorized = true; acctSessionLost(); throw err; }
   if(res.ok) clearDailyCapNote(); // 呼叫成功＝額度恢復了
   if(data && data.lifegame) lastTurnServerInfo = data.lifegame;
+  if(data && data.lifegame && data.lifegame.worker_version) noteWorkerVersion(data.lifegame.worker_version); // 十、10.17.12
   if(data && data.lifegame && apTestFreeOn() && ("ap_test_free" in data.lifegame)) apTestFreeRefused = data.lifegame.ap_test_free !== true; // 10.3.12：不是測試鑰匙／測試帳號→開關無效(只看有回報這一欄的路徑)
   if(data && data.lifegame && data.lifegame.usage){
     callMeta.outChars = outputBlockChars(data);
@@ -10481,6 +10523,7 @@ async function takeTurnInner(actionText, cost, opts){
   timeCtx.apBefore = apBefore;
   // bug修正（9/14，人生草稿0914測試.pdf）：技術錯誤/破碎原始文字絕對不能外洩給玩家；
   // 失敗先重試一次，重試仍失敗才顯示中性容錯敘事，不附帶任何e.message或原始內容
+  let turnApplied = false; // 十、10.17.12：這一回合的結果有套用成功才可能出現新版本提醒
   try{
     // 一、1.2.9.16／十六、16.3.8.1（2026-09-28）：AI交回的段落清單先清理，再接成以空行分段的字串，下游沿用原本的字串處理
     const callOnce = async ()=>{
@@ -10489,6 +10532,7 @@ async function takeTurnInner(actionText, cost, opts){
       return normalizeTurnResultText(await (USE_MOCK ? mockCallAI(actionText, forceEnding, timeCtx) : callAI(actionText, forceEnding, timeCtx)));
     };
     let result;
+    timeCtx.retryKind = timeCtx.isRetry ? "再試" : undefined; // 十、10.14.7.2：玩家按「再試一次」的第一次呼叫＝再試；之後的連線重試、自動重寫各自換標記
     const genStartedAt = Date.now(); // 十六、16.3.1（2026-09-29）：測試模式顯示這回合AI實際生成秒數(含重試、重新生成)
     try{
       result = await callOnce();
@@ -10496,6 +10540,7 @@ async function takeTurnInner(actionText, cost, opts){
       if(firstErr && firstErr.noRetry) throw firstErr; // 10.3.11：伺服器端行動點不足/重新生成達上限，重試也沒用；10.17.2：逾時也不自動重打
       console.error("第一次呼叫失敗，等一下再重試一次：", firstErr);
       if(AI_RETRY_DELAY_MS>0) await new Promise(r=>setTimeout(r, AI_RETRY_DELAY_MS)); // 10.17.2：原本是立刻重打
+      timeCtx.retryKind = "連線";
       result = await callOnce();
     }
     // 一、1.2.9.18.2（2026-10-10，取代1.2.9.11.4獨立的日期重新生成與1.2.9.18的最多2次）：
@@ -10514,11 +10559,13 @@ async function takeTurnInner(actionText, cost, opts){
       timeCtx.regenReason = regenCodes.join("、");
       timeCtx.retryNote = `你上一次回傳的內容有問題：${retryItems.map(i=>i.msg).join("；")}。這次整段重新構思，不要只改上一版的詞句；回應段與新場景每一段都要寫完整，台詞一律用{{名字|台詞}}標記，正文不能出現資料欄位名稱。`;
       setRegenHint(true); // 1.2.9.18.3
+      timeCtx.retryKind = "重寫";
       let second = null;
       try{ second = examine(await callOnce()); }
       catch(qErr){ console.error("重新產生失敗，改用第一次的結果：", qErr); }
       setRegenHint(false);
       timeCtx.retryNote = null;
+      timeCtx.retryKind = undefined;
       cur = pickTurnVersion(cur, second); // 讀不了的(空白、少一段、欄位名稱)兩版都是就丟錯，走下面的回合失敗還原
       if(cur.cls.c1.length){
         console.warn("[輸出品質] 重新產生後仍有問題，給問題比較少的那版：", cur.cls.c1.map(i=>i.msg).join("；"));
@@ -10548,6 +10595,7 @@ async function takeTurnInner(actionText, cost, opts){
     commitToneTrack(state, effectiveTone);
     commitMealHint(state, timeCtx.mealHint);               // 五、5.5.4.1：成功套用後才重新計時
     apLogTurn(state, wasPrologue, apTotalBefore, apLogStartedAt, true); // 10.10.3：成功＝實際扣的點(開場0)
+    turnApplied = true;
   }catch(e){
     aiWritingNow = false;
     console.error("重試後仍失敗：", e);
@@ -10579,6 +10627,7 @@ async function takeTurnInner(actionText, cost, opts){
   }
   aiWritingNow = false;
   saveGame();
+  if(turnApplied) checkUpdateNotice(); // 十、10.17.12：存檔後才決定要不要出現新版本提醒(本機存檔失敗時updateNoticeShown()會擋掉)
   render();
   // 十、10.3.8：用掉最後1點時，這回合照常生成顯示、自動存檔後才跳出提示（死亡結局那回合不用提示）
   const apJustExhausted = apCost>0 && !apTestFreeActive() && state.phase==="playing" && totalAP(state)===0;
@@ -11152,7 +11201,7 @@ async function writeIdleSummary(s){
     try{
       const res = await fetch(WORKER_URL, { method:"POST", headers:acctHeaders(), body: JSON.stringify({
         kind:"idle_summary", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
-        life_id: ensureLifeId(s), messages:[{ role:"user", content: JSON.stringify(payload) }] }) });
+        life_id: ensureLifeId(s), app_version: APP_VERSION, messages:[{ role:"user", content: JSON.stringify(payload) }] }) });
       const data = await res.json();
       if(isDailyCapResponse(res, data)) noteDailyCapBlocked(); // 十、10.9.3.1：放置摘要也是AI呼叫，碰到全站上限照樣暫停(這次就用模板短句代替摘要)
       if(data && data.lifegame && data.lifegame.usage) addDevUsage(s, Object.assign({}, data.lifegame.usage, { sys_chars:data.lifegame.sys_chars||0 }), { kind:"idle", inChars:{ stats:JSON.stringify(payload).length }, outChars:outputBlockChars(data) });
@@ -12474,7 +12523,7 @@ async function callChapterAI(s, ch){
       kind:"chapter",
       key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME),
       slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
-      life_id: ensureLifeId(s), chapter_id: ch.id, wallet: walletActive(s) || undefined,
+      life_id: ensureLifeId(s), app_version: APP_VERSION, chapter_id: ch.id, wallet: walletActive(s) || undefined,
       messages: [{ role:"user", content: chapterMsg }]
     })
   });
@@ -13730,6 +13779,7 @@ function renderPlaying(loadingTurn){
   <footer class="actions glass">
     ${apOut && !busy ? `<div class="ap-out">撰稿人提醒你，今天的行動點用完了。明天打開遊戲會再領到 ${AP_DAILY_REFILL} 點，到時再接著寫。</div>` : ``}
     ${dailyCapNoteActive() && !busy ? `<div class="ap-out cap-note" id="cap-note">撰稿人休息中，台灣時間午夜後恢復。</div>` : ``}
+    ${updateNoticeShown() && !busy ? `<div class="ap-out cap-note" id="update-notice">遊戲有新版本，重新整理一下就能用到 <button class="ghost-btn" id="btn-update-reload" style="margin-left:6px;">重新整理</button> <button class="ghost-btn" id="btn-update-close" aria-label="關閉" style="margin-left:2px;">×</button></div>` : ``}
     ${renderFocusBar(s, apOut||busy)}
     ${s.seekTarget ? `<div class="seek-tag">${characterState((s.characters||[]).find(c=>c.name===s.seekTarget))==="deceased" ? "回憶" : "想找"}：${escapeHtml(s.seekTarget)}<button id="btn-seek-clear" aria-label="取消想找" ${busy?"disabled":""}>×</button></div>` : ``}
     <div class="custom-row" style="margin-top:0;">
@@ -16462,7 +16512,7 @@ function buildLifeReviewMaterial(s){
 async function callLifeReviewAI(s, m){
   const res = await fetch(WORKER_URL, { method:"POST", headers:acctHeaders(),
     body: JSON.stringify({ kind:"life_review", key: localStorage.getItem(RECOVERY_KEY_STORAGE_NAME), slot: Number(localStorage.getItem(ACTIVE_SLOT_STORAGE_NAME)),
-      life_id: ensureLifeId(s), wallet: walletActive(s) || undefined, messages:[{ role:"user", content: JSON.stringify(m) }] }) });
+      life_id: ensureLifeId(s), app_version: APP_VERSION, wallet: walletActive(s) || undefined, messages:[{ role:"user", content: JSON.stringify(m) }] }) });
   const text = await res.text();
   let data; try{ data = JSON.parse(text); }catch(e){ throw new Error("回應不是合法JSON（HTTP "+res.status+"）"); }
   if(isDailyCapResponse(res, data)){ noteDailyCapBlocked(); const err = new Error("今天的故事額度已用完"); err.dailyCap = true; throw err; }

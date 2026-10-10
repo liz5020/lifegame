@@ -88,7 +88,7 @@ import {
 import { recordUsage, buildUsageSummary, extractUsage, costUSD, safeEqual, markLifeEnded } from "./usage.js";
 import { corsHeaders, jsonResponse } from "./http.js";
 import {
-  UsageCounter, readSetting, spendCap, giftCap, callCostEstimate, USD_TO_TWD, USAGE_KINDS, usageCall, usageCounterStub, accountsCall, accountStore,
+  UsageCounter, RETRY_KINDS, readSetting, spendCap, giftCap, callCostEstimate, USD_TO_TWD, USAGE_KINDS, usageCall, usageCounterStub, accountsCall, accountStore,
   bearerToken, countAICall, recordAIUsage, spendGate, syncGiftStats, DEFAULT_DAILY_SPEND_CAP, DEFAULT_DAILY_GIFT_CAP
 } from "./gate.js";
 import { AccountStore } from "./account.js";
@@ -794,12 +794,20 @@ export function sanitizeNoteCodes(v) {
   return v.replace(/[^\u4e00-\u9fff0-9A-Za-z、@_]/g, "").slice(0, TURN_NOTE_MAX_CHARS);
 }
 function turnNoteMeta(body) {
-  const out = {};
+  const out = pageMeta(body);
   const rr = sanitizeNoteCodes(body && body.regen_reason), pn = sanitizeNoteCodes(body && body.prev_turn_notes);
   if (rr) out.rr = rr;
   if (pn) out.pn = pn;
   if (body && (body.input_source === "free" || body.input_source === "choice")) out.fi = body.input_source === "free" ? "f" : "c"; // 自由書寫比例：只收這兩個值，不收內容
+
+  const rk = body && body.retry_kind; // 十、10.14.7.2：重寫／連線／再試，第一次呼叫不帶
+  if (typeof rk === "string" && RETRY_KINDS.includes(rk)) out.rk = rk;
   return out;
+}
+// 十、10.14.7.3(2026-10-10)：每次呼叫(回合、開場、章節、放置摘要、回顧這一生)前端都帶頁面版本號(APP_VERSION)，只收版本字元，其他裝置資訊不記
+export function pageMeta(body) {
+  const v = body && body.app_version;
+  return typeof v === "string" && /^[0-9A-Za-z.\-]{1,24}$/.test(v) ? { pv: v } : {};
 }
 // 十、10.14.7（2026-10-04）：meta有值時，回應成功後在背景把Anthropic回報的實際用量記進用量計數器(不影響回應速度與內容)
 async function callAnthropic(env, upstreamBody, ctx, meta) {
@@ -916,7 +924,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet, colo) {
   let upstream, text, data = null;
   try {
     if (isTurn && typeof body.regen_reason === "string" && body.regen_reason) console.log("自動重新產生原因：" + body.regen_reason.slice(0, 60) + "（第" + check.payload.turn + "回合）"); // 帳號錢包路徑，同上
-    upstream = await callAnthropic(env, upstreamBody, ctx, Object.assign({ kind: ({ chapter: "chapter", idle_summary: "idle", life_review: "review" })[body.kind] || "turn", lifeId: safeLifeId, nonce: isTurn ? body.turn_nonce : null, turn: isTurn ? check.payload.turn : null, prologue: isTurn && !!(check.payload.time_context && check.payload.time_context.is_prologue === true), colo }, isTurn ? turnNoteMeta(body) : {})); // 10.14.7／10.14.7.1
+    upstream = await callAnthropic(env, upstreamBody, ctx, Object.assign({ kind: ({ chapter: "chapter", idle_summary: "idle", life_review: "review" })[body.kind] || "turn", lifeId: safeLifeId, nonce: isTurn ? body.turn_nonce : null, turn: isTurn ? check.payload.turn : null, prologue: isTurn && !!(check.payload.time_context && check.payload.time_context.is_prologue === true), colo }, isTurn ? turnNoteMeta(body) : pageMeta(body))); // 10.14.7／10.14.7.1／10.14.7.3
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -932,7 +940,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet, colo) {
     const r = await acctCall({ op: "chapter_post", chapter_id: body.chapter_id });
     if (!r.ok) chapterFail = r;
   }
-  const lifegame = { usable: usable && !chapterFail, cloud_disabled: true };
+  const lifegame = { usable: usable && !chapterFail, cloud_disabled: true, worker_version: WORKER_VERSION }; // 十、10.17.12：前端比對有沒有新版本
   if (wallet) { lifegame.wallet = walletInfo; lifegame.wallet_events = walletEvents; lifegame.charged = !!(walletPre && walletPre.charged && usable); }
   if (chapterFail) return walletFail(chapterFail);
   if (wallet && isTurn && body.ap_test_free === true) lifegame.ap_test_free = !!(walletPre && walletPre.test_free); // 10.3.12：前端據此顯示開關有沒有效
@@ -1018,7 +1026,7 @@ async function handleAIProxy(request, env, origin, ctx, colo = "") {
   if (apTestFree) { if (usable) markAction(rec, taipeiDateString(nowMs(env))); }
   else postCharge(rec, pre, usable, safeLifeId, taipeiDateString(nowMs(env)));
   await saveRecord(env, key, slot, rec);
-  const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable), ap_test_free: apTestFree };
+  const lifegame = { ap: publicAP(rec), charged: !!(pre.charge && usable), ap_test_free: apTestFree, worker_version: WORKER_VERSION }; // 十、10.17.12
   if (upstream.sysChars) lifegame.sys_chars = upstream.sysChars; // 10.9.4
   // 10.5：成本遙測。只要Anthropic有回應usage(就算內容格式壞掉也已經產生費用)就記；回應送出後才寫，失敗不影響回合
   if (upstream.ok && data && data.usage) {
@@ -1139,11 +1147,6 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
       r.by_kind[k] = (r.by_kind[k] || 0) + b.calls;
     }
   }
-  // 十、10.14.7.1（2026-10-10）：今天重寫佔一般回合的比例、重寫原因前5名、上回合紀錄前5名(驗收目標：低於5%)
-  const q = (await usageCall(env, "uquality", {}, "GET")) || {};
-  const top5 = (o) => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([code, n]) => ({ code, n }));
-  const turnCallsToday = ((u.days || {})[today] || {}).turn ? u.days[today].turn.calls : 0;
-  const regen_today = { regens: q.regens || 0, turn_calls: turnCallsToday, pct: turnCallsToday > 0 ? Math.round((q.regens || 0) / turnCallsToday * 1000) / 10 : null, reasons: top5(q.reasons), notes: top5(q.notes) };
   const turnsIn = (from, to) => Object.entries(turns).reduce((t, [d, n]) => t + (d >= from && d <= to ? n : 0), 0);
   const den = { today: turns[today] || 0, last7: turnsIn(week_start, today), total: turnsIn(u.since || "0000", today) };
   for (const [key, r] of Object.entries(range)) {
@@ -1161,7 +1164,7 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
     const perDay = range.last7.usd / 7;
     balance = { set_usd: bal, base_usd: base, remaining_usd: remaining, days_left: perDay > 0 ? Math.max(0, Math.floor(remaining / perDay)) : null };
   }
-  return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS, balance, regen_today }, range);
+  return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS, balance }, range);
 }
 // 十、10.13.7.12（2026-10-10）：GET /stats-play?range=today|7d——數據網頁「玩家怎麼玩」分頁，從逐筆明細現算，不另存資料
 async function handleStatsPlay(request, env) {
@@ -1170,7 +1173,7 @@ async function handleStatsPlay(request, env) {
   const q = new URL(request.url).searchParams.get("range");
   const range = q === "7d" || q === "yesterday" ? q : "today"; // 10.13.7.14：加「昨天」
   const rows = usageCounterStub(env) ? ((await usageCall(env, "urows", {}, "GET")).rows || []) : [];
-  const out = computePlayStats(rows, nowMs(env), range, USD_TO_TWD);
+  const out = computePlayStats(rows, nowMs(env), range, USD_TO_TWD, WORKER_VERSION);
   // 10.13.7.14：瀏覽人次(漏斗最上面一格、每小時瀏覽與開局圖)——今天／昨天依小時，近7天依天
   if (usageCounterStub(env)) {
     if (range === "7d") {
@@ -1198,6 +1201,7 @@ async function buildDailyTable(env) {
   const pv = has ? await usageCall(env, "pvstats", {}, "GET") : { days: {}, turns: {}, cost: {} };
   const ua = has ? await usageCall(env, "udays", {}, "GET") : { days: {} };
   const dx = has ? ((await usageCall(env, "dextra", {}, "GET")).days || {}) : {};
+  const rkd = has ? await usageCall(env, "rkdays", {}, "GET") : null; // 10.14.7.2
   const live = has ? dailyExtrasFromRows((await usageCall(env, "urows", {}, "GET")).rows || []) : {};
   const fromLive = taipeiDateString(now - 5 * 86400000);
   const firsts = [pv.since, pv.us_since, ua.since, ...Object.keys(pv.days || {}), ...Object.keys(ua.days || {})].filter(Boolean).sort();
@@ -1207,31 +1211,34 @@ async function buildDailyTable(env) {
   const rows = dates.map(d => {
     const u = (ua.days || {})[d] || {}, x = Object.assign({}, dx[d] || {}, d >= fromLive ? (live[d] || {}) : {});
     const usd = USAGE_KINDS.reduce((t, k) => t + ((u[k] && u[k].usd) || 0), 0);
-    const tc = (u.turn && u.turn.calls) || 0, rc = (u.retry && u.retry.calls) || 0;
-    const row = { date: d, pageviews: (pv.days || {})[d] || 0, new_players: ((ps && ps.new_by_date) || {})[d] || 0, turns: (pv.turns || {})[d] || 0,
+    const tc = (u.turn && u.turn.calls) || 0;
+    // 十、10.14.7.2：新算法起算日以後，重寫只算自動重寫(連線重試、再試一次另列)；之前的日子保留原數字
+    const nk = rkd && rkd.since && d >= rkd.since, k = ((rkd && rkd.days) || {})[d] || {};
+    const rc = nk ? (k.rewrite || 0) : ((u.retry && u.retry.calls) || 0);
+    const row = { date: d, conn: nk ? (k.conn || 0) : null, again: nk ? (k.again || 0) : null, pageviews: (pv.days || {})[d] || 0, new_players: ((ps && ps.new_by_date) || {})[d] || 0, turns: (pv.turns || {})[d] || 0,
       cost: Math.round(((pv.cost || {})[d] || 0) * 100) / 100, usd: Math.round(usd * 1e4) / 1e4, retries: rc, retry_rate: tc ? Math.round(rc / tc * 1000) / 1000 : null,
       bound_new: ((ps && ps.bound_by_date) || {})[d] };
     for (const k of ["lives", "reach3", "reach10", "reach20", "wait_s", "quota_used", "quota_cap", "waiting", "wl_new", "balance_usd"]) row[k] = x[k] == null ? null : x[k];
     row.calls = {}; for (const k of USAGE_KINDS) row.calls[k] = (u[k] && u[k].calls) || 0;
     return row;
   });
-  return { today, rows };
+  return { today, rows, rw_since: (rkd && rkd.since) || null };
 }
 // GET /stats-daily：數據網頁「長期趨勢」與「近30天」用(10.13.7.14)
 async function handleStatsDaily(request, env) {
   const denied = adminDenied(request, env, true);
   if (denied) return denied;
   const t = await buildDailyTable(env);
-  return new Response(JSON.stringify({ ok: true, today: t.today, rows: t.rows }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  return new Response(JSON.stringify({ ok: true, today: t.today, rows: t.rows, rw_since: t.rw_since }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
 const csvCell = (v) => v == null ? "" : v;
 async function handleDailyCsv(request, env) {
   const denied = adminDenied(request, env, true);
   if (denied) return denied;
   const { today, rows } = await buildDailyTable(env);
-  const head = [...DAILY_COLS.map(c => c[1]), ...USAGE_KINDS.map(k => "呼叫次數_" + (AI_USAGE_KIND_LABELS[k] || k))];
+  const head = [...DAILY_COLS.map(c => c[1]), ...USAGE_KINDS.map(k => "呼叫次數_" + (AI_USAGE_KIND_LABELS[k] || k)), "連線重試", "再試一次"]; // 10.14.7.2：新欄位接在最後，原本的欄位順序不動
   const lines = [head.join(",")];
-  for (const r of rows) lines.push([...DAILY_COLS.map(c => csvCell(r[c[0]])), ...USAGE_KINDS.map(k => r.calls[k])].join(","));
+  for (const r of rows) lines.push([...DAILY_COLS.map(c => csvCell(r[c[0]])), ...USAGE_KINDS.map(k => r.calls[k]), csvCell(r.conn), csvCell(r.again)].join(","));
   const name = "每日總表_" + today.replace(/-/g, "") + ".csv";
   return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",
     "Content-Disposition": "attachment; filename=\"daily.csv\"; filename*=UTF-8''" + encodeURIComponent(name) } });
@@ -1246,15 +1253,15 @@ async function buildHourlyTable(env) {
   const hr = Object.assign({}, h.hr || {});
   for (const [k, v] of Object.entries(live)) if (k.slice(0, 10) >= fromLive) hr[k] = v;
   const keys = [...new Set([...Object.keys(h.pv || {}), ...Object.keys(hr)])].sort();
-  return keys.map(k => { const x = hr[k] || {}; return { hour: k, pageviews: (h.pv || {})[k] || 0, new_lives: x.new_lives || 0, turns: x.turns || 0, retries: x.retries || 0,
+  return keys.map(k => { const x = hr[k] || {}; return { hour: k, pageviews: (h.pv || {})[k] || 0, new_lives: x.new_lives || 0, turns: x.turns || 0, retries: x.retries || 0, conn: x.conn || 0, again: x.again || 0, unclassified: x.unclassified || 0,
     twd: Math.round((x.usd || 0) * USD_TO_TWD * 100) / 100, usd: x.usd || 0 }; });
 }
 async function handleHourlyCsv(request, env) {
   const denied = adminDenied(request, env, true);
   if (denied) return denied;
   const rows = await buildHourlyTable(env);
-  const lines = ["時段_台灣時間,瀏覽人次,新開局人生,一般回合,重寫,花費_元,AI花費_美元"];
-  for (const r of rows) lines.push([r.hour + ":00", r.pageviews, r.new_lives, r.turns, r.retries, r.twd, r.usd].join(","));
+  const lines = ["時段_台灣時間,瀏覽人次,新開局人生,一般回合,重寫,花費_元,AI花費_美元,連線重試,再試一次,未分類"]; // 10.14.7.2：「重寫」只算自動重寫，新欄位接在最後
+  for (const r of rows) lines.push([r.hour + ":00", r.pageviews, r.new_lives, r.turns, r.retries, r.twd, r.usd, r.conn, r.again, r.unclassified].join(","));
   const name = "每小時總表_" + taipeiDateString(nowMs(env)).replace(/-/g, "") + ".csv";
   return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",
     "Content-Disposition": "attachment; filename=\"hourly.csv\"; filename*=UTF-8''" + encodeURIComponent(name) } });
@@ -1280,11 +1287,11 @@ async function handleUsageDetailCsv(request, env) {
   rows.sort((a, b) => a.t - b.t);
   const lastByLife = {};
   const tw = (t) => new Date(t + 8 * 3600000).toISOString().replace("T", " ").slice(0, 19);
-  const lines = ["time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms,regen_reason,prev_turn_notes,end_reason"]; // 10.14.7.1：最後三欄＝重寫原因、上回合紀錄、結束原因
+  const lines = ["time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms,regen_reason,prev_turn_notes,end_reason,retry_kind,page_version"]; // 10.14.7.1：最後三欄＝重寫原因、上回合紀錄、結束原因
   for (const r of rows) {
     const gap = r.life && lastByLife[r.life] ? Math.round((r.t - lastByLife[r.life]) / 6000) / 10 : "";
     if (r.life) lastByLife[r.life] = r.t;
-    lines.push([tw(r.t), r.turn == null ? "" : r.turn, AI_USAGE_KIND_LABELS[r.k] || r.k, r.life || "", gap, r.in, r.cw, r.cr, r.out, r.usd, r.ms == null ? "" : r.ms, r.rr || "", r.pn || "", r.end || ""].join(","));
+    lines.push([tw(r.t), r.turn == null ? "" : r.turn, AI_USAGE_KIND_LABELS[r.k] || r.k, r.life || "", gap, r.in, r.cw, r.cr, r.out, r.usd, r.ms == null ? "" : r.ms, r.rr || "", r.pn || "", r.end || "", r.rk || "", r.v || ""].join(","));
   }
   const name = "AI用量明細_" + tw(nowMs(env)).replace(/[- :]/g, "").slice(0, 12) + ".csv";
   return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",

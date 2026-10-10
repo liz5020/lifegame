@@ -13,6 +13,9 @@ const dayBefore = (d) => new Date(Date.parse(d + "T00:00:00Z") - 86400000).toISO
 const medianOf = (arr) => { const a = arr.slice().sort((x, y) => x - y); if (!a.length) return null; return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2; };
 const meanOf = (arr) => arr.length ? arr.reduce((t, x) => t + x, 0) / arr.length : null;
 // 10.13.7.14：重寫原因(第1類代碼，一、1.2.9.18.1)的白話說法；明細與下載檔仍是代碼
+// 10.14.7.2：重寫原因只收短代碼(1.2.9.18.8)；上回合紀錄代碼的白話在下面
+export const NOTE_LABELS = { "標點": "標點直接修", "冒號": "冒號直接修", "舞台指示": "舞台指示直接修", "補引號": "補引號", "大括號": "大括號直接修", "日期拉回": "日期拉回範圍", "約定代填": "約定由程式代填",
+  "偏短": "正文偏短", "選項3個": "選項只有3個", "星期": "星期說錯", "日期": "日期說錯", "倒數": "倒數日期說錯", "沒寫動作": "沒寫到玩家的動作", "系統用語": "出現系統用語", "評論用字": "出現評論用字", "重複": "重複用詞", "忘約定": "寫成主角忘了約定", "節日附近": "節日離得近(只記錄)" };
 export const REGEN_REASON_LABELS = { "空白": "正文空白", "少一段": "少了一段(行動結果或新場景)", "過短": "正文少於40字", "欄位名稱": "正文出現資料欄位名稱",
   "節日": "節日放錯日子", "日期": "新場景日期不在範圍內", "花費": "剛決定的花費沒寫到", "興趣": "指定的興趣沒寫到", "約定": "到期的約定沒交代" };
 // 重寫原因歸類(2026-10-10)：依序比對，第一個符合的類別；樣本少時關鍵字之後再調
@@ -22,7 +25,37 @@ export function classifyRegen(text) { for (const [name, re] of REGEN_CATS) if (r
 function firstSeen(all) { const first = new Map(); for (const r of all) if (r.life && !first.has(r.life)) first.set(r.life, r.t); return first; }
 function maxTurns(rows) { const m = new Map(); for (const r of rows) if (r.life && r.k === "turn" && typeof r.turn === "number") m.set(r.life, Math.max(m.get(r.life) || 0, r.turn)); return m; }
 
-export function computePlayStats(rows, now, range, usdToTwd) {
+// 十、10.14.7.2／10.14.7.3(2026-10-10)：重寫統計。第二次以後的呼叫分四種：重寫(自動重寫)、連線(連線重試)、再試(再試一次)、未分類(沒帶重試種類＝改版前紀錄或舊分頁)。
+// 重寫比例＝自動重寫次數 ÷ 一般回合次數，只看這一個數字。重寫原因只認短代碼；不是代碼組成的整句(改版前格式)整句當一筆，不用「、」切開。
+export function isRewriteRow(r) { return r.rk === "重寫"; }
+export function retryClass(r) { return r.rk === "重寫" ? "rewrite" : r.rk === "連線" ? "conn" : r.rk === "再試" ? "again" : r.k === "retry" ? "unclassified" : null; }
+export function rewriteBlock(rows, bucketOf) {
+  const out = { turns: 0, rewrites: 0, conn: 0, again: 0, unclassified: 0, rate: null, reasons: [], notes: [], timeline: [] };
+  const reasons = {}, notes = {}, tl = new Map();
+  let legacy = 0;
+  const T = (k) => { if (!tl.has(k)) tl.set(k, { bucket: k, turns: 0, retries: 0, conn: 0, again: 0, unclassified: 0 }); return tl.get(k); };
+  for (const r of rows) {
+    const b = bucketOf ? T(bucketOf(r.t)) : null;
+    if (r.k === "turn") { out.turns++; if (b) b.turns++; }
+    const c = retryClass(r);
+    if (c) { out[c === "rewrite" ? "rewrites" : c]++; if (b) b[c === "rewrite" ? "retries" : c]++; }
+    if (r.rk === "重寫" && r.rr) {
+      const parts = String(r.rr).split("、").filter(Boolean);
+      if (parts.length && parts.every(x => REGEN_REASON_LABELS[x])) for (const x of parts) reasons[x] = (reasons[x] || 0) + 1;
+      else reasons["改版前格式"] = (reasons["改版前格式"] || 0) + 1; // 整句當一筆
+    } else if (r.rr) legacy++; // 沒帶重試種類的舊紀錄留下的整句原因
+    if (r.pn) for (const x of String(r.pn).split("、")) if (x) notes[x] = (notes[x] || 0) + 1;
+  }
+  if (legacy) reasons["改版前格式"] = (reasons["改版前格式"] || 0) + legacy;
+  out.rate = out.turns ? Math.round(out.rewrites / out.turns * 1000) / 1000 : null;
+  // 「佔重寫」的分母＝同一範圍內的自動重寫總次數(取代原本以前5名加總當分母)；改版前格式的整句不是這個數字的一部分，不算佔比
+  out.reasons = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([code, n]) => ({ code, label: code === "改版前格式" ? "改版前格式（整句原因）" : (REGEN_REASON_LABELS[code] || code), n, share: code === "改版前格式" || !out.rewrites ? null : Math.round(n / out.rewrites * 1000) / 1000 }));
+  out.notes = Object.entries(notes).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([code, n]) => ({ code, label: NOTE_LABELS[code] || code, n }));
+  out.timeline = [...tl.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1)).map(b => Object.assign(b, { rate: b.turns ? Math.round(b.retries / b.turns * 1000) / 1000 : null }));
+  return out;
+}
+
+export function computePlayStats(rows, now, range, usdToTwd, latestVersion) {
   const rate = usdToTwd || 32;
   const today = tw(now).slice(0, 10);
   const all = (rows || []).filter(r => r && typeof r.t === "number").sort((a, b) => a.t - b.t);
@@ -94,15 +127,17 @@ export function computePlayStats(rows, now, range, usdToTwd) {
   const reached = (n) => ids.filter(l => mt(l) >= n);
   // 依時段：新開局、一般回合、重寫、花費、有呼叫的人生數
   const buckets = new Map();
-  const B = (k) => { if (!buckets.has(k)) buckets.set(k, { bucket: k, new_lives: 0, turns: 0, retries: 0, twd: 0, lives: new Set() }); return buckets.get(k); };
+  const B = (k) => { if (!buckets.has(k)) buckets.set(k, { bucket: k, new_lives: 0, turns: 0, retries: 0, conn: 0, again: 0, unclassified: 0, twd: 0, lives: new Set() }); return buckets.get(k); };
   for (const l of ids) B(bucketOf(first.get(l))).new_lives++;
   const byKind = {};
   let turns = 0, retries = 0, twd = 0, twdNoRetry = 0;
   for (const r of R) {
-    const b = B(bucketOf(r.t)), c = (Number(r.usd) || 0) * rate;
+    const b = B(bucketOf(r.t)), c = (Number(r.usd) || 0) * rate, rc = retryClass(r);
+    if (rc && rc !== "rewrite") b[rc]++;
     b.twd += c; b.lives.add(r.life); twd += c;
     if (r.k === "turn") { b.turns++; turns++; }
-    if (r.k === "retry") { b.retries++; retries++; } else twdNoRetry += c;
+    if (isRewriteRow(r)) { b.retries++; retries++; }
+    if (r.k !== "retry") twdNoRetry += c;
     byKind[r.k] = byKind[r.k] || { calls: 0, twd: 0 };
     byKind[r.k].calls++; byKind[r.k].twd += c;
   }
@@ -112,14 +147,10 @@ export function computePlayStats(rows, now, range, usdToTwd) {
   for (const r of R) if (r.k === "turn" && (r.fi === "f" || r.fi === "c")) { markedLives.add(r.life); if (r.fi === "f") { freeN++; freeLives.add(r.life); } else choiceN++; }
   const markedN = freeN + choiceN;
   const timeline = [...buckets.values()].sort((a, b) => (a.bucket < b.bucket ? -1 : 1)).map(b => ({
-    bucket: b.bucket, new_lives: b.new_lives, turns: b.turns, retries: b.retries,
+    bucket: b.bucket, new_lives: b.new_lives, turns: b.turns, retries: b.retries, conn: b.conn, again: b.again, unclassified: b.unclassified,
     retry_rate: b.turns ? Math.round(b.retries / b.turns * 1000) / 1000 : null, twd: r1(b.twd), lives: b.lives.size }));
-  const reasons = {};
-  for (const r of R) if (r.k === "retry" && r.rr) for (const c of String(r.rr).split("、")) if (c) reasons[c] = (reasons[c] || 0) + 1;
-  // 重寫原因分類：一筆重寫只算一類(依序比對整句)，原因是AI自己寫的整句話，不再用「、」切碎
-  const catCount = {}, catEx = {};
-  for (const r of R) if (r.k === "retry" && r.rr) { const c = classifyRegen(String(r.rr)), t = String(r.rr).slice(0, 60); catCount[c] = (catCount[c] || 0) + 1; ((catEx[c] = catEx[c] || {})[t] = (catEx[c][t] || 0) + 1); }
-  const retry_cats = Object.entries(catCount).map(([cat, n]) => ({ cat, n, examples: Object.entries(catEx[cat]).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, k]) => ({ t, n: k })) })).sort((a, b) => b.n - a.n).slice(0, 5);
+  // 10.14.7.2：重寫那一節的資料——「全部」與「只看最新版」(頁面版本＝目前Worker版本，10.14.7.3)各算一份，頁面切換時一起換
+  const rewrite = { all: rewriteBlock(R, bucketOf), latest: rewriteBlock(R.filter(r => latestVersion && r.v === latestVersion), bucketOf), latest_version: latestVersion || null };
   // 每條人生平均花費、玩到第10回合的人生平均花費、AI讀進去的內容(快取讀取／快取寫入／沒用快取)
   const lifeCost = new Map();
   for (const r of R) lifeCost.set(r.life, (lifeCost.get(r.life) || 0) + (Number(r.usd) || 0) * rate);
@@ -133,7 +164,7 @@ export function computePlayStats(rows, now, range, usdToTwd) {
       lives: ids.length, playing_now: ids.filter(active).length,
       reach10: ids.filter(l => mt(l) >= 10).length, reach10_rate: ids.length ? Math.round(ids.filter(l => mt(l) >= 10).length / ids.length * 1000) / 1000 : null,
       median_turns: median, max_turns: sorted.length ? sorted[sorted.length - 1] : null,
-      turns, retries, retry_rate: turns ? Math.round(retries / turns * 1000) / 1000 : null,
+      turns, retries, retry_rate: turns ? Math.round(retries / turns * 1000) / 1000 : null, // 10.14.7.2：retries＝自動重寫
       twd: r1(twd), twd_per_turn: turns ? r2(twd / turns) : null, twd_per_turn_no_retry: turns ? r2(twdNoRetry / turns) : null,
       reach3: reached(3).length, reach20: reached(20).length,
       free_input: { free: freeN, choice: choiceN, rate: markedN ? Math.round(freeN / markedN * 1000) / 1000 : null, lives_marked: markedLives.size, lives_free: freeLives.size,
@@ -147,8 +178,7 @@ export function computePlayStats(rows, now, range, usdToTwd) {
     },
     funnel, continuation, stops, timeline,
     cost_split: Object.entries(byKind).map(([k, v]) => ({ kind: k, calls: v.calls, twd: r1(v.twd) })).sort((a, b) => b.twd - a.twd),
-    retry_cats,
-    retry_reasons: Object.entries(reasons).map(([code, n]) => ({ code, label: REGEN_REASON_LABELS[code] || code, n })).sort((a, b) => b.n - a.n).slice(0, 5)
+    rewrite
   };
 }
 
@@ -168,9 +198,9 @@ export function dailyExtrasFromRows(rows) {
 // 十、10.13.7.14：每小時總表(從明細算)——鍵為台灣時間「YYYY-MM-DD HH」：新開局人生、一般回合、重寫、AI花費(美元)
 export function hourlyFromRows(rows) {
   const all = (rows || []).filter(r => r && typeof r.t === "number").sort((a, b) => a.t - b.t);
-  const out = {}, H = (t) => { const k = tw(t).slice(0, 13).replace("T", " "); return out[k] || (out[k] = { new_lives: 0, turns: 0, retries: 0, usd: 0 }); };
+  const out = {}, H = (t) => { const k = tw(t).slice(0, 13).replace("T", " "); return out[k] || (out[k] = { new_lives: 0, turns: 0, retries: 0, conn: 0, again: 0, unclassified: 0, usd: 0 }); };
   for (const [, t] of firstSeen(all)) H(t).new_lives++;
-  for (const r of all) { const h = H(r.t); if (r.k === "turn") h.turns++; if (r.k === "retry") h.retries++; h.usd += Number(r.usd) || 0; }
+  for (const r of all) { const h = H(r.t); if (r.k === "turn") h.turns++; const rc = retryClass(r); if (rc === "rewrite") h.retries++; else if (rc) h[rc]++; h.usd += Number(r.usd) || 0; }
   for (const h of Object.values(out)) h.usd = Math.round(h.usd * 1e4) / 1e4;
   return out;
 }

@@ -182,14 +182,14 @@ A.check("/stats-play：今天範圍只算今天開局的人生(≤近7天)；沒
   const { computePlayStats } = await import("../worker/play-stats.js");
   const N = Date.parse("2026-10-10T05:00:00Z"), M = 60000; // 台灣13:00
   const rows = [];
-  const life = (id, startMin, turns, retries) => { rows.push({ t: N - startMin * M, k: "opening", turn: 1, life: id, usd: 0.01 }); for (let i = 2; i <= turns; i++) rows.push({ t: N - startMin * M + i * M, k: "turn", turn: i, life: id, usd: 0.03 }); for (let j = 0; j < retries; j++) rows.push({ t: N - startMin * M + 30000, k: "retry", turn: 2, life: id, usd: 0.03, rr: "空白" }); };
+  const life = (id, startMin, turns, retries) => { rows.push({ t: N - startMin * M, k: "opening", turn: 1, life: id, usd: 0.01 }); for (let i = 2; i <= turns; i++) rows.push({ t: N - startMin * M + i * M, k: "turn", turn: i, life: id, usd: 0.03 }); for (let j = 0; j < retries; j++) rows.push({ t: N - startMin * M + 30000, k: "retry", turn: 2, life: id, usd: 0.03, rr: "空白", rk: "重寫" }); };
   life("aa", 120, 12, 1); life("bb", 90, 1, 0); life("cc", 60, 3, 0); life("dd", 12, 6, 0); // dd最後一回合在6分鐘前＝還在玩
   rows.push({ t: N - 3 * 86400000, k: "opening", turn: 1, life: "old", usd: 0.01 });
   const o = computePlayStats(rows, N, "today", 32), w = computePlayStats(rows, N, "7d", 32);
   A.check("computePlayStats：今天4條、近7天5條；玩到第10回合1條；還在玩1條", o.summary.lives === 4 && w.summary.lives === 5 && o.summary.reach10 === 1 && o.summary.playing_now === 1, o.summary);
   A.check("computePlayStats：停在哪裡只算離開的3條(只有開場1、第3～4回合1、第10～19回合1)", o.stops.find(x => x.label === "只有開場").lives === 1 && o.stops.find(x => x.label === "第 3～4 回合").lives === 1 && o.stops.find(x => x.label === "第 10～19 回合").lives === 1 && o.stops.reduce((a, x) => a + x.lives, 0) === 3, o.stops);
   A.check("computePlayStats：繼續比例第6回合不算還在玩的dd(停在第6回合)", o.continuation.find(x => x.turn === 6).n === 1, o.continuation);
-  A.check("computePlayStats：重寫1次÷一般回合18次(11＋0＋2＋5)、重寫原因、每回合花費", o.summary.retries === 1 && o.summary.turns === 18 && o.retry_reasons[0].code === "空白" && o.summary.twd_per_turn > o.summary.twd_per_turn_no_retry, o.summary);
+  A.check("computePlayStats：重寫1次÷一般回合18次(11＋0＋2＋5)、重寫原因、每回合花費", o.summary.retries === 1 && o.summary.turns === 18 && o.rewrite.all.reasons[0].code === "空白" && o.summary.twd_per_turn > o.summary.twd_per_turn_no_retry, o.summary);
 }
 
 // ---- 10.13.7.13（2026-10-10）：GET /daily.csv 每日總表(從第一天起) ----

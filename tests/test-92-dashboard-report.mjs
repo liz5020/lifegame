@@ -47,7 +47,7 @@ A.check("/daily.csv表頭：原本六欄在前，接著開局人生…估計AI�
 A.check("/hourly.csv：沒密碼401", (await H.callWorker(env, { method: "GET", path: "/hourly.csv", origin: null })).status === 401);
 r = await get("/hourly.csv");
 let lines = r.text.replace(/^﻿/, "").trim().split("\n");
-A.check("/hourly.csv：表頭、11:00瀏覽2、12:00瀏覽1且新開局2", lines[0] === "時段_台灣時間,瀏覽人次,新開局人生,一般回合,重寫,花費_元,AI花費_美元" && lines.some(l => l.startsWith("2026-10-10 11:00,2,")) && lines.some(l => l.startsWith("2026-10-10 12:00,1,2,")), lines);
+A.check("/hourly.csv：表頭、11:00瀏覽2、12:00瀏覽1且新開局2", lines[0] === "時段_台灣時間,瀏覽人次,新開局人生,一般回合,重寫,花費_元,AI花費_美元,連線重試,再試一次,未分類" && lines.some(l => l.startsWith("2026-10-10 11:00,2,")) && lines.some(l => l.startsWith("2026-10-10 12:00,1,2,")), lines);
 
 // ---- 每小時排程：記名額快照；明細過期後數字還在 ----
 await tick();
@@ -74,11 +74,11 @@ A.check("每日總表永久保留：92天後10/10仍在", (await get("/stats-dai
   at(N - DAY - 60 * MIN, "opening", 1, "y1"); at(N - DAY - 59 * MIN, "turn", 2, "y1"); at(N - DAY - 58 * MIN, "turn", 3, "y1");
   at(N - DAY - 10 * MIN, "turn", 4, "y1"); // 隔48分鐘＝第二次遊玩
   at(N - 30 * MIN, "turn", 5, "y1"); // 今天又回來
-  at(N - DAY - 50 * MIN, "opening", 1, "y2"); at(N - DAY - 49 * MIN, "retry", 1, "y2", { rr: "過短", ms: 20000 });
+  at(N - DAY - 50 * MIN, "opening", 1, "y2"); at(N - DAY - 49 * MIN, "retry", 1, "y2", { rr: "過短", rk: "重寫", ms: 20000 });
   const y = computePlayStats(rs, N, "yesterday", 32);
   A.check("昨天：2條人生、1條隔天又回來", y.summary.lives === 2 && y.summary.revisit.lives === 1 && y.summary.revisit.of === 2, y.summary);
   A.check("一次遊玩：y1有三段(2分、0分、0分)、y2一段(1分)；兩回合間隔中位數60秒", y.summary.session_median_min === 0.5 && y.summary.turn_gap_median_s === 60, y.summary);
-  A.check("等待：一般回合10秒、重寫20秒；重寫原因附白話", y.summary.wait_turn_s === 10 && y.summary.wait_retry_s === 20 && y.retry_reasons[0].label === "正文少於40字", y.retry_reasons);
+  A.check("等待：一般回合10秒、重寫20秒；重寫原因附白話", y.summary.wait_turn_s === 10 && y.summary.wait_retry_s === 20 && y.rewrite.all.reasons[0].label === "正文少於40字", y.rewrite);
 }
 
 // ---- 網頁 ----
@@ -109,6 +109,15 @@ A.check("網頁：重點數字兩排三格", (html.match(/tiles c3/g) || []).len
     w.document.querySelector('#range button[data-r="' + r + '"]').click(); await settle();
     A.check("網頁切到「" + r + "」：標題、重點數字、漏斗、花費、玩家都有畫出來", $("kpi").querySelectorAll(".tile").length === 6 && $("report").querySelector("#secFunnel") && $("report").querySelector("#secCost") && $("report").querySelector("#secPlayers") && !/undefined|NaN/.test($("report").textContent + $("kpi").textContent), $("title").textContent);
   }
+  // 10.14.7.2／10.14.7.3：重寫那一節有「全部／只看最新版」切換（預設全部），切換後整節一起換；只有一個重寫比例
+  w.document.querySelector('#range button[data-r="7d"]').click(); await settle();
+  const sr = () => $("report").querySelector("#secRetry");
+  const tg = w.document.querySelectorAll("#verPick button");
+  A.check("重寫那一節：切換鈕「全部」「只看最新版」，預設「全部」", tg.length === 2 && tg[0].textContent === "全部" && tg[0].getAttribute("aria-pressed") === "true" && tg[1].textContent === "只看最新版" && tg[1].getAttribute("aria-pressed") === "false");
+  A.check("重寫那一節：沒有獨立的「今天的自動重寫」，有次數表、原因前 5 名、上回合紀錄前 5 名、每天明細（含連線重試／再試一次／未分類）", sr() && !/今天的自動重寫/.test(sr().textContent) && /連線重試/.test(sr().textContent) && /再試一次/.test(sr().textContent) && /改版前（未分類）/.test(sr().textContent) && /重寫原因前 5 名/.test(sr().textContent) && /上回合紀錄前 5 名/.test(sr().textContent) && /未分類/.test(sr().textContent), sr() && sr().textContent.slice(0, 200));
+  w.document.querySelector('#verPick button[data-ver="latest"]').click(); await settle();
+  A.check("切到「只看最新版」：按鈕狀態換、說明出現、整節仍畫得出來", w.document.querySelector('#verPick button[data-ver="latest"]').getAttribute("aria-pressed") === "true" && /只算頁面版本是目前伺服器版本/.test(sr().textContent) && !/undefined|NaN/.test(sr().textContent));
+  w.document.querySelector('#verPick button[data-ver="all"]').click(); await settle();
   $("tabT").click(); await settle();
   A.check("長期趨勢：有折線圖與每日總表", !!$("trendSvg") && $("dailyTable").querySelectorAll("tr").length > 1);
   w.document.querySelector('#trendPick button[data-k="retry_rate"]').click(); await settle();

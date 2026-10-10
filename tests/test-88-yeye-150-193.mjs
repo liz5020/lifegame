@@ -220,7 +220,22 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const cny = ev("calLunarDates(2028).cny"); // 2028年春節（初一）的絕對日
   const cnyWin = { start: cny + 5, end: cny + 8 }; // 初六～初九
   ev(`state.timeState.cal.lastSceneDay = ${cny + 4}`);
-  A.check("B3：新場景範圍是初六以後，寫「大年初二」→ 第1類「節日」", run({ ...ok, narrative: nar + "大年初二，家裡又擠滿了親戚。" }, { window: cnyWin }).retry.some(x => /^節日.*大年初二/.test(x)));
+  // 2026-10-10（1.2.9.18.1）：離檢查範圍14天以內改為第3類只記錄(節日附近)，超過才第1類重寫(節日)
+  const nearOut = run({ ...ok, narrative: nar + "大年初二，家裡又擠滿了親戚。" }, { window: cnyWin });
+  A.check("B3：新場景範圍是初六以後，寫「大年初二」（差4天）→ 第3類「節日附近」、不重寫", nearOut.retry.length === 0 && nearOut.log.some(x => /^節日附近.*大年初二/.test(x)), nearOut);
+  const farWin = { start: cny + 30, end: cny + 33 }; // 離初二差28天以上
+  ev(`state.timeState.cal.lastSceneDay = ${cny + 29}`);
+  A.check("B3：範圍離初二超過14天，寫「大年初二」→ 第1類「節日」重寫", run({ ...ok, narrative: nar + "大年初二，家裡又擠滿了親戚。" }, { window: farWin }).retry.some(x => /^節日.*大年初二/.test(x)));
+  const eveWin = { start: cny - 1 - 3, end: cny - 1 + 0 }; // 除夕前3天～除夕當天
+  ev(`state.timeState.cal.lastSceneDay = ${cny - 5}`);
+  A.check("B3：範圍含除夕當天，寫「除夕」→ 沒問題", run({ ...ok, narrative: nar + "今天是除夕，市場擠滿了人。" }, { window: eveWin }).retry.length === 0);
+  const beforeEve = { start: cny - 1 - 5, end: cny - 1 - 3 }; // 除夕前5～3天
+  ev(`state.timeState.cal.lastSceneDay = ${cny - 7}`);
+  const eveNear = run({ ...ok, narrative: nar + "快到除夕了，媽媽開始準備年菜。" }, { window: beforeEve });
+  A.check("B3：除夕在幾天後，寫「快到除夕了」→ 第3類「節日附近」、不重寫", eveNear.retry.length === 0 && eveNear.log.some(x => /^節日附近.*除夕/.test(x)), eveNear);
+  const decWin = { start: ev("calDateToAbs(2027,12,10)"), end: ev("calDateToAbs(2027,12,13)") };
+  ev(`state.timeState.cal.lastSceneDay = ${decWin.start - 1}`);
+  A.check("B3：12月的場景提到隔年除夕（超過14天）→ 第1類「節日」", run({ ...ok, narrative: nar + "除夕要回外婆家，早點把車票訂好。" }, { window: decWin }).retry.some(x => /^節日.*除夕/.test(x)));
   A.check("B3：寫「大年初七」（範圍內）沒問題", run({ ...ok, narrative: nar + "大年初七，街上的店陸續開了。" }, { window: cnyWin }).retry.length === 0);
   ev(`state.timeState.cal.lastSceneDay = calDateToAbs(2027,10,2)`);
   // 約定（1.2.9.18.4）
