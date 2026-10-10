@@ -28,7 +28,7 @@ input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--soft);border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--card)}
 .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
-.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:4;background:var(--paper);padding-top:6px}
 .tabs button{background:none;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--soft);padding:6px 12px}
 .tabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--stamp);font-weight:600}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
@@ -106,8 +106,8 @@ dt{font-weight:600}dd{margin:0;color:var(--soft)}
   <header class="head">
     <div class="eyebrow">人生草稿．後台數據</div>
     <div class="row"><span class="pill"><span class="dot"></span>更新時間 <b id="upd">—</b>（台灣時間）</span><span class="pill" id="capPill">每日上限用了 —</span><button id="refresh">立即更新</button></div>
-    <div class="tabs" role="tablist"><button id="tabR" role="tab" aria-selected="true">報表</button><button id="tabT" role="tab" aria-selected="false">長期趨勢</button><button id="tabN" role="tab" aria-selected="false">名冊</button></div>
   </header>
+  <div class="tabs" role="tablist"><button id="tabR" role="tab" aria-selected="true">報表</button><button id="tabT" role="tab" aria-selected="false">長期趨勢</button><button id="tabN" role="tab" aria-selected="false">名冊</button></div>
 
   <div id="paneR" class="stack">
     <section class="sec" id="secQuota"><h2>名額與人流（即時）</h2><p class="sub">固定看今天，不跟下面的時間範圍切換。要加名額或暫停時看這裡。</p><div id="quotaBody"></div></section>
@@ -393,7 +393,7 @@ function playersBlock(){
   var s=D.sum;if(!s)return '<p class="err">'+NA+'</p>';
   var f=s.players.free,pd=s.players.paid,tot=f.total+pd.total,b=s.accounts_bound||{},ub=s.lives_unbound||{},ls=s.lives_started||{},v=s.pageviews;
   return '<div class="tiles">'+
-    tile("玩家總數",num(tot),"","今天新增 "+num(f.today+pd.today)+"；綁信箱 "+num(b.total)+"、沒綁的人生 "+num(ub.total)+(pd.total>0?"；付費 "+num(pd.total):""))+
+    tile("玩家總數",num(tot),"","今天新增 "+num(f.today+pd.today)+"；綁信箱 "+num(b.total)+"、<br>沒綁的人生 "+num(ub.total)+(pd.total>0?"；付費 "+num(pd.total):""))+
     tile("今天有玩的玩家",num(s.active.today),"","近 7 天 "+num(s.active.last7))+
     tile("開啟人生段數",num(ls.total),"","今天 "+num(ls.today)+"、近 7 天 "+num(ls.last7))+
     tile("瀏覽人次",num(v.today),"","今天；累計 "+num(v.total)+(v.since?"（"+v.since+" 起）":""))+'</div>'}
@@ -430,8 +430,8 @@ function loadRoster(){
     if(!j)return;
     var a=j.accounts||[];
     if(!a.length){box.innerHTML='<div class="small">還沒有綁定信箱的玩家</div>';return}
-    box.innerHTML='<div class="scroll"><table><tr><th>信箱</th><th>綁定日期</th><th>人生數</th><th>回合數</th><th>最後存檔時間</th><th>候補狀態</th><th>留信箱日期</th><th>通知日期</th></tr>'+
-      a.map(function(x){return '<tr><td>'+esc(x.email)+'</td><td>'+dd(x.bound_at)+'</td><td>'+num(x.lives)+'</td><td>'+num(x.turns)+'</td><td>'+dt(x.last_save)+'</td><td>'+esc(x.wl_status||"")+'</td><td>'+dd(x.joined_at)+'</td><td>'+dd(x.notified_at)+'</td></tr>'}).join("")+'</table></div>';
+    box.innerHTML='<div class="scroll"><table><tr><th>信箱</th><th>綁定日期</th><th>人生數</th><th>回合數</th><th>最後存檔時間</th><th>候補狀態</th><th>留信箱時間</th><th>通知日期</th></tr>'+
+      a.map(function(x){return '<tr><td>'+esc(x.email)+'</td><td>'+dd(x.bound_at)+'</td><td>'+num(x.lives)+'</td><td>'+num(x.turns)+'</td><td>'+dt(x.last_save)+'</td><td>'+esc(x.wl_status||"")+'</td><td>'+dt(x.joined_at)+'</td><td>'+dd(x.notified_at)+'</td></tr>'}).join("")+'</table></div>';
   }).catch(function(){box.innerHTML='<div class="err">'+NA+'</div>'});
 }
 
@@ -465,6 +465,7 @@ $("range").addEventListener("click",function(ev){var r=ev.target.getAttribute&&e
 $("trendPick").addEventListener("click",function(ev){var k=ev.target.getAttribute&&ev.target.getAttribute("data-k");if(!k)return;D.trendKey=k;
   document.querySelectorAll("#trendPick button").forEach(function(b){b.setAttribute("aria-pressed",b.getAttribute("data-k")===k)});renderTrend()});
 function showTab(n){
+  document.documentElement.scrollTop=0;document.body.scrollTop=0;
   $("paneR").hidden=n!=="r";$("paneT").hidden=n!=="t";$("paneN").hidden=n!=="n";
   $("tabR").setAttribute("aria-selected",n==="r");$("tabT").setAttribute("aria-selected",n==="t");$("tabN").setAttribute("aria-selected",n==="n");
   if(n==="t"){if(D.daily)renderTrend();else soft("/stats-daily").then(function(j){D.daily=j;renderTrend()}).catch(authFail)}
