@@ -786,6 +786,19 @@ function aiFailMetaText(meta, ms) {
   if (!meta) return "（耗時" + ms + "毫秒）";
   return "（類型" + (meta.kind || "turn") + (meta.prologue ? "，開場" : "") + (meta.turn !== undefined && meta.turn !== null ? "，第" + meta.turn + "回合" : "") + "，耗時" + ms + "毫秒）";
 }
+// 十、10.14.7.1（2026-10-10）：前端帶來的重寫原因(regen_reason)與上回合紀錄(prev_turn_notes)只收代碼——中文字、數字、英文、「、」與@，長度有上限，不收正文
+const TURN_NOTE_MAX_CHARS = 80;
+export function sanitizeNoteCodes(v) {
+  if (typeof v !== "string") return "";
+  return v.replace(/[^\u4e00-\u9fff0-9A-Za-z、@_]/g, "").slice(0, TURN_NOTE_MAX_CHARS);
+}
+function turnNoteMeta(body) {
+  const out = {};
+  const rr = sanitizeNoteCodes(body && body.regen_reason), pn = sanitizeNoteCodes(body && body.prev_turn_notes);
+  if (rr) out.rr = rr;
+  if (pn) out.pn = pn;
+  return out;
+}
 // 十、10.14.7（2026-10-04）：meta有值時，回應成功後在背景把Anthropic回報的實際用量記進用量計數器(不影響回應速度與內容)
 async function callAnthropic(env, upstreamBody, ctx, meta) {
   let res;
@@ -807,8 +820,8 @@ async function callAnthropic(env, upstreamBody, ctx, meta) {
   }
   const elapsedMs = Date.now() - startedAt;
   // 十、10.9.3.1／10.9.3.3／10.9.3.1a補充二(2026-10-08)：每次AI呼叫記一筆花費——有回報用量的記實際花費(美元×匯率)，沒有的(失敗呼叫)照預估；達80%／上限時寄管理通知信
-  let usage = null;
-  if (res.ok) { try { const d = await res.clone().json(); if (d && d.usage) usage = extractUsage(d.usage); } catch (e) { usage = null; } }
+  let usage = null, stopReason = "";
+  if (res.ok) { try { const d = await res.clone().json(); if (d && d.usage) usage = extractUsage(d.usage); if (d && typeof d.stop_reason === "string") stopReason = d.stop_reason; } catch (e) { usage = null; } }
   let fail;
   if (!res.ok) { // 2026-10-09：AI回錯誤時把狀態碼、錯誤類型與訊息寫進Workers Logs(不含玩家內容)，並按類型計次(/usage-today的failures)
     let type = "", msg = "";
@@ -817,8 +830,10 @@ async function callAnthropic(env, upstreamBody, ctx, meta) {
     console.warn("AI呼叫失敗：狀態 " + res.status + (type ? " " + type : "") + " " + String(msg).slice(0, 300) + aiFailMetaText(meta, elapsedMs));
   }
   await countAICall(env, ctx, usage ? costUSD(usage) * USD_TO_TWD : undefined, fail);
-  if (meta && usage) {
-    const job = recordAIUsage(env, Object.assign({}, meta, { ms: elapsedMs }), usage, costUSD(usage)).catch(() => {});
+  // 十、10.14.7.1（2026-10-10）：結束原因＝上游的stop_reason；上游回403時沒有用量，也記一筆(用量為0)，結束原因記「403@機房代碼」(10.17.11)
+  if (meta && (usage || res.status === 403)) {
+    const end = res.status === 403 ? "403@" + (meta.colo || "?") : stopReason;
+    const job = recordAIUsage(env, Object.assign({}, meta, { ms: elapsedMs, end }), usage || { input: 0, cache_write: 0, cache_read: 0, output: 0 }, usage ? costUSD(usage) : 0).catch(() => {});
     if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(job); else await job;
   }
   // 十、10.9.4（2026-09-30）：固定規則(system prompt＋工具定義)的字數，給前端逐筆成本紀錄當比例參考(不換算token)
@@ -833,7 +848,7 @@ async function callAnthropic(env, upstreamBody, ctx, meta) {
 // 仍然只接受遊戲的payload結構、system/工具/模型由Worker決定(10.4)，成功回應照樣簡轉繁。lifegame.usage照樣回傳給測試選單顯示
 // 十、10.9.2（2026-09-30，第二批）：wallet={token}時是「帳號共用錢包」的請求——回合先預扣1點(同一turn_nonce只扣一次、開場免費、失敗退點，規則同10.3.11)，
 // 回顧這一生成功才扣5點；錢包在帳號Durable Object裡，同樣不碰KV。回應的lifegame.wallet是最新的錢包狀態
-async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
+async function handleAIProxyNoKV(body, env, origin, ctx, wallet, colo) {
   let check, upstreamBody, isUsable;
   if (body.kind === "chapter") {
     check = validateChapterMessages(body.messages);
@@ -899,7 +914,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
   let upstream, text, data = null;
   try {
     if (isTurn && typeof body.regen_reason === "string" && body.regen_reason) console.log("自動重新產生原因：" + body.regen_reason.slice(0, 60) + "（第" + check.payload.turn + "回合）"); // 帳號錢包路徑，同上
-    upstream = await callAnthropic(env, upstreamBody, ctx, { kind: ({ chapter: "chapter", idle_summary: "idle", life_review: "review" })[body.kind] || "turn", lifeId: safeLifeId, nonce: isTurn ? body.turn_nonce : null, turn: isTurn ? check.payload.turn : null, prologue: isTurn && !!(check.payload.time_context && check.payload.time_context.is_prologue === true) }); // 10.14.7
+    upstream = await callAnthropic(env, upstreamBody, ctx, Object.assign({ kind: ({ chapter: "chapter", idle_summary: "idle", life_review: "review" })[body.kind] || "turn", lifeId: safeLifeId, nonce: isTurn ? body.turn_nonce : null, turn: isTurn ? check.payload.turn : null, prologue: isTurn && !!(check.payload.time_context && check.payload.time_context.is_prologue === true), colo }, isTurn ? turnNoteMeta(body) : {})); // 10.14.7／10.14.7.1
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -940,7 +955,7 @@ async function handleAIProxyNoKV(body, env, origin, ctx, wallet) {
   return new Response(text, { status: upstream.status, headers: corsHeaders(origin) });
 }
 
-async function handleAIProxy(request, env, origin, ctx) {
+async function handleAIProxy(request, env, origin, ctx, colo = "") {
   let body;
   try { body = await request.json(); }
   catch (e) { return jsonResponse(origin, { error: { message: "請求內容不是合法JSON" } }, 400); }
@@ -951,8 +966,8 @@ async function handleAIProxy(request, env, origin, ctx) {
   if (gate.blocked) return jsonResponse(origin, { error: { type: "daily_cap_reached", message: "今天的故事額度已用完，台灣時間午夜後恢復" }, lifegame: { daily_cap: true } }, 503);
   // 十、10.9.2：帶著登入token且明說用帳號錢包的請求(雲端存檔開或關都一樣)走錢包路徑
   const walletToken = bearerToken(request);
-  if (body.wallet === true && walletToken && accountStore(env)) return handleAIProxyNoKV(body, env, origin, ctx, { token: walletToken });
-  if (!cloudEnabled(env)) return handleAIProxyNoKV(body, env, origin, ctx, null); // 十、10.8
+  if (body.wallet === true && walletToken && accountStore(env)) return handleAIProxyNoKV(body, env, origin, ctx, { token: walletToken }, colo);
+  if (!cloudEnabled(env)) return handleAIProxyNoKV(body, env, origin, ctx, null, colo); // 十、10.8
   if (body.kind === "chapter") return handleChapter(body, env, origin, ctx); // 十五、章節成書
   if (body.kind === "idle_summary") return handleIdleSummary(body, env, origin, ctx); // 十、10.6.4放置摘要（2026-09-27）
   if (body.kind === "life_review") return handleLifeReview(body, env, origin, ctx); // 十六、16.7.2回顧這一生（2026-09-28）
@@ -988,7 +1003,7 @@ async function handleAIProxy(request, env, origin, ctx) {
   let upstream, text, data = null;
   try {
     if (typeof body.regen_reason === "string" && body.regen_reason) console.log("自動重新產生原因：" + body.regen_reason.slice(0, 60) + "（第" + check.payload.turn + "回合）"); // 2026-10-10：查重試比例偏高的原因(不含人生代號與內容)
-    upstream = await callAnthropic(env, buildTurnRequest(body.messages), ctx, { kind: "turn", lifeId: safeLifeId, nonce, turn: check.payload.turn, prologue: isPrologue }); // 10.14.7
+    upstream = await callAnthropic(env, buildTurnRequest(body.messages), ctx, Object.assign({ kind: "turn", lifeId: safeLifeId, nonce, turn: check.payload.turn, prologue: isPrologue, colo }, turnNoteMeta(body))); // 10.14.7／10.14.7.1
     text = await upstream.text();
     if (upstream.ok) { try { data = JSON.parse(text); } catch (e) { data = null; } }
   } catch (err) {
@@ -1120,6 +1135,11 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
       r.by_kind[k] = (r.by_kind[k] || 0) + b.calls;
     }
   }
+  // 十、10.14.7.1（2026-10-10）：今天重寫佔一般回合的比例、重寫原因前5名、上回合紀錄前5名(驗收目標：低於5%)
+  const q = (await usageCall(env, "uquality", {}, "GET")) || {};
+  const top5 = (o) => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([code, n]) => ({ code, n }));
+  const turnCallsToday = ((u.days || {})[today] || {}).turn ? u.days[today].turn.calls : 0;
+  const regen_today = { regens: q.regens || 0, turn_calls: turnCallsToday, pct: turnCallsToday > 0 ? Math.round((q.regens || 0) / turnCallsToday * 1000) / 10 : null, reasons: top5(q.reasons), notes: top5(q.notes) };
   const turnsIn = (from, to) => Object.entries(turns).reduce((t, [d, n]) => t + (d >= from && d <= to ? n : 0), 0);
   const den = { today: turns[today] || 0, last7: turnsIn(week_start, today), total: turnsIn(u.since || "0000", today) };
   for (const [key, r] of Object.entries(range)) {
@@ -1137,7 +1157,7 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
     const perDay = range.last7.usd / 7;
     balance = { set_usd: bal, base_usd: base, remaining_usd: remaining, days_left: perDay > 0 ? Math.max(0, Math.floor(remaining / perDay)) : null };
   }
-  return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS, balance }, range);
+  return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS, balance, regen_today }, range);
 }
 // GET /usage-detail.csv：逐筆明細(最近7天、最多5,000筆)，欄位比照遊戲裡的逐筆呼叫紀錄，另加匿名人生代號與距同一段人生上一次呼叫的分鐘數
 async function handleUsageDetailCsv(request, env) {
@@ -1147,11 +1167,11 @@ async function handleUsageDetailCsv(request, env) {
   rows.sort((a, b) => a.t - b.t);
   const lastByLife = {};
   const tw = (t) => new Date(t + 8 * 3600000).toISOString().replace("T", " ").slice(0, 19);
-  const lines = ["time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms"];
+  const lines = ["time_taipei,turn,kind,life,gap_min,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,cost_usd,elapsed_ms,regen_reason,prev_turn_notes,end_reason"]; // 10.14.7.1：最後三欄＝重寫原因、上回合紀錄、結束原因
   for (const r of rows) {
     const gap = r.life && lastByLife[r.life] ? Math.round((r.t - lastByLife[r.life]) / 6000) / 10 : "";
     if (r.life) lastByLife[r.life] = r.t;
-    lines.push([tw(r.t), r.turn == null ? "" : r.turn, AI_USAGE_KIND_LABELS[r.k] || r.k, r.life || "", gap, r.in, r.cw, r.cr, r.out, r.usd, r.ms == null ? "" : r.ms].join(","));
+    lines.push([tw(r.t), r.turn == null ? "" : r.turn, AI_USAGE_KIND_LABELS[r.k] || r.k, r.life || "", gap, r.in, r.cw, r.cr, r.out, r.usd, r.ms == null ? "" : r.ms, r.rr || "", r.pn || "", r.end || ""].join(","));
   }
   const name = "AI用量明細_" + tw(nowMs(env)).replace(/[- :]/g, "").slice(0, 12) + ".csv";
   return new Response("\uFEFF" + lines.join("\n") + "\n", { headers: { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store",
@@ -1159,7 +1179,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.10-e";
+const WORKER_VERSION = "2026.10.10-f";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
@@ -1224,12 +1244,12 @@ export default {
       if (rel.response) return rel.response;
       req = rel.request; e = rel.env;
     }
-    return routeRequest(req, e, ctx, origin, url);
+    return routeRequest(req, e, ctx, origin, url, (request.cf && request.cf.colo) || ""); // 10.17.11：門牌換算會重建請求、拿不到request.cf，機房代碼在這裡先取
   }
 };
 
 // 路由本體(原fetch在來源檢查之後的部分)：此時request／env裡的金鑰已經是門牌
-async function routeRequest(request, env, ctx, origin, url) {
+async function routeRequest(request, env, ctx, origin, url, colo) {
   {
     // 十、10.2（2026-09-30，第二批）：帳號路由——資料在Durable Object，不碰KV；頻率限制一律用不經KV的Cloudflare Rate Limiting，雲端存檔開或關都一樣
     if (isAccountPath(url.pathname)) {
@@ -1248,7 +1268,7 @@ async function routeRequest(request, env, ctx, origin, url) {
       }
       if (CLOUD_ONLY_PATHS.includes(url.pathname)) return jsonResponse(origin, { success: false, error: "封測期間暫停雲端存檔", cloud_disabled: true }, 503);
       if (request.method !== "POST") return new Response("Only POST is allowed", { status: 405 });
-      return handleAIProxy(request, env, origin, ctx);
+      return handleAIProxy(request, env, origin, ctx, colo);
     }
 
     const allowed = await checkRateLimit(request, env);
@@ -1270,6 +1290,6 @@ async function routeRequest(request, env, ctx, origin, url) {
     if (url.pathname === "/family-book" && request.method === "GET") return handleFamilyBookLoad(request, env, origin);
 
     if (request.method !== "POST") return new Response("Only POST is allowed", { status: 405 });
-    return handleAIProxy(request, env, origin, ctx);
+    return handleAIProxy(request, env, origin, ctx, colo);
   }
 }

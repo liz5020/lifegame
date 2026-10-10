@@ -39,7 +39,7 @@ A.check("分隔線在行動結果與新場景之間", order);
 turnOverride = () => ({ narrative: "舊格式單一字串\\n\\n第二段" });
 await H.playTurn(g, "自己打的行動");
 const card2 = doc.getElementById("latest-entry");
-A.check("AI交回單一字串(含字面\\n)：程式依換行拆段", [...card2.querySelectorAll(":scope > p")].map(p => p.textContent).join("|").includes("舊格式單一字串|第二段"));
+A.check("AI交回單一字串(含字面\\n)：程式依換行拆段", [...card2.querySelectorAll(":scope > p")].map(p => p.textContent).join("|").includes("舊格式單一字串。|第二段。")); // 2026-10-10起沒有收尾符號的段落由程式補句號(一、1.2.9.18.1第2類)
 A.check("自由輸入同樣用選擇行呈現", /自己打的行動/.test(card2.querySelector(".choice-line").textContent));
 
 turnOverride = () => ({});

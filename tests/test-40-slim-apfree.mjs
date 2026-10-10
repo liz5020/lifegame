@@ -66,7 +66,7 @@ const env = H.makeEnv({ AP_TEST_KEYS: H.loc("someoneelse") + ", " + H.loc(TEST_K
 { // Worker的tool定義
   const { TURN_RESULT_TOOL } = await import("../worker/prompt.js");
   const req = TURN_RESULT_TOOL.input_schema.required;
-  A.check("精簡：schema required只剩每回合一定有內容的欄位", req.length === 8 && !req.includes("stat_deltas") && !req.includes("is_ending") && !req.includes("age_advance") && req.every(k => REQUIRED.includes(k)), req);
+  A.check("精簡：schema required只剩每回合一定有內容的欄位", req.length === 9 && req.includes("action_result") && !req.includes("stat_deltas") && !req.includes("is_ending") && !req.includes("age_advance") && req.every(k => REQUIRED.includes(k)), req);
   const p = TURN_RESULT_TOOL.input_schema.properties;
   A.check("精簡：數值物件不再要求每一項", !p.stat_deltas.required && !p.attachment_shift.required && !p.conscientiousness_shift.required);
 }

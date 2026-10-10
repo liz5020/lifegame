@@ -13,7 +13,7 @@ await wait(30);
 A.check("全新裝置進站：出現開場同意頁", gate(g));
 const txt = g.ev("document.getElementById('consent-gate').textContent");
 A.check("標題與四點文字照定稿", txt.includes("開始之前，先跟你說明") && txt.includes("遊戲進行中會定期自動存檔到我們的伺服器，存檔用於改善遊戲體驗及維護。")
-  && txt.includes("遊戲劇情由 AI 生成，你的選擇與輸入的文字會傳給 AI 服務商，用來產生下一段劇情。")
+  && txt.includes("遊戲劇情由 AI 生成，你的選擇與輸入的文字會由 AI 來產生下一段劇情。")
   && txt.includes("請不要在遊戲裡輸入真實姓名、電話、住址、公司等個人資訊。") && txt.includes("有任何問題與建議，可以透過回報表單告訴我們。"), txt);
 A.check("有〔同意並開始〕〔不同意〕兩顆按鈕，沒有「不要再顯示」勾選", !!g.ev("document.getElementById('btn-consent-agree')") && !!g.ev("document.getElementById('btn-consent-decline')") && g.ev("document.querySelectorAll('#consent-gate input').length") === 0);
 A.check("按〔不同意〕前沒有提示", g.ev("document.getElementById('consent-hint').style.display") === "none");

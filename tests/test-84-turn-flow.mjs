@@ -52,7 +52,7 @@ A.check("P3 防護句不跟「玩家選擇一定先執行」「超現實內容�
   A.check("S8 逐筆紀錄有耗時(毫秒)：Worker呼叫Anthropic到收到回應", last && Number.isFinite(last.ms) && last.ms >= 35 && last.ms < 5000, last);
   const csv = await H.callWorker(env, { method: "GET", path: "/usage-detail.csv", origin: null, headers: { Authorization: "Bearer admin-secret" } });
   const lines = csv.text.replace(/^﻿/, "").trim().split("\n");
-  A.check("S9 CSV多一欄elapsed_ms，最後一筆有數字", lines[0].endsWith(",elapsed_ms") && Number(lines[lines.length - 1].split(",").pop()) >= 35, [lines[0], lines[lines.length - 1]]);
+  A.check("S9 CSV多一欄elapsed_ms，最後一筆有數字", lines[0].split(",")[10] === "elapsed_ms" && Number(lines[lines.length - 1].split(",")[10]) >= 35, [lines[0], lines[lines.length - 1]]);
 }
 
 // ================= 前端：逾時、慢提示、重打間隔、再試一次 =================

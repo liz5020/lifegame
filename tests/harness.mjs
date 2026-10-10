@@ -168,6 +168,7 @@ export async function callWorker(env, { method = "POST", path: p = "/", body, or
   const h = Object.assign({ "Content-Type": "application/json" }, headers);
   if (origin) h.Origin = origin;
   const req = new Request("https://life-game.smile80275.workers.dev" + p, { method, headers: h, body: body === undefined ? undefined : (typeof body === "string" ? body : JSON.stringify(body)) });
+  if (env && env.__cf) Object.defineProperty(req, "cf", { value: env.__cf }); // 10.17.11：模擬Cloudflare的request.cf
   const waits = [];
   const res = await worker.fetch(req, env, ctx || { waitUntil: (pr) => waits.push(pr) });
   await Promise.all(waits);
@@ -213,6 +214,7 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
         // 每個請求給不同的IP，避免長程模擬撞到Worker每小時200次的IP頻率限制(那是真實環境的保險，不是這裡要測的)
         const h = Object.assign({}, init.headers || {}, { Origin: ORIGIN, "CF-Connecting-IP": "10.0." + Math.floor(Math.random() * 250) + "." + Math.floor(Math.random() * 250) });
         const req = new Request(String(url), { method: init.method || "GET", headers: h, body: init.body });
+        if (env && env.__cf) Object.defineProperty(req, "cf", { value: env.__cf }); // 10.17.11：測試可以模擬Cloudflare的request.cf(機房代碼colo)
         const waits = [];
         // 十、10.17.2：頁面的AbortController要能中止請求(逾時測試)；中止後Worker那邊照樣跑完(跟真實環境一樣)
         const work = (async () => { const r = await worker.fetch(req, env, { waitUntil: (p) => waits.push(p) }); await Promise.all(waits); return { r, t: await r.text() }; })();
@@ -252,7 +254,7 @@ export async function loadGame({ useMock = true, env, key = "testkey123", slot =
   }).observe(win.document.body, { childList: true, subtree: true });
   await new Promise(r => setTimeout(r, 30));
   // 十八、18.10.7（2026-10-09）：正文完整性檢查(字數下限、缺段…)一般測試的假上游文字很短，預設關掉；要測它的測試傳 integrity:true
-  if (!integrity) win.eval("NARRATIVE_INTEGRITY_CHECK = false");
+  win.eval(integrity ? "NARRATIVE_INTEGRITY_CHECK = true" : "NARRATIVE_INTEGRITY_CHECK = false"); // 2026-10-10：true＝示範模式也檢查(1.2.9.18降頻的測試用)
   return { dom, win, errors, ev: (code) => win.eval(code) };
 }
 

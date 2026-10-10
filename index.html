@@ -3974,7 +3974,7 @@ const CONSENT_STORAGE_NAME = "lifegame_consent";
 const CONSENT_SYNCED_NAME = "lifegame_consent_synced";
 const CONSENT_ITEMS = [
   "遊戲進行中會定期自動存檔到我們的伺服器，存檔用於改善遊戲體驗及維護。",
-  "遊戲劇情由 AI 生成，你的選擇與輸入的文字會傳給 AI 服務商，用來產生下一段劇情。",
+  "遊戲劇情由 AI 生成，你的選擇與輸入的文字會由 AI 來產生下一段劇情。",
   "請不要在遊戲裡輸入真實姓名、電話、住址、公司等個人資訊。",
   "有任何問題與建議，可以透過回報表單告訴我們。",
 ];
@@ -7705,137 +7705,190 @@ function truncateDialogueLine(line, limit){
   if(!within.length) return { text:line, truncated:false, noPunctuation:true };
   return { text:line.slice(0, within[within.length-1].idx), truncated:true };
 }
-// 一、1.2.9.18（2026-09-29 A14）輸出品質檢查：只看AI交回的正文(行動結果＋新場景)，合法的{{名字|台詞}}標記先換成「台詞」再檢查
-const OUTPUT_QUALITY_MAX_RETRIES = 2; // 【定案，A14】
+// 一、1.2.9.18（2026-09-29 A14；2026-10-10改寫為三類，1.2.9.18.1）輸出品質檢查：只看AI交回的正文(行動結果＋新場景)，合法的{{名字|台詞}}標記先換成「台詞」再檢查。
+// 第1類＝重新產生(與場景日期合併，整回合最多1次)；第2類＝程式直接修(repairTurnText)；第3類＝只記錄。三類都用短代碼，代碼也是用量明細CSV的紀錄(10.14.7.1)
+const OUTPUT_QUALITY_MAX_RETRIES = 1; // 【定案，2026-10-10】1.2.9.18.2：整回合最多重寫1次(連線失敗重試另計)
 const OUTPUT_PARAGRAPH_END_OK = /[。！？!?…」』）)～~.．*＊〕】"”'’]$/;
 // 只挑幾乎不可能是一般口語的詞，避免誤殺(例如「重心」「回合」在一般句子裡也會出現，只抓系統用法)
 const SYSTEM_TERM_RE = /正式副業|投入度|好感度|行動點|訂單簿|接單上限|興趣卡|興趣等級|(?:這|本|上|下|每)回合|重心(?:選|按鈕|是)|把重心|存檔|數值(?:面板|變化)/;
-function detectOutputQualityIssues(r){
-  if(!r || typeof r!=="object") return [];
-  const issues = [];
-  [["回應段", r.action_result], ["新場景", r.narrative]].forEach(([where, raw])=>{
-    const text = String(raw||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」").trim();
-    if(!text) return;
-    const paras = narrativeParagraphs(text);
-    const lastOpen = text.lastIndexOf("「"), lastClose = text.lastIndexOf("」");
-    if(lastOpen>lastClose) issues.push(`${where}最後一個引號沒有關上`);
-    let inDoc = false; // 文件框(〔文件:標題〕…〔/文件〕)裡的內容是成績單、訊息這類逐行資料，不檢查句尾
-    paras.forEach((p,i)=>{
-      if(/^〔\/文件〕/.test(p)){ inDoc = false; return; }
-      if(/^〔文件/.test(p)){ inDoc = true; return; }
-      if(inDoc) return;
-      if(/[：:，,、；;]$/.test(p)) issues.push(`${where}第${i+1}段以「${p.slice(-1)}」結尾，句子沒寫完`);
-      else if(!OUTPUT_PARAGRAPH_END_OK.test(p)) issues.push(`${where}第${i+1}段沒有寫完就結束`);
-    });
-    if(/[{}]/.test(text) || /["“”]\w+["“”]\s*:/.test(text)) issues.push(`${where}出現資料格式符號`);
-    const sys = text.match(SYSTEM_TERM_RE); // QA 34.15 #6：台詞與敘事都不可以出現遊戲系統用語
-    if(sys) issues.push(`${where}出現系統用語「${sys[0]}」，台詞與敘事都要改成角色會說的話`);
-  });
-  return Array.from(new Set(issues)).slice(0, 6);
-}
-// ===== 十八、18.10.7／第三節A～C（2026-10-09，葉夜第1世第147～193回合回饋）：正文完整性檢查 =====
-// 回傳{ retry:[…], advisory:[…] }：retry走1.2.9.18自動重新產生(最多2次)；advisory只寫入錯誤紀錄、不重寫(語意判斷程式抓不準)
-let NARRATIVE_INTEGRITY_CHECK = true; // 測試用開關：一般測試的假上游文字很短，harness預設關掉
-const NARR_MIN_ACTION_CHARS = 100;  // 回應段下限約200字的一半
-const NARR_MIN_SCENE_CHARS = 130;   // 新場景下限(1.2.9.1最短級距扣掉回應段約270字)的一半；實測普遍只有目標一半，門檻不設更嚴(18.10.7)
+const DATA_FIELD_RE = /["“”]\w+["“”]\s*:/;
+const UNREADABLE_CODES = ["空白","少一段","欄位名稱"]; // 1.2.9.18.2：重寫後還是這幾種＝讀不了，退回回合
+// ===== 十八、18.10.7／第三節A～C（2026-10-09）正文完整性檢查；2026-10-10依1.2.9.18.1重新分類 =====
+let NARRATIVE_INTEGRITY_CHECK = null; // 測試用開關：null＝依模式(真實模式檢查、示範模式不檢查)；harness預設false，要測的測試傳integrity:true
+function integrityCheckOn(){ return NARRATIVE_INTEGRITY_CHECK===null ? !USE_MOCK : !!NARRATIVE_INTEGRITY_CHECK; }
+const NARR_TOO_SHORT_CHARS = 40;    // 【定案，2026-10-10】1.2.9.18.1第1類：少於40字才重寫
+const NARR_MIN_ACTION_CHARS = 100;  // 回應段原門檻(下限約200字的一半)；40～99字改為第3類「偏短」
+const NARR_MIN_SCENE_CHARS = 130;   // 新場景原門檻；40～129字改為第3類「偏短」
+const PROMISE_EXPLAIN_WORDS = ["去了","沒去","改天","下次","延期","取消","不去了"]; // 【測試參數】1.2.9.18.4：正文有對象名字＋任一字眼＝有交代
 const WEEKDAY_NUM = { 日:0, 天:0, 一:1, 二:2, 三:3, 四:4, 五:5, 六:6 };
 const WEEKDAY_ANCHOR_RE = /(?<![上下這这那每前後后本])(?:週|周|星期|禮拜|礼拜)([一二三四五六日天])(?:的)?(?=早上|早晨|上午|中午|下午|傍晚|晚上|夜晚|夜裡|深夜|凌晨|放學|午休)/g;
 const SELF_COMMENT_RE = /[「『“][^」』”]{1,8}[」』”]這(?:個)?(?:詞|字|兩個字|說法|形容)|(?:這個|這)(?:詞|字眼)用在這裡|用在這裡(?:好像|似乎)?(?:太|有點|誇張)/;
-function cjkLen(text){ const m = String(text||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "$1").match(/[\u4e00-\u9fff]/g); return m ? m.length : 0; }
-function ngramSet(text, n){ const t = String(text||"").replace(/[^\u4e00-\u9fff]/g, ""); const out = new Set(); for(let i=0;i+n<=t.length;i++) out.add(t.slice(i,i+n)); return out; }
+function cjkLen(text){ const m = String(text||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "$1").match(/[一-鿿]/g); return m ? m.length : 0; }
+function ngramSet(text, n){ const t = String(text||"").replace(/[^一-鿿]/g, ""); const out = new Set(); for(let i=0;i+n<=t.length;i++) out.add(t.slice(i,i+n)); return out; }
 function weekdayOfAbs(abs){ return calAbsToDate(abs).dow; }
 function weekdayName(dow){ return "日一二三四五六"[dow]; }
-function detectNarrativeIntegrity(r, s, ctx){
-  const retry = [], advisory = [];
-  if(!r || typeof r!=="object") return { retry, advisory };
+function markupToQuotes(text){ return String(text||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」"); }
+
+// ---- 第2類：程式直接修(1.2.9.18.1第2類第1～6點)。只改標點、括號、引號，不補寫內容；回傳這次修了什麼的代碼 ----
+const STAGE_DIRECTION_RE = /（[^（）「」『』]{1,12}）|\([^()「」『』]{1,12}\)/g;
+function stripStageDirections(line, codes){
+  const t = line.replace(STAGE_DIRECTION_RE, "");
+  if(t===line) return line;
+  codes.add("舞台指示");
+  return t.trim();
+}
+function repairNarrativeText(text, codes){
+  let paras = narrativeParagraphs(text);
+  // 第4點：台詞引號裡的括號舞台指示刪掉；刪完整句台詞變空就連引號(或整個{{名字|}}標記)一起刪
+  paras = paras.map(p=>p
+    .replace(/\{\{([^|{}]+)\|([^{}]*)\}\}/g, (all, name, line)=>{ const t = stripStageDirections(line, codes); return t===line ? all : (t ? `{{${name}|${t}}}` : ""); })
+    .replace(/「([^「」]*)」/g, (all, line)=>{ const t = stripStageDirections(line, codes); return t===line ? all : (t ? `「${t}」` : ""); })
+    .trim()).filter(Boolean);
+  let inDoc = false; // 文件框(〔文件:標題〕…〔/文件〕)裡的內容是成績單、訊息這類逐行資料，不動句尾
+  paras = paras.map((p, i)=>{
+    if(/^〔\/文件〕/.test(p)){ inDoc = false; return p; }
+    if(/^〔文件/.test(p)){ inDoc = true; return p; }
+    if(inDoc) return p;
+    // 第5點：引號沒關——這一段「比」多，就在結尾補」(結尾沒有收尾標點時先補句號)
+    const opens = (p.match(/「/g)||[]).length, closes = (p.match(/」/g)||[]).length;
+    if(opens>closes){
+      if(!/[。！？!?…～~]$/.test(p)) p = p.replace(/[：:，,、；;]$/, "") + "。";
+      p += "」".repeat(opens-closes);
+      codes.add("補引號");
+    }
+    const vis = markupToQuotes(p);
+    if(/[{}]$/.test(vis)) return p; // 寫壞的台詞標記結尾，交給processDialogueMarkup()清(第6點)
+    if(/[：:]$/.test(vis)){
+      const next = paras[i+1];
+      if(next && /^(?:「|『|\{\{)/.test(next)) return p; // 第2點：冒號後面接台詞段，不算錯
+      codes.add("冒號"); return p.slice(0,-1) + "。";    // 第3點
+    }
+    if(/[，,、；;]$/.test(vis)){ codes.add("標點"); return p.slice(0,-1) + "。"; } // 第1點
+    if(!OUTPUT_PARAGRAPH_END_OK.test(vis)){ codes.add("標點"); return p + "。"; }
+    return p;
+  });
+  if(paras.some(p=>/[{}]/.test(markupToQuotes(p)))) codes.add("大括號"); // 第6點：落單的大括號由processDialogueMarkup()清，只記錄
+  return paras.join("\n\n");
+}
+function repairTurnText(r){
+  const codes = new Set();
+  if(!r || typeof r!=="object") return [];
+  ["action_result","narrative"].forEach(k=>{ if(String(r[k]||"").trim()) r[k] = repairNarrativeText(r[k], codes); });
+  return [...codes];
+}
+
+// ---- 第1類與第3類的偵測(1.2.9.18.1)。回傳{ c1:[{code,msg,id?}], c3:[{code,msg}], fillPromises:[id] }，不改動r ----
+function classifyTurnOutput(r, s, ctx){
+  const c1 = [], c3 = [], fillPromises = [];
+  const out = { c1, c3, fillPromises };
+  if(!r || typeof r!=="object"){ c1.push({ code:"空白", msg:"沒有交回正文" }); return out; }
   ctx = ctx || {};
   const prologue = !!ctx.prologue;
-  const act = String(r.action_result||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」");
-  const nar = String(r.narrative||"").replace(/\{\{[^|{}]+\|([^{}]*)\}\}/g, "「$1」");
+  const act = markupToQuotes(r.action_result), nar = markupToQuotes(r.narrative);
+  const text = act + "\n" + nar;
   const needAction = !prologue && !ctx.jump && !ctx.ending;
-  // 18.10.7第3點：少一段
-  if(needAction && !act.trim()) retry.push("回應段缺漏（要先寫玩家這回合選的動作實際發生了什麼，再接新場景）");
-  if(!nar.trim()) retry.push("新場景缺漏");
-  // 第4點：字數低於各自下限的一半
-  if(needAction && act.trim() && cjkLen(act) < NARR_MIN_ACTION_CHARS) retry.push(`回應段太短（只有${cjkLen(act)}字，要約200字以上，把玩家選的動作演完）`);
-  if(nar.trim() && cjkLen(nar) < NARR_MIN_SCENE_CHARS) retry.push(`新場景太短（只有${cjkLen(nar)}字，要寫成完整的場景）`);
-  // 第1點：回應段沒有寫到玩家選的動作(粗略：玩家文字的兩字詞一個都沒出現)
-  const actionText = String(ctx.actionText||"").trim();
-  if(needAction && actionText.length>=4 && cjkLen(act)>=NARR_MIN_ACTION_CHARS){
-    const grams = ngramSet(actionText, 2);
-    if(grams.size>=3 && ![...grams].some(g=>act.includes(g))) retry.push(`回應段沒有寫到玩家這回合選的動作「${actionText.slice(0,20)}」`);
+  // 第1類第3點：資料欄位名稱(一律檢查)
+  if(DATA_FIELD_RE.test(text)) c1.push({ code:"欄位名稱", msg:"正文出現資料欄位名稱（例如\"key\":），正文只寫故事" });
+  // 第1類第5點：新場景日期(1.2.9.11.4，一律檢查)
+  if(ctx.window){
+    const dc = validateSceneDate(r, ctx.window, prologue);
+    if(!dc.ok) c1.push({ code:"日期", msg:`新場景日期不合規則：${dc.reason}。這次scene_day_offset必須是0到${ctx.window.end-ctx.window.start}之間的整數（${calFormat(ctx.window.start)}～${calFormat(ctx.window.end)}）` });
   }
-  // 旁白不評論自己的用字
-  if(SELF_COMMENT_RE.test(act) || SELF_COMMENT_RE.test(nar)) retry.push("正文裡旁白在評論自己用的字詞，刪掉，只寫故事本身");
-  // C4：台詞裡的劇本式舞台指示「（憋笑）」
-  if(/「[^」]*（[^）」]{1,10}）[^」]*」/.test(act+nar)) retry.push("台詞裡出現「（憋笑）」這種劇本式舞台指示，動作與表情要寫成敘事句，不放進引號");
-  // A7：選項不足4個
-  if(Array.isArray(r.choices) && r.choices.length>0 && r.choices.length<4 && !ctx.ending) retry.push(`選項只有${r.choices.length}個，要給4個`);
-  // B：日期星期。回應段發生在上一回合新場景的同一時間點(cal.lastSceneDay)，新場景在本回合範圍內(window)
+  // 第3類：系統用語(一律檢查)
+  const sys = text.match(SYSTEM_TERM_RE);
+  if(sys) c3.push({ code:"系統用語", msg:`出現系統用語「${sys[0]}」` });
+  // 「寫了才算數」(十七、17.3.6.6／八、8.8.2)：示範模式的假正文固定，不檢查
+  if(!USE_MOCK || NARRATIVE_INTEGRITY_CHECK===true) detectMissingRequiredMentions(r, s, ctx.timeCtx).forEach(x=>c1.push(x));
+  if(!integrityCheckOn()) return out;
+  // 第1類第1、2點：空白、少一段、少於40字
+  if(!act.trim() && !nar.trim()) c1.push({ code:"空白", msg:"回應段與新場景都是空的" });
+  else {
+    if(needAction && !act.trim()) c1.push({ code:"少一段", msg:"回應段缺漏（要先寫玩家這回合選的動作實際發生了什麼，再接新場景）" });
+    if(!nar.trim()) c1.push({ code:"少一段", msg:"新場景缺漏" });
+  }
+  const aLen = cjkLen(act), nLen = cjkLen(nar);
+  if(needAction && act.trim()){
+    if(aLen < NARR_TOO_SHORT_CHARS) c1.push({ code:"過短", msg:`回應段太短（只有${aLen}字，要約200字以上，把玩家選的動作演完）` });
+    else if(aLen < NARR_MIN_ACTION_CHARS) c3.push({ code:"偏短", msg:`回應段${aLen}字` });
+  }
+  if(nar.trim()){
+    if(nLen < NARR_TOO_SHORT_CHARS) c1.push({ code:"過短", msg:`新場景太短（只有${nLen}字，要寫成完整的場景）` });
+    else if(nLen < NARR_MIN_SCENE_CHARS) c3.push({ code:"偏短", msg:`新場景${nLen}字` });
+  }
+  // 第3類：回應段沒有寫到玩家選的動作(粗略：玩家文字的兩字詞一個都沒出現)
+  const actionText = String(ctx.actionText||"").trim();
+  if(needAction && actionText.length>=4 && aLen>=NARR_MIN_ACTION_CHARS){
+    const grams = ngramSet(actionText, 2);
+    if(grams.size>=3 && ![...grams].some(g=>act.includes(g))) c3.push({ code:"沒寫動作", msg:`回應段沒有寫到「${actionText.slice(0,20)}」` });
+  }
+  if(SELF_COMMENT_RE.test(text)) c3.push({ code:"評論用字", msg:"旁白評論自己用的字詞" });
+  // 第3類：選項只有3個(1.2.7統一4個)
+  if(Array.isArray(r.choices) && r.choices.length>0 && r.choices.length<4 && !ctx.ending) c3.push({ code:"選項3個", msg:`選項只有${r.choices.length}個` });
+  // 日期星期：回應段發生在上一回合新場景的同一時間點(cal.lastSceneDay)，新場景在本回合範圍內(window)
   const win = ctx.window, cal = s && s.timeState && s.timeState.cal;
   if(win && cal && !prologue){
     const lastDay = cal.lastSceneDay;
-    const check = (where, text, fromAbs, toAbs)=>{
+    const check = (where, t, fromAbs, toAbs)=>{
       WEEKDAY_ANCHOR_RE.lastIndex = 0; let m;
-      while((m = WEEKDAY_ANCHOR_RE.exec(text))){
+      while((m = WEEKDAY_ANCHOR_RE.exec(t))){
         const dow = WEEKDAY_NUM[m[1]]; let ok = false;
         for(let a=fromAbs;a<=toAbs;a++) if(weekdayOfAbs(a)===dow){ ok = true; break; }
-        if(!ok){ retry.push(`${where}寫了「星期${m[1]}」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）沒有星期${m[1]}，星期要照time_context給的日期`); break; }
+        if(!ok){ c3.push({ code:"星期", msg:`${where}寫了「星期${m[1]}」，這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）沒有星期${m[1]}` }); break; }
       }
-      // B3(葉夜第1世第187～189回合連停在大年初二)：「大年初N」「除夕」要真的落在這段時間裡
+      // 第1類第4點(B3)：「大年初N」「除夕」要真的落在這段時間裡
       const cny = (calLunarDates(calAbsToDate(toAbs).y) || {}).cny;
       if(cny!=null){
         const NUMC = { 一:1, 二:2, 三:3, 四:4, 五:5, 六:6, 七:7, 1:1, 2:2, 3:3, 4:4, 5:5, 6:6, 7:7 };
-        const cm = /大年初([一二三四五六七1-7])/.exec(text);
-        if(cm){ const a = cny + NUMC[cm[1]] - 1; if(a<fromAbs || a>toAbs) retry.push(`${where}寫了「大年初${cm[1]}」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）不是，節日要照time_context給的日期`); }
-        else if(/(?<![年次回前每])除夕/.test(text)){ const a = cny - 1; if(a<fromAbs || a>toAbs) retry.push(`${where}寫了「除夕」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）不是除夕`); }
+        const cm = /大年初([一二三四五六七1-7])/.exec(t);
+        if(cm){ const a = cny + NUMC[cm[1]] - 1; if(a<fromAbs || a>toAbs) c1.push({ code:"節日", msg:`${where}寫了「大年初${cm[1]}」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）不是，節日要照time_context給的日期` }); }
+        else if(/(?<![年次回前每])除夕/.test(t)){ const a = cny - 1; if(a<fromAbs || a>toAbs) c1.push({ code:"節日", msg:`${where}寫了「除夕」，但這段時間（${calFormatMdw(fromAbs)}～${calFormatMdw(toAbs)}）不是除夕` }); }
       }
-      // 具體日期M月D日／M/D：只攔附近20天內的過去日期(編造「已讀，9/15」)；未來的約定、考試日不管
+      // 第3類：具體日期M月D日／M/D——只看附近20天內的過去日期(編造「已讀，9/15」)；未來的約定、考試日不管
       const dre = /(\d{1,2})\s*(?:月\s*(\d{1,2})\s*[日號号]|\/\s*(\d{1,2})(?!\d))/g; let dm;
-      while((dm = dre.exec(text))){
+      while((dm = dre.exec(t))){
         const mo = +dm[1], da = +(dm[2]||dm[3]);
         if(mo<1||mo>12||da<1||da>31) continue;
         const y = calAbsToDate(fromAbs).y;
         for(const yy of [y-1,y,y+1]){
           const abs = calDateToAbs(yy,mo,da);
-          if(abs<fromAbs && abs>=fromAbs-20 && !(abs>=lastDay-0 && abs<=toAbs)){
-            retry.push(`${where}寫了「${mo}/${da}」，但這個日期早於現在（${calFormatMdw(fromAbs)}），不要自己編日期`); return;
-          }
+          if(abs<fromAbs && abs>=fromAbs-20 && !(abs>=lastDay && abs<=toAbs)){ c3.push({ code:"日期", msg:`${where}寫了「${mo}/${da}」，早於現在（${calFormatMdw(fromAbs)}）` }); return; }
         }
       }
     };
     check("回應段", act, lastDay, lastDay+1);
     check("新場景", nar, win.start, win.end);
-    // B5：考前超過7天不寫具體倒數(「段考剩兩禮拜」)
-    const cd = /(?:段考|考試|期中考?|期末考?|大考|學測|指考)[^。！？\n]{0,8}(?:剩|還有|只剩|倒數|再)([0-9一二兩三四五六七八九十]+)\s*(?:個)?(天|週|周|禮拜|星期)/.exec(act+"\n"+nar)
-      || /(?:剩|還有|只剩|再)([0-9一二兩三四五六七八九十]+)\s*(?:個)?(天|週|周|禮拜|星期)[^。！？\n]{0,6}(?:就|要)?(?:段考|考試|期中|期末|大考)/.exec(act+"\n"+nar);
+    // 第3類(B5)：考前超過7天的具體倒數(「段考剩兩禮拜」)
+    const cd = /(?:段考|考試|期中考?|期末考?|大考|學測|指考)[^。！？\n]{0,8}(?:剩|還有|只剩|倒數|再)([0-9一二兩三四五六七八九十]+)\s*(?:個)?(天|週|周|禮拜|星期)/.exec(text)
+      || /(?:剩|還有|只剩|再)([0-9一二兩三四五六七八九十]+)\s*(?:個)?(天|週|周|禮拜|星期)[^。！？\n]{0,6}(?:就|要)?(?:段考|考試|期中|期末|大考)/.exec(text);
     if(cd){
       const NUM = { 一:1, 二:2, 兩:2, 三:3, 四:4, 五:5, 六:6, 七:7, 八:8, 九:9, 十:10 };
       const n = /^\d+$/.test(cd[1]) ? +cd[1] : (NUM[cd[1]]||(cd[1].length===2&&cd[1][0]==="十"?10+(NUM[cd[1][1]]||0):0));
-      const days = n * (cd[2]==="天" ? 1 : 7);
-      if(days>7) retry.push(`寫了離考試還有「${cd[0]}」，考前超過7天不寫具體倒數，只能說「越來越近」這類模糊說法`);
+      if(n * (cd[2]==="天" ? 1 : 7) > 7) c3.push({ code:"倒數", msg:`寫了「${cd[0]}」` });
     }
   }
-  // 十八、18.13(2026-10-09，葉夜第1世F1)：到期的約定這回合必須交代結果；不得寫成主角忘了約定
+  // 約定(十八、18.13；1.2.9.18.4)：promise_results有id，或正文有對象名字＋交代字眼(程式代填延期)，任一成立就算有交代
   if(win && !prologue && s && Array.isArray(s.promises)){
     const due = s.promises.filter(p=>p.status==="open" && p.dueAbs <= win.end);
     const reported = new Set((Array.isArray(r.promise_results) ? r.promise_results : []).map(x=>x && x.id));
-    due.filter(p=>!reported.has(p.id)).slice(0,2).forEach(p=>retry.push(`與${p.character}的約定「${p.content}」到期了，這回合要交代結果（去了、延期、取消都可以，取消要寫出原因），並用promise_results回報`));
-    if(due.length && /忘(?:了|記了|掉了)[^。！？\n]{0,10}(?:約|答應|說好)/.test(act+nar)) retry.push("約定到期的這回合不能寫成主角忘了約定，要寫出實際怎麼了（去了、延期或取消的原因）");
+    due.filter(p=>!reported.has(p.id)).forEach(p=>{
+      if(text.includes(p.character) && PROMISE_EXPLAIN_WORDS.some(w=>text.includes(w))) fillPromises.push(p.id);
+      else c1.push({ code:"約定", id:p.id, msg:`與${p.character}的約定「${p.content}」到期了，這回合要交代結果（去了、延期、取消都可以，取消要寫出原因），並用promise_results回報` });
+    });
+    if(due.length && /忘(?:了|記了|掉了)[^。！？\n]{0,10}(?:約|答應|說好)/.test(text)) c3.push({ code:"忘約定", msg:"約定到期的這回合寫成主角忘了約定" });
   }
-  // 第2、5點(需要語意判斷，只寫錯誤紀錄)：兩段高度重複的句子；新場景開頭重演回應段的開頭
+  // 第3類(原本就只記錄)：兩段高度重複的句子；新場景開頭重演回應段的開頭
   if(act.trim() && nar.trim()){
     const sents = t=>t.split(/[。！？\n]/).map(x=>x.trim()).filter(x=>cjkLen(x)>=10);
     const aS = sents(act), nS = sents(nar);
     const dup = nS.find(ns=>{ const g = ngramSet(ns,3); if(g.size<6) return false; return aS.some(as=>{ const h = ngramSet(as,3); let hit=0; g.forEach(x=>{ if(h.has(x)) hit++; }); return hit/g.size>=0.6; }); });
-    if(dup) advisory.push(`同一件事在回應段和新場景各寫一次：「${dup.slice(0,24)}」`);
+    if(dup) c3.push({ code:"重複", msg:`同一件事在回應段和新場景各寫一次：「${dup.slice(0,24)}」` });
     const g1 = ngramSet(nar.slice(0,60), 4), g2 = ngramSet(act.slice(0,120), 4);
     let hit = 0; g1.forEach(x=>{ if(g2.has(x)) hit++; });
-    if(g1.size>=8 && hit/g1.size>=0.4) advisory.push("新場景開頭疑似倒回回應段之前，重演回應段已經做完的事");
+    if(g1.size>=8 && hit/g1.size>=0.4) c3.push({ code:"重複", msg:"新場景開頭疑似倒回回應段之前" });
   }
-  return { retry: Array.from(new Set(retry)).slice(0,6), advisory };
+  return out;
 }
-// 十七、17.3.6.6／八、8.8.2「寫了才算數」（2026-10-09）：程式交代的事(玩家剛決定花掉的錢、指定的新興趣項目)沒寫進正文，視同不合格重新產生。
+// 十七、17.3.6.6／八、8.8.2「寫了才算數」（2026-10-09）：程式交代的事(玩家剛決定花掉的錢、指定的新興趣項目)沒寫進正文＝第1類(1.2.9.18.1第6點)。
 // 字眼放寬(寧可放過也不要誤殺，重新產生要花錢)：事件名稱或任一相關字眼出現就算寫到
 const EXPENSE_MENTION_WORDS = {
   "朋友小聚":["小聚","聚","吃","喝","逛","一起"], "小禮物":["禮物","送"], "約會":["約會","電影","散步","約"],
@@ -7851,16 +7904,47 @@ function detectMissingRequiredMentions(r, s, ctx){
   const res = s && s.studentExpense && s.studentExpense.resultNow;
   if(res && res.bought===true){
     const words = (EXPENSE_MENTION_WORDS[res.event]||[]).concat([res.event]);
-    if(!words.some(w=>text.includes(w))) issues.push(`玩家剛決定要「${res.event}」，這件事沒有寫進正文（要寫出去了、買了或付了一半，換手機電腦要寫出具體變化，不寫金額）`);
+    if(!words.some(w=>text.includes(w))) issues.push({ code:"花費", msg:`玩家剛決定要「${res.event}」，這件事沒有寫進正文（要寫出去了、買了或付了一半，換手機電腦要寫出具體變化，不寫金額）` });
   }
   const seed = ctx && ctx.interestSeed;
   if(seed && seed.item && r.interest_event && r.interest_event.reaction){
     const item = String(seed.item);
     const grams = []; for(let i=0;i+2<=item.length;i++) grams.push(item.slice(i,i+2));
-    if(!(text.includes(item) || grams.some(g=>text.includes(g)))) issues.push(`本回合指定的興趣項目「${item}」沒有寫進正文（要寫出主角實際接觸它，玩家自己的文字與這件事都要寫）`);
+    if(!(text.includes(item) || grams.some(g=>text.includes(g)))) issues.push({ code:"興趣", msg:`本回合指定的興趣項目「${item}」沒有寫進正文（要寫出主角實際接觸它，玩家自己的文字與這件事都要寫）` });
   }
   return issues;
 }
+// 一、1.2.9.18.5（2026-10-10）本回合必辦清單：這回合一定要寫到的事集中成白話短句，放在payload最後面(不進Worker快取區塊)；沒有就不送。
+// 以後新增任何「這回合一定要寫到」的規則，一律加進這裡
+function buildMustDoList(s, timeCtx, forceEnding){
+  const out = [];
+  if(!s || !timeCtx || timeCtx.prologue) return out;
+  const res = s.studentExpense && s.studentExpense.resultNow;
+  if(res && res.event){
+    if(res.bought===true) out.push(`玩家剛決定「${res.event}」：正文要寫到這件事（去了、買了或付了一半），不寫金額`);
+    else out.push(`玩家剛決定「${res.event}」先不花錢：正文用一兩句帶過，不責怪`);
+  }
+  const seed = timeCtx.interestSeed;
+  if(seed && seed.item) out.push(`這回合要寫到主角實際接觸「${seed.item}」`);
+  if(!forceEnding && timeCtx.window && Array.isArray(s.promises)){
+    s.promises.filter(p=>p.status==="open" && p.dueAbs <= timeCtx.window.end).forEach(p=>
+      out.push(`與${p.character}的約定「${p.content}」到期了（id:${p.id}）：正文交代結果，並用promise_results回報`));
+  }
+  return out;
+}
+// 1.2.9.18.2：重寫後挑版本——讀不了的(空白、少一段、欄位名稱)不用；兩版都讀不了就丟錯走十、10.17.7回合失敗還原；
+// 都能讀時給第1類問題比較少的那版，一樣多給重寫版【技術判斷：第一版能讀、重寫版讀不了時用第一版，不退回回合】
+function isUnreadableTurn(v){ return !v || v.cls.c1.some(i=>UNREADABLE_CODES.includes(i.code)); }
+function pickTurnVersion(first, second){
+  const ok = [second, first].filter(v=>!isUnreadableTurn(v));
+  if(!ok.length){ const e = new Error("重新產生後正文仍讀不了"); e.noRetry = true; e.unreadableOutput = true; throw e; }
+  if(ok.length===1) return ok[0];
+  return second.cls.c1.length <= first.cls.c1.length ? second : first;
+}
+// 1.2.9.18.4：約定上記「已觸發過重寫」(regenTried)，同一個約定一輩子只觸發一次；約定在反悔快照裡，回合失敗還原時一起回去
+function promiseRegenDone(s, id){ const p = (s.promises||[]).find(x=>x.id===id); return !!(p && p.regenTried); }
+function markPromiseRegenDone(s, id){ const p = (s.promises||[]).find(x=>x.id===id); if(p) p.regenTried = true; }
+const TURN_NOTES_MAX_CHARS = 80; // 10.14.7.1：上回合紀錄(代碼)長度上限
 // QA 34.15 #1（2026-09-30）：「人名＋親屬稱謂」跟名單性別矛盾(例如表姊璟璇被寫成「璟璇表哥」)時，只寫錯誤紀錄、不擋遊戲。
 // 代名詞對不對需要語意，程式判斷不準，只比對名字緊貼稱謂的寫法
 const MALE_KIN_TITLES = ["表哥","堂哥","哥哥","大哥","弟弟","表弟","堂弟","叔叔","伯伯","舅舅","姑丈","姨丈","爸爸","爺爺","外公","阿公","先生"];
@@ -9348,7 +9432,9 @@ function buildUserMessage(actionText, forceEnding, timeCtx){
     life_summary_material: forceEnding ? buildLifeSummaryMaterial(s) : null,
     // 三、3.8.4（9/20新增）：skip_reason三選一，給AI當敘事參考（哪些是主動選擇不做、哪些是根本沒遇到）
     milestone_skip_reason: s.milestoneSkipReason || {},
-    forceEnding: !!forceEnding
+    forceEnding: !!forceEnding,
+    // 一、1.2.9.18.5（2026-10-10）本回合必辦清單：一定要放最後面(Worker拆區塊後在最後一個區塊的最後，不進快取區塊)；沒有必辦事項時是空陣列，精簡格式會拿掉
+    turn_must_do: buildMustDoList(s, timeCtx, forceEnding)
   };
   return JSON.stringify(compactTurnPayload(payload));
 }
@@ -9383,8 +9469,13 @@ try { fetch(WORKER_URL + "pv", { method: "POST", keepalive: true }).catch(functi
 //   不能寫：①機率或比例數字 ②「一定會／不會／保證」這類劇情保證與補償條件 ③「某選擇有沒有影響／影響什麼」的內部運作
 //           ④還沒遇到的事件、人物、物品的具體名稱或清單。
 //   能寫：畫面上的新按鈕／面板／操作變順、錯誤修好；劇情機制的改動只寫一句方向(例：「興趣更多元了」)，不列種類與數量。
-const APP_VERSION = "2026.10.10-e";
+const APP_VERSION = "2026.10.10-f";
 const RELEASE_NOTES = [
+  { version:"2026.10.10-f", date:"2026-10-10", title:"等待時間縮短", items:[
+    "撰稿人交稿後，標點、括號這類小地方改由程式直接整理，不再整段重寫，送出行動後的等待會比較短。",
+    "真的需要重寫時，等待畫面會多一行小字「正在把這段寫得更完整……」。",
+    "每回合的選項以4個為主。",
+  ]},
   { version:"2026.10.10-e", date:"2026-10-10", title:"名額發完時的提示", items:[
     "今日名額發完時，開始畫面會寫出今天一共發出了多少個名額。",
   ]},
@@ -9699,7 +9790,8 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
         ap_hint: timeCtx && timeCtx.apBefore,
         ap_test_free: apTestFreeOn() || undefined, // 10.3.12：只是請求，Worker只認登記過的測試鑰匙(帳號錢包：測試帳號名單)
         wallet: walletActive(state) || undefined,  // 十、10.9.2：這段人生用帳號共用錢包，由Worker在呼叫AI前預扣、失敗退點
-        regen_reason: (timeCtx && timeCtx.retryNote && timeCtx.regenReason) || undefined, // 2026-10-10：自動重新產生的原因(短字串)，Worker只寫進Workers Logs
+        regen_reason: (timeCtx && timeCtx.retryNote && timeCtx.regenReason) || undefined, // 一、1.2.9.18.1／十、10.14.7.1：這次重寫的第1類原因代碼(「、」分隔)，Worker寫進Workers Logs與用量明細
+        prev_turn_notes: (timeCtx && !timeCtx.retryNote && state.lastTurnNotes) || undefined, // 10.14.7.1：上一回合第2類修了什麼、第3類記了什麼(代碼)，只在這回合第一次呼叫帶
         retry: (timeCtx && timeCtx.isRetry) || undefined, // 十、10.17.5：玩家按「再試一次」沿用同一個turn_nonce，Worker據此不重複扣點、又失敗時退回
         messages: [{ role:"user", content: userMsgStr }]
       })
@@ -9746,7 +9838,9 @@ async function callAIInner(actionText, forceEnding, timeCtx, abortCtl, isTimedOu
     throw err;
   }
   if(!res.ok){
-    throw new Error("API錯誤 "+res.status+"："+(data?.error?.message||JSON.stringify(data)));
+    const err = new Error("API錯誤 "+res.status+"："+(data?.error?.message||JSON.stringify(data)));
+    if(res.status===403){ err.noRetry = true; err.upstream403 = true; } // 十、10.17.11（2026-10-10）：上游403不自動重打，照10.17.7退回回合、退還行動點
+    throw err;
   }
   if(data.error){
     throw new Error("API錯誤："+data.error.message);
@@ -9780,7 +9874,7 @@ function isMalformedTurnResult(input){
   if(Array.isArray(input.narrative) && input.narrative.some(p=>typeof p!=="string")) return true;
   if(typeof input.turn_summary!=="string" || !input.turn_summary.trim()) return true;
   if(!Array.isArray(input.choices)) return true;
-  if(!input.is_ending && input.choices.length===0) return true; // 非結局回合choices不該是空陣列，呼應一、1.2.7「給3到4個選項」定案
+  if(!input.is_ending && input.choices.length===0) return true; // 非結局回合choices不該是空陣列，呼應一、1.2.7「給4個選項」定案(2026-10-10起統一4個)
   try{
     if(/<\/narrative>|<parameter\s+name=/.test(JSON.stringify(input))) return true;
   }catch(e){ return true; }
@@ -10151,7 +10245,8 @@ const SNAPSHOT_EXTRA_KEYS = [
   "breakthroughCountByAxis","breakthroughFiredAxes","majorEventJudgedCountByStage","knowledgeMilestoneUsedIds","knowledgeMilestoneCountByStage",
   "examBelowExpectationStreak","lastExamPerformanceLog","logicAbility","appearanceDesc","groomingBonus","belongings","purchaseCounts","purchaseStageKey",
   "peerPositionAtSpecial","chronicConditions","acuteRecoveryTurns","majorIllness","majorIllnessCountByBand","majorIllnessTypeByBand","majorIllnessRecoveredCount",
-  "familyHomeValue","familyHomeInherited","lifeTrait","phase","ending"
+  "familyHomeValue","familyHomeInherited","lifeTrait","phase","ending",
+  "lastTurnNotes" // 一、1.2.9.18／十、10.14.7.1（2026-10-10）：上回合第2、3類紀錄，下一回合帶給Worker
 ];
 function snapshotForUndo(){
   state.undoUnavailableHere = false; // 十、10.7.1：這台裝置開始有自己的反悔快照
@@ -10392,47 +10487,48 @@ async function takeTurnInner(actionText, cost, opts){
       if(AI_RETRY_DELAY_MS>0) await new Promise(r=>setTimeout(r, AI_RETRY_DELAY_MS)); // 10.17.2：原本是立刻重打
       result = await callOnce();
     }
-    // 一、1.2.9.11.4（2026-09-24新增）：新場景日期檢查——與上一回合同一天或超出本回合範圍視為違規，
-    // 自動重新生成一次(不扣行動點，點數在上面已經只扣過一次)並記錄；重新生成仍違規就照常顯示、記入待確認清單，不再重試
-    const dateCheck = validateSceneDate(result, timeCtx.window, !!timeCtx.prologue);
-    if(!dateCheck.ok){
-      console.warn("[場景日期違規] 自動重新生成一次：", dateCheck.reason);
-      addReviewFlag(state, "scene_date_retry", "第一次生成違規，已自動重新生成："+dateCheck.reason);
-      timeCtx.regenReason = "場景日期違規";
-      timeCtx.retryNote = `你上一次回傳的新場景日期不合規則：${dateCheck.reason}。這次scene_day_offset必須是0到${timeCtx.window.end-timeCtx.window.start}之間的整數（${calFormat(timeCtx.window.start)}～${calFormat(timeCtx.window.end)}）。`;
-      try{
-        const retried = await callOnce();
-        const recheck = validateSceneDate(retried, timeCtx.window, !!timeCtx.prologue);
-        result = retried;
-        if(!recheck.ok) addReviewFlag(state, "scene_date_unresolved", "重新生成後仍違規，照常顯示："+recheck.reason);
-      }catch(retryErr){
-        console.error("重新生成失敗，沿用第一次的結果：", retryErr);
-        addReviewFlag(state, "scene_date_unresolved", "重新生成呼叫失敗，沿用第一次違規的結果："+dateCheck.reason);
-      }
+    // 一、1.2.9.18.2（2026-10-10，取代1.2.9.11.4獨立的日期重新生成與1.2.9.18的最多2次）：
+    // 第一次交回後先由程式修第2類(標點、冒號、舞台指示、引號、大括號)，再把場景日期與品質檢查一起跑；
+    // 有第1類問題就合成一張修改單，整回合只重寫1次(同一個turn_nonce，不扣行動點；連線失敗的重試另計)
+    const classifyCtx = { prologue: wasPrologue, jump: !!adv.bigJump, ending: forceEnding, actionText, window: timeCtx.window, timeCtx };
+    const examine = r=>({ r, fixes: repairTurnText(r), cls: classifyTurnOutput(r, state, classifyCtx) });
+    let cur = examine(result);
+    let regenCodes = [];
+    const retryItems = cur.cls.c1.filter(i=>!(i.code==="約定" && promiseRegenDone(state, i.id))); // 1.2.9.18.4：同一個約定一輩子只觸發一次重寫
+    if(retryItems.length){
+      regenCodes = [...new Set(retryItems.map(i=>i.code))];
+      console.warn("[輸出品質] 自動重新產生：", retryItems.map(i=>i.msg).join("；"));
+      addReviewFlag(state, "output_quality_retry", `重新產生（${regenCodes.join("、")}）：${retryItems.map(i=>i.msg).join("；")}`);
+      retryItems.filter(i=>i.code==="約定").forEach(i=>markPromiseRegenDone(state, i.id));
+      timeCtx.regenReason = regenCodes.join("、");
+      timeCtx.retryNote = `你上一次回傳的內容有問題：${retryItems.map(i=>i.msg).join("；")}。這次整段重新構思，不要只改上一版的詞句；回應段與新場景每一段都要寫完整，台詞一律用{{名字|台詞}}標記，正文不能出現資料欄位名稱。`;
+      setRegenHint(true); // 1.2.9.18.3
+      let second = null;
+      try{ second = examine(await callOnce()); }
+      catch(qErr){ console.error("重新產生失敗，改用第一次的結果：", qErr); }
+      setRegenHint(false);
       timeCtx.retryNote = null;
+      cur = pickTurnVersion(cur, second); // 讀不了的(空白、少一段、欄位名稱)兩版都是就丟錯，走下面的回合失敗還原
+      if(cur.cls.c1.length){
+        console.warn("[輸出品質] 重新產生後仍有問題，給問題比較少的那版：", cur.cls.c1.map(i=>i.msg).join("；"));
+        addReviewFlag(state, "output_quality_unresolved", cur.cls.c1.map(i=>i.msg).join("；"));
+      }
     }
-    // 一、1.2.9.18（2026-09-29 A14）：正文最後一個引號沒關、段落以冒號/逗號/沒寫完的句子結尾、出現{ } "key": 這類資料格式符號時，
-    // 自動重新產生，最多2次(同一個turn_nonce，不扣行動點)；2次後仍不合格就保留最後一次結果，寫入錯誤紀錄(待確認清單)
-    const integrityCtx = ()=>({ prologue: wasPrologue, jump: !!adv.bigJump, ending: forceEnding, actionText, window: timeCtx.window });
-    const qualityOf = r=>detectOutputQualityIssues(r).concat(USE_MOCK ? [] : detectMissingRequiredMentions(r, state, timeCtx).concat(NARRATIVE_INTEGRITY_CHECK ? detectNarrativeIntegrity(r, state, integrityCtx()).retry : [])); // 示範模式的假正文固定，不檢查「寫了才算數」與完整性(18.10.7)
-    let quality = qualityOf(result);
-    for(let q=0; q<OUTPUT_QUALITY_MAX_RETRIES && quality.length; q++){
-      console.warn("[輸出品質] 自動重新產生：", quality.join("；"));
-      addReviewFlag(state, "output_quality_retry", `第${q+1}次重新產生：${quality.join("；")}`);
-      timeCtx.regenReason = quality.join("；").slice(0,60);
-      timeCtx.retryNote = `你上一次回傳的正文有問題：${quality.join("；")}。這次每一段都要寫完整的句子，整段重新構思，不要只改上一版的詞句，引號要成對，台詞一律用{{名字|台詞}}標記，正文不能出現大括號或資料欄位名稱。`;
-      try{ result = await callOnce(); quality = qualityOf(result); }
-      catch(qErr){ console.error("重新產生失敗，沿用上一次的結果：", qErr); break; }
+    result = cur.r;
+    // 第2類第7、8點：日期還是違規→套用時由applyResult拉回範圍；約定沒填但正文有交代→程式代填延期
+    const turnNotes = cur.fixes.slice();
+    if(cur.cls.c1.some(i=>i.code==="日期")){ turnNotes.push("日期拉回"); addReviewFlag(state, "scene_date_unresolved", "重新生成後仍違規，日期拉回本回合範圍"); }
+    if(cur.cls.fillPromises.length){
+      result.promise_results = (Array.isArray(result.promise_results) ? result.promise_results : []).concat(cur.cls.fillPromises.map(id=>({ id, outcome:"postponed" })));
+      turnNotes.push("約定代填");
     }
-    timeCtx.retryNote = null;
-    if(!USE_MOCK && NARRATIVE_INTEGRITY_CHECK){ const adv2 = detectNarrativeIntegrity(result, state, integrityCtx()).advisory; if(adv2.length) addReviewFlag(state, "narrative_integrity_advisory", adv2.join("；")); } // 18.10.7：語意判斷抓不準的只記錄、不重寫
-    if(quality.length){
-      console.warn("[輸出品質] 重新產生後仍不合格，保留最後一次結果：", quality.join("；"));
-      addReviewFlag(state, "output_quality_unresolved", quality.join("；"));
-    }
+    cur.cls.c3.forEach(i=>turnNotes.push(i.code));
+    if(cur.cls.c3.length) addReviewFlag(state, "narrative_integrity_advisory", cur.cls.c3.map(i=>i.msg).join("；")); // 第3類只記錄、不重寫
+    if(cur.fixes.length) addReviewFlag(state, "output_quality_fixed", "程式直接修：" + cur.fixes.join("、"));
     const genMs = Date.now() - genStartedAt;
     applyResult(result, timeCtx, forceEnding, actionText);
     { const ge = state.log[state.log.length-1]; if(ge && !ge.error) ge.genMs = genMs; }
+    state.lastTurnNotes = [...new Set(turnNotes)].join("、").slice(0, TURN_NOTES_MAX_CHARS) || null; // 10.14.7.1：下一回合的請求帶給Worker記進用量明細
     bookAfterTurn(state, result, forceEnding); // 十五、人生之書：收集這回合的摘要，換階段/滿5年/人生結束時收成一章
     // 1.2.8.7：AI在事件發生時自行切換語氣軌的話，以實際語氣軌計入碎念軌連續次數並記在這則日記上
     const effectiveTone = resolveEffectiveTone(timeCtx.tone, result);
@@ -12704,7 +12800,19 @@ function renderTurnLoading(){
     <span class="loading-text">${escapeHtml(loadingCurrentText)}</span>
     <div class="breath" aria-hidden="true"><i></i><i></i><i></i></div>
     ${loadingSlowHintOn ? `<div class="loading-slow-hint" style="font-size:12.5px;opacity:.75;margin-top:6px;">${AI_SLOW_HINT_TEXT}</div>` : ``}
+    ${loadingRegenHintOn ? `<div class="loading-regen-hint" style="font-size:12.5px;opacity:.75;margin-top:6px;">${REGEN_WAIT_HINT_TEXT}</div>` : ``}
   </div>`;
+}
+// 一、1.2.9.18.3（2026-10-10）：重寫期間等待畫面加一行小字；正常回合不出現
+const REGEN_WAIT_HINT_TEXT = "正在把這段寫得更完整……";
+let loadingRegenHintOn = false;
+function setRegenHint(on){
+  loadingRegenHintOn = !!on;
+  const card = typeof document!=="undefined" && document.getElementById("turn-loading");
+  if(!card) return;
+  const el = card.querySelector(".loading-regen-hint");
+  if(on && !el){ const d = document.createElement("div"); d.className = "loading-regen-hint"; d.style.cssText = "font-size:12.5px;opacity:.75;margin-top:6px;"; d.textContent = REGEN_WAIT_HINT_TEXT; card.appendChild(d); }
+  else if(!on && el) el.remove();
 }
 function showSlowHint(){
   loadingSlowHintOn = true;
@@ -12716,7 +12824,7 @@ function showSlowHint(){
 }
 function updateLoadingTimer(loadingTurn){
   if(!loadingTurn){
-    loadingStartedAt = null; loadingCurrentText = ""; loadingSlowHintOn = false;
+    loadingStartedAt = null; loadingCurrentText = ""; loadingSlowHintOn = false; loadingRegenHintOn = false;
     loadingTimers.forEach(t=>clearTimeout(t)); loadingTimers = [];
     return;
   }

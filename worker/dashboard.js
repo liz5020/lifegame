@@ -167,7 +167,16 @@ function renderAI(s){
     '<div class="small">依上次校正的餘額 '+usd(b.set_usd)+' 扣掉之後的花費；和 Anthropic 帳單頁可能有小差距</div></div></div>'):
     ('<div class="small">還沒設定餘額。到 Cloudflare 後台設定 AI_BALANCE_USD（帳單頁餘額）與 AI_BALANCE_BASE_USD（填 '+usd(a.total.usd)+'，同一刻的累計花費）。</div>');
   box.innerHTML=balHtml+'<div class="cards">'+col("今天",a.today)+col("近 7 天",a.last7)+col("累計（"+(a.since||"—")+" 起）",a.total)+'</div>'+
-    '<div class="small">每回合平均＝所有 AI 呼叫（含開場、重試、章節）的花費 ÷ 回合數。</div>';
+    '<div class="small">每回合平均＝所有 AI 呼叫（含開場、重試、章節）的花費 ÷ 回合數。</div>'+renderRegen(a.regen_today);
+}
+// 十、10.14.7.1（2026-10-10）：今天自動重寫的比例與原因(代碼)，驗收目標：重寫低於一般回合的5%
+function renderRegen(q){
+  if(!q)return "";
+  var list=function(arr){return arr&&arr.length?arr.map(function(x){return esc(x.code)+" "+num(x.n)}).join("、"):"—"};
+  return '<div class="cards"><div class="card"><h2>今天的自動重寫</h2>'+
+    '<div class="big">'+(q.pct==null?"—":q.pct+"%")+'</div>'+
+    '<div class="small">重寫 '+num(q.regens)+' 次 ÷ 一般回合 '+num(q.turn_calls)+' 次（目標低於 5%）</div>'+
+    '<table class="r"><tr><th>重寫原因前 5 名</th><td>'+list(q.reasons)+'</td></tr><tr><th>上回合紀錄前 5 名</th><td>'+list(q.notes)+'</td></tr></table></div></div>';
 }
 $("dl").addEventListener("click",function(){
   var b=$("dl");b.disabled=true;$("dlMsg").textContent="下載中…";

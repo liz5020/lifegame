@@ -37,6 +37,7 @@
 
 | 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
+| 2026-10-10 | 2026.10.10-f（AI回合自動重新產生降頻；尚未上線） | 2026.10.10-f（prompt.js交稿前檢查與選項4個、worker.js／gate.js用量明細三欄與403紀錄、dashboard.js重寫小表） | （尚未提交） | index.html、worker/prompt.js、worker/worker.js、worker/gate.js、worker/dashboard.js | 一、1.2.9.18.0～1.2.9.18.8；舊存檔相容 |
 | 2026-10-10 | 2026.10.10-e（含-d人生之書15.9、-c大學住處選擇；2026-10-10已上線，網頁與Worker都確認是此版） | 2026.10.10-e（-d的ap.js、account.js、worker.js、prompt.js；名額發完提示只改index.html） | `8046004` | index.html、worker/ | 使用者說「一起推」；本機`--quick`測試通過 |
 | 2026-10-10 | 2026.10.10-d（含-c大學住處選擇；尚未上線） | 2026.10.10-d（ap.js、account.js、worker.js、prompt.js：人生之書每章3點、空白章、每章每日5次；-c的prompt.js住處條） | （尚未提交） | index.html、worker/ap.js、worker/account.js、worker/worker.js、worker/prompt.js | 人生之書改玩家按了才寫(15.9)；章節資料結構有變動，舊存檔相容 |
 | 2026-10-10 | 2026.10.10-b（含-a、-m、-n；2026-10-10已合併進master並上線） | 2026.10.10-b（prompt.js：對話講完／不發明病症／不改住處／不忘約定、`health_reason`；s2t.js：簡體字漏轉修正；上正式時Worker隨`master`自動部署，改prompt後確認部署成功） | 79a466c | index.html、worker/prompt.js、worker/s2t.js、worker/worker.js、設計文件08/09/18、tests/test-88、harness、test-33、test-82 | 葉夜第1世第150～193回合回饋；Pages與Worker建置皆成功，線上網頁與/version都確認為2026.10.10-b |

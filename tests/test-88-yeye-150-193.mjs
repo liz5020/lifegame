@@ -192,47 +192,52 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const act = "你傳訊息約她放學後去合作社。" + long(60) + "她回了一個好，然後把書包甩上肩膀，你們一起走出教室。" + long(40);
   const nar = "隔天早上，天剛亮，你被樓下的機車聲吵醒。" + "走廊上的人漸漸多了起來，有人在討論昨晚的比賽，有人還在補作業，你把外套披上，慢慢走向教室後門。".repeat(3);
   const ok = { action_result: act, narrative: nar, choices: ["a", "b", "c", "d"] };
-  const run = (r, extra = {}) => JSON.parse(ev(`JSON.stringify(detectNarrativeIntegrity(${JSON.stringify(r)}, state, ${JSON.stringify(Object.assign({ window: W, actionText: "傳訊息約她放學後去合作社" }, extra))}))`));
-  A.check("正常的正文不誤殺", run(ok).retry.length === 0, run(ok));
-  A.check("缺回應段（A5）", run({ ...ok, action_result: "" }).retry.some(x => /回應段缺漏/.test(x)));
-  A.check("缺新場景（A5）", run({ ...ok, narrative: "" }).retry.some(x => /新場景缺漏/.test(x)));
+  // 2026-10-10（一、1.2.9.18.1）：改成三類——c1＝重寫、c3＝只記錄；舞台指示改由程式直接修(repairTurnText)
+  ev("NARRATIVE_INTEGRITY_CHECK = true");
+  const run = (r, extra = {}) => JSON.parse(ev(`JSON.stringify((()=>{ const o = classifyTurnOutput(${JSON.stringify(r)}, state, ${JSON.stringify(Object.assign({ window: W, actionText: "傳訊息約她放學後去合作社" }, extra))}); return { retry:o.c1.map(i=>i.code+"："+i.msg), log:o.c3.map(i=>i.code+"："+i.msg), fill:o.fillPromises }; })())`));
+  // run()帶window時也會檢查新場景日期，測試用的正文固定填一個合法的scene_day_offset
+  ok.scene_day_offset = 1;
+  A.check("正常的正文不誤殺", run(ok).retry.length === 0 && run(ok).log.length === 0, run(ok));
+  A.check("缺回應段（A5）→ 第1類", run({ ...ok, action_result: "" }).retry.some(x => /回應段缺漏/.test(x)));
+  A.check("缺新場景（A5）→ 第1類", run({ ...ok, narrative: "" }).retry.some(x => /新場景缺漏/.test(x)));
   A.check("開場回合不要求回應段", run({ ...ok, action_result: "" }, { prologue: true }).retry.length === 0);
-  A.check("回應段太短（低於下限一半）要重寫", run({ ...ok, action_result: "你傳了訊息約她去合作社。" }).retry.some(x => /回應段太短/.test(x)));
-  A.check("新場景只有35字（第183回合）要重寫", run({ ...ok, narrative: "「深呼吸」這詞用在這裡好像誇張了點。" }).retry.some(x => /新場景太短/.test(x)));
-  A.check("旁白評論自己用字要重寫", run({ ...ok, narrative: nar + "「深呼吸」這詞用在這裡好像誇張了點。" }).retry.some(x => /評論自己/.test(x)));
-  A.check("「深呼吸」一般用詞照常可用", run({ ...ok, narrative: nar + "你深呼吸了一口氣。" }).retry.length === 0);
-  A.check("回應段沒寫到玩家選的動作（A1）", run({ ...ok, action_result: "一個人在圖書館翻著厚厚的參考書，窗外的天色漸漸暗下來，管理員開始收拾推車。".repeat(4) }).retry.some(x => /沒有寫到玩家這回合選的動作/.test(x)));
-  A.check("台詞裡的舞台指示「（憋笑）」要重寫（C4）", run({ ...ok, action_result: act + "她說：「好啊（憋笑），你請客喔。」" }).retry.some(x => /舞台指示/.test(x)));
-  A.check("選項不足4個（A7）", run({ ...ok, choices: ["a", "b", "c"] }).retry.some(x => /選項只有3個/.test(x)) && run({ ...ok, choices: ["a", "b", "c"] }, { ending: true }).retry.length === 0);
-  // B 日期星期
-  A.check("B1：回應段發生在週六（10/2），寫「週四傍晚」要重寫", run({ ...ok, action_result: act + "週四傍晚的教室只剩你一個人。" }).retry.some(x => /星期四/.test(x)));
-  A.check("B1：回應段寫「週六傍晚」沒問題；「上週四」「下週四」這類不算", run({ ...ok, action_result: act + "週六傍晚的教室只剩你一個人，上週四考的卷子還沒發。" }).retry.length === 0);
-  A.check("B1：新場景範圍10/4（週一）～10/9（週六）都有，寫「週三早上」沒問題", run({ ...ok, narrative: nar + "週三早上的雨沒停。" }).retry.length === 0);
-  A.check("B1/B2：短範圍（10/4～10/5）新場景寫「週五晚上」要重寫", run({ ...ok, narrative: nar + "週五晚上的街燈亮了。" }, { window: win([10, 4], [10, 5]) }).retry.some(x => /星期五/.test(x)));
-  A.check("B4：編造日期「已讀，9/15」（早於現在20天內）要重寫", run({ ...ok, narrative: nar + "訊息顯示已讀，9/15。" }).retry.some(x => /9\/15/.test(x)));
-  A.check("B4：未來的約定日期「10/20」不攔", run({ ...ok, narrative: nar + "你們約好10/20去看展。" }).retry.length === 0);
-  A.check("B5：考前還有兩禮拜就寫「段考剩兩禮拜」要重寫", run({ ...ok, narrative: nar + "段考剩兩禮拜，大家都開始緊張。" }).retry.some(x => /具體倒數/.test(x)));
-  A.check("B5：模糊說法「段考越來越近」不攔；7天內的倒數不攔", run({ ...ok, narrative: nar + "段考越來越近了，段考只剩三天。" }).retry.length === 0);
-  // B3 春節
-  const wNy = (y, m1, d1, m2, d2) => ({ start: ev(`calDateToAbs(${y},${m1},${d1})`), end: ev(`calDateToAbs(${y},${m2},${d2})`) });
+  A.check("回應段少於40字 → 第1類「過短」", run({ ...ok, action_result: "你傳了訊息約她去合作社。" }).retry.some(x => /^過短/.test(x)));
+  A.check("新場景只有35字（第183回合）→ 第1類「過短」", run({ ...ok, narrative: "「深呼吸」這詞用在這裡好像誇張了點。" }).retry.some(x => /新場景太短/.test(x)));
+  A.check("旁白評論自己用字 → 第3類、不重寫", (() => { const o = run({ ...ok, narrative: nar + "「深呼吸」這詞用在這裡好像誇張了點。" }); return o.log.some(x => /^評論用字/.test(x)) && o.retry.length === 0; })());
+  A.check("「深呼吸」一般用詞照常可用", run({ ...ok, narrative: nar + "你深呼吸了一口氣。" }).log.length === 0);
+  A.check("回應段沒寫到玩家選的動作（A1）→ 第3類「沒寫動作」", (() => { const o = run({ ...ok, action_result: "一個人在圖書館翻著厚厚的參考書，窗外的天色漸漸暗下來，管理員開始收拾推車。".repeat(4) }); return o.log.some(x => /^沒寫動作/.test(x)) && o.retry.length === 0; })());
+  A.check("選項不足4個（A7）→ 第3類「選項3個」；結局回合不記", (() => { const o = run({ ...ok, choices: ["a", "b", "c"] }); return o.log.some(x => /^選項3個/.test(x)) && o.retry.length === 0 && run({ ...ok, choices: ["a", "b", "c"] }, { ending: true }).log.length === 0; })());
+  // B 日期星期：星期、具體日期、倒數改第3類；大年初N／除夕仍第1類
+  A.check("B1：回應段發生在週六（10/2），寫「週四傍晚」→ 第3類「星期」", (() => { const o = run({ ...ok, action_result: act + "週四傍晚的教室只剩你一個人。" }); return o.log.some(x => /^星期.*星期四/.test(x)) && o.retry.length === 0; })());
+  A.check("B1：回應段寫「週六傍晚」沒問題；「上週四」「下週四」這類不算", run({ ...ok, action_result: act + "週六傍晚的教室只剩你一個人，上週四考的卷子還沒發。" }).log.length === 0);
+  A.check("B1：新場景範圍10/4（週一）～10/9（週六）都有，寫「週三早上」沒問題", run({ ...ok, narrative: nar + "週三早上的雨沒停。" }).log.length === 0);
+  A.check("B1/B2：短範圍（10/4～10/5）新場景寫「週五晚上」→ 第3類", run({ ...ok, scene_day_offset: 0, narrative: nar + "週五晚上的街燈亮了。" }, { window: win([10, 4], [10, 5]) }).log.some(x => /星期五/.test(x)));
+  A.check("B4：編造日期「已讀，9/15」→ 第3類「日期」", run({ ...ok, narrative: nar + "訊息顯示已讀，9/15。" }).log.some(x => /^日期.*9\/15/.test(x)));
+  A.check("B4：未來的約定日期「10/20」不記", run({ ...ok, narrative: nar + "你們約好10/20去看展。" }).log.length === 0);
+  A.check("B5：「段考剩兩禮拜」→ 第3類「倒數」", run({ ...ok, narrative: nar + "段考剩兩禮拜，大家都開始緊張。" }).log.some(x => /^倒數/.test(x)));
+  A.check("B5：模糊說法「段考越來越近」不記；7天內的倒數不記", run({ ...ok, narrative: nar + "段考越來越近了，段考只剩三天。" }).log.length === 0);
+  // B3 春節：仍第1類
   const cny = ev("calLunarDates(2028).cny"); // 2028年春節（初一）的絕對日
   const cnyWin = { start: cny + 5, end: cny + 8 }; // 初六～初九
   ev(`state.timeState.cal.lastSceneDay = ${cny + 4}`);
-  A.check("B3：新場景範圍是初六以後，寫「大年初二」要重寫", run({ ...ok, narrative: nar + "大年初二，家裡又擠滿了親戚。" }, { window: cnyWin }).retry.some(x => /大年初二/.test(x)));
+  A.check("B3：新場景範圍是初六以後，寫「大年初二」→ 第1類「節日」", run({ ...ok, narrative: nar + "大年初二，家裡又擠滿了親戚。" }, { window: cnyWin }).retry.some(x => /^節日.*大年初二/.test(x)));
   A.check("B3：寫「大年初七」（範圍內）沒問題", run({ ...ok, narrative: nar + "大年初七，街上的店陸續開了。" }, { window: cnyWin }).retry.length === 0);
   ev(`state.timeState.cal.lastSceneDay = calDateToAbs(2027,10,2)`);
-  // 約定
+  // 約定（1.2.9.18.4）
   ev(`state.promises=[{id:'a1',character:'雅涵',content:'週六補慶生',dueAbs:${W.start + 1},status:'open',misses:0}]`);
-  A.check("F1：約定到期但這回合沒用promise_results交代 → 重寫", run(ok).retry.some(x => /約定「週六補慶生」到期了/.test(x)));
+  A.check("F1：約定到期、沒填promise_results、正文也沒交代 → 第1類「約定」", run(ok).retry.some(x => /^約定.*週六補慶生/.test(x)));
   A.check("F1：有交代（postponed）→ 通過", run({ ...ok, promise_results: [{ id: "a1", outcome: "postponed", new_due_date: "10/16" }] }).retry.length === 0);
-  A.check("F1：約定到期的回合寫「主角忘了約定」要重寫", run({ ...ok, promise_results: [{ id: "a1", outcome: "kept" }], narrative: nar + "你忘了跟雅涵約好的事，直到她傳訊息才想起來。" }).retry.some(x => /忘了約定/.test(x)));
+  A.check("1.2.9.18.4：沒填欄位，但正文有「雅涵」＋「改天」→ 不重寫、程式代填", (() => { const o = run({ ...ok, narrative: nar + "雅涵傳訊息說補慶生改天再說。" }); return o.retry.length === 0 && o.fill.includes("a1"); })());
+  A.check("1.2.9.18.4：只有名字沒有交代字眼 → 仍第1類", run({ ...ok, narrative: nar + "雅涵在走廊跟你揮了揮手。" }).retry.some(x => /^約定/.test(x)));
+  A.check("F1：約定到期的回合寫「主角忘了約定」→ 第3類「忘約定」", run({ ...ok, promise_results: [{ id: "a1", outcome: "kept" }], narrative: nar + "你忘了跟雅涵約好的事，直到她傳訊息才想起來。" }).log.some(x => /^忘約定/.test(x)));
   ev("state.promises=[]");
   // 兩段重複（只記錄）
   const dupS = "你把那則訊息傳給了陳彥誠，問他今天晚上有沒有空一起把訂單的事情談清楚";
   const rd = run({ ...ok, action_result: act + dupS + "。", narrative: nar + dupS + "。" });
-  A.check("第5點：同一件事兩段各寫一次 → 只進advisory，不進retry", rd.advisory.some(x => /各寫一次/.test(x)) && rd.retry.length === 0, rd);
+  A.check("第5點：同一件事兩段各寫一次 → 第3類「重複」，不重寫", rd.log.some(x => /各寫一次/.test(x)) && rd.retry.length === 0, rd);
   const rr = run({ ...ok, action_result: "我們到了KTV包廂，點了兩杯飲料就開始唱歌，唱到嗓子都啞了才停下來，你看著螢幕上的歌詞發呆。" + long(60), narrative: "我們到了KTV包廂，點了兩杯飲料就開始唱歌，唱到嗓子都啞了才停下來，你看著螢幕上的歌詞發呆。" + nar });
-  A.check("第2點：新場景開頭重演回應段開頭 → 只進advisory", rr.advisory.some(x => /倒回/.test(x)) && !rr.retry.some(x => /倒回/.test(x)), rr);
+  A.check("第2點：新場景開頭重演回應段開頭 → 第3類", rr.log.some(x => /倒回/.test(x)) && rr.retry.length === 0, rr);
+  ev("NARRATIVE_INTEGRITY_CHECK = false");
   // 半形逗號
   A.check("D2：中文字後面的半形逗號轉成全形，數字千分位與英文不動", ev(`fixHalfWidthPunct("你好,我是小明,價格是1,200 USD, ok, fine")`) === "你好，我是小明，價格是1,200 USD, ok, fine", ev(`fixHalfWidthPunct("你好,我是小明,價格是1,200 USD, ok, fine")`));
   A.check("D2：normalizeTurnResultText 兩段都處理", (() => { const r = JSON.parse(ev(`JSON.stringify(normalizeTurnResultText({action_result:["你好,世界"], narrative:["早安,今天"]}))`)); return r.action_result === "你好，世界" && r.narrative === "早安，今天"; })());

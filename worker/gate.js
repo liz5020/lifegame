@@ -83,6 +83,7 @@ export class UsageCounter {
       for (const [k, v] of await this.state.storage.list({ prefix: "ua:" })) out.days[k.slice(3)] = v;
       return this._json(out);
     }
+    if (op === "uquality" && request.method === "GET") return this._json(Object.assign({ ok: true }, (await this.state.storage.get("uq:" + date)) || { regens: 0, reasons: {}, notes: {} })); // 10.14.7.1
     if (op === "urows" && request.method === "GET") {
       const rows = [];
       for (const [, v] of await this.state.storage.list({ prefix: "ud:" })) rows.push(v);
@@ -162,6 +163,18 @@ UsageCounter.prototype._recordDetail = async function (p, date, now) {
   }
   const row = { t: now, k: kind, turn: p.get("turn") ? n("turn") : null, life: p.get("life") || null, n: nonce || null,
     in: n("in"), cw: n("cw"), cr: n("cr"), out: n("out"), usd: Math.round(n("usd") * 1e6) / 1e6, ms: p.get("ms") ? n("ms") : null };
+  // 十、10.14.7.1（2026-10-10）：重寫原因只記在重寫那一筆；上回合紀錄只記在回合的第一筆(重試帶到的不重複算)；每天依代碼計次(uq:日期，跟著明細保留7天)
+  const rr = (p.get("rr") || "").slice(0, 80), pn = kind === "retry" ? "" : (p.get("pn") || "").slice(0, 80), end = (p.get("end") || "").slice(0, 40);
+  if (rr) row.rr = rr;
+  if (pn) row.pn = pn;
+  if (end) row.end = end;
+  if (rr || pn) {
+    const qk = "uq:" + date, qa = (await st.get(qk)) || { regens: 0, reasons: {}, notes: {} };
+    if (rr) { qa.regens += 1; for (const c of rr.split("、")) if (c) qa.reasons[c] = (qa.reasons[c] || 0) + 1; }
+    if (pn) for (const c of pn.split("、")) if (c) qa.notes[c] = (qa.notes[c] || 0) + 1;
+    await st.put(qk, qa);
+    for (const [k] of await st.list({ prefix: "uq:", end: "uq:" + taipeiDateString(now - USAGE_DETAIL_KEEP_MS) })) await st.delete(k);
+  }
   const agg = (await st.get("ua:" + date)) || {};
   const b = agg[kind] || (agg[kind] = { calls: 0, in: 0, cw: 0, cr: 0, out: 0, usd: 0 });
   b.calls += 1; b.in += row.in; b.cw += row.cw; b.cr += row.cr; b.out += row.out; b.usd = Math.round((b.usd + row.usd) * 1e6) / 1e6;
@@ -196,6 +209,10 @@ export async function recordAIUsage(env, meta, tokens, usd) {
     if (m.lifeId) params.life = await shortHash("life:" + m.lifeId);
     if (m.nonce) params.nonce = await shortHash("nonce:" + m.nonce);
     if (typeof m.ms === "number" && Number.isFinite(m.ms)) params.ms = String(Math.max(0, Math.round(m.ms))); // 十、10.17.2：耗時(毫秒)
+    // 十、10.14.7.1（2026-10-10）：重寫原因、上回合紀錄、結束原因(只有代碼；呼叫端已清過字元與長度)
+    if (m.rr) params.rr = String(m.rr).slice(0, 80);
+    if (m.pn) params.pn = String(m.pn).slice(0, 80);
+    if (m.end) params.end = String(m.end).slice(0, 40);
     await usageCall(env, "detail", params);
   } catch (e) { /* 只是紀錄 */ }
 }

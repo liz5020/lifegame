@@ -10,6 +10,24 @@
 
 ---
 
+## 2026-10-10 開發部：AI回合自動重新產生降頻（一、1.2.9.18.0～1.2.9.18.8、十、10.14.7.1、10.17.11；版本2026.10.10-f，分支regen-reduce）
+
+- 起因：10/10封測開放日重寫約佔AI呼叫三分之一、花費約30%，主因是10.10-b的正文完整性檢查(18.10.7)太嚴，冒號接台詞也被誤判。
+- `index.html`：不合格分三類——`repairTurnText()`程式直接修(標點、冒號、舞台指示、補引號、記錄大括號)；`classifyTurnOutput()`分出第1類(重寫)與第3類(只記錄)；`takeTurn()`把場景日期與品質檢查合併成一次重寫(最多1次，連線失敗重試另計)，`pickTurnVersion()`挑版本、兩版都讀不了就照10.17.7退回回合；約定兩條件判定與`regenTried`；本回合必辦清單`buildMustDoList()`→payload最後的`turn_must_do`；等待畫面重寫時加一行小字；`state.lastTurnNotes`下一回合以`prev_turn_notes`帶給Worker；上游403不重打。
+- `worker/prompt.js`：選項統一4個、【寫作規則】E交稿前檢查7條(章節共用規則切掉這段)、冒號接台詞與引號成對、「下週三」寫法、必辦清單說明；工具定義`action_result`必填。
+- `worker/worker.js`、`worker/gate.js`：逐筆明細加重寫原因、上回合紀錄、結束原因(CSV三欄)，上游403也記一筆(`403@機房代碼`)，每日依代碼計次(`uq:`)；`/stats-summary`多`regen_today`。`worker/dashboard.js`加「今天的自動重寫」小表。機房代碼在門牌換算前先取。
+- 測試：新增`tests/test-90-regen.mjs`(50項)與`tests/replay-regen.mjs`(回放208筆真實紀錄：重寫2.9%)；`harness.mjs`的`integrity:true`改為示範模式也檢查、可模擬`request.cf`；test-41、53、84、88依新分類更新。
+- 驗證：見回報。舊存檔不需清空。
+
+---
+
+## 2026-10-10 開發部：開場同意頁第2點措辭（十、10.13.2／10.16.5）
+
+- `index.html`開場同意頁第2點改為「你的選擇與輸入的文字會由 AI 來產生下一段劇情。」；`tests/test-63-consent.mjs`同步。同意版本不調。
+- 驗證：見下方測試結果。
+
+---
+
 ## 2026-10-10 開發部：名額發完時顯示今日發出的名額數（版本2026.10.10-e，與-d人生之書15.9一起上線）
 
 - `index.html`：`updateHomeEntryLine()`在名額真的發完(`reason==="full"`、剩0)時顯示「今日 N 個名額已全數發出，可留信箱候補」，N取伺服器回報的今日上限；檢查點關閉或有候補排隊時維持原句。`tests/test-76-entry-ui.mjs`對應更新。

@@ -50,8 +50,9 @@ A.check("#4 名字已知後選項可以用名字", ev("state.choices[0]") === "�
 override = () => ({});
 
 // ---------- #6 系統用語不進台詞與敘事 ----------
-const q = (txt) => js(`detectOutputQualityIssues({ action_result:[], narrative:${JSON.stringify(txt)} })`);
-A.check("#6 台詞說「正式副業那個」：偵測到、要求重新產生", q("詩涵說：「你那個正式副業那個，最近怎麼樣？」").some(x => /系統用語「正式副業」/.test(x)));
+// 2026-10-10（一、1.2.9.18.1）：系統用語改為第3類，只記錄不重寫
+const q = (txt) => js(`classifyTurnOutput({ action_result:"", narrative:${JSON.stringify(txt)} }, state, {}).c3.filter(i=>i.code==="系統用語").map(i=>i.msg)`);
+A.check("#6 台詞說「正式副業那個」：偵測到、記錄(第3類)", q("詩涵說：「你那個正式副業那個，最近怎麼樣？」").some(x => /系統用語「正式副業」/.test(x)));
 A.check("#6 敘事出現「好感度」「行動點」「投入度」「這回合」「訂單簿」：偵測到", ["好感度", "行動點", "投入度", "這回合", "訂單簿", "接單上限", "興趣卡"].every(w => q(`她的${w}好像有變化。`).some(x => x.includes(w))));
 A.check("#6 一般句子不誤殺(身體重心、生活重心、一個回合)", q("他把身體重心壓低，穩穩接住球。").length === 0 && q("她的生活重心慢慢移到了工作室。").length === 0 && q("這一輪比賽打得很久。").length === 0);
 A.check("#6 一般口語(「我現在認真在做手作了」)通過", q("「我現在算是認真在做手作了。」").length === 0);

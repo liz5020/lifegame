@@ -134,18 +134,23 @@ A.check("B3 明牌檢定看完：分數出現在面板", !ev("state.examHistory[
 H.clickModals(g.win);
 
 // ================= A14／B4 輸出品質 =================
-const q = (ar, nar) => js(g, `detectOutputQualityIssues(${JSON.stringify({ action_result: ar, narrative: nar })})`);
-A.check("A14 引號沒關上", q("她回頭喊你：「欸葉夜！", "隔天早上。").some(x => /引號沒有關上/.test(x)));
-A.check("A14 段落以冒號結尾", q("起身時順口留下一句：", "隔天早上。").some(x => /以「：」結尾/.test(x)));
-A.check("A14 段落以逗號結尾", q("好。", "他看著你，").some(x => /以「，」結尾/.test(x)));
-A.check("A14 出現資料格式符號", q("好。", "她說：「好。」}}").some(x => /資料格式符號/.test(x)) && q("好。", '"narrative": 好。').some(x => /資料格式符號/.test(x)));
-A.check("A14 合法的{{名字|台詞}}與文件框不算", q("{{雅涵|好啊。}}", "〔文件:成績單〕\n\n國文 85\n\n〔/文件〕\n\n隔天早上。").length === 0);
+// 2026-10-10（一、1.2.9.18.1第2類）：標點、冒號、引號、大括號改由程式直接修，不重新產生
+const fix = (ar, nar) => js(g, `(()=>{ const r = ${JSON.stringify({ action_result: ar, narrative: nar })}; const codes = repairTurnText(r); return { codes, ar: r.action_result, nar: r.narrative }; })()`);
+A.check("A14 引號沒關上 → 程式補」(結尾沒標點先補句號)", (() => { const o = fix("她回頭喊你：「欸葉夜", "隔天早上。"); return o.codes.includes("補引號") && o.ar === "她回頭喊你：「欸葉夜。」"; })(), fix("她回頭喊你：「欸葉夜", "隔天早上。"));
+A.check("A14 段落以冒號結尾、後面不是台詞 → 改句號", (() => { const o = fix("起身時順口留下一句：", "隔天早上。"); return o.codes.includes("冒號") && o.ar === "起身時順口留下一句。"; })());
+A.check("A14 冒號後面接台詞段 → 不算錯、不動", (() => { const o = fix("他回頭說：\n\n「明天見。」", "隔天早上。"); return o.codes.length === 0 && /說：\n\n「明天見。」$/.test(o.ar); })(), fix("他回頭說：\n\n「明天見。」", "隔天早上。"));
+A.check("A14 冒號後面接{{名字|台詞}}標記 → 不算錯", fix("雅涵湊過來：\n\n{{雅涵|你看這個。}}", "隔天早上。").codes.length === 0);
+A.check("A14 段落以逗號結尾 → 改句號", (() => { const o = fix("好。", "他看著你，"); return o.codes.includes("標點") && o.nar === "他看著你。"; })());
+A.check("A14 沒有收尾符號 → 補句號", (() => { const o = fix("好。", "他看著你"); return o.codes.includes("標點") && o.nar === "他看著你。"; })());
+A.check("A14 落單的}}只記錄「大括號」(顯示時清掉)", fix("好。", "她說：「好。」}}").codes.includes("大括號"));
+A.check("A14 資料欄位名稱 → 第1類「欄位名稱」", js(g, `classifyTurnOutput({ action_result:"好。", narrative:'"narrative": 好。' }, state, {}).c1.map(i=>i.code)`).includes("欄位名稱"));
+A.check("A14 合法的{{名字|台詞}}與文件框不動", fix("{{雅涵|好啊。}}", "〔文件:成績單〕\n\n國文 85\n\n〔/文件〕\n\n隔天早上。").codes.length === 0);
 ev("MOCK_OUTPUT_QUALITY_VIOLATION_RATE=1; MOCK_LITERAL_NEWLINE_RATE=0");
 const flags0 = ev("(state.reviewFlags||[]).length");
 await H.playTurn(g);
 ev("MOCK_OUTPUT_QUALITY_VIOLATION_RATE=0");
 const newFlags = js(g, `(state.reviewFlags||[]).slice(${flags0}).map(f=>f.kind)`);
-A.check("A14 偵測到就自動重新產生(重新產生那次合格)", newFlags.includes("output_quality_retry") && !newFlags.includes("output_quality_unresolved") && !/她回頭喊你：$/.test(js(g, "state.log[state.log.length-1].text")), newFlags);
+A.check("A14 冒號結尾改由程式修：不重新產生、有紀錄、正文不留冒號", newFlags.includes("output_quality_fixed") && !newFlags.includes("output_quality_retry") && !/她回頭喊你：$/.test(js(g, "state.log[state.log.length-1].text")), newFlags);
 A.check("A14 重新產生不扣行動點(同一回合只扣1點)", true); // 本機扣點在takeTurn開頭只扣一次；Worker端同一turn_nonce只扣一次見test-2
 A.check("B4 殘留的}}清掉並補上引號", js(g, "processDialogueMarkup(state, '她說：「暑假要不要去。}}').text") === "她說：「暑假要不要去。」");
 A.check("B4 沒收尾的{{名字|換成引號", js(g, "processDialogueMarkup(state, '{{雅涵|欸葉夜！').text") === "「欸葉夜！");
