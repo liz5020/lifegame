@@ -146,6 +146,7 @@ A.check("N8 再玩一回合也不會再出現", !g.win.document.getElementById("
   const tc = computePlayStats(rows, now, "today", 1).summary.turn_cost;
   A.check("D1 前100回合：2個回合、含重寫平均(0.01+0.02+0.02+0.02)/2＝0.04、不含重寫0.025≈0.03(四捨五入)、重寫多花0.01", tc.early.turns === 2 && tc.early.avg === 0.04 && tc.early.retry_calls === 1 && tc.early.retry_extra === 0.01, tc.early);
   A.check("D2 第101回合以後：1個回合、含重寫0.10、不含0.04、重寫(含連線重試)共2次、每次平均0.03", tc.late.turns === 1 && tc.late.avg === 0.1 && tc.late.avg_no_retry === 0.04 && tc.late.retry_calls === 2 && tc.late.per_retry === 0.03, tc.late);
+  A.check("D4 重試拆開：前100回合自動重寫1次(0.02)；之後自動重寫1次(0.04)、連線重試1次(0.02)，各種類每次平均正確", tc.early.by.rewrite.calls === 1 && tc.early.by.rewrite.per === 0.02 && tc.late.by.rewrite.per === 0.04 && tc.late.by.conn.calls === 1 && tc.late.by.conn.per === 0.02 && tc.late.by.again.calls === 0 && tc.late.by.again.per === null, tc.late.by);
   A.check("D3 全部＝前100＋之後：3個回合、總花費0.17÷3≈0.06；沒有回合的範圍平均為null", tc.all.turns === 3 && tc.all.avg === 0.06 && computePlayStats([], now, "today", 1).summary.turn_cost.early.avg === null, tc.all);
 }
 
