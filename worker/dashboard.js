@@ -20,6 +20,8 @@ button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var
 button:disabled{opacity:.5;cursor:default}
 input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;max-width:320px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+#cards,#cardsLives,#cards2{grid-template-columns:repeat(3,minmax(0,1fr))} /* 總覽三排都是三格、同寬對齊(2026-10-10) */
+@media (max-width:620px){#cards,#cardsLives,#cards2{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 .card h2{font-size:14px;margin:0 0 6px;color:var(--soft);font-weight:600}
 .unit{font-size:14px;margin-left:4px;color:var(--soft)}
@@ -117,8 +119,8 @@ function renderCards(s){
     card("瀏覽人次",v.total,"累計"+(v.since?"（"+v.since+" 起）":""),sm("今天",v.today),sm("近 7 天",v.last7));
   $("cardsLives").innerHTML=
     (s.accounts_bound?card2("綁定信箱人數",s.accounts_bound,"",""):"")+
-    (s.lives_started?card2("開啟人生段數",s.lives_started,"","（玩過至少一回合）"):"")+
     (s.lives_unbound?card2("沒綁信箱的人生段數",s.lives_unbound,"","（含之後結束的；綁了信箱就改算進帳號）"):"")+
+    (s.lives_started?card2("開啟人生段數",s.lives_started,"","（玩過至少一回合）"):"")+
     '<div class="small" style="grid-column:1/-1;margin:0">玩家＝綁信箱的一個信箱算一位、沒綁的一段人生算一位；人生段數＝玩過至少一回合的人生，一位玩家可以有好幾段。</div>';
 }
 var SVGNS="http://www.w3.org/2000/svg";
