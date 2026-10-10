@@ -120,7 +120,7 @@ dt{font-weight:600}dd{margin:0;color:var(--soft)}
       <p class="take" id="take">載入中…</p>
       <p class="note">這段話由程式照數字套句型產生，不經過 AI。金額以 1 美元＝NT$32 換算。</p>
     </div>
-    <section class="alerts" aria-label="需要注意"><h2>需要注意</h2><div id="alerts"></div><p class="note">門檻是測試參數：重寫超過 5%＝要處理；名額用完、有人在排候補、AI 餘額撐不到 14 天、今天花費超過每日上限 70%＝留意。</p></section>
+    <section class="alerts" aria-label="需要注意"><h2>需要注意</h2><div id="alerts"></div><p class="note">門檻是測試參數：重寫超過 5%＝要處理；名額用完、有人在排候補、AI 餘額撐不到 12 小時、今天花費超過每日上限 70%＝留意。</p></section>
     <section class="tilerows" aria-label="重點數字" id="kpi"></section>
     <div id="report" class="stack"></div>
     <section class="sec" id="secFiles"><h2>下載資料（之後自己分析用）</h2><p class="sub">逐筆明細只留 7 天，每日總表永久保留、每小時總表留 90 天。想之後回頭看流量或金額，靠的是每日總表。</p>
@@ -167,7 +167,7 @@ dt{font-weight:600}dd{margin:0;color:var(--soft)}
 var KEY="lifegame_dash_token",tok="";
 try{tok=sessionStorage.getItem(KEY)||""}catch(e){}
 var $=function(id){return document.getElementById(id)};
-var NA="暫時無法取得",RATE=32,RETRY_TARGET=0.05,BAL_WARN_DAYS=14,SPEND_WARN=0.7;
+var NA="暫時無法取得",RATE=32,RETRY_TARGET=0.05,BAL_WARN_HOURS=12,SPEND_WARN=0.7;
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function api(path){return fetch(path,{headers:{Authorization:"Bearer "+tok},cache:"no-store"}).then(function(r){
   if(r.status===401){var e=new Error("auth");e.auth=true;throw e}
@@ -301,7 +301,7 @@ function renderAlerts(o){
   else if(e&&e.used>=e.cap)a.push(["warn","留意","今日名額 "+num(e.used)+"／"+num(e.cap)+" 已用完"+(e.waiting?"，候補還有 "+num(e.waiting)+" 人在排":"")+"（詳見最上方）。"]);
   else if(e&&e.waiting>0)a.push(["warn","留意","候補還有 "+num(e.waiting)+" 人在排（詳見最上方）。"]);
   if(e&&e.cum>=e.checkpoint)a.push(["warn","留意","累計入場已到檢查點 "+num(e.checkpoint)+"，名額暫停發放。"]);
-  if(bal&&bal.days_left!=null&&bal.days_left<BAL_WARN_DAYS)a.push(["warn","留意","照近 7 天的花法，AI 餘額約還能撐 "+bal.days_left+" 天。"]);
+  if(bal&&bal.hours_left!=null&&bal.hours_left<BAL_WARN_HOURS)a.push(["bad","要處理","照最近 24 小時的花法，AI 餘額約只能撐 "+n1(bal.hours_left)+" 小時（剩 "+usd(bal.remaining_usd)+"）。"]);
   if(D.today&&D.today.daily_spend_cap_twd&&D.today.est_cost_twd>=SPEND_WARN*D.today.daily_spend_cap_twd)a.push(["warn","留意","今天花費已到每日上限的 "+pct0(D.today.est_cost_twd/D.today.daily_spend_cap_twd)+"。"]);
   if(!a.length)a.push(["ok","正常","沒有需要處理的事。"]);
   $("alerts").innerHTML=a.map(function(x){return '<div class="al"><span class="sev '+x[0]+'">'+x[1]+'</span><span>'+esc(x[2])+'</span></div>'}).join("")}
@@ -408,6 +408,8 @@ function turnCostCard(m){
   var split='<div class="scroll"><table><tr><th>重試種類</th>'+TC_ROWS.map(function(x){return '<th class="n">'+x[0]+'<br>次數／每次平均（元）</th>'}).join("")+'</tr>'+
     TC_CLS.map(function(c){return '<tr><td>'+c[1]+'</td>'+TC_ROWS.map(function(x){var b=t[x[1]].by[c[0]];return '<td class="n">'+num(b.calls)+" 次／"+n2(b.per)+'</td>'}).join("")+'</tr>'}).join("")+'</table></div>';
   return card("每回合花費",main+'<h4>重試拆開看</h4>'+split,"每回合平均＝這段時間所有 AI 呼叫（含開場、章節、重試）的花費 ÷ 一般回合數。重試＝自動重寫、連線重試、再試一次、改版前未分類的總和。每條人生各算各的第幾回合；只看得到最近 7 天的明細，近 30 天沒有這張表。")}
+function balLeftVal(b){if(!b||b.hours_left==null)return "—";return b.hours_left>=48?num(Math.floor(b.hours_left/24)):n1(b.hours_left)}
+function balLeftUnit(b){if(!b||b.hours_left==null)return "";return b.hours_left>=48?"天":"小時"}
 function costBlock(o){
   var s=D.sum,a=s&&s.ai_usage,u=s&&s.usage,p=o.p,m=p&&p.summary,h="";
   var bal=a&&a.balance,todayCost=D.today?D.today.est_cost_twd:(u&&u.cost.today),hrs=curHourTW();
@@ -416,7 +418,7 @@ function costBlock(o){
     tile("今天",todayCost==null?"—":num(Math.round(todayCost)),"元",(u?"共 "+num(u.turns.today)+" 個回合":"")+(est!=null?"<br>推估全天約 "+num(Math.round(est))+" 元":""))+
     tile("近 7 天",u?num(Math.round(u.cost.last7)):"—","元",u?"每天平均 "+num(Math.round(u.cost.last7/7))+" 元":"")+
     tile("每條人生平均",m?n1(m.twd_per_life):"—","元",m&&m.twd_per_reach10_life!=null?"玩到第 10 回合的 "+n1(m.twd_per_reach10_life)+" 元":(D.range==="30d"?"只算得到近 7 天":""))+
-    tile("AI 餘額還能撐",bal&&bal.days_left!=null?num(bal.days_left):"—",bal&&bal.days_left!=null?"天":"",bal?"剩 "+usd(bal.remaining_usd)+"（約 NT$ "+num(Math.round(bal.remaining_usd*RATE))+"）":"還沒設定餘額（後台 AI_BALANCE_USD、AI_BALANCE_BASE_USD）")+'</div>';
+    tile("AI 餘額還能撐",balLeftVal(bal),balLeftUnit(bal),bal?"剩 "+usd(bal.remaining_usd)+"（約 NT$ "+num(Math.round(bal.remaining_usd*RATE))+"），照最近 24 小時的花費速度算":"還沒設定餘額（後台 AI_BALANCE_USD、AI_BALANCE_BASE_USD）")+'</div>';
   h+=turnCostCard(m);
   var left="";
   if(D.range==="30d"){var rows=o.daily||[];left=card("每天花費",bars(rows.map(function(x){return x.date.slice(5).replace("-","/")}),[{v:rows.map(function(x){return x.cost||0}),c:"var(--blue)"}],{aria:"每天花費",tips:rows.map(function(x){return x.date+"　NT$"+n2(x.cost)+"，回合 "+num(x.turns)})}))}
@@ -578,13 +580,17 @@ function renderCalcInputs(){
   $("c_t08").addEventListener("click",function(){C.vals.costTurn=0.8;renderCalcInputs();renderCalcOut()});
   $("c_reset").addEventListener("click",function(){C.vals=null;renderCalcInputs();renderCalcOut()})}
 function calcRead(){CALC_FIELDS.forEach(function(f){var el=$("c_"+f[0]);if(el){var v=parseFloat(el.value);C.vals[f[0]]=isFinite(v)&&v>=0?v:0}})}
-function renderCalcOut(){
-  var v=C.vals;if(!v)return;
+function calcCompute(v){
   var cost=v.costTurn,turns=v.newP*v.turnsNew+v.exist*(v.retRate/100)*v.turnsRet;
   var day=turns*cost,withBuf=day*(1+v.buffer/100),needUsd=Math.max(0,withBuf/RATE-v.bal);
   var tot=D.sum&&D.sum.ai_usage&&D.sum.ai_usage.total&&D.sum.ai_usage.total.usd,sunk=tot!=null?tot*RATE:null;
   var pk=PACKS[Math.round(v.pack)]||PACKS[2];
-  var buyers=v.newP*v.buyRate/100,rev=buyers*pk[1],revNet=rev*(1-FEE);
+  var buyers=v.newP*v.buyRate/100,revNet=buyers*pk[1]*(1-FEE);
+  var packs=PACKS.map(function(k){var net=k[1]*(1-FEE),perPt=net/k[2],margin=(perPt-cost)*k[2];return {name:k[0],price:k[1],pts:k[2],perPt:perPt,margin:margin,need:(margin>0&&sunk)?Math.ceil(sunk/margin):null}});
+  return {cost:cost,turns:turns,day:day,withBuf:withBuf,needUsd:needUsd,tot:tot,sunk:sunk,pk:pk,buyers:buyers,revNet:revNet,packs:packs}}
+function renderCalcOut(){
+  var v=C.vals;if(!v)return;
+  var r=calcCompute(v),cost=r.cost,turns=r.turns,day=r.day,withBuf=r.withBuf,needUsd=r.needUsd,tot=r.tot,sunk=r.sunk,pk=r.pk,buyers=r.buyers,revNet=r.revNet;
   var a=card("明天要儲多少",
     '<table><tr><th>預估明天的回合數</th><td class="n">'+num(Math.round(turns))+' 回合</td></tr>'+
     '<tr><th>預估明天花費</th><td class="n">NT$ '+num(Math.round(day))+'（約 US$ '+n1(day/RATE)+'）</td></tr>'+
@@ -592,9 +598,8 @@ function renderCalcOut(){
     '<tr><th>目前餘額</th><td class="n">US$ '+n2(v.bal)+'</td></tr>'+
     '<tr><th><b>建議再儲值</b></th><td class="n"><b>US$ '+n1(needUsd)+'（約 NT$ '+num(Math.round(needUsd*RATE))+'）</b></td></tr></table>',
     "算法：（新玩家人數 × 平均回合 ＋ 舊玩家 × 回來比例 × 回合）× 每回合成本，再加緩衝，減掉目前餘額。")
-  var rows=PACKS.map(function(k){
-    var net=k[1]*(1-FEE),perPt=net/k[2],margin=(perPt-cost)*k[2];
-    return '<tr><td>'+k[0]+'</td><td class="n">'+n2(perPt)+'</td><td class="n">'+n2(cost)+'</td><td class="n'+(margin<0?' down':'')+'">'+(margin>=0?'+':'')+num(Math.round(margin))+'</td><td class="n">'+(margin>0&&sunk?num(Math.ceil(sunk/margin))+' 包':(margin>0?'—':'賣越多虧越多'))+'</td></tr>'}).join("");
+  var rows=r.packs.map(function(k){
+    return '<tr><td>'+k.name+'</td><td class="n">'+n2(k.perPt)+'</td><td class="n">'+n2(cost)+'</td><td class="n'+(k.margin<0?' down':'')+'">'+(k.margin>=0?'+':'')+num(Math.round(k.margin))+'</td><td class="n">'+(k.margin>0&&sunk?num(k.need)+' 包':(k.margin>0?'—':'賣越多虧越多'))+'</td></tr>'}).join("");
   var b=card("賣一包賺還是虧",
     '<div class="scroll"><table><tr><th>點數包</th><th class="n">每點實收（扣手續費）</th><th class="n">每點成本</th><th class="n">一包盈虧（元）</th><th class="n">回收已花的錢要賣</th></tr>'+rows+'</table></div>',
     "已花掉的錢："+(sunk!=null?"NT$ "+num(Math.round(sunk))+"（累計 US$ "+n2(tot)+"）":"暫時無法取得")+"。每點成本要低於「每點實收」才賺；每一包的盈虧＝（每點實收－每點成本）× 點數。")
@@ -603,7 +608,41 @@ function renderCalcOut(){
     '<tr><th>收入（扣手續費）</th><td class="n">NT$ '+num(Math.round(revNet))+'</td></tr>'+
     '<tr><th>跟明天花費比</th><td class="n">'+(revNet>=day?'收入多 ':'還差 ')+'NT$ '+num(Math.abs(Math.round(revNet-day)))+'</td></tr></table>',
     "這裡只比「明天一天」的收入與花費。買了點數的人之後還會把點數玩完，那部分成本不在明天，所以實際盈虧要看上面的「一包盈虧」。")
-  $("calcOut").innerHTML=a+b+c}
+  $("calcOut").innerHTML=a+b+c+copyBox("calcCopy",calcText(r,v))}
+// 「複製給網頁版」：整理成一段純文字，按鈕複製；複製不成功時文字框仍在，可以手動全選複製
+function copyBox(id,text){
+  return '<div class="card"><h3>複製給網頁版討論</h3><div class="row"><button data-copy="'+id+'">複製給網頁版</button><span class="note" id="'+id+'Msg"></span></div><textarea id="'+id+'" readonly rows="8" style="width:100%;margin-top:8px;font-size:12.5px">'+esc(text)+'</textarea></div>'}
+function copyNow(id){
+  var ta=$(id),msg=$(id+"Msg");if(!ta)return;
+  function ok(){if(msg)msg.textContent="已複製，可以貼到網頁版"}
+  function fail(){ta.focus();ta.select();if(msg)msg.textContent="沒辦法自動複製，文字已選取，請按 Ctrl／⌘＋C"}
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(ta.value).then(ok,fail);return}}catch(e){}
+  try{ta.focus();ta.select();if(document.execCommand&&document.execCommand("copy")){ok();return}}catch(e){}
+  fail()}
+document.addEventListener("click",function(ev){var id=ev.target.getAttribute&&ev.target.getAttribute("data-copy");if(id)copyNow(id)});
+function calcText(r,v){
+  var m=D.sum&&D.sum.ai_usage&&D.sum.ai_usage.balance,e=D.sum&&D.sum.entry,t=D.today,L=[];
+  L.push("【人生草稿 成本與回本估算，後台匯出】時間："+new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei",hour12:false})+"（台灣）。金額為新臺幣，1 美元＝NT$"+RATE+"。");
+  L.push("");L.push("一、我填的假設");
+  L.push("- 明天新玩家 "+v.newP+" 位，每位平均玩 "+v.turnsNew+" 回合；已有玩家 "+v.exist+" 位，隔天回來 "+v.retRate+"%，每位玩 "+v.turnsRet+" 回合");
+  L.push("- 每回合成本（含重試）NT$"+n2(v.costTurn)+"；安全緩衝 "+v.buffer+"%；目前 Anthropic 餘額 US$"+n2(v.bal));
+  L.push("- 新玩家購買比例 "+v.buyRate+"%，買"+r.pk[0]+"（"+r.pk[1]+" 元／"+r.pk[2]+" 點）");
+  L.push("");L.push("二、算出來的結果");
+  L.push("- 明天預估 "+num(Math.round(r.turns))+" 回合、花費約 NT$"+num(Math.round(r.day))+"；加緩衝後 NT$"+num(Math.round(r.withBuf))+"（約 US$"+n1(r.withBuf/RATE)+"）；建議再儲值約 US$"+n1(r.needUsd)+"（約 NT$"+num(Math.round(r.needUsd*RATE))+"）");
+  L.push("- 已花掉的錢："+(r.sunk!=null?"約 NT$"+num(Math.round(r.sunk))+"（累計 US$"+n2(r.tot)+"）":"暫時無法取得"));
+  L.push("- 明天購買收入（扣 3% 手續費）約 NT$"+num(Math.round(r.revNet))+"，購買人數 "+n1(r.buyers)+" 位");
+  L.push("");L.push("三、點數包盈虧（手續費暫用 3%；價格與點數依設計文件 10.9.9.3）");
+  r.packs.forEach(function(k){L.push("- "+k.name+" "+k.price+" 元／"+k.pts+" 點：每點實收 "+n2(k.perPt)+"，每點成本 "+n2(r.cost)+"，一包"+(k.margin>=0?"賺 ":"虧 ")+num(Math.abs(Math.round(k.margin)))+" 元"+(k.need?"，回收已花的錢要賣 "+k.need+" 包":""))});
+  L.push("");L.push("四、目前的實測（近 7 天）");
+  var p=D.play&&D.play["7d"],s=p&&p.summary;
+  if(s){L.push("- 開局人生 "+s.lives+" 條、共 "+s.turns+" 回合；每回合成本含重試 NT$"+n2(s.twd_per_turn)+"、不含重試 NT$"+n2(s.twd_per_turn_no_retry)+"；每條人生約 NT$"+n2(s.twd_per_life));
+    if(s.revisit&&s.revisit.of>0)L.push("- 隔天回來："+s.revisit.lives+"／"+s.revisit.of+" 條");}
+  if(m)L.push("- AI 餘額估算：剩 US$"+n2(m.remaining_usd)+(m.hours_left!=null?"，照最近 24 小時花費速度約可撐 "+n1(m.hours_left)+" 小時":""));
+  if(t)L.push("- 今天花費約 NT$"+num(Math.round(t.est_cost_twd))+"／每日上限 NT$"+num(t.daily_spend_cap_twd));
+  if(e)L.push("- 名額：今天 "+e.used+"／"+e.cap+"，候補 "+e.waiting+" 人；累計入場 "+e.cum+"／檢查點 "+e.checkpoint);
+  L.push("");L.push("五、相關規則（設計文件）");
+  L.push("- 10.9.6：開賣倍數規則為短篇售價（扣手續費）≥ 成本 2 倍、長篇／中篇 ≥ 1.7 倍；10.9.9.2 的成本階段目標已改為先降到 NT$1.0 再慢慢往下，倍數與價格如何對齊待決定");
+  return L.join(String.fromCharCode(10))}
 function openCalc(){
   var need=[];
   if(!D.play["7d"])need.push(soft("/stats-play?range=7d").then(function(j){D.play["7d"]=j}));
@@ -633,7 +672,14 @@ function renderLimits(){
       return '<tr><td>'+esc(x.label)+use+'</td><td class="n">'+val+'</td><td>'+how+'</td><td class="small">'+esc(x.effect||"")+'</td></tr>'}).join("");
     return card(gn,'<div class="scroll"><table><tr><th>項目</th><th class="n">目前的值</th><th>怎麼改</th><th>被擋住時會怎樣</th></tr>'+rows+'</table></div>')}).join("");
   var top=hot.length?'<div class="card"><h3>現在接近或已經到上限</h3><p>'+hot.map(esc).join("<br>")+'</p></div>':'<div class="card"><h3>現在接近或已經到上限</h3><p>目前沒有項目超過八成。</p></div>';
-  $("limBody").innerHTML=top+html}
+  $("limBody").innerHTML=top+html+copyBox("limCopy",limText(L,hot))}
+function limText(L,hot){
+  var out=["【人生草稿 攔截門檻，後台匯出】時間："+new Date().toLocaleString("zh-TW",{timeZone:"Asia/Taipei",hour12:false})+"（台灣）。以下是目前會讓玩家被擋住或被限量的數字。"],g="";
+  L.forEach(function(x){if(x.group!==g){g=x.group;out.push("");out.push("【"+g+"】")}
+    var u=x.usage?limUsage(x.usage):null;
+    out.push("- "+x.label+"："+(x.value==null?"—":x.value)+(x.unit?" "+x.unit:"")+"（"+(x.source==="後台可調"?"後台可調 "+x.var:"程式固定")+"）"+(u?"；"+u.txt:"")+(x.effect?"；被擋住時："+x.effect:""))});
+  out.push("");out.push(hot.length?"接近或已到上限："+hot.join("、"):"目前沒有項目超過八成。");
+  return out.join(String.fromCharCode(10))}
 function showTab(n){
   document.documentElement.scrollTop=0;document.body.scrollTop=0;
   $("paneR").hidden=n!=="r";$("paneT").hidden=n!=="t";$("paneN").hidden=n!=="n";$("paneC").hidden=n!=="c";$("paneL").hidden=n!=="l";

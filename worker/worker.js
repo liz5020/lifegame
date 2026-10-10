@@ -1175,7 +1175,12 @@ async function buildAIUsageSummary(env, { today, week_start, turns }) {
   if (Number.isFinite(bal) && Number.isFinite(base)) {
     const remaining = Math.round((bal - (range.total.usd - base)) * 100) / 100;
     const perDay = range.last7.usd / 7;
-    balance = { set_usd: bal, base_usd: base, remaining_usd: remaining, days_left: perDay > 0 ? Math.max(0, Math.floor(remaining / perDay)) : null };
+    // 2026-10-10：「還能撐多久」改看最近24小時的實際花費速度(近7天平均會被前幾天的低花費拉低而高估)；逐筆明細只留7天，夠用
+    let last24 = 0;
+    try { const nowT = nowMs(env); for (const r of ((await usageCall(env, "urows", {}, "GET")).rows || [])) if (nowT - r.t >= 0 && nowT - r.t < 86400000) last24 += Number(r.usd) || 0; } catch (e) { last24 = 0; }
+    const perHour = last24 / 24;
+    balance = { set_usd: bal, base_usd: base, remaining_usd: remaining, days_left: perDay > 0 ? Math.max(0, Math.floor(remaining / perDay)) : null,
+      last24_usd: Math.round(last24 * 1e4) / 1e4, hours_left: perHour > 0 ? Math.max(0, Math.round(remaining / perHour * 10) / 10) : null };
   }
   return Object.assign({ since: u.since || null, unit: "US$(Anthropic回報的實際用量，依單價計算)", kind_labels: AI_USAGE_KIND_LABELS, balance }, range);
 }
@@ -1312,7 +1317,7 @@ async function handleUsageDetailCsv(request, env) {
 }
 
 // 每次部署Worker前換成新版本號（要跟index.html的APP_VERSION同一個編號，並在DEPLOY.md記一行；tests/test-54-version.mjs會檢查）
-const WORKER_VERSION = "2026.10.10-k";
+const WORKER_VERSION = "2026.10.10-l";
 
 export default {
   // 每日排程(wrangler.toml的[triggers])：清理孤兒封存包；雲端存檔暫停期間也要跑(封存包寫入暫停期間仍開放)
