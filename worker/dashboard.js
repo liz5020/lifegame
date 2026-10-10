@@ -358,6 +358,7 @@ function retryReport(o,r,p){
   else if(p){var w=rwOf(p);if(w){
     L.push("自動重寫 "+num(w.rewrites)+" 次 ÷ 一般回合 "+num(w.turns)+" 次＝"+pct(w.rate),"連線重試 "+num(w.conn)+" 次","再試一次 "+num(w.again)+" 次","改版前（未分類）"+num(w.unclassified)+" 次","");
     L.push(r==="7d"?"每天：":"每小時：");(w.timeline||[]).forEach(function(x){L.push(x.bucket+"　重寫 "+num(x.retries)+" ÷ 一般回合 "+num(x.turns)+" ＝ "+pct(x.rate)+"　連線重試 "+num(x.conn)+"　再試一次 "+num(x.again)+"　未分類 "+num(x.unclassified))});
+    if(p.summary&&p.summary.turn_cost){L.push("","每回合花費（元；範圍＝單一人生的第幾回合；重寫包含自動重寫、連線重試、再試一次）：");[["全部",p.summary.turn_cost.all],["第 1～100 回合",p.summary.turn_cost.early],["第 101 回合以後",p.summary.turn_cost.late]].forEach(function(x){var g=x[1];L.push(x[0]+"　一般回合 "+num(g.turns)+"　含重寫平均 "+(g.avg==null?"—":n2(g.avg))+"　不含重寫平均 "+(g.avg_no_retry==null?"—":n2(g.avg_no_retry))+"　重寫多花 "+(g.retry_extra==null?"—":n2(g.retry_extra))+"（"+pct0(g.retry_extra_pct)+"）　每次重寫平均 "+(g.per_retry==null?"—":n2(g.per_retry))+(g.turns>0&&g.turns<30?"　（樣本少）":""))})}
     L.push("","重寫原因前 5 名（原因代碼／白話／次數／佔重寫）：");if(!w.reasons.length)L.push("沒有重寫");w.reasons.forEach(function(x){L.push(x.code+"／"+x.label+"／"+num(x.n)+"／"+pct0(x.share))});
     L.push("","上回合紀錄前 5 名（代碼／白話／次數）：");if(!w.notes.length)L.push("沒有紀錄");w.notes.forEach(function(x){L.push(x.code+"／"+x.label+"／"+num(x.n))})}}
   return L.join("\\n")}
@@ -392,6 +393,12 @@ function rewriteBody(o,r,p){
   var hr='<div class="card"><h3>'+(r==="7d"?"每天":"每小時")+'明細</h3><div class="scroll tall"><table><tr><th>'+(r==="7d"?"日期":"時段")+'</th><th class="n">一般回合</th><th class="n">重寫</th><th class="n">連線重試</th><th class="n">再試一次</th><th class="n">未分類</th></tr>'+
     tl.map(function(x){return '<tr><td>'+esc(x.bucket)+'</td><td class="n">'+num(x.turns)+'</td><td class="n">'+num(x.retries)+'</td><td class="n">'+num(x.conn)+'</td><td class="n">'+num(x.again)+'</td><td class="n">'+num(x.unclassified)+'</td></tr>'}).join("")+'</table></div></div>';
   return '<div class="grid">'+bar+cnt+cats+why+notes+hr+'</div>'}
+function turnCostCard(m){
+  var t=m&&m.turn_cost;if(!t)return "";
+  var rows=[["全部",t.all],["第 1～100 回合",t.early],["第 101 回合以後",t.late]];
+  var body='<div class="scroll"><table><tr><th>範圍（單一人生的第幾回合）</th><th class="n">回合數</th><th class="n">含重寫平均（元）</th><th class="n">不含重寫平均（元）</th><th class="n">重寫多花（元）</th><th class="n">多花幾成</th><th class="n">每次重寫平均（元）</th></tr>'+
+    rows.map(function(x){var g=x[1],few=g.turns>0&&g.turns<30;return '<tr><td>'+x[0]+(few?'<br><span class="small">樣本少，僅供參考</span>':'')+'</td><td class="n">'+num(g.turns)+'</td><td class="n">'+(g.avg==null?"—":n2(g.avg))+'</td><td class="n">'+(g.avg_no_retry==null?"—":n2(g.avg_no_retry))+'</td><td class="n">'+(g.retry_extra==null?"—":n2(g.retry_extra))+'</td><td class="n">'+pct0(g.retry_extra_pct)+'</td><td class="n">'+(g.per_retry==null?"—":n2(g.per_retry))+'</td></tr>'}).join("")+'</table></div>';
+  return card("每回合花費",body,"每回合平均＝這段時間所有 AI 呼叫（含開場、章節、重寫）的花費 ÷ 一般回合數。「重寫」包含自動重寫、連線重試、再試一次。每條人生各算各的第幾回合；只看得到最近 7 天的明細，近 30 天沒有這張表。")}
 function costBlock(o){
   var s=D.sum,a=s&&s.ai_usage,u=s&&s.usage,p=o.p,m=p&&p.summary,h="";
   var bal=a&&a.balance,todayCost=D.today?D.today.est_cost_twd:(u&&u.cost.today),hrs=curHourTW();
@@ -401,6 +408,7 @@ function costBlock(o){
     tile("近 7 天",u?num(Math.round(u.cost.last7)):"—","元",u?"每天平均 "+num(Math.round(u.cost.last7/7))+" 元":"")+
     tile("每條人生平均",m?n1(m.twd_per_life):"—","元",m&&m.twd_per_reach10_life!=null?"玩到第 10 回合的 "+n1(m.twd_per_reach10_life)+" 元":(D.range==="30d"?"只算得到近 7 天":""))+
     tile("AI 餘額還能撐",bal&&bal.days_left!=null?num(bal.days_left):"—",bal&&bal.days_left!=null?"天":"",bal?"剩 "+usd(bal.remaining_usd)+"（約 NT$ "+num(Math.round(bal.remaining_usd*RATE))+"）":"還沒設定餘額（後台 AI_BALANCE_USD、AI_BALANCE_BASE_USD）")+'</div>';
+  h+=turnCostCard(m);
   var left="";
   if(D.range==="30d"){var rows=o.daily||[];left=card("每天花費",bars(rows.map(function(x){return x.date.slice(5).replace("-","/")}),[{v:rows.map(function(x){return x.cost||0}),c:"var(--blue)"}],{aria:"每天花費",tips:rows.map(function(x){return x.date+"　NT$"+n2(x.cost)+"，回合 "+num(x.turns)})}))}
   else if(p){var tl=p.timeline||[];left=card((D.range==="7d"?"每天":"每小時")+"花費",bars(tl.map(function(x){return D.range==="7d"?x.bucket:x.bucket.slice(0,2)}),[{v:tl.map(function(x){return x.twd}),c:"var(--blue)"}],{aria:"花費",tips:tl.map(function(x){return x.bucket+"　NT$"+n2(x.twd)+"，一般回合 "+x.turns+"、重寫 "+x.retries+"、有在玩的人生 "+x.lives})}),null)}

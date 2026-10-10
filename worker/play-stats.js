@@ -148,6 +148,21 @@ export function computePlayStats(rows, now, range, usdToTwd, latestVersion) {
     byKind[r.k].calls++; byKind[r.k].twd += c;
   }
   const r1 = (x) => Math.round(x * 10) / 10, r2 = (x) => Math.round(x * 100) / 100;
+  // 每回合花費細分(2026-10-10)：依「這一條人生的第幾回合」分前100回合／第101回合以後；每筆呼叫的回合＝它自己帶的回合編號，沒帶的(開場、部分重試)沿用同一條人生上一筆有編號的回合
+  // 「重寫」在這裡＝所有重試呼叫(k＝retry，含連線重試、再試一次)，跟上面「不算重寫」的算法一致
+  const TC = () => ({ turns: 0, twd: 0, retry_twd: 0, retry_calls: 0 }), tcut = { all: TC(), early: TC(), late: TC() }, lastTurn = new Map();
+  for (const r of R) {
+    if (typeof r.turn === "number") lastTurn.set(r.life, r.turn);
+    const tn = typeof r.turn === "number" ? r.turn : (lastTurn.get(r.life) || 0), c = (Number(r.usd) || 0) * rate;
+    for (const g of [tcut.all, tn > 100 ? tcut.late : tcut.early]) {
+      g.twd += c; if (r.k === "turn") g.turns++;
+      if (r.k === "retry") { g.retry_twd += c; g.retry_calls++; }
+    }
+  }
+  const tcOut = (g) => ({ turns: g.turns, avg: g.turns ? r2(g.twd / g.turns) : null, avg_no_retry: g.turns ? r2((g.twd - g.retry_twd) / g.turns) : null,
+    retry_extra: g.turns ? r2(g.retry_twd / g.turns) : null, retry_extra_pct: g.twd - g.retry_twd > 0 ? Math.round(g.retry_twd / (g.twd - g.retry_twd) * 1000) / 1000 : null,
+    retry_calls: g.retry_calls, per_retry: g.retry_calls ? r2(g.retry_twd / g.retry_calls) : null });
+  const turn_cost = { all: tcOut(tcut.all), early: tcOut(tcut.early), late: tcOut(tcut.late) };
   // 自由書寫比例(2026-10-10起才有標記)：一般回合的第一筆帶fi＝f(自己寫)或c(點選項)；沒標記的舊資料不算進分母
   let freeN = 0, choiceN = 0; const freeLives = new Set(), markedLives = new Set();
   for (const r of R) if (r.k === "turn" && (r.fi === "f" || r.fi === "c")) { markedLives.add(r.life); if (r.fi === "f") { freeN++; freeLives.add(r.life); } else choiceN++; }
@@ -171,6 +186,7 @@ export function computePlayStats(rows, now, range, usdToTwd, latestVersion) {
       reach10: ids.filter(l => mt(l) >= 10).length, reach10_rate: ids.length ? Math.round(ids.filter(l => mt(l) >= 10).length / ids.length * 1000) / 1000 : null,
       median_turns: median, max_turns: sorted.length ? sorted[sorted.length - 1] : null,
       turns, retries, retry_rate: turns ? Math.round(retries / turns * 1000) / 1000 : null, // 10.14.7.2：retries＝自動重寫
+      turn_cost,
       twd: r1(twd), twd_per_turn: turns ? r2(twd / turns) : null, twd_per_turn_no_retry: turns ? r2(twdNoRetry / turns) : null,
       reach3: reached(3).length, reach20: reached(20).length,
       free_input: { free: freeN, choice: choiceN, rate: markedN ? Math.round(freeN / markedN * 1000) / 1000 : null, lives_marked: markedLives.size, lives_free: freeLives.size,

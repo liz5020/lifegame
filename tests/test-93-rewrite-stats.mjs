@@ -3,7 +3,7 @@
 //  Worker回傳版本號不影響前端既有讀法、新版本提醒的出現時機與條件；全程假上游，不打真實API）
 import fs from "fs";
 import * as H from "./harness.mjs";
-import { rewriteBlock } from "../worker/play-stats.js";
+import { rewriteBlock, computePlayStats } from "../worker/play-stats.js";
 const A = H.makeAsserter("重寫統計與新版本提醒(10.14.7.2／10.14.7.3／10.17.12)");
 
 // ---------- Worker：記重試種類與頁面版本 ----------
@@ -131,6 +131,22 @@ A.check("N8 再玩一回合也不會再出現", !g.win.document.getElementById("
   const n = (c) => (b.cats.find(x => x.cat === c) || {}).n;
   A.check("C1 重寫原因分類：一筆重寫只算一類（日期2＋日期、過短1＝3，花費1，格式1，其他1）", n("日期、星期、節日寫錯") === 3 && n("該寫的事沒寫到") === 1 && n("格式、用詞不合") === 1 && n("其他") === 1 && b.cats.reduce((t, x) => t + x.n, 0) === 6, b.cats);
   A.check("C2 分類由多到少排序，例句最多3筆，代碼例句顯示白話", b.cats[0].cat === "日期、星期、節日寫錯" && b.cats.every(x => x.examples.length <= 3) && b.cats[0].examples.some(e => e.t === "新場景日期不在範圍內"), b.cats[0]);
+}
+
+// ---------- 每回合花費細分(2026-10-10)：單一人生的前100回合／第101回合以後，含重寫與不含重寫 ----------
+{
+  const now = Date.parse("2026-10-10T06:00:00Z"), t0 = Date.parse("2026-10-10T01:00:00Z"); // USD→TWD用1方便心算
+  const row = (i, k, turn, usd, extra = {}) => Object.assign({ t: t0 + i * 1000, k, turn, usd, life: "LA" }, extra);
+  const rows = [
+    row(0, "opening", null, 0.01),
+    row(1, "turn", 1, 0.02), row(2, "retry", null, 0.02, { rk: "重寫" }),   // 重試沒帶回合：沿用第1回合
+    row(3, "turn", 100, 0.02),
+    row(4, "turn", 101, 0.04), row(5, "retry", 101, 0.04, { rk: "重寫" }), row(6, "retry", 101, 0.02, { rk: "連線" }),
+  ];
+  const tc = computePlayStats(rows, now, "today", 1).summary.turn_cost;
+  A.check("D1 前100回合：2個回合、含重寫平均(0.01+0.02+0.02+0.02)/2＝0.04、不含重寫0.025≈0.03(四捨五入)、重寫多花0.01", tc.early.turns === 2 && tc.early.avg === 0.04 && tc.early.retry_calls === 1 && tc.early.retry_extra === 0.01, tc.early);
+  A.check("D2 第101回合以後：1個回合、含重寫0.10、不含0.04、重寫(含連線重試)共2次、每次平均0.03", tc.late.turns === 1 && tc.late.avg === 0.1 && tc.late.avg_no_retry === 0.04 && tc.late.retry_calls === 2 && tc.late.per_retry === 0.03, tc.late);
+  A.check("D3 全部＝前100＋之後：3個回合、總花費0.17÷3≈0.06；沒有回合的範圍平均為null", tc.all.turns === 3 && tc.all.avg === 0.06 && computePlayStats([], now, "today", 1).summary.turn_cost.early.avg === null, tc.all);
 }
 
 // ---------- 前端程式碼：重試種類與頁面版本都有送 ----------
