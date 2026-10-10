@@ -5,3 +5,6 @@ dist/
 參考資料/
 遊戲參考/
 費用記錄/
+tests/.last-failed
+tests/.last-pass
+tests/.fail-history

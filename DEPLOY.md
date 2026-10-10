@@ -4,13 +4,15 @@
 > 線上怎麼查：遊戲首頁最下面、選單→更新紀錄視窗最上面都會顯示頁面版本號；更新紀錄視窗在正式模式下還會顯示伺服器（Worker）版本號，也可以直接開 `https://life-game.smile80275.workers.dev/version`（要從遊戲頁面發出的請求才會通過來源檢查）。
 > 版本號格式：`YYYY.MM.DD-字母`（當天第幾次，a、b、c…）。頁面與Worker共用同一個編號體系，Worker沒改時編號可以落後，但兩邊的編號都要記在下面。
 
-## 每次上傳／部署的步驟
+## 每次發佈的步驟（2026-10-10改寫，規則見`協作流程說明-共同基準.md`「測試期自動上線規則」）
+
+版本以「發佈」為單位：一天固定發佈2～3次（測試參數），發佈時間點由使用者決定；平常的改動只commit、不換版本號、不推上線。緊急件的做法見共同基準第6條。
 
 1. 從GitHub拿最新的檔案（不要用舊的下載檔）。
-2. 確認`index.html`的`APP_VERSION`、`RELEASE_NOTES`最前面一筆（玩家看得懂的更新說明）已更新；`worker/`有改就把`worker/worker.js`的`WORKER_VERSION`換成同一個編號。
-3. `cd tests && node run-all.mjs 54`（版本檢查）通過。
-4. 上傳頁面：把改動合併進`master`就好，Cloudflare Pages會自動部署（見下方「Pages自動部署」）；Worker有改：合併進`master`後Cloudflare也會自動部署（見下方「Worker自動部署」），不用再手動`wrangler deploy`。
-5. 在下面加一行（最新的放最上面）。
+2. 最後一步統一改完：`index.html`的`APP_VERSION`、`RELEASE_NOTES`最前面一筆（把這次累積的改動合併成一則玩家看得懂的說明）；`worker/`有改就把`worker/worker.js`的`WORKER_VERSION`換成同一個編號；`CHANGELOG.md`；下面紀錄表加一行。
+3. `cd tests && node run-all.mjs 54`（版本檢查）先確認，再跑那唯一一次全套`node run-all.mjs`；跑完之後不要再改任何檔案。急著上線的純文字修正走快速通道（只跑`54`加`--quick`）。
+4. 推之前`node run-all.mjs --verify`確認這份內容有全套通過的戳記，再合併進`master`：Cloudflare Pages與Worker都會自動部署（見下方「Pages自動部署」「Worker自動部署」），不用再手動`wrangler deploy`。
+5. 推完確認線上版本都更新後，把紀錄表那一行補上「已上線」與提交代號。
 
 ## Pages自動部署（2026-09-30起）
 
@@ -35,7 +37,9 @@
 
 ## 紀錄（最新在上）
 
-| 日期 | 頁面版本 | Worker版本 | commit | 上傳內容 | 備註 |
+2026-10-10起一個版本一行（同一版不再分「尚未上線」「已上線」兩行，上線後改同一行）；commit欄寫最後一個提交代號，並註明這個版本包含幾個commit。2026-10-10以前的舊紀錄照原樣保留。
+
+| 日期 | 頁面版本 | Worker版本 | commit（含幾個commit） | 上傳內容 | 備註 |
 |---|---|---|---|---|---|
 | 2026-10-10 | 2026.10.10-h（只有版本號與更新說明「幕後的整理」；2026-10-10已上線，網頁與Worker都確認是此版） | 2026.10.10-h（數據網頁改成報告式版面：報表／長期趨勢／名冊、最上方名額與人流、`/stats-daily`、`/hourly.csv`、`/daily.csv`加寬、每小時彙整排程） | `79a24e0` | index.html、worker/worker.js、worker/dashboard.js、worker/play-stats.js、worker/gate.js、worker/account.js | 十、10.13.7.14；使用者說「確認上線，不用再跑測試」，上線前未重跑全套(前一次全套96檔95過，test-89單獨重跑通過)；舊存檔相容 |
 | 2026-10-10 | 2026.10.10-g（候補當天補位＋雲端存檔摘要附回合數；2026-10-10已上線，網頁與Worker都確認是此版） | 2026.10.10-g（account.js候補當天補位；數據網頁三頁與玩家怎麼玩`/stats-play`、下載全部資料`/daily.csv`、逐筆明細上限30,000筆、名冊回合數、帳號錢包回合補記人生代號） | `17e7cca` | index.html、worker/worker.js、worker/play-stats.js、worker/dashboard.js、worker/save-admin.js、worker/account.js、worker/location-migrate.js | 十、10.15.4／10.15.11候補當天補位(waitlist-fill分支合併)、10.13.7.11修正、10.13.7.12、10.13.7.13、10.14.7、10.15.6；使用者說「確認上線」、版面微調後由使用者自己push；Pages與Worker建置皆成功；舊存檔相容 |
