@@ -12,6 +12,9 @@ const meanOf = (arr) => arr.length ? arr.reduce((t, x) => t + x, 0) / arr.length
 // 10.13.7.14：重寫原因(第1類代碼，一、1.2.9.18.1)的白話說法；明細與下載檔仍是代碼
 export const REGEN_REASON_LABELS = { "空白": "正文空白", "少一段": "少了一段(行動結果或新場景)", "過短": "正文少於40字", "欄位名稱": "正文出現資料欄位名稱",
   "節日": "節日放錯日子", "日期": "新場景日期不在範圍內", "花費": "剛決定的花費沒寫到", "興趣": "指定的興趣沒寫到", "約定": "到期的約定沒交代" };
+// 重寫原因歸類(2026-10-10)：依序比對，第一個符合的類別；樣本少時關鍵字之後再調
+export const REGEN_CATS = [["日期、星期、節日寫錯", /除夕|星期|節|日期|time_context|這段時間/], ["該寫的事沒寫到", /決定|沒有寫進|約定|到期|買了|付了|花費|興趣|交代|要寫出/], ["寫得不完整", /沒寫完|結尾|太短|過短|偏短|空白|少一段|少了|不完整/], ["格式、用詞不合", /欄位|標點|引號|冒號|舞台|格式/]];
+export function classifyRegen(text) { for (const [name, re] of REGEN_CATS) if (re.test(text)) return name; return "其他"; }
 // 每段人生第一次出現的時間(明細只留7天，7天前開局的人生會被當成明細裡第一筆那天開局)
 function firstSeen(all) { const first = new Map(); for (const r of all) if (r.life && !first.has(r.life)) first.set(r.life, r.t); return first; }
 function maxTurns(rows) { const m = new Map(); for (const r of rows) if (r.life && r.k === "turn" && typeof r.turn === "number") m.set(r.life, Math.max(m.get(r.life) || 0, r.turn)); return m; }
@@ -41,12 +44,12 @@ export function computePlayStats(rows, now, range, usdToTwd) {
   const median = sorted.length ? (sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2) : null;
 
   // 回合編號照遊戲畫面：開場是第1回合，玩家第一次送出行動是第2回合
-  // 漏斗：玩到第N回合以上的人生數(N＝2～最多60)；繼續比例：玩到第N回合的人生裡，有玩到第N+1回合的比例(N＝2～15)
+  // 漏斗：玩到第N回合以上的人生數(N＝2～最多60)；繼續比例：玩到第N回合的人生裡，有玩到第N+1回合的比例(N＝2～59，頁面用捲動視窗顯示)
   const top = Math.min(60, sorted.length ? sorted[sorted.length - 1] : 0);
   const funnel = [];
   for (let n = 2; n <= top; n++) funnel.push({ turn: n, lives: ids.filter(l => mt(l) >= n).length });
   const continuation = [];
-  for (let n = 2; n <= Math.min(15, top - 1); n++) {
+  for (let n = 2; n <= Math.min(59, top - 1); n++) {
     const reach = ids.filter(l => mt(l) >= n), cont = reach.filter(l => mt(l) >= n + 1);
     // 還在玩、而且剛好停在第N回合的人生還沒決定要不要繼續，不算進分母
     const decided = reach.filter(l => mt(l) > n || !active(l));
@@ -104,6 +107,10 @@ export function computePlayStats(rows, now, range, usdToTwd) {
     retry_rate: b.turns ? Math.round(b.retries / b.turns * 1000) / 1000 : null, twd: r1(b.twd), lives: b.lives.size }));
   const reasons = {};
   for (const r of R) if (r.k === "retry" && r.rr) for (const c of String(r.rr).split("、")) if (c) reasons[c] = (reasons[c] || 0) + 1;
+  // 重寫原因分類：一筆重寫只算一類(依序比對整句)，原因是AI自己寫的整句話，不再用「、」切碎
+  const catCount = {}, catEx = {};
+  for (const r of R) if (r.k === "retry" && r.rr) { const c = classifyRegen(String(r.rr)), t = String(r.rr).slice(0, 60); catCount[c] = (catCount[c] || 0) + 1; ((catEx[c] = catEx[c] || {})[t] = (catEx[c][t] || 0) + 1); }
+  const retry_cats = Object.entries(catCount).map(([cat, n]) => ({ cat, n, examples: Object.entries(catEx[cat]).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, k]) => ({ t, n: k })) })).sort((a, b) => b.n - a.n).slice(0, 5);
   // 每條人生平均花費、玩到第10回合的人生平均花費、AI讀進去的內容(快取讀取／快取寫入／沒用快取)
   const lifeCost = new Map();
   for (const r of R) lifeCost.set(r.life, (lifeCost.get(r.life) || 0) + (Number(r.usd) || 0) * rate);
@@ -129,6 +136,7 @@ export function computePlayStats(rows, now, range, usdToTwd) {
     },
     funnel, continuation, stops, timeline,
     cost_split: Object.entries(byKind).map(([k, v]) => ({ kind: k, calls: v.calls, twd: r1(v.twd) })).sort((a, b) => b.twd - a.twd),
+    retry_cats,
     retry_reasons: Object.entries(reasons).map(([code, n]) => ({ code, label: REGEN_REASON_LABELS[code] || code, n })).sort((a, b) => b.n - a.n).slice(0, 5)
   };
 }

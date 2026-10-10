@@ -83,6 +83,7 @@ svg text{fill:var(--soft);font-size:11px;font-family:var(--sans)}
 .fl.big{color:var(--danger);font-weight:600}
 .bar{display:flex;height:26px;gap:2px;border-radius:4px;overflow:hidden}
 .scroll{overflow-x:auto}
+.scroll.tall{max-height:320px;overflow-y:auto}
 table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 th{text-align:left;font-weight:600;color:var(--soft);font-size:12.5px;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -199,14 +200,14 @@ function bars(labels,series,opt){
   var id="c"+Math.random().toString(36).slice(2,8);if(opt.tips)hook(id,opt.tips);
   return '<svg id="'+id+'" viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="'+esc(opt.aria||"")+'">'+g+'</svg>'}
 // 橫條：rows[[名稱,數字]]；withLoss＝漏斗(每步寫少了多少、流失最多標紅)
-function hbars(rows,withLoss){
+function hbars(rows,withLoss,unit){
   rows=rows.filter(function(r){return r[1]!=null});if(!rows.length)return '<p class="small">還沒有資料</p>';
   var max=Math.max.apply(null,rows.map(function(r){return r[1]}))||1,big=-1,h="";
   if(withLoss)for(var i=1;i<rows.length;i++)big=Math.max(big,rows[i-1][1]-rows[i][1]);
   rows.forEach(function(r,i){
     if(withLoss&&i){var l=rows[i-1][1]-r[1];h+='<div class="fr"><span></span><div class="fl'+(l===big&&l>0?' big':'')+'">↓ 少了 '+num(l)+(rows[i-1][1]?'（'+pct0(l/rows[i-1][1])+'）':'')+'</div></div>'}
     var w=r[1]/max*76;
-    h+='<div class="fr"><span class="fn">'+esc(r[0])+'</span><div class="ft"><div class="fb" style="width:'+w+'%"></div><span class="fv" style="left:'+w+'%">'+num(r[1])+(withLoss&&rows[0][1]?'（'+pct0(r[1]/rows[0][1])+'）':' 條')+'</span></div></div>'});
+    h+='<div class="fr"><span class="fn">'+esc(r[0])+'</span><div class="ft"><div class="fb" style="width:'+w+'%"></div><span class="fv" style="left:'+w+'%">'+num(r[1])+(withLoss&&rows[0][1]?'（'+pct0(r[1]/rows[0][1])+'）':(unit||' 條'))+'</span></div></div>'});
   return '<div class="fun">'+h+'</div>'}
 var KIND={turn:"一般回合",retry:"重寫",opening:"開場",chapter:"人生之書章節",idle:"放置摘要",review:"回顧這一生"};
 var KCOL={turn:"var(--blue)",retry:"var(--stamp)",opening:"var(--warn)",chapter:"var(--ok)",idle:"var(--soft)",review:"var(--ink)"};
@@ -224,9 +225,9 @@ function renderQuota(){
     var last=0;hrs.forEach(function(k,i){if((p.pageviews[k]||0)>0||(p.timeline||[]).some(function(t){return t.bucket===k}))last=i});
     hrs=hrs.slice(0,Math.max(last+1,Math.min(24,Math.ceil(curHourTW()))));
     var tl={};(p.timeline||[]).forEach(function(t){tl[t.bucket]=t});
-    var pv=hrs.map(function(k){return p.pageviews[k]||0}),nl=hrs.map(function(k){return tl[k]?tl[k].new_lives:0});
+    var pv=hrs.map(function(k){return p.pageviews[k]||0}),pvSum=pv.reduce(function(a,x){return a+x},0),missing=Math.max(0,(p.pageviews_total||0)-pvSum),nl=hrs.map(function(k){return tl[k]?tl[k].new_lives:0});
     left=card("今天每小時瀏覽與開局",'<div class="legend"><span><i style="background:var(--blue)"></i>瀏覽人次</span><span><i style="background:var(--stamp)"></i>新開局</span></div>'+
-      bars(hrs.map(function(k){return k.slice(0,2)}),[{v:pv,c:"var(--blue)"},{v:nl,c:"var(--stamp)"}],{aria:"今天每小時瀏覽與開局",tips:hrs.map(function(k,i){return k+"　瀏覽 "+pv[i]+"、新開局 "+nl[i]})}),
+      bars(missing?["前"].concat(hrs.map(function(k){return k.slice(0,2)})):hrs.map(function(k){return k.slice(0,2)}),[{v:missing?[missing].concat(pv):pv,c:"var(--blue)"},{v:missing?[0].concat(nl):nl,c:"var(--stamp)"}],{aria:"今天每小時瀏覽與開局",tips:(missing?["前面時段合計　瀏覽 "+missing+"（當時還沒有每小時紀錄，分不出是哪個小時）"]:[]).concat(hrs.map(function(k,i){return k+"　瀏覽 "+pv[i]+"、新開局 "+nl[i]}))})+(missing?'<p class="note">最左邊「前」是每小時紀錄開始前的瀏覽合計，分不出是哪個小時。</p>':''),
       plainArrive(p,pv,nl,hrs));
   }else left=card("今天每小時瀏覽與開局",'<p class="err">'+NA+'</p>');
   var right;
@@ -318,7 +319,7 @@ function renderReport(o){
   if(r==="30d")h+=sec("secDrop","人在哪裡離開","",ONLY_DAILY);
   else if(p){
     var left=p.stops.reduce(function(a,x){return a+x.lives},0);
-    var cont='<div class="scroll"><table><tr><th>回合</th><th class="n">到達</th><th class="n">繼續比例</th></tr>'+(p.continuation||[]).map(function(c){return '<tr><td>第 '+c.turn+' → '+(c.turn+1)+' 回合</td><td class="n">'+num(c.n)+'</td><td class="n">'+pct0(c.rate)+'</td></tr>'}).join("")+'</table></div>';
+    var cont='<div class="scroll tall"><table><tr><th>回合</th><th class="n">到達</th><th class="n">繼續比例</th></tr>'+(p.continuation||[]).map(function(c){return '<tr><td>第 '+c.turn+' → '+(c.turn+1)+' 回合</td><td class="n">'+num(c.n)+'</td><td class="n">'+pct0(c.rate)+'</td></tr>'}).join("")+'</table></div>';
     h+=sec("secDrop","人在哪裡離開","已經 10 分鐘沒動作的 "+num(left)+" 條人生，最後停在哪一回合，以及每一關往下玩的比例。",
       '<div class="grid">'+card("離開時停在第幾回合",hbars(p.stops.map(function(x){return[x.label,x.lives]}),false),plainStops(p.stops,left))+
       card("每一關繼續往下玩的比例",cont,"還在玩、而且剛好停在那一回合的人生還沒決定，不算進去。")+'</div>')}
@@ -339,7 +340,8 @@ function renderReport(o){
   else if(p){
     var tl=p.timeline||[],why=p.retry_reasons||[],wt=why.reduce(function(a,x){return a+x.n},0);
     h+=sec("secRetry","重寫有多頻繁、為什麼","重寫次數 ÷ 一般回合數。虛線是目標 5%。",'<div class="grid">'+
-      card((r==="7d"?"每天":"每小時")+"重寫比例",bars(tl.map(function(x){return r==="7d"?x.bucket:x.bucket.slice(0,2)}),[{v:tl.map(function(x){return x.retry_rate||0}),c:"var(--stamp)"}],{pct:true,ref:RETRY_TARGET,aria:"重寫比例",tips:tl.map(function(x){return x.bucket+"　重寫 "+x.retries+" ÷ 一般回合 "+x.turns+" ＝ "+pct(x.retry_rate)})}))+
+      card((r==="7d"?"每天":"每小時")+"重寫比例",bars(tl.map(function(x){return r==="7d"?x.bucket:x.bucket.slice(0,2)}),[{v:tl.map(function(x){return x.turns<10?0:(x.retry_rate||0)}),c:"var(--stamp)"}],{pct:true,ref:RETRY_TARGET,aria:"重寫比例",tips:tl.map(function(x){return x.bucket+"　重寫 "+x.retries+" ÷ 一般回合 "+x.turns+(x.turns<10?"（回合太少，不畫比例）":" ＝ "+pct(x.retry_rate))})})+'<p class="note">一般回合少於 10 的時段樣本太少，不畫比例，滑過去可看實際次數。</p>')+
+      card("重寫原因分類（前五名）",catsBlock(p.retry_cats||[]))+
       card("重寫原因",why.length?'<div class="scroll"><table><tr><th>原因</th><th class="n">次數</th><th class="n">佔重寫</th></tr>'+why.map(function(w){return '<tr><td class="wrap">'+esc(w.label)+'</td><td class="n">'+num(w.n)+'</td><td class="n">'+pct0(wt?w.n/wt:null)+'</td></tr>'}).join("")+'</table></div>':'<p class="small">沒有重寫</p>',"下載的明細裡是原因代碼（例如「過短」「日期」）。")+
       regenToday()+'</div>')}
   // ⑦ 玩家有多少
@@ -352,6 +354,7 @@ function retryReport(o,r,p){
   var L=["【重寫狀況】範圍："+(o.word||r)+"（"+r+"）","重寫比例＝重寫次數 ÷ 一般回合數，目標低於 "+Math.round(RETRY_TARGET*100)+"%","目前："+(o.retry_rate==null?"沒有資料":pct(o.retry_rate)),""];
   if(r==="30d"){L.push("每天：");(o.daily||[]).forEach(function(x){L.push(x.date+"　重寫 "+num(x.retries)+"　比例 "+pct(x.retry_rate))})}
   else if(p){var tl=p.timeline||[];L.push(r==="7d"?"每天：":"每小時：");tl.forEach(function(x){L.push(x.bucket+"　重寫 "+num(x.retries)+" ÷ 一般回合 "+num(x.turns)+" ＝ "+pct(x.retry_rate))});
+    var cc=p.retry_cats||[];L.push("","重寫原因分類（類別／次數／最常見原文）：");if(!cc.length)L.push("沒有重寫");cc.forEach(function(x){L.push(x.cat+"／"+num(x.n)+"／"+x.examples.map(function(e){return e.t+"（"+e.n+"）"}).join(" ； "))});
     var why=p.retry_reasons||[],wt=why.reduce(function(a,x){return a+x.n},0);L.push("","重寫原因前 5 名（原因代碼／白話／次數／佔重寫）：");
     if(!why.length)L.push("沒有重寫");why.forEach(function(w){L.push(w.code+"／"+w.label+"／"+num(w.n)+"／"+pct0(wt?w.n/wt:null))})}
   var q=D.sum&&D.sum.ai_usage&&D.sum.ai_usage.regen_today;
@@ -366,6 +369,8 @@ function plainFunnel(f){
   if(i3>0&&i10>0&&f[i3][1])s+="撐過第 3 回合的人，有 "+pct0(f[i10][1]/f[i3][1])+" 會玩到第 10 回合。";
   return s}
 function plainStops(st,left){if(!left)return "還沒有人離開。";var a=st[0].lives+st[1].lives;return "「只有開場」和「第 2 回合就走」加起來 "+num(a)+" 條，佔離開的 "+pct0(a/left)+"。"}
+function catsBlock(c){if(!c.length)return '<p class="small">沒有重寫</p>';var t=c.reduce(function(a,x){return a+x.n},0);
+  return hbars(c.map(function(x){return[x.cat,x.n]}),false," 次")+'<div class="scroll"><table><tr><th>類別</th><th class="n">次數</th><th class="n">佔重寫</th><th>最常見的原文</th></tr>'+c.map(function(x){return '<tr><td>'+esc(x.cat)+'</td><td class="n">'+num(x.n)+'</td><td class="n">'+pct0(t?x.n/t:null)+'</td><td class="wrap">'+x.examples.map(function(e){return esc(e.t)+"（"+e.n+"）"}).join("<br>")+'</td></tr>'}).join("")+'</table></div>'}
 function regenToday(){var q=D.sum&&D.sum.ai_usage&&D.sum.ai_usage.regen_today;if(!q)return "";
   var list=function(arr){return arr&&arr.length?arr.map(function(x,i){return (i+1)+". "+esc(x.code)+"（"+num(x.n)+" 次）"}).join("<br>"):"—"};
   return card("今天的自動重寫",'<div class="scroll"><table><tr><th>重寫</th><td>'+num(q.regens)+' 次 ÷ 一般回合 '+num(q.turn_calls)+' 次＝'+(q.pct==null?"—":q.pct+"%")+'</td></tr><tr><th>重寫原因前 5 名</th><td class="wrap">'+list(q.reasons)+'</td></tr><tr><th>上回合紀錄前 5 名</th><td class="wrap">'+list(q.notes)+'</td></tr></table></div>')}
