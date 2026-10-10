@@ -23,6 +23,7 @@ button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;max-width:320px}
 #login{max-width:360px;margin:60px auto}
 .stack{display:flex;flex-direction:column;gap:32px}
+[hidden]{display:none!important}
 .head{display:flex;flex-direction:column;gap:10px}
 .eyebrow{font-size:12px;color:var(--soft);letter-spacing:.08em}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
