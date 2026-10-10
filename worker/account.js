@@ -773,32 +773,44 @@ export class AccountStore {
       await this.storage.put("carry", (await this._get("carry", 0)) + freed);
     }
   }
-  // 今天的名額帳；台灣時間每天第一次有人碰到時才做當天的分配(不用等排程，排程只負責寄信)
+  // 今天的名額帳；台灣時間每天第一次有人碰到時建立當天名額，之後每次碰到都檢查候補補位(10.15.4：當天調高名額也立即補位)
   async _entryDay(ctx) {
     await this._expireSweep(ctx);
     let en = await this._get("en", null);
-    if (en && en.date === ctx.date) return en;
-    const cum = await this._get("cum", 0), cap = ctx.new_cap, cp = ctx.checkpoint;
-    const frozen = cum >= cp;
-    let used = 0, bonus = 0;
-    if (cap > 0 && !frozen) {
-      const q = await this._get("wq", []), wh = await this._get("wh", []);
-      bonus = await this._get("carry", 0);
-      const limit = Math.min(cap + bonus, Math.max(0, cp - cum));
-      while (used < limit && q.length) {
-        const aid = q.shift();
-        const a = await this._acct(aid);
-        if (!a || !a.wl || a.wl.status !== "waiting") continue;
-        a.wl.status = "allocated"; a.wl.allocatedAt = ctx.now; a.wl.allocDate = ctx.date; a.wl.tries = 0; a.wl.lastTry = 0;
-        await this._putAcct(a); wh.push(aid); used++;
-      }
-      await this.storage.put("wq", q); await this.storage.put("wh", wh);
-      await this.storage.put("cum", cum + used);
-      await this.storage.put("carry", 0);
+    if (!en || en.date !== ctx.date) {
+      const cum = await this._get("cum", 0);
+      const bonus = ctx.new_cap > 0 && cum < ctx.checkpoint ? await this._get("carry", 0) : 0;
+      en = { date: ctx.date, used: 0, bonus, frozen: cum >= ctx.checkpoint }; // 當天一旦碰到檢查點就整天暫停，調高檢查點要等隔天00:00才恢復
+      if (bonus) await this.storage.put("carry", 0);
+      await this.storage.put("en", en);
     }
-    en = { date: ctx.date, used, bonus, frozen: frozen || cum + used >= cp }; // 當天一旦碰到檢查點就整天暫停，調高檢查點要等隔天00:00才恢復
-    await this.storage.put("en", en);
+    await this._fillQueue(ctx, en);
     return en;
+  }
+  // 當天名額還有空位、候補隊伍有人＝依序補位(同一段邏輯：每天第一次、每次名額相關請求、每小時排程都會跑，重複執行結果相同)
+  async _fillQueue(ctx, en) {
+    if (en.frozen || ctx.new_cap <= 0) return;
+    const cum = await this._get("cum", 0);
+    const limit = Math.min(ctx.new_cap + en.bonus - en.used, Math.max(0, ctx.checkpoint - cum));
+    if (limit <= 0) return;
+    const q = await this._get("wq", []);
+    if (!q.length) return;
+    const wh = await this._get("wh", []);
+    let n = 0;
+    while (n < limit && q.length) {
+      const aid = q.shift();
+      const a = await this._acct(aid);
+      if (!a || !a.wl || a.wl.status !== "waiting") continue;
+      a.wl.status = "allocated"; a.wl.allocatedAt = ctx.now; a.wl.allocDate = ctx.date; a.wl.tries = 0; a.wl.lastTry = 0;
+      await this._putAcct(a); wh.push(aid); n++;
+    }
+    await this.storage.put("wq", q);
+    if (!n) return;
+    await this.storage.put("wh", wh);
+    en.used += n;
+    await this.storage.put("cum", cum + n);
+    if (cum + n >= ctx.checkpoint) en.frozen = true;
+    await this.storage.put("en", en);
   }
   // 直接來的新玩家現在能不能入場：{open, reason('full'|'checkpoint'), remaining, total}
   async _direct(ctx, en) {
@@ -916,7 +928,7 @@ export class AccountStore {
     const q = await this._get("wq", []); q.push(a.aid); await this.storage.put("wq", q);
     return this._out(a, {}, null, null);
   }
-  // 排程每小時呼叫：①順便做當天分配與過期 ②找出該寄通知信的人(分配當天台灣時間中午12:00起；失敗每小時重試，最多3次) ③檢查點通知信
+  // 排程每小時呼叫：①順便做當天分配、補位與過期 ②找出該寄通知信的人(分配當天台灣時間中午12:00起，中午以後才分到的下一次整點就寄；失敗每小時重試，最多3次) ③檢查點通知信
   async opWlDue(b) {
     const ctx = this._ctx(b);
     await this._entryDay(ctx);
